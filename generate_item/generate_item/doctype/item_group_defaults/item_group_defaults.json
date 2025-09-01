@@ -1,0 +1,289 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:item_group",
+ "creation": "2025-08-13 10:15:33.791753",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "details_section",
+  "item_group",
+  "stock_uom",
+  "valuation_rate",
+  "standard_rate",
+  "column_break_vdpp",
+  "is_stock_item",
+  "is_fixed_asset",
+  "is_closed",
+  "over_delivery_receipt_allowance",
+  "over_billing_allowance",
+  "hsn_code",
+  "units_of_measure_section",
+  "uoms",
+  "inventory_tab",
+  "valuation_method",
+  "accounting_tab",
+  "item_defaults_section",
+  "item_defaults",
+  "purchasing_tab",
+  "purchase_uom",
+  "lead_time_days",
+  "column_break_balp",
+  "is_purchase_item",
+  "sales_tab",
+  "sales_uom",
+  "column_break_aprf",
+  "is_sales_item",
+  "tax_tab",
+  "taxes",
+  "quality_tab",
+  "quality_inspection_template",
+  "column_break_vfwq",
+  "inspection_required_before_purchase",
+  "inspection_required_before_delivery",
+  "manufacturing_tab",
+  "include_item_in_manufacturing",
+  "is_sub_contracted_item"
+ ],
+ "fields": [
+  {
+   "fieldname": "details_section",
+   "fieldtype": "Section Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "item_group",
+   "fieldtype": "Link",
+   "label": "Item Group",
+   "options": "Item Group",
+   "unique": 1
+  },
+  {
+   "fieldname": "stock_uom",
+   "fieldtype": "Link",
+   "label": "Default Unit of Measure",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "valuation_rate",
+   "fieldtype": "Currency",
+   "label": "Valuation Rate"
+  },
+  {
+   "fieldname": "standard_rate",
+   "fieldtype": "Currency",
+   "label": "Standard Selling Rate"
+  },
+  {
+   "fieldname": "column_break_vdpp",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "is_stock_item",
+   "fieldtype": "Check",
+   "label": "Maintain Stock"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_fixed_asset",
+   "fieldtype": "Check",
+   "label": "Is Fixed Asset"
+  },
+  {
+   "fieldname": "over_delivery_receipt_allowance",
+   "fieldtype": "Float",
+   "label": "Over Delivery/Receipt Allowance (%)"
+  },
+  {
+   "fieldname": "over_billing_allowance",
+   "fieldtype": "Float",
+   "label": "Over Billing Allowance (%)"
+  },
+  {
+   "fieldname": "units_of_measure_section",
+   "fieldtype": "Section Break",
+   "label": "Units of Measure"
+  },
+  {
+   "fieldname": "uoms",
+   "fieldtype": "Table",
+   "label": "UOMs",
+   "options": "UOM Conversion Detail"
+  },
+  {
+   "fieldname": "inventory_tab",
+   "fieldtype": "Tab Break",
+   "label": "Inventory"
+  },
+  {
+   "default": "FIFO",
+   "fieldname": "valuation_method",
+   "fieldtype": "Select",
+   "label": "Valuation Method",
+   "options": "FIFO\nMoving Average\nLIFO"
+  },
+  {
+   "fieldname": "accounting_tab",
+   "fieldtype": "Tab Break",
+   "label": "Accounting"
+  },
+  {
+   "fieldname": "item_defaults_section",
+   "fieldtype": "Section Break",
+   "label": "Item Defaults"
+  },
+  {
+   "fieldname": "item_defaults",
+   "fieldtype": "Table",
+   "label": "Item Defaults",
+   "options": "Item Default"
+  },
+  {
+   "fieldname": "purchasing_tab",
+   "fieldtype": "Tab Break",
+   "label": "Purchasing"
+  },
+  {
+   "fieldname": "purchase_uom",
+   "fieldtype": "Link",
+   "label": "Default Purchase Unit of Measure",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "lead_time_days",
+   "fieldtype": "Int",
+   "label": "Lead Time in days"
+  },
+  {
+   "fieldname": "column_break_balp",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_purchase_item",
+   "fieldtype": "Check",
+   "label": "Allow Purchase"
+  },
+  {
+   "fieldname": "sales_tab",
+   "fieldtype": "Tab Break",
+   "label": "Sales"
+  },
+  {
+   "fieldname": "sales_uom",
+   "fieldtype": "Link",
+   "label": "Default Sales Unit of Measure",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "column_break_aprf",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_sales_item",
+   "fieldtype": "Check",
+   "label": "Allow Sales"
+  },
+  {
+   "fieldname": "tax_tab",
+   "fieldtype": "Tab Break",
+   "label": "Tax"
+  },
+  {
+   "fieldname": "taxes",
+   "fieldtype": "Table",
+   "label": "Taxes",
+   "options": "Item Tax"
+  },
+  {
+   "fieldname": "quality_tab",
+   "fieldtype": "Tab Break",
+   "label": "Quality"
+  },
+  {
+   "fieldname": "quality_inspection_template",
+   "fieldtype": "Link",
+   "label": "Quality Inspection Template",
+   "options": "Quality Inspection Template"
+  },
+  {
+   "fieldname": "column_break_vfwq",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "inspection_required_before_purchase",
+   "fieldtype": "Check",
+   "label": "Inspection Required before Purchase"
+  },
+  {
+   "default": "0",
+   "fieldname": "inspection_required_before_delivery",
+   "fieldtype": "Check",
+   "label": "Inspection Required before Delivery"
+  },
+  {
+   "fieldname": "manufacturing_tab",
+   "fieldtype": "Tab Break",
+   "label": "Manufacturing"
+  },
+  {
+   "default": "0",
+   "fieldname": "include_item_in_manufacturing",
+   "fieldtype": "Check",
+   "label": "Include Item In Manufacturing"
+  },
+  {
+   "default": "0",
+   "description": "If subcontracted to a vendor",
+   "fieldname": "is_sub_contracted_item",
+   "fieldtype": "Check",
+   "label": "Supply Raw Materials for Purchase"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_closed",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Is Closed",
+   "print_hide": 1
+  },
+  {
+   "fieldname": "hsn_code",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "HSN Code",
+   "options": "GST HSN Code",
+   "reqd": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-08-28 16:52:08.817774",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Item Group Defaults",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

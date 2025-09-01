@@ -1,0 +1,550 @@
+{
+ "actions": [],
+ "autoname": "field:item_code",
+ "creation": "2025-06-20 15:48:55.898643",
+ "default_view": "Report",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "generator_tab",
+  "section_break_vxga",
+  "template_name",
+  "item_code",
+  "item_descriptor",
+  "created_item",
+  "ig_done",
+  "column_break_balb",
+  "description",
+  "item_group_name",
+  "is_closed",
+  "is_create_with_sales_order",
+  "section_break_oqlz",
+  "attribute_1",
+  "attribute_5",
+  "attribute_9",
+  "attribute_13",
+  "attribute_17",
+  "attribute_21",
+  "attribute_25",
+  "column_break_fbxq",
+  "attribute_2",
+  "attribute_6",
+  "attribute_10",
+  "attribute_14",
+  "attribute_18",
+  "attribute_22",
+  "attribute_26",
+  "column_break_arei",
+  "attribute_3",
+  "attribute_7",
+  "attribute_11",
+  "attribute_15",
+  "attribute_19",
+  "attribute_23",
+  "attribute_27",
+  "column_break_grnx",
+  "attribute_4",
+  "attribute_8",
+  "attribute_12",
+  "attribute_16",
+  "attribute_20",
+  "attribute_24",
+  "attribute_28",
+  "section_break_qbnv",
+  "attribute_1_value",
+  "attribute_5_value",
+  "attribute_9_value",
+  "attribute_13_value",
+  "attribute_17_value",
+  "attribute_21_value",
+  "attribute_25_value",
+  "column_break_arkw",
+  "attribute_2_value",
+  "attribute_6_value",
+  "attribute_10_value",
+  "attribute_14_value",
+  "attribute_18_value",
+  "attribute_22_value",
+  "attribute_26_value",
+  "column_break_qbpt",
+  "attribute_3_value",
+  "attribute_7_value",
+  "attribute_11_value",
+  "attribute_15_value",
+  "attribute_19_value",
+  "attribute_23_value",
+  "attribute_27_value",
+  "column_break_cmaj",
+  "attribute_4_value",
+  "attribute_8_value",
+  "attribute_12_value",
+  "attribute_16_value",
+  "attribute_20_value",
+  "attribute_24_value",
+  "attribute_28_value",
+  "section_break_pmwd",
+  "short_description"
+ ],
+ "fields": [
+  {
+   "fieldname": "generator_tab",
+   "fieldtype": "Tab Break",
+   "label": "Generator"
+  },
+  {
+   "fieldname": "section_break_vxga",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "template_name",
+   "fieldtype": "Link",
+   "label": "Product",
+   "options": "Item Generator Template",
+   "reqd": 1
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Item Code",
+   "read_only": 1,
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "item_descriptor",
+   "fieldtype": "Data",
+   "label": "Item Descriptor"
+  },
+  {
+   "fieldname": "created_item",
+   "fieldtype": "Link",
+   "label": "Created Item",
+   "options": "Item",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "ig_done",
+   "fieldtype": "Check",
+   "label": "Is Done",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_balb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Description",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fetch_from": "template_name.item_group_name",
+   "fieldname": "item_group_name",
+   "fieldtype": "Link",
+   "label": "Item Group Name",
+   "options": "Item Group Defaults",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_break_oqlz",
+   "fieldtype": "Section Break",
+   "hidden": 1
+  },
+  {
+   "fieldname": "attribute_1",
+   "fieldtype": "Data",
+   "label": "Attribute 1",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_5",
+   "fieldtype": "Data",
+   "label": "Attribute 5",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_9",
+   "fieldtype": "Data",
+   "label": "Attribute 9",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_13",
+   "fieldtype": "Data",
+   "label": "Attribute 13",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_17",
+   "fieldtype": "Data",
+   "label": "Attribute 17",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_21",
+   "fieldtype": "Data",
+   "label": "Attribute 21",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_25",
+   "fieldtype": "Data",
+   "label": "Attribute 25",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_fbxq",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "attribute_2",
+   "fieldtype": "Data",
+   "label": "Attribute 2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_6",
+   "fieldtype": "Data",
+   "label": "Attribute 6",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_10",
+   "fieldtype": "Data",
+   "label": "Attribute 10",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_14",
+   "fieldtype": "Data",
+   "label": "Attribute 14",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_18",
+   "fieldtype": "Data",
+   "label": "Attribute 18",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_22",
+   "fieldtype": "Data",
+   "label": "Attribute 22",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_26",
+   "fieldtype": "Data",
+   "label": "Attribute 26",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_arei",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "attribute_3",
+   "fieldtype": "Data",
+   "label": "Attribute 3",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_7",
+   "fieldtype": "Data",
+   "label": "Attribute 7",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_11",
+   "fieldtype": "Data",
+   "label": "Attribute 11",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_15",
+   "fieldtype": "Data",
+   "label": "Attribute 15",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_19",
+   "fieldtype": "Data",
+   "label": "Attribute 19",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_23",
+   "fieldtype": "Data",
+   "label": "Attribute 23",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_27",
+   "fieldtype": "Data",
+   "label": "Attribute 27",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_grnx",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "attribute_4",
+   "fieldtype": "Data",
+   "label": "Attribute 4",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_8",
+   "fieldtype": "Data",
+   "label": "Attribute 8",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_12",
+   "fieldtype": "Data",
+   "label": "Attribute 12",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_16",
+   "fieldtype": "Data",
+   "label": "Attribute 16",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_20",
+   "fieldtype": "Data",
+   "label": "Attribute 20",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_24",
+   "fieldtype": "Data",
+   "label": "Attribute 24",
+   "read_only": 1
+  },
+  {
+   "fieldname": "attribute_28",
+   "fieldtype": "Data",
+   "label": "Attribute 28",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_qbnv",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "attribute_1_value",
+   "fieldtype": "Select",
+   "label": "Attribute 1 Value"
+  },
+  {
+   "fieldname": "attribute_5_value",
+   "fieldtype": "Select",
+   "label": "Attribute 5 Value"
+  },
+  {
+   "fieldname": "attribute_9_value",
+   "fieldtype": "Select",
+   "label": "Attribute 9 Value"
+  },
+  {
+   "fieldname": "attribute_13_value",
+   "fieldtype": "Select",
+   "label": "Attribute 13 Value"
+  },
+  {
+   "fieldname": "attribute_17_value",
+   "fieldtype": "Select",
+   "label": "Attribute 17 Value"
+  },
+  {
+   "fieldname": "attribute_21_value",
+   "fieldtype": "Select",
+   "label": "Attribute 21 Value"
+  },
+  {
+   "fieldname": "attribute_25_value",
+   "fieldtype": "Select",
+   "label": "Attribute 25 Value"
+  },
+  {
+   "fieldname": "column_break_arkw",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "attribute_2_value",
+   "fieldtype": "Select",
+   "label": "Attribute 2 Value"
+  },
+  {
+   "fieldname": "attribute_6_value",
+   "fieldtype": "Select",
+   "label": "Attribute 6 Value"
+  },
+  {
+   "fieldname": "attribute_10_value",
+   "fieldtype": "Select",
+   "label": "Attribute 10 Value"
+  },
+  {
+   "fieldname": "attribute_14_value",
+   "fieldtype": "Select",
+   "label": "Attribute 14 Value"
+  },
+  {
+   "fieldname": "attribute_18_value",
+   "fieldtype": "Select",
+   "label": "Attribute 18 Value"
+  },
+  {
+   "fieldname": "attribute_22_value",
+   "fieldtype": "Select",
+   "label": "Attribute 22 Value"
+  },
+  {
+   "fieldname": "attribute_26_value",
+   "fieldtype": "Select",
+   "label": "Attribute 26 Value"
+  },
+  {
+   "fieldname": "column_break_qbpt",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "attribute_3_value",
+   "fieldtype": "Select",
+   "label": "Attribute 3 Value"
+  },
+  {
+   "fieldname": "attribute_7_value",
+   "fieldtype": "Select",
+   "label": "Attribute 7 Value"
+  },
+  {
+   "fieldname": "attribute_11_value",
+   "fieldtype": "Select",
+   "label": "Attribute 11 Value"
+  },
+  {
+   "fieldname": "attribute_15_value",
+   "fieldtype": "Select",
+   "label": "Attribute 15 Value"
+  },
+  {
+   "fieldname": "attribute_19_value",
+   "fieldtype": "Select",
+   "label": "Attribute 19 Value"
+  },
+  {
+   "fieldname": "attribute_23_value",
+   "fieldtype": "Select",
+   "label": "Attribute 23 Value"
+  },
+  {
+   "fieldname": "attribute_27_value",
+   "fieldtype": "Select",
+   "label": "Attribute 27 Value"
+  },
+  {
+   "fieldname": "column_break_cmaj",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "attribute_4_value",
+   "fieldtype": "Select",
+   "label": "Attribute 4 Value"
+  },
+  {
+   "fieldname": "attribute_8_value",
+   "fieldtype": "Select",
+   "label": "Attribute 8 Value"
+  },
+  {
+   "fieldname": "attribute_12_value",
+   "fieldtype": "Select",
+   "label": "Attribute 12 Value"
+  },
+  {
+   "fieldname": "attribute_16_value",
+   "fieldtype": "Select",
+   "label": "Attribute 16 Value"
+  },
+  {
+   "fieldname": "attribute_20_value",
+   "fieldtype": "Select",
+   "label": "Attribute 20 Value"
+  },
+  {
+   "fieldname": "attribute_24_value",
+   "fieldtype": "Select",
+   "label": "Attribute 24 Value"
+  },
+  {
+   "fieldname": "attribute_28_value",
+   "fieldtype": "Select",
+   "label": "Attribute 28 Value"
+  },
+  {
+   "fieldname": "section_break_pmwd",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "short_description",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Short Description",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_closed",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Is Closed"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_create_with_sales_order",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Is Create With Sales Order"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-08-29 16:09:26.990317",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Item Generator",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
