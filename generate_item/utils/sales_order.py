@@ -1,4 +1,6 @@
 import frappe
+from frappe.utils import nowdate
+from frappe import _
 
 @frappe.whitelist()
 def create_item_generator_doc(item_code: str | None = None, is_create_with_sales_order: int = 1):
@@ -38,4 +40,3 @@ def create_item_generator_doc(item_code: str | None = None, is_create_with_sales
         "item_code": created_item_code,
         "item_generator": ig.name,
     }
-    

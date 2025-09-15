@@ -24,6 +24,12 @@ app_license = "mit"
 # Includes in <head>
 # ------------------
 
+# Export/import fixtures for this app
+fixtures = [
+    {"doctype": "Custom Field", "filters": [["module", "=", "Generate Item"]]},
+    {"doctype": "Property Setter", "filters": [["module", "=", "Generate Item"]]},
+]
+
 # include js, css files in header of desk.html
 # app_include_css = "/assets/generate_item/css/generate_item.css"
 # app_include_js = "/assets/generate_item/js/generate_item.js"
@@ -45,8 +51,14 @@ app_license = "mit"
 # include js in doctype views
 doctype_js = {"Item" : "public/js/item.js",
               "Sales Order" : "public/js/sales_order.js",
-              "Item Generator" : "generate_item/doctype/item_generator/item_generator.js"}
-# doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
+              "BOM" : "public/js/bom.js",
+              "Material Request" : "public/js/material_request.js",
+              "Purchase Receipt" : "public/js/purchase_receipt.js",
+              "Production Plan" : "public/js/production_plan.js",
+              "Purchase Order" : "public/js/purchase_order.js",
+              }
+
+doctype_list_js = {"Item Generator" : "public/js/item_generator_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
@@ -86,6 +98,7 @@ doctype_js = {"Item" : "public/js/item.js",
 
 # before_install = "generate_item.install.before_install"
 # after_install = "generate_item.install.after_install"
+
 
 # Uninstallation
 # ------------
@@ -134,12 +147,37 @@ doctype_js = {"Item" : "public/js/item.js",
 # override_doctype_class = {
 # 	"ToDo": "custom_app.overrides.CustomToDo"
 # }
+override_doctype_class = {
+    "BOM": "generate_item.overrides.custombom.CustomBOM",
+    "Production Plan": "generate_item.overrides.production_plan.ProductionPlan",
+    "Purchase Receipt": "generate_item.overrides.purchase_receipt.PurchaseReceipt",
+}
+
 
 # Document Events
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
+doc_events = {
+    "Purchase Order": {
+        "validate": "generate_item.utils.purchase_order.validate"
+    },
+    "Material Request":{
+        "before_insert": "generate_item.utils.material_request.before_insert"
+    },
+    "Work Order":{
+
+        "before_insert": "generate_item.utils.work_order.before_insert",
+        "before_validate": "generate_item.utils.work_order.before_insert",
+    },
+     "BOM":{
+        "before_validate": "generate_item.utils.bom.before_validate",
+        "on_cancel": "generate_item.utils.bom.clear_custom_fields_on_cancel",
+    },
+    # "Purchase Receipt":{
+    #     "before_validate": "generate_item.utils.purchase_receipt.before_validate",
+    # },
+}
 # 	"*": {
 # 		"on_update": "method",
 # 		"on_cancel": "method",

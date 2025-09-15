@@ -1,0 +1,18 @@
+[
+ {
+  "default_value": null,
+  "doc_type": "Production Plan Item",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocField",
+  "field_name": "bom_no",
+  "is_system_generated": 0,
+  "modified": "2025-09-15 12:58:56.096583",
+  "module": "Generate Item",
+  "name": "Production Plan Item-bom_no-read_only",
+  "property": "read_only",
+  "property_type": "Check",
+  "row_name": null,
+  "value": "1"
+ }
+]

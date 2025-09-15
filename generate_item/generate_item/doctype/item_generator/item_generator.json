@@ -18,6 +18,7 @@
   "item_group_name",
   "is_closed",
   "is_create_with_sales_order",
+  "duplicated",
   "section_break_oqlz",
   "attribute_1",
   "attribute_5",
@@ -518,12 +519,20 @@
    "fieldtype": "Check",
    "hidden": 1,
    "label": "Is Create With Sales Order"
+  },
+  {
+   "default": "0",
+   "fieldname": "duplicated",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Duplicated",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2025-08-29 16:09:26.990317",
+ "modified": "2025-09-09 14:06:25.340376",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Item Generator",
