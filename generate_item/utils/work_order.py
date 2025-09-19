@@ -9,17 +9,51 @@ def before_insert(doc, method=None):
             sales_order = frappe.get_doc('Sales Order', doc.sales_order)
             logger.info(f"Fetched Sales Order {sales_order.name} with {len(sales_order.items or [])} items")
 
-            if sales_order.items and len(sales_order.items) > 0 and getattr(sales_order.items[0], 'custom_batch_no', None):
-                batch_no = sales_order.items[0].custom_batch_no
-                doc.custom_batch_no = batch_no
-                logger.info(f"Set Work Order custom_batch_no from SO: {batch_no}")
+            batch_no = None
 
+            # Prefer exact Sales Order Item when provided on Work Order
+            sales_order_item_name = getattr(doc, 'sales_order_item', None)
+            if sales_order_item_name:
+                soi = frappe.get_all(
+                    'Sales Order Item',
+                    filters={'name': sales_order_item_name, 'parent': sales_order.name},
+                    fields=['name', 'item_code', 'custom_batch_no', 'bom_no', 'idx'],
+                    limit=1,
+                )
+                if soi:
+                    batch_no = soi[0].get('custom_batch_no')
+                    logger.info(f"Batch from exact Sales Order Item {sales_order_item_name}: {batch_no}")
+
+            # Fallback: resolve by item_code (production_item) and, if present, BOM
+            if not batch_no:
+                production_item = getattr(doc, 'production_item', None) or getattr(doc, 'item_code', None)
+                bom_no = getattr(doc, 'bom_no', None)
+                if production_item:
+                    soi_filters = {'parent': sales_order.name, 'item_code': production_item}
+                    soi_fields = ['name', 'custom_batch_no', 'bom_no', 'idx']
+                    candidates = frappe.get_all('Sales Order Item', filters=soi_filters, fields=soi_fields, order_by='idx asc')
+                    if candidates:
+                        # Try to pick matching BOM first
+                        chosen = None
+                        if bom_no:
+                            for c in candidates:
+                                if c.get('bom_no') == bom_no and c.get('custom_batch_no'):
+                                    chosen = c
+                                    break
+                        if not chosen:
+                            # Otherwise pick the first that has a batch
+                            chosen = next((c for c in candidates if c.get('custom_batch_no')), candidates[0])
+                        batch_no = chosen.get('custom_batch_no')
+                        logger.info(f"Batch from SO item by item_code/BOM: {batch_no}")
+
+            if batch_no:
+                doc.custom_batch_no = batch_no
                 for item in (getattr(doc, 'required_items', []) or []):
                     item.custom_batch_no = batch_no
                 for item in (getattr(doc, 'items', []) or []):
                     item.custom_batch_no = batch_no
             else:
-                logger.info("No custom_batch_no found on first Sales Order item")
+                logger.info("Could not resolve custom_batch_no from Sales Order context")
 
         if getattr(doc, 'bom_no', None):
             bom = frappe.get_doc("BOM", doc.bom_no)

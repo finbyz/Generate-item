@@ -1,5 +1,13 @@
 frappe.ui.form.on('BOM', {
     refresh: function(frm) {
+        frm.set_query("custom_batch_no", function() {
+            return {
+                filters: {
+                    item: frm.doc.item,  
+                    reference_doctype: "Sales Order"
+                }
+            };
+        });
         frm.add_custom_button(__('Material Request'), function() {
             create_material_request_from_bom(frm);
         }, __('Create'));
@@ -35,6 +43,7 @@ function create_material_request_from_bom(frm) {
             uom: i.uom,
             schedule_date: schedule_date,
             bom_no: frm.doc.name,
+            
             
 
         }));

@@ -52,6 +52,7 @@ class ProductionPlan(_ProductionPlan):
 				so_item.description,
 				so_item.name,
 				so_item.bom_no,
+				so_item.custom_batch_no,
 			)
 			.distinct()
 			.where(
@@ -78,6 +79,7 @@ class ProductionPlan(_ProductionPlan):
 			
 			# Get total planned quantity from previous Production Plans for this specific Sales Order Item line
 			# This ensures line-by-line tracking - no merging of quantities for same item code in different lines
+			# Include both submitted (docstatus = 1) and draft (docstatus = 0) production plans
 			previous_planned_qty = frappe.db.sql("""
 				SELECT SUM(ppi.planned_qty) as total_planned
 				FROM `tabProduction Plan Item` ppi
@@ -86,7 +88,7 @@ class ProductionPlan(_ProductionPlan):
 				WHERE pps.sales_order = %s
 				AND ppi.item_code = %s
 				AND ppi.sales_order_item = %s
-				AND pp.docstatus = 1
+				AND pp.docstatus IN (0, 1)
 				AND pp.name != %s
 			""", (item.parent, item.item_code, item.name, self.name or ""), as_dict=True)
 			
@@ -103,6 +105,30 @@ class ProductionPlan(_ProductionPlan):
 			# Set pending_qty and planned_qty to remaining quantity
 			item.pending_qty = remaining_qty
 			item.planned_qty = remaining_qty
+			
+			# Set BOM only if BOM matches Sales Order and custom_batch_no; accept active or default BOMs
+			try:
+				selected_bom = None
+				if item.get("parent") and item.get("item_code") and item.get("custom_batch_no"):
+					bom_candidate = frappe.get_all(
+						"BOM",
+						filters={
+							"item": item.get("item_code"),
+							"sales_order": item.get("parent"),
+							"custom_batch_no": item.get("custom_batch_no"),
+						},
+						or_filters=[{"is_active": 1}, {"is_default": 1}],
+						fields=["name"],
+						order_by="modified desc",
+						limit=1,
+					)
+					if bom_candidate:
+						selected_bom = bom_candidate[0]["name"]
+				if selected_bom:
+					item.bom_no = selected_bom
+			except Exception:
+				# Non-fatal; continue without changing bom_no
+				pass
 			
 			# Only include items with remaining quantity > 0
 			if remaining_qty > 0:
@@ -151,8 +177,6 @@ class ProductionPlan(_ProductionPlan):
 			# For packed items, the qty is already the pending quantity
 			original_pending_qty = flt(item.qty)
 			
-			# Get total planned quantity from previous Production Plans for this specific packed item line
-			# This ensures line-by-line tracking - no merging of quantities for same item code in different lines
 			previous_planned_qty = frappe.db.sql("""
 				SELECT SUM(ppi.planned_qty) as total_planned
 				FROM `tabProduction Plan Item` ppi
@@ -161,7 +185,7 @@ class ProductionPlan(_ProductionPlan):
 				WHERE pps.sales_order = %s
 				AND ppi.item_code = %s
 				AND ppi.sales_order_item = %s
-				AND pp.docstatus = 1
+				AND pp.docstatus IN (0, 1)
 				AND pp.name != %s
 			""", (item.parent, item.item_code, item.name, self.name or ""), as_dict=True)
 			
@@ -177,7 +201,30 @@ class ProductionPlan(_ProductionPlan):
 			# Set pending_qty and planned_qty to remaining quantity
 			item.pending_qty = remaining_qty
 			item.planned_qty = remaining_qty
-			
+
+			# Set BOM only if BOM matches Sales Order and custom_batch_no; accept active or default BOMs
+			try:
+				selected_bom = None
+				if item.get("parent") and item.get("item_code") and item.get("custom_batch_no"):
+					bom_candidate = frappe.get_all(
+						"BOM",
+						filters={
+							"item": item.get("item_code"),
+							"sales_order": item.get("parent"),
+							"custom_batch_no": item.get("custom_batch_no"),
+						},
+						or_filters=[{"is_active": 1}],
+						fields=["name"],
+						order_by="modified desc",
+						limit=1,
+					)
+					if bom_candidate:
+						selected_bom = bom_candidate[0]["name"]
+				if selected_bom:
+					item.bom_no = selected_bom
+			except Exception:
+				pass
+
 			# Only include items with remaining quantity > 0
 			if remaining_qty > 0:
 				packed_items_with_remaining.append(item)

@@ -64,8 +64,8 @@ frappe.ui.form.on('Production Plan', {
     custom_batch_wise_assembly: function(frm) {
         let selected_batch = frm.doc.custom_batch_wise_assembly;
         if (!selected_batch) {
-            frm.trigger("get_items");
             frm.trigger("get_sales_orders");
+            frm.trigger("get_items");
             return;
         }
 
@@ -84,42 +84,6 @@ frappe.ui.form.on('Production Plan', {
             frm.refresh_field('sales_orders');
         }
     },
-
-    // Override the get_items button functionality
-    get_items: function(frm) {
-        // Add your custom client-side logic here
-        frappe.msgprint("Custom get_items button clicked!", alert=True);
-        
-        // Add any validation or confirmation dialogs
-        frappe.confirm(
-            "Are you sure you want to get items? This will clear existing items.",
-            function() {
-                // Clear the prod_plan_references table
-                frm.clear_table("prod_plan_references");
-
-                // Make the server call with custom parameters if needed
-                frappe.call({
-                    method: "get_items",
-                    freeze: true,
-                    doc: frm.doc,
-                    args: {
-                        // Add any custom arguments here
-                        custom_param: "custom_value"
-                    },
-                    callback: function (r) {
-                        if (r.message) {
-                            frappe.msgprint("Items retrieved successfully!");
-                        }
-                        refresh_field("po_items");
-                    },
-                });
-            },
-            function() {
-                // User cancelled
-                frappe.msgprint("Operation cancelled.");
-            }
-        );
-    }
 });
 
 // Handle Production Plan Item changes

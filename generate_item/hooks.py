@@ -56,6 +56,8 @@ doctype_js = {"Item" : "public/js/item.js",
               "Purchase Receipt" : "public/js/purchase_receipt.js",
               "Production Plan" : "public/js/production_plan.js",
               "Purchase Order" : "public/js/purchase_order.js",
+              "Stock Entry" : "public/js/stock_entry.js",
+              "Subcontracting Order" : "public/js/subcontracting_order.js",
               }
 
 doctype_list_js = {"Item Generator" : "public/js/item_generator_list.js"}
@@ -160,10 +162,21 @@ override_doctype_class = {
 
 doc_events = {
     "Purchase Order": {
+        "before_insert": "generate_item.utils.purchase_order.before_insert",
         "validate": "generate_item.utils.purchase_order.validate"
     },
+    "Stock Entry": {
+        "before_insert": "generate_item.utils.stock_entry.before_insert"
+    },
+    # "Subcontracting Order": {
+    #     "before_insert": "generate_item.utils.subcontracting_order.before_insert"
+    # },
     "Material Request":{
-        "before_insert": "generate_item.utils.material_request.before_insert"
+        "before_insert": "generate_item.utils.material_request.before_insert",
+        "validate":"generate_item.utils.material_request.validate"
+    },
+    "Production Plan":{
+        "before_save": "generate_item.utils.production_plan.before_save"
     },
     "Work Order":{
 
@@ -173,10 +186,9 @@ doc_events = {
      "BOM":{
         "before_validate": "generate_item.utils.bom.before_validate",
         "on_cancel": "generate_item.utils.bom.clear_custom_fields_on_cancel",
+        "on_submit": "generate_item.utils.bom.on_submit"
     },
-    # "Purchase Receipt":{
-    #     "before_validate": "generate_item.utils.purchase_receipt.before_validate",
-    # },
+   
 }
 # 	"*": {
 # 		"on_update": "method",
@@ -213,10 +225,12 @@ doc_events = {
 
 # Overriding Methods
 # ------------------------------
-#
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "generate_item.event.get_events"
-# }
+override_whitelisted_methods = {
+    # Include Draft Purchase Orders in pending qty calculation when creating PO from MR
+    "erpnext.stock.doctype.material_request.material_request.make_purchase_order": "generate_item.utils.material_request.make_purchase_order",
+    # Map custom_batch_no from Purchase Order Item to Purchase Receipt Item.batch_no
+    "erpnext.buying.doctype.purchase_order.purchase_order.make_purchase_receipt": "generate_item.utils.purchase_receipt.make_purchase_receipt",
+}
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,

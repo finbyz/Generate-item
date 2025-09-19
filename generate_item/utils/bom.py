@@ -39,3 +39,11 @@ def clear_custom_fields_on_cancel(doc, method):
     doc.custom_batch_no = ""
     doc.sales_order = ""
     doc.db_update()
+    
+def on_submit(self,method):
+    for row in self.items:
+        if row.bom_no and self.sales_order and self.custom_batch_no:
+            data = frappe.get_doc("BOM", row.bom_no)
+            data.db_set("custom_batch_no",self.custom_batch_no)
+            data.db_set("sales_order",self.sales_order) 
+            frappe.db.commit()        

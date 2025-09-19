@@ -18,7 +18,6 @@ frappe.ui.form.on('Sales Order', {
                                 return {
                                     filters: {
                                         name: ['in', so_items.map(i => i.item_code)],
-                                        default_bom: ['=', null]
                                     }
                                 };
                             }
@@ -62,24 +61,16 @@ frappe.ui.form.on('Sales Order', {
                                 if (!r.exc && r.message) {
                                     const bom_doc = r.message;
                                     const bom_name = bom_doc.name;
-                                    frappe.call({
-                                        method: "frappe.client.submit",
-                                        args: { doc: bom_doc },
-                                        callback: function(sr) {
-                                            if (!sr.exc && sr.message) {
-                                                frappe.msgprint(__('BOM {0} created and submitted', [bom_name]));
-                                                try {
-                                                    if (so_item && so_item.name) {
-                                                        frappe.model.set_value(so_item.doctype, so_item.name, 'bom_no', bom_name);
-                                                    }
-                                                } catch (e) {}
-                                                d.hide();
-                                                frm.save()
-                                                    .then(() => { try { frm.reload_doc(); } catch (e) {} })
-                                                    .catch(() => { try { frm.reload_doc(); } catch (e) {} });
-                                            }
+                                    frappe.msgprint(__('BOM {0} created', [bom_name]));
+                                    try {
+                                        if (so_item && so_item.name) {
+                                            frappe.model.set_value(so_item.doctype, so_item.name, 'bom_no', bom_name);
                                         }
-                                    });
+                                    } catch (e) {}
+                                    d.hide();
+                                    frm.save()
+                                        .then(() => { try { frm.reload_doc(); } catch (e) {} })
+                                        .catch(() => { try { frm.reload_doc(); } catch (e) {} });
                                 }
                             }
                         });
@@ -552,7 +543,7 @@ function create_batch_for_item(frm, item, index) {
             'doctype': 'Batch',
             'item': item.item_code,
             'batch_id': batch_id,
-            'batch_qty': item.qty,
+            // 'batch_qty': item.qty,
             'stock_uom': item.uom,
             'manufacturing_date': manufacturing_date,
             'expiry_date': null,
@@ -602,9 +593,16 @@ function create_batch_for_item(frm, item, index) {
 }
 
 function update_bom_batch_no(frm, item, batch_id) {
-    if (item.bom_no) {
-        frappe.db.set_value('BOM', item.bom_no, 'custom_batch_no', batch_id);
+    if (!item.bom_no) {
+        return;
     }
+    // Only set if BOM.custom_batch_no is empty
+    frappe.db.get_value('BOM', item.bom_no, 'custom_batch_no').then(r => {
+        const current = (r && r.message) ? r.message.custom_batch_no : null;
+        if (!current) {
+            frappe.db.set_value('BOM', item.bom_no, 'custom_batch_no', batch_id);
+        }
+    });
 }
 
 function generate_batch_id_sequential(frm, item, index) {
