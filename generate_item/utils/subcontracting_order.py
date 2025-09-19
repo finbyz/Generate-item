@@ -33,3 +33,4 @@ def before_insert(doc, method):
     except Exception as e:
         frappe.log_error(f"Error in subcontracting order validation: {str(e)}", "Subcontracting Order Validation Error")
 
+
