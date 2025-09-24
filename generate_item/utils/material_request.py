@@ -28,7 +28,7 @@ def should_populate_fields(doc):
     for item in doc.items:
         if (not item.get('custom_drawing_no') and not item.get('custom_drawing_rev_no') and
             not item.get('custom_pattern_drawing_no') and not item.get('custom_pattern_drawing_no') and 
-            not item.get('custom_purchase_specification_no') and not item.get('custom_purchase_specification_rev_no') ):
+            not item.get('custom_purchase_specification_no') and not item.get('custom_purchase_specification_rev_no') and not item.get('bom_no') ):
             return True
     return False
 
@@ -50,6 +50,7 @@ def populate_custom_fields(doc):
             pp = frappe.get_doc('Production Plan', production_plan)
             if pp.po_items and len(pp.po_items) > 0 and pp.po_items[0].custom_batch_no:
                 batch_no = pp.po_items[0].custom_batch_no
+                branch = pp.po_items[0].branch
                 
                 # Only set if different to avoid unnecessary updates
                 if doc.get('custom_batch_no') != batch_no:
@@ -58,6 +59,7 @@ def populate_custom_fields(doc):
                 for item in doc.items:
                     if item.get('custom_batch_no') != batch_no:
                         item.custom_batch_no = batch_no
+                        item.branch = branch
         except frappe.DoesNotExistError:
             frappe.log_error(f"Production Plan {production_plan} not found")
     

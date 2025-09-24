@@ -103,7 +103,6 @@ class ItemGenerator(Document):
 			templates_to_check = [p.product_name for p in selective_doc.products]
 		except Exception as e:
 			frappe.log_error(f"Selective Products document not found or error: {e}")
-			# If Selective Products doesn't exist, skip the validation
 			return
 
 		if not self.template_name or self.template_name not in templates_to_check:
@@ -131,9 +130,7 @@ class ItemGenerator(Document):
 		cus_description = " ".join(values)
 
 		if cus_description:
-			# Check if description exceeds 140 characters
 			if len(cus_description) > 140:
-				# ACTUALLY TRUNCATE IT HERE
 				cus_description = cus_description[:140]
 			
 			# Save the (possibly truncated) description

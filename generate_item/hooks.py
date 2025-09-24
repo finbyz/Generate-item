@@ -168,9 +168,10 @@ doc_events = {
     "Stock Entry": {
         "before_insert": "generate_item.utils.stock_entry.before_insert"
     },
-    # "Subcontracting Order": {
-    #     "before_insert": "generate_item.utils.subcontracting_order.before_insert"
-    # },
+    "Subcontracting Order": {
+        "before_insert": "generate_item.utils.subcontracting_order.before_insert",
+        "validate": "generate_item.utils.subcontracting_order.validate"
+    },
     "Material Request":{
         "before_insert": "generate_item.utils.material_request.before_insert",
         "validate":"generate_item.utils.material_request.validate"
@@ -179,7 +180,6 @@ doc_events = {
         "before_save": "generate_item.utils.production_plan.before_save"
     },
     "Work Order":{
-
         "before_insert": "generate_item.utils.work_order.before_insert",
         "before_validate": "generate_item.utils.work_order.before_insert",
     },

@@ -46,4 +46,4 @@ def on_submit(self,method):
             data = frappe.get_doc("BOM", row.bom_no)
             data.db_set("custom_batch_no",self.custom_batch_no)
             data.db_set("sales_order",self.sales_order) 
-            frappe.db.commit()        
+                    

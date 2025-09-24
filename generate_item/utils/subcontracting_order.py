@@ -8,6 +8,12 @@ def before_insert(doc, method):
     try:
         # Get the purchase order document
         purchase_order = frappe.get_doc("Purchase Order", doc.purchase_order)
+        for i in purchase_order.items:
+            if i.production_plan:
+                for j in doc.items:
+                    j.production_plan = i.production_plan
+                    break 
+
         
         # Get custom_batch_no from purchase order
         batch_no = getattr(purchase_order, 'custom_batch_no', None)
@@ -34,3 +40,32 @@ def before_insert(doc, method):
         frappe.log_error(f"Error in subcontracting order validation: {str(e)}", "Subcontracting Order Validation Error")
 
 
+
+
+
+def validate(doc, method):
+    """Set production_plan in Subcontracting Order Items from Purchase Order or Material Request"""
+    if not doc.purchase_order:
+        return
+    po = frappe.get_doc("Purchase Order", doc.purchase_order)
+
+    for so_item in doc.items:
+        # Find corresponding PO Item
+        po_item = next((item for item in po.items if item.item_code == so_item.item_code), None)
+        if not po_item:
+            continue
+
+        # Case 1: PO Item already has production_plan
+        if po_item.production_plan:
+            so_item.production_plan = po_item.production_plan
+            continue
+
+        # Case 2: Fallback to Material Request Item
+        if po_item.material_request and po_item.material_request_item:
+            mr_item = frappe.db.get_value(
+                "Material Request Item",
+                po_item.material_request_item,
+                "production_plan"
+            )
+            if mr_item:
+                so_item.production_plan = mr_item

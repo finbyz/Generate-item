@@ -52,7 +52,8 @@ frappe.ui.form.on('Sales Order', {
                                         {
                                             item_code: values.item,
                                             qty: so_item.qty || 1,
-                                            uom: so_item.uom || "Nos"
+                                            uom: so_item.uom || "Nos",
+                                            branch: so_item.branch,
                                         }
                                     ]
                                 }

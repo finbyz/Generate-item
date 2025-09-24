@@ -128,181 +128,119 @@ def get_data2(filters):
     if batch_selected:
         return get_simple_batch_data(filters)
     
-    query = """
-        (
-            -- Directly linked BOMs
-            SELECT 
-                soi.custom_batch_no AS batch_no,
-                pp.name AS production_plan,
-                so.name AS sales_order,
-                so.customer AS customer,
-                so.transaction_date AS transaction_date,
-                so.po_no AS po_no,
-                so.total_qty AS total_qty,
-                soi.item_code AS so_item_code,
-                soi.description AS so_description,
-                soi.qty AS so_qty,
-                soi.uom AS so_uom,
-                soi.bom_no AS bom_no,
-                'Yes' AS has_bom,
-                bom.docstatus AS bom_docstatus,
-                CASE
-                    WHEN bom.docstatus = 0 THEN 'Draft'
-                    WHEN bom.docstatus = 1 THEN 'Submitted'
-                    WHEN bom.docstatus = 2 THEN 'Not Available'
-                    ELSE 'Not Available'
-                END AS bom_status,
-                bom.item AS bom_item_code,
-                bom.description AS bom_description,
-                bom.quantity AS bom_quantity,
-                bom.uom AS bom_uom,
-                bom.name AS effective_bom_no,
-                soi.bom_no AS existing_bom,  -- Use soi.bom_no directly
-                bom_item.item_code AS bom_child_item_code,
-                bom_item.description AS bom_child_description,
-                bom_item.qty AS bom_child_qty,
-                bom_item.uom AS bom_child_uom,
-                bom_item.idx AS bom_item_idx
-            FROM
-                `tabSales Order` so
-            INNER JOIN
-                `tabSales Order Item` soi ON so.name = soi.parent
-            LEFT JOIN
-                `tabBOM` bom ON soi.bom_no = bom.name
-                    AND (bom.custom_batch_no IS NULL OR bom.custom_batch_no = soi.custom_batch_no)
-            LEFT JOIN
-                `tabBOM Item` bom_item ON bom.name = bom_item.parent
-                    AND (bom_item.custom_batch_no IS NULL OR bom_item.custom_batch_no = soi.custom_batch_no)
-            LEFT JOIN
-                `tabProduction Plan Sales Order` pps ON so.name = pps.sales_order
-            LEFT JOIN
-                `tabProduction Plan` pp ON pps.parent = pp.name
-            WHERE
-                so.docstatus = 1
-                AND soi.custom_batch_no IS NOT NULL
-                AND soi.custom_batch_no != ''
-                AND soi.bom_no IS NOT NULL
-                AND soi.bom_no != ''
-                AND {conditions}
-        )
-        UNION ALL
-        (
-            -- Item-based BOMs (when no direct BOM link)
-            SELECT 
-                soi.custom_batch_no AS batch_no,
-                pp.name AS production_plan,
-                so.name AS sales_order,
-                so.customer AS customer,
-                so.transaction_date AS transaction_date,
-                so.po_no AS po_no,
-                so.total_qty AS total_qty,
-                soi.item_code AS so_item_code,
-                soi.description AS so_description,
-                soi.qty AS so_qty,
-                soi.uom AS so_uom,
-                soi.bom_no AS bom_no,
-                'No' AS has_bom,
-                item_bom.docstatus AS bom_docstatus,
-                CASE
-                    WHEN item_bom.docstatus = 0 THEN 'Draft'
-                    WHEN item_bom.docstatus = 1 THEN 'Submitted'
-                    WHEN item_bom.docstatus = 2 THEN 'Not Available'
-                    ELSE 'Not Available'
-                END AS bom_status,
-                item_bom.item AS bom_item_code,
-                item_bom.description AS bom_description,
-                item_bom.quantity AS bom_quantity,
-                item_bom.uom AS bom_uom,
-                item_bom.name AS effective_bom_no,
-                soi.bom_no AS existing_bom,  -- Use soi.bom_no, even if null
-                bom_item.item_code AS bom_child_item_code,
-                bom_item.description AS bom_child_description,
-                bom_item.qty AS bom_child_qty,
-                bom_item.uom AS bom_child_uom,
-                bom_item.idx AS bom_item_idx
-            FROM
-                `tabSales Order` so
-            INNER JOIN
-                `tabSales Order Item` soi ON so.name = soi.parent
-            LEFT JOIN
-                `tabBOM` item_bom ON soi.item_code = item_bom.item
-                    AND item_bom.is_active = 1
-                    AND item_bom.docstatus = 1
-                    AND (item_bom.custom_batch_no IS NULL OR item_bom.custom_batch_no = soi.custom_batch_no)
-            LEFT JOIN
-                `tabBOM Item` bom_item ON item_bom.name = bom_item.parent
-                    AND (bom_item.custom_batch_no IS NULL OR bom_item.custom_batch_no = soi.custom_batch_no)
-            LEFT JOIN
-                `tabProduction Plan Sales Order` pps ON so.name = pps.sales_order
-            LEFT JOIN
-                `tabProduction Plan` pp ON pps.parent = pp.name
-            WHERE
-                so.docstatus = 1
-                AND soi.custom_batch_no IS NOT NULL
-                AND soi.custom_batch_no != ''
-                AND (soi.bom_no IS NULL OR soi.bom_no = '')
-                AND {conditions}
-        )
-        UNION ALL
-        (
-            -- Items with no BOMs at all
-            SELECT 
-                soi.custom_batch_no AS batch_no,
-                pp.name AS production_plan,
-                so.name AS sales_order,
-                so.customer AS customer,
-                so.transaction_date AS transaction_date,
-                so.po_no AS po_no,
-                so.total_qty AS total_qty,
-                soi.item_code AS so_item_code,
-                soi.description AS so_description,
-                soi.qty AS so_qty,
-                soi.uom AS so_uom,
-                soi.bom_no AS bom_no,
-                'No' AS has_bom,
-                2 AS bom_docstatus,
-                'Not Available' AS bom_status,
-                soi.item_code AS bom_item_code,
-                soi.description AS bom_description,
-                soi.qty AS bom_quantity,
-                soi.uom AS bom_uom,
-                NULL AS effective_bom_no,
-                soi.bom_no AS existing_bom,  -- Use soi.bom_no, even if null
-                NULL AS bom_child_item_code,
-                NULL AS bom_child_description,
-                NULL AS bom_child_qty,
-                NULL AS bom_child_uom,
-                NULL AS bom_item_idx
-            FROM
-                `tabSales Order` so
-            INNER JOIN
-                `tabSales Order Item` soi ON so.name = soi.parent
-            LEFT JOIN
-                `tabProduction Plan Sales Order` pps ON so.name = pps.sales_order
-            LEFT JOIN
-                `tabProduction Plan` pp ON pps.parent = pp.name
-            WHERE
-                so.docstatus = 1
-                AND soi.custom_batch_no IS NOT NULL
-                AND soi.custom_batch_no != ''
-                AND (soi.bom_no IS NULL OR soi.bom_no = '')
-                AND NOT EXISTS (
-                    SELECT 1 FROM `tabBOM` item_bom 
-                    WHERE item_bom.item = soi.item_code 
-                    AND item_bom.is_active = 1 
-                    AND item_bom.docstatus = 1
-                    AND (item_bom.custom_batch_no IS NULL OR item_bom.custom_batch_no = soi.custom_batch_no)
-                )
-                AND {conditions}
-        )
+    # Use simpler query structure similar to batch_wise_report
+    query = f"""
+        SELECT
+            soi.custom_batch_no AS batch_no,
+            pp.name AS production_plan,
+            so.name AS sales_order,
+            so.customer AS customer,
+            so.transaction_date AS transaction_date,
+            so.po_no AS po_no,
+            so.total_qty AS total_qty,
+            soi.item_code AS so_item_code,
+            soi.description AS so_description,
+            soi.qty AS so_qty,
+            soi.uom AS so_uom,
+            soi.bom_no AS bom_no,
+            (
+                SELECT b2.name
+                FROM `tabBOM` b2
+                WHERE (b2.sales_order = so.name AND b2.item = soi.item_code AND b2.custom_batch_no = soi.custom_batch_no)
+                ORDER BY b2.modified DESC
+                LIMIT 1
+            ) AS effective_bom_no,
+            (
+                SELECT b2.docstatus
+                FROM `tabBOM` b2
+                WHERE (b2.sales_order = so.name AND b2.item = soi.item_code AND b2.custom_batch_no = soi.custom_batch_no)
+                ORDER BY b2.modified DESC
+                LIMIT 1
+            ) AS bom_docstatus,
+            CASE
+                WHEN (
+                    SELECT b2.docstatus
+                    FROM `tabBOM` b2
+                    WHERE (b2.sales_order = so.name AND b2.item = soi.item_code AND b2.custom_batch_no = soi.custom_batch_no)
+                    ORDER BY b2.modified DESC
+                    LIMIT 1
+                ) = 0 THEN 'Draft'
+                WHEN (
+                    SELECT b2.docstatus
+                    FROM `tabBOM` b2
+                    WHERE (b2.sales_order = so.name AND b2.item = soi.item_code AND b2.custom_batch_no = soi.custom_batch_no)
+                    ORDER BY b2.modified DESC
+                    LIMIT 1
+                ) = 1 THEN 'Submitted'
+                WHEN (
+                    SELECT b2.docstatus
+                    FROM `tabBOM` b2
+                    WHERE (b2.sales_order = so.name AND b2.item = soi.item_code AND b2.custom_batch_no = soi.custom_batch_no)
+                    ORDER BY b2.modified DESC
+                    LIMIT 1
+                ) = 2 THEN 'Cancelled'
+                ELSE 'Not Available'
+            END AS bom_status,
+            CASE
+                WHEN soi.bom_no IS NOT NULL AND soi.bom_no != '' THEN 'Yes'
+                ELSE 'No'
+            END AS has_bom,
+            soi.bom_no AS existing_bom,
+            (
+                SELECT bom_item.item_code
+                FROM `tabBOM Item` bom_item
+                JOIN `tabBOM` bom ON bom_item.parent = bom.name
+                WHERE (bom.sales_order = so.name AND bom.item = soi.item_code AND bom.custom_batch_no = soi.custom_batch_no)
+                ORDER BY bom_item.idx ASC
+                LIMIT 1
+            ) AS bom_child_item_code,
+            (
+                SELECT bom_item.description
+                FROM `tabBOM Item` bom_item
+                JOIN `tabBOM` bom ON bom_item.parent = bom.name
+                WHERE (bom.sales_order = so.name AND bom.item = soi.item_code AND bom.custom_batch_no = soi.custom_batch_no)
+                ORDER BY bom_item.idx ASC
+                LIMIT 1
+            ) AS bom_child_description,
+            (
+                SELECT bom_item.qty
+                FROM `tabBOM Item` bom_item
+                JOIN `tabBOM` bom ON bom_item.parent = bom.name
+                WHERE (bom.sales_order = so.name AND bom.item = soi.item_code AND bom.custom_batch_no = soi.custom_batch_no)
+                ORDER BY bom_item.idx ASC
+                LIMIT 1
+            ) AS bom_child_qty,
+            (
+                SELECT bom_item.uom
+                FROM `tabBOM Item` bom_item
+                JOIN `tabBOM` bom ON bom_item.parent = bom.name
+                WHERE (bom.sales_order = so.name AND bom.item = soi.item_code AND bom.custom_batch_no = soi.custom_batch_no)
+                ORDER BY bom_item.idx ASC
+                LIMIT 1
+            ) AS bom_child_uom,
+            (
+                SELECT bom_item.idx
+                FROM `tabBOM Item` bom_item
+                JOIN `tabBOM` bom ON bom_item.parent = bom.name
+                WHERE (bom.sales_order = so.name AND bom.item = soi.item_code AND bom.custom_batch_no = soi.custom_batch_no)
+                ORDER BY bom_item.idx ASC
+                LIMIT 1
+            ) AS bom_item_idx
+        FROM `tabSales Order` so
+        INNER JOIN `tabSales Order Item` soi ON so.name = soi.parent
+        LEFT JOIN `tabProduction Plan Sales Order` pps ON so.name = pps.sales_order
+        LEFT JOIN `tabProduction Plan` pp ON pps.parent = pp.name
+        WHERE
+            so.docstatus = 1
+            AND soi.custom_batch_no IS NOT NULL
+            AND soi.custom_batch_no != ''
+            AND {conditions}
         ORDER BY
-            batch_no,
-            transaction_date DESC, 
-            sales_order, 
-            so_item_code, 
-            effective_bom_no, 
-            bom_item_idx
-    """.format(conditions=conditions)
+            soi.custom_batch_no,
+            so.transaction_date DESC,
+            so.name,
+            soi.item_code
+    """
 
     raw_data = frappe.db.sql(query, filters, as_dict=1)
     

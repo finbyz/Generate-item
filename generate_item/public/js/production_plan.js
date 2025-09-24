@@ -22,7 +22,9 @@ frappe.ui.form.on('Production Plan', {
             } else {
                 // Add the button if no Work Order exists
                 try {
-                    frm.add_custom_button(__(button_label), function() {
+                    if (frm.docstatus == 0 )
+                    {
+                        frm.add_custom_button(__(button_label), function() {
                         frappe.call({
                             method: 'erpnext.manufacturing.doctype.production_plan.production_plan.ProductionPlan.make_work_order',
                             args: { name: frm.doc.name },
@@ -34,6 +36,7 @@ frappe.ui.form.on('Production Plan', {
                             }
                         });
                     }, __('Create'));
+                    }
                 } catch (e) {
                     console.warn(`Could not add button "${button_label}" to Create menu:`, e);
                 }
@@ -70,9 +73,19 @@ frappe.ui.form.on('Production Plan', {
         }
 
         let filtered_items = (frm.doc.po_items || []).filter(row => row.custom_batch_no === selected_batch);
+        let filtered_ppi_names = new Set(filtered_items.map(r => r.name));
 
+        // Filter parent table
         frm.doc.po_items = filtered_items;
         frm.refresh_field('po_items');
+
+        // Also filter sub_assembly_items whose production_plan_item points to remaining po_items
+        if (Array.isArray(frm.doc.sub_assembly_items)) {
+            frm.doc.sub_assembly_items = (frm.doc.sub_assembly_items || []).filter(r => {
+                return !r.production_plan_item || filtered_ppi_names.has(r.production_plan_item);
+            });
+            frm.refresh_field('sub_assembly_items');
+        }
 
         // Also filter sales_orders to those referenced by remaining po_items (if linkage exists)
         let linked_sales_orders = new Set((filtered_items || [])
@@ -84,6 +97,15 @@ frappe.ui.form.on('Production Plan', {
             frm.refresh_field('sales_orders');
         }
     },
+    custom_default_supplier: function(frm) {
+        const supplier_value = frm.doc.custom_default_supplier || '';
+        const rows = frm.doc.sub_assembly_items || [];
+
+        rows.forEach(row => {
+            frappe.model.set_value(row.doctype, row.name, 'supplier', supplier_value);
+        });
+        frm.refresh_field('sub_assembly_items');
+    } 
 });
 
 // Handle Production Plan Item changes

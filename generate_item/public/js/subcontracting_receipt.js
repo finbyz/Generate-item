@@ -1,4 +1,4 @@
-frappe.ui.form.on('Stock Entry', {
+frappe.ui.form.on('Subcontracting Receipt', {
     onload: function(frm) {
         // Handle case when stock entry is loaded with work order already set (backend creation)
         if (frm.doc.work_order && !frm.doc.custom_batch_no) {
@@ -75,13 +75,13 @@ function set_batch_no_in_items(frm, batch_no) {
     }
 }
 
-frappe.ui.form.on('Subcontracting Receipt Item', {
-    item_code: function(frm, cdt, cdn) {
-        let row = locals[cdt][cdn];
+// frappe.ui.form.on('Subcontracting Receipt Item', {
+//     item_code: function(frm, cdt, cdn) {
+//         let row = locals[cdt][cdn];
 
-        // If batch already exists in parent, push it into the row
-        if (frm.doc.custom_batch_no && row.item_code) {
-            frappe.model.set_value(row.doctype, row.name, 'custom_batch_no', frm.doc.custom_batch_no);
-        }
-    }
-});
+//         // If batch already exists in parent, push it into the row
+//         if (frm.doc.custom_batch_no && row.item_code) {
+//             frappe.model.set_value(row.doctype, row.name, 'custom_batch_no', frm.doc.custom_batch_no);
+//         }
+//     }
+// });

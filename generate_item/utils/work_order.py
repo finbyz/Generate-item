@@ -10,6 +10,7 @@ def before_insert(doc, method=None):
             logger.info(f"Fetched Sales Order {sales_order.name} with {len(sales_order.items or [])} items")
 
             batch_no = None
+            branch = None
 
             # Prefer exact Sales Order Item when provided on Work Order
             sales_order_item_name = getattr(doc, 'sales_order_item', None)
@@ -17,11 +18,12 @@ def before_insert(doc, method=None):
                 soi = frappe.get_all(
                     'Sales Order Item',
                     filters={'name': sales_order_item_name, 'parent': sales_order.name},
-                    fields=['name', 'item_code', 'custom_batch_no', 'bom_no', 'idx'],
+                    fields=['name', 'item_code', 'custom_batch_no', 'bom_no', 'idx','branch'],
                     limit=1,
                 )
                 if soi:
                     batch_no = soi[0].get('custom_batch_no')
+                    branch = soi[0].get('branch')
                     logger.info(f"Batch from exact Sales Order Item {sales_order_item_name}: {batch_no}")
 
             # Fallback: resolve by item_code (production_item) and, if present, BOM
@@ -30,7 +32,7 @@ def before_insert(doc, method=None):
                 bom_no = getattr(doc, 'bom_no', None)
                 if production_item:
                     soi_filters = {'parent': sales_order.name, 'item_code': production_item}
-                    soi_fields = ['name', 'custom_batch_no', 'bom_no', 'idx']
+                    soi_fields = ['name', 'custom_batch_no', 'bom_no', 'idx', 'branch']
                     candidates = frappe.get_all('Sales Order Item', filters=soi_filters, fields=soi_fields, order_by='idx asc')
                     if candidates:
                         # Try to pick matching BOM first
@@ -44,6 +46,8 @@ def before_insert(doc, method=None):
                             # Otherwise pick the first that has a batch
                             chosen = next((c for c in candidates if c.get('custom_batch_no')), candidates[0])
                         batch_no = chosen.get('custom_batch_no')
+                        if not branch:
+                            branch = chosen.get('branch')
                         logger.info(f"Batch from SO item by item_code/BOM: {batch_no}")
 
             if batch_no:
@@ -54,6 +58,19 @@ def before_insert(doc, method=None):
                     item.custom_batch_no = batch_no
             else:
                 logger.info("Could not resolve custom_batch_no from Sales Order context")
+
+            # Set child-level branch from resolved SO Item branch if available
+            if branch:
+                try:
+                    for child in (getattr(doc, 'required_items', []) or []):
+                        if hasattr(child, 'branch') and not getattr(child, 'branch', None):
+                            child.branch = branch
+                    for child in (getattr(doc, 'items', []) or []):
+                        if hasattr(child, 'branch') and not getattr(child, 'branch', None):
+                            child.branch = branch
+                    logger.info(f"Applied branch {branch} to Work Order child rows where missing")
+                except Exception as set_branch_err:
+                    logger.error(f"Failed to set child branch: {set_branch_err}")
 
         if getattr(doc, 'bom_no', None):
             bom = frappe.get_doc("BOM", doc.bom_no)
