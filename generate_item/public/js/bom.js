@@ -8,6 +8,13 @@ frappe.ui.form.on('BOM', {
                 }
             };
         });
+        frm.set_query("sales_order", function() {
+            return {
+                filters: { 
+                    docstatus:["in",["0","1"]],
+                }
+            };
+        });
         frm.add_custom_button(__('Material Request'), function() {
             create_material_request_from_bom(frm);
         }, __('Create'));

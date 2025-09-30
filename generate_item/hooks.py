@@ -25,10 +25,10 @@ app_license = "mit"
 # ------------------
 
 # Export/import fixtures for this app
-fixtures = [
-    {"doctype": "Custom Field", "filters": [["module", "=", "Generate Item"]]},
-    {"doctype": "Property Setter", "filters": [["module", "=", "Generate Item"]]},
-]
+# fixtures = [
+#     {"doctype": "Custom Field", "filters": [["module", "=", "Generate Item"]]},
+#     {"doctype": "Property Setter", "filters": [["module", "=", "Generate Item"]]},
+# ]
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/generate_item/css/generate_item.css"
@@ -152,7 +152,7 @@ doctype_list_js = {"Item Generator" : "public/js/item_generator_list.js"}
 override_doctype_class = {
     "BOM": "generate_item.overrides.custombom.CustomBOM",
     "Production Plan": "generate_item.overrides.production_plan.ProductionPlan",
-    "Purchase Receipt": "generate_item.overrides.purchase_receipt.PurchaseReceipt",
+    # "Purchase Receipt": "generate_item.overrides.purchase_receipt.PurchaseReceipt",
 }
 
 
@@ -165,8 +165,14 @@ doc_events = {
         "before_insert": "generate_item.utils.purchase_order.before_insert",
         "validate": "generate_item.utils.purchase_order.validate"
     },
+    "Purchase Receipt": {
+        "before_save": "generate_item.utils.purchase_receipt.before_save"
+    },  
     "Stock Entry": {
         "before_insert": "generate_item.utils.stock_entry.before_insert"
+    },
+    "Sales Order": {
+        "before_save": "generate_item.utils.sales_order.before_save"
     },
     "Subcontracting Order": {
         "before_insert": "generate_item.utils.subcontracting_order.before_insert",
@@ -181,7 +187,7 @@ doc_events = {
     },
     "Work Order":{
         "before_insert": "generate_item.utils.work_order.before_insert",
-        "before_validate": "generate_item.utils.work_order.before_insert",
+        "before_validate": "generate_item.utils.work_order.before_insert"
     },
      "BOM":{
         "before_validate": "generate_item.utils.bom.before_validate",

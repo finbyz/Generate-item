@@ -1237,6 +1237,12 @@ class ProductionPlan(_ProductionPlan):
         """Populate branch on po_items immediately after fetching items so it shows in grid"""
         super().get_items()
         try:
+            # Recalculate pending/planned qty on po_items based on existing Production Plans
+            self._recalculate_pending_qty_on_po_items()
+            
+            # Ensure po_items BOM only from same Sales Order as the row
+            self._enforce_bom_matches_sales_order_on_po_items()
+
             if not getattr(self, "po_items", None):
                 return
             soi_names = [d.sales_order_item for d in self.po_items if getattr(d, "sales_order_item", None)]
@@ -1254,6 +1260,156 @@ class ProductionPlan(_ProductionPlan):
                         d.branch = soi_branch_map.get(d.sales_order_item)
         except Exception as e:
             frappe.log_error(f"Error populating branch on po_items: {str(e)}", "Production Plan Branch Populate Error")
+
+    def _recalculate_pending_qty_on_po_items(self):
+        """Set `pending_qty` and `planned_qty` on `po_items` by subtracting quantities
+        already planned in other Production Plans for the same Sales Order Item line.
+
+        Logic mirrors the earlier custom SO item computation:
+        remaining_qty = (SO qty in stock UOM) - SUM(planned_qty from other plans for same SO line)
+        """
+        try:
+            if not getattr(self, "po_items", None):
+                return
+
+            # Collect SOI names and conversion factors if available
+            soi_names = [d.sales_order_item for d in self.po_items if getattr(d, "sales_order_item", None)]
+            if not soi_names:
+                return
+
+            # Fetch required fields from Sales Order Item to compute base qty and conversion
+            soi_rows = frappe.get_all(
+                "Sales Order Item",
+                filters={"name": ("in", soi_names)},
+                fields=["name", "parent", "item_code", "qty", "conversion_factor"],
+            )
+            soi_by_name = {r["name"]: r for r in soi_rows}
+
+            kept_rows = []
+            for d in self.po_items:
+                soi_name = getattr(d, "sales_order_item", None)
+                if not soi_name:
+                    continue
+                soi = soi_by_name.get(soi_name)
+                if not soi:
+                    continue
+
+                # Base qty is Sales Order qty converted to stock UOM
+                original_pending_qty = flt(soi.get("qty") or 0)
+                stock_pending_qty = original_pending_qty * flt(soi.get("conversion_factor") or 1)
+
+                try:
+                    previous_planned_qty = frappe.db.sql(
+                        """
+                        SELECT SUM(ppi.planned_qty) as total_planned
+                        FROM `tabProduction Plan Item` ppi
+                        INNER JOIN `tabProduction Plan` pp ON ppi.parent = pp.name
+                        INNER JOIN `tabProduction Plan Sales Order` pps ON pp.name = pps.parent
+                        WHERE pps.sales_order = %s
+                        AND ppi.item_code = %s
+                        AND ppi.sales_order_item = %s
+                        AND pp.docstatus IN (0, 1)
+                        AND pp.name != %s
+                        """,
+                        (soi.get("parent"), soi.get("item_code"), soi_name, self.name or ""),
+                        as_dict=True,
+                    )
+                    total_planned = flt(previous_planned_qty[0].total_planned) if previous_planned_qty else 0
+                except Exception:
+                    total_planned = 0
+
+                remaining_qty = stock_pending_qty - total_planned
+                if remaining_qty < 0:
+                    remaining_qty = 0
+
+                # Update fields on po_item row if present
+                if hasattr(d, "pending_qty"):
+                    d.pending_qty = remaining_qty
+                if hasattr(d, "planned_qty"):
+                    d.planned_qty = remaining_qty
+
+                # Keep only items with remaining qty > 0
+                if remaining_qty > 0:
+                    kept_rows.append(d)
+
+            # Replace table with only rows having pending qty
+            self.po_items = kept_rows
+        except Exception as e:
+            frappe.log_error(f"Error recalculating pending qty on po_items: {str(e)}", "Production Plan Pending Qty Error")
+
+    def _enforce_bom_matches_sales_order_on_po_items(self):
+        """For each po_items row, only keep or set BOMs that belong to the same Sales Order.
+
+        Rules:
+        - If `bom_no` is set but its BOM.sales_order != row.sales_order, clear `bom_no`.
+        - If `bom_no` is not set, try selecting a BOM where:
+            BOM.item == row.item_code AND BOM.sales_order == row.sales_order AND BOM.is_active == 1
+          Prefer a BOM that also matches the row's custom batch ref (custom_batch_no/custom_batch_ref/batch_no) if present.
+        """
+        try:
+            if not getattr(self, "po_items", None):
+                return
+
+            for d in self.po_items:
+                row_so = getattr(d, "sales_order", None)
+                row_item = getattr(d, "item_code", None)
+                row_bom = getattr(d, "bom_no", None)
+                row_batch = (
+                    getattr(d, "custom_batch_no", None)
+                    or getattr(d, "custom_batch_ref", None)
+                    or getattr(d, "batch_no", None)
+                )
+
+                # Skip rows without essential context
+                if not row_item or not row_so:
+                    continue
+
+                # If bom_no set, validate that it belongs to the same SO
+                if row_bom:
+                    try:
+                        bom_so = frappe.db.get_value("BOM", row_bom, "sales_order")
+                        if bom_so and bom_so != row_so:
+                            d.bom_no = None
+                    except Exception:
+                        # If BOM not found or error, clear it
+                        d.bom_no = None
+
+                # If bom_no still empty, try to fetch a matching BOM
+                if not getattr(d, "bom_no", None):
+                    bom_filters = {
+                        "item": row_item,
+                        "sales_order": row_so,
+                        "is_active": 1,
+                    }
+                    order_by = "modified desc"
+                    # If batch context exists, try batch-specific first
+                    candidate = None
+                    if row_batch:
+                        try:
+                            candidate = frappe.get_all(
+                                "BOM",
+                                filters={**bom_filters, "custom_batch_no": row_batch},
+                                fields=["name"],
+                                order_by=order_by,
+                                limit=1,
+                            )
+                        except Exception:
+                            candidate = None
+                    if not candidate:
+                        try:
+                            candidate = frappe.get_all(
+                                "BOM",
+                                filters=bom_filters,
+                                fields=["name"],
+                                order_by=order_by,
+                                limit=1,
+                            )
+                        except Exception:
+                            candidate = None
+                    if candidate:
+                        d.bom_no = candidate[0]["name"]
+        except Exception as e:
+            frappe.log_error(f"Error enforcing BOM by Sales Order on po_items: {str(e)}", "Production Plan BOM Enforcement Error")
 
     def _populate_subassembly_items_from_po_items(self):
         """Populate subassembly items with custom fields from their parent po_items"""

@@ -1,6 +1,20 @@
 import frappe
 
 def before_validate(doc, method=None):
+    for item in doc.items:
+        if item.bom_no:
+            bom = frappe.get_doc("BOM", item.bom_no)
+            if bom.custom_batch_no and bom.sales_order:
+                frappe.throw(
+                    (
+                    f"<p>Item <strong>{item.item_code}</strong> cannot be submitted.</p>"
+                    f"<p>The linked Bill of Materials (<strong>{item.bom_no}</strong>) is "
+                    "configured for both a <strong>specific Sales Order</strong> and a "
+                    "<strong>Batch Number</strong>, which is a conflict in production.</p>"
+                    ),
+                    ("Conflicting BOM Data")
+                )
+
     # 1. Determine the Production Plan name (guarding against missing attributes)
     production_plan = getattr(doc, "production_plan", None)
 
@@ -46,4 +60,3 @@ def on_submit(self,method):
             data = frappe.get_doc("BOM", row.bom_no)
             data.db_set("custom_batch_no",self.custom_batch_no)
             data.db_set("sales_order",self.sales_order) 
-                    

@@ -1,6 +1,4 @@
 import frappe
-
-
 @frappe.whitelist()
 def make_purchase_receipt(source_name, target_doc=None, args=None):
 	"""Create Purchase Receipt from Purchase Order while mapping custom_batch_no → batch_no.
@@ -29,4 +27,17 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
 
 	return pr
 
+def before_save(doc, method):
+	for i in doc.items:
+		if not i.po_qty:
+			po_qty = frappe.get_doc("Purchase Order", i.purchase_order)
+			for item in po_qty.items:
+				if item.item_code == i.item_code:
+					i.po_qty = item.qty
+					i.po_line_no = item.idx
+					break
 
+@frappe.whitelist()
+def get_po_items(purchase_order):
+	po_doc = frappe.get_doc("Purchase Order", purchase_order)
+	return po_doc

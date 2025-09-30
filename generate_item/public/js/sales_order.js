@@ -90,7 +90,9 @@ frappe.ui.form.on('Sales Order', {
                 frm.enable_save();
                 frm.page.set_primary_action(__('Save'), () => frm.save());
             }
-        } else {
+        } else if (isDraft && !isDirty) {
+            // Only clear primary actions for draft documents that are not dirty
+            // This allows the standard Amend button to appear for canceled documents
             if (frm.page && frm.page.clear_primary_action) {
                 frm.page.clear_primary_action();
             }
@@ -227,10 +229,14 @@ frappe.ui.form.on('Sales Order', {
         }
 
         // Determine if any item still needs a batch
-        const needs_batches = (frm.doc.items || []).some(d => {
-            if (!d || !d.item_code) return false;
-            return !d.custom_batch_no && !d.batch_no;
-        });
+		const needs_batches = (frm.doc.items || []).some(d => {
+			if (!d || !d.item_code) return false;
+			// If this is an amended document, only consider custom_batch_no for decision
+			if (frm.doc.amended_from) {
+				return !d.custom_batch_no;
+			}
+			return !d.custom_batch_no && !d.batch_no;
+		});
         if (!needs_batches) {
             return; // nothing to do
         }
@@ -478,6 +484,22 @@ function make_batch(frm) {
             reject("No items to process");
             return;
         }
+
+		// If this is an amended Sales Order, and all rows already have custom_batch_no,
+		// skip creating new batches.
+		if (frm.doc.amended_from) {
+			const rows_needing_batch = (frm.doc.items || []).filter(d => d && d.item_code && !d.custom_batch_no);
+			if (rows_needing_batch.length === 0) {
+				frappe.msgprint({
+					title: __("Info"),
+					message: __("All items already have a Custom Batch on this amended order. No new batches were created."),
+					indicator: "blue"
+				});
+				frm.__creating_batches = false;
+				resolve();
+				return;
+			}
+		}
 
         if (frm.__creating_batches) {
             reject("Batch creation already in progress");

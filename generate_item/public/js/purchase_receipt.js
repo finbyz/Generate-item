@@ -1,8 +1,7 @@
-frappe.ui.form.on('Purchase Receipt Item', {    
+frappe.ui.form.on('Purchase Receipt Item', {  
     custom_add_heat: function(frm, cdt, cdn) {
         let row = locals[cdt][cdn];        
         
-        // Validate input before processing
         if (row.custom_heat_no && row.custom_heat_no.trim() !== '') {
             add_heat_number_to_ref(frm, cdt, cdn, row.custom_heat_no.trim());
         } else {
@@ -46,12 +45,41 @@ function add_heat_number_to_ref(frm, cdt, cdn, custom_heat_no) {
 }
 
 frappe.ui.form.on('Purchase Receipt', {
+    onload: function(frm) {
+        if (frm.is_new()  && frm.doc.docstatus === 0) {
+            if (frm.doc.items) {
+                frm.doc.items.forEach(item => {
+                    if (!item.po_qty && !item.po_line_no && item.purchase_order) {
+                        frappe.call({
+                            method:"generate_item.utils.purchase_receipt.get_po_items",
+                            args: {
+                                purchase_order: item.purchase_order
+                            },
+                            callback: function(r) {
+                                if (r.message) {
+                                    let po_doc = r.message;
+    
+                                    for (let po_item of po_doc.items) {
+                                        if (po_item.item_code === item.item_code) {
+                                            frappe.model.set_value(item.doctype, item.name, 'po_qty', po_item.qty);
+                                            frappe.model.set_value(item.doctype, item.name, 'po_line_no', po_item.idx);
+                                            break; 
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                    }
+                });
+            }
+        }
+    },
     refresh: function(frm) {
+        
         if (frm.doc.docstatus !== 0 || frm.doc.is_return) {
             return;
         }
-
-        // Remove core button to replace with custom dialog columns (if present)
+        
         try {
             frm.remove_custom_button(__('Purchase Order'), __('Get Items From'));
         } catch (e) {}

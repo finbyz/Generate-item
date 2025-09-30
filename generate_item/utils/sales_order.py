@@ -40,3 +40,14 @@ def create_item_generator_doc(item_code: str | None = None, is_create_with_sales
         "item_code": created_item_code,
         "item_generator": ig.name,
     }
+
+
+def before_save(doc, method=None):
+    for i in doc.items:
+        if i.rate == 0:
+            frappe.msgprint(
+                (f"Please enter a valid rate for item in line No. {i.idx}. The rate cannot be 0."),
+                title=("Invalid Value"),
+                raise_exception=True
+                )
+        
