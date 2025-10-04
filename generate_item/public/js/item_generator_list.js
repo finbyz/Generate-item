@@ -22,7 +22,7 @@ frappe.listview_settings['Item Generator'] = {
                             let base_item = r.message;
 
                             // Check if item is already duplicated
-                            if (base_item.duplicated === 1) {
+                            if (base_item.duplicated_subassembly === 1 ) {
                                 frappe.msgprint({
                                     title: __('Cannot Duplicate'),
                                     message: __('Item {0} is already a sub-assembly item and cannot be duplicated again.', [base_item.item_code]),
@@ -59,7 +59,7 @@ frappe.listview_settings['Item Generator'] = {
                             new_item.short_description = (base_item.short_description || "") + " SUB ASSY KIT";
                             new_item.description = (base_item.description || "") + " SUB ASSEMBLY KIT";
                             new_item.item_group_name = "Ready Valves";
-                            new_item.duplicated = 1;
+                            new_item.duplicated_subassembly = 1;
 
                             // Insert the new item
                             frappe.call({
@@ -118,7 +118,7 @@ frappe.listview_settings['Item Generator'] = {
                             let base_item = r.message;
 
                             // Check if item is already duplicated
-                            if (base_item.duplicated === 1) {
+                            if (base_item.duplicated_machining_kit === 1) {
                                 frappe.msgprint({
                                     title: __('Cannot Duplicate'),
                                     message: __('Item {0} is already a sub-machine kit item and cannot be duplicated again.', [base_item.item_code]),
@@ -155,7 +155,7 @@ frappe.listview_settings['Item Generator'] = {
                             new_item.short_description = (base_item.short_description || "") + " M/C KIT";
                             new_item.description = (base_item.description || "") + "  SUB MACHINING KIT";
                             new_item.item_group_name = base_item.item_group_name;
-                            new_item.duplicated = 1;
+                            new_item.duplicated_machining_kit = 1;
 
                             // Insert the new item
                             frappe.call({

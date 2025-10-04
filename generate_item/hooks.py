@@ -191,6 +191,7 @@ doc_events = {
     },
      "BOM":{
         "before_validate": "generate_item.utils.bom.before_validate",
+        "before_save": "generate_item.utils.bom.before_save",
         "on_cancel": "generate_item.utils.bom.clear_custom_fields_on_cancel",
         "on_submit": "generate_item.utils.bom.on_submit"
     },

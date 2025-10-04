@@ -54,15 +54,16 @@ frappe.ui.form.on('Sales Order', {
                                             qty: so_item.qty || 1,
                                             uom: so_item.uom || "Nos",
                                             branch: so_item.branch,
+                                            sales_order: frm.doc.name,
                                         }
                                     ]
-                                }
+                                }     
                             },
                             callback: function(r) {
                                 if (!r.exc && r.message) {
                                     const bom_doc = r.message;
                                     const bom_name = bom_doc.name;
-                                    frappe.msgprint(__('BOM {0} created', [bom_name]));
+                                    frappe.msgprint(__(' {0} created', [bom_name], 'BOM Created'));
                                     try {
                                         if (so_item && so_item.name) {
                                             frappe.model.set_value(so_item.doctype, so_item.name, 'bom_no', bom_name);
@@ -182,7 +183,13 @@ frappe.ui.form.on('Sales Order', {
     onload: function(frm) {
         handle_item_generator_return(frm);
     },
+    after_save: function(frm) {
+        if (frm.doc.amended_from) {
+            update_batch_links(frm);
+        }
+    },
     before_save: function(frm) {
+        
         let promises = [];
         
         for (let item of frm.doc.items) {
@@ -673,12 +680,12 @@ function show_results_with_doc_names(created_batches, errors) {
         message = __('No batches were created. Please check if items are batch-enabled.');
     }
     
-    frappe.msgprint({
-        title: __('Batch Creation Results'),
-        message: message,
-        indicator: errors.length > 0 ? 'orange' : 'green',
-        wide: true
-    });
+    // frappe.msgprint({
+    //     title: __('Batch Creation Results'),
+    //     message: message,
+    //     indicator: errors.length > 0 ? 'orange' : 'green',
+    //     wide: true
+    // });
 }
 
 function finalize_batch_process(frm, created_batches, errors) {
@@ -822,4 +829,47 @@ function handle_item_generator_return(frm) {
         console.error("Error in handle_item_generator_return:", e);
         sessionStorage.removeItem('ig_return_result');
     }
+}
+
+
+function update_batch_links(frm) {
+    const items = frm.doc.items || [];
+    const promises = [];
+
+    items.forEach(item => {
+        if (item.custom_batch_no) {
+            promises.push(
+                new Promise((resolve, reject) => {
+                    frappe.db.get_value('Batch', item.custom_batch_no, ['reference_name'])
+                        .then(r => {
+                            if (r.message) {
+                                const batch_ref_name = r.message.reference_name;
+                               
+                                if (batch_ref_name === frm.doc.name ) {
+                                    // match, skip
+                                    resolve();
+                                } else {
+                                    // update reference_name
+                                    frappe.db.set_value('Batch', item.custom_batch_no, {
+                                        'reference_name': frm.doc.name,
+        
+                                    })
+                                        .then(() => {
+                                            resolve();
+                                        })
+                                        .catch(reject);
+                                }
+                            } else {
+                                // batch does not exist, skip or handle error
+                                console.warn(`Batch ${item.custom_batch_no} does not exist.`);
+                                resolve();
+                            }
+                        })
+                        .catch(reject);
+                })
+            );
+        }
+    });
+
+    return Promise.all(promises);
 }

@@ -1454,6 +1454,15 @@ class ProductionPlan(_ProductionPlan):
                     for field in ["sales_order", "sales_order_item"]:
                         if hasattr(parent_po_item, field) and getattr(parent_po_item, field, None):
                             setattr(sub_item, field, getattr(parent_po_item, field))
+                    
+                    # Inherit BOM from parent production plan item
+                    if hasattr(parent_po_item, "bom_no") and getattr(parent_po_item, "bom_no", None):
+                        if hasattr(sub_item, "bom_no"):
+                            sub_item.bom_no = parent_po_item.bom_no
+                            frappe.log_error(
+                                f"Subassembly item {sub_item_name} inherited BOM {parent_po_item.bom_no} from parent production plan item {ppi_name}",
+                                "Subassembly BOM Inheritance"
+                            )
                 else:
                     frappe.log_error(
                         f"No parent po_item found for sub_assembly_item {sub_item_name} with production_plan_item: {ppi_name}",
@@ -1623,11 +1632,21 @@ class ProductionPlan(_ProductionPlan):
                         production_plan_item = po_item
                         break
             
+            # Get BOM from subassembly item, fallback to parent production plan item
+            bom_no = getattr(row, "bom_no", None)
+            if not bom_no and production_plan_item:
+                bom_no = getattr(production_plan_item, "bom_no", None)
+                if bom_no:
+                    frappe.log_error(
+                        f"Subassembly work order for {sub_item_name} using BOM {bom_no} from parent production plan item",
+                        "Subassembly Work Order BOM"
+                    )
+            
             work_order_data.update({
                 "production_item": getattr(row, "production_item", None),
                 "qty": flt(row.qty) - flt(row.ordered_qty),
                 "description": getattr(row, "description", ""),
-                "bom_no": getattr(row, "bom_no", None),
+                "bom_no": bom_no,
                 "stock_uom": getattr(row, "stock_uom", None),
                 "production_plan": self.name,
                 "production_plan_sub_assembly_item": getattr(row, "name", None),
@@ -1648,11 +1667,13 @@ class ProductionPlan(_ProductionPlan):
                 
         except Exception as e:
             frappe.log_error(f"Error in safe_prepare_data_for_sub_assembly_items for {sub_item_name}: {str(e)}", "Safe Prepare Data Error")
+            # Get BOM from subassembly item as fallback
+            bom_no = getattr(row, "bom_no", None)
             work_order_data.update({
                 "production_item": getattr(row, "production_item", None),
                 "qty": flt(row.qty) - flt(row.ordered_qty),
                 "description": getattr(row, "description", ""),
-                "bom_no": getattr(row, "bom_no", None),
+                "bom_no": bom_no,
                 "stock_uom": getattr(row, "stock_uom", None),
                 "production_plan": self.name,
                 "production_plan_sub_assembly_item": getattr(row, "name", None),

@@ -1,6 +1,26 @@
 import frappe
 
 def before_validate(doc, method=None):
+    # Populate BOM-level drawing/spec fields from Item if missing on BOM
+    try:
+        if getattr(doc, "item", None):
+            item_doc = frappe.get_doc("Item", doc.item)
+
+            def set_if_empty(target, fieldname, value):
+                if not getattr(target, fieldname, None) and value:
+                    setattr(target, fieldname, value)
+
+            # BOM header fields
+            set_if_empty(doc, "custom_drawing_no", item_doc.get("custom_drawing_no"))
+            set_if_empty(doc, "custom_pattern_drawing_no", item_doc.get("custom_pattern_drawing_no"))
+            set_if_empty(doc, "custom_purchase_specification_no", item_doc.get("custom_purchase_specification_no"))
+            set_if_empty(doc, "custom_drawing_rev_no", item_doc.get("custom_drawing_rev_no"))
+            set_if_empty(doc, "custom_pattern_drawing_rev_no", item_doc.get("custom_pattern_drawing_rev_no"))
+            set_if_empty(doc, "custom_purchase_specification_rev_no", item_doc.get("custom_purchase_specification_rev_no"))
+    except Exception:
+        # Do not block validation if Item fetch fails; log and continue
+        frappe.log_error(f"Failed to backfill BOM custom fields from Item for {getattr(doc, 'name', '')}")
+
     for item in doc.items:
         if item.bom_no:
             bom = frappe.get_doc("BOM", item.bom_no)
@@ -60,3 +80,25 @@ def on_submit(self,method):
             data = frappe.get_doc("BOM", row.bom_no)
             data.db_set("custom_batch_no",self.custom_batch_no)
             data.db_set("sales_order",self.sales_order) 
+
+
+def before_save(doc,method):
+    try:
+        if getattr(doc, "item", None):
+            item_doc = frappe.get_doc("Item", doc.item)
+
+            def set_if_empty(target, fieldname, value):
+                if not getattr(target, fieldname, None) and value:
+                    setattr(target, fieldname, value)
+
+            # BOM header fields
+            set_if_empty(doc, "custom_drawing_no", item_doc.get("custom_drawing_no"))
+            set_if_empty(doc, "custom_pattern_drawing_no", item_doc.get("custom_pattern_drawing_no"))
+            set_if_empty(doc, "custom_purchase_specification_no", item_doc.get("custom_purchase_specification_no"))
+            set_if_empty(doc, "custom_drawing_rev_no", item_doc.get("custom_drawing_rev_no"))
+            set_if_empty(doc, "custom_pattern_drawing_rev_no", item_doc.get("custom_pattern_drawing_rev_no"))
+            set_if_empty(doc, "custom_purchase_specification_rev_no", item_doc.get("custom_purchase_specification_rev_no"))
+    except Exception:
+        # Do not block validation if Item fetch fails; log and continue
+        frappe.log_error(f"Failed to backfill BOM custom fields from Item for {getattr(doc, 'name', '')}")
+    
