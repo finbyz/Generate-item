@@ -1,5 +1,18 @@
+let actual_qty_set_flags = {};
 frappe.ui.form.on('Production Plan', {
+    onload: function(frm) {
+        if (frm.doc.docstatus === 0)
+            {
+                update_actual_qty_for_items(frm);
+            }
+    },
+    
     refresh: function(frm) {
+        if (frm.doc.docstatus === 0)
+        {
+            update_actual_qty_for_items(frm);
+        }
+        
         // Ensure the form is fully loaded and the document name is available
         if (!frm.doc.name) return;
 
@@ -50,6 +63,7 @@ frappe.ui.form.on('Production Plan', {
             });
         });
     },
+    
     setup: function(frm) {
         frm.set_query('custom_batch_wise_assembly', function() {
             // Get all custom_batch_no values from po_items child table
@@ -111,8 +125,19 @@ frappe.ui.form.on('Production Plan', {
 // Handle Production Plan Item changes
 frappe.ui.form.on('Production Plan Item', {
     planned_qty: function(frm, cdt, cdn) {
+        
         // When user changes planned_qty, update pending_qty to match
         let row = locals[cdt][cdn];
+         if (row.planned_qty > row.actual_qty) {
+            frappe.msgprint({
+                title: __('Invalid Quantity'),
+                message: __('Planned Quantity cannot exceed Actual Quantity.'),
+                indicator: 'red'
+            });
+            console.log(row.actual_qty);
+            frappe.model.set_value(cdt, cdn, 'planned_qty', row.actual_qty);
+
+        }
         if (row.planned_qty !== undefined) {
             row.pending_qty = row.planned_qty;
             frm.refresh_field('po_items');
@@ -128,3 +153,25 @@ frappe.ui.form.on('Production Plan Item', {
         }
     }
 });
+
+
+function update_actual_qty_for_items(frm) {
+    frm.doc.po_items.forEach((row) => {
+        if ((!row.actual_qty || row.actual_qty === 0) && !actual_qty_set_flags[row.name]) {
+            actual_qty_set_flags[row.name] = true;
+
+            frappe.call({
+                method: 'generate_item.utils.production_plan.set_actual_qty_for_child_row',
+                args: {
+                    cdt: 'Production Plan Item',
+                    cdn: row.name
+                },
+                callback: function(r) {
+                    if (r.message) {
+                        frappe.model.set_value('Production Plan Item', row.name, 'actual_qty', r.message);
+                    }
+                }
+            });
+        }
+    });
+}

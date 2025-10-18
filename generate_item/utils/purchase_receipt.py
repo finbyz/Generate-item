@@ -14,28 +14,108 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
 	# Pass through args to maintain compatibility with mapper flows
 	pr = core_make_purchase_receipt(source_name=source_name, target_doc=target_doc, args=args)
 
-	# Map custom_batch_no from PO Item to PR Item.batch_no
+	# Adjust quantities to consider Draft PRs as consumed, and map custom_batch_no
+	items_to_keep = []
 	for item in pr.items or []:
 		po_item_name = getattr(item, "purchase_order_item", None)
 		if not po_item_name:
+			items_to_keep.append(item)
 			continue
-		custom_batch_no = frappe.db.get_value(
-			"Purchase Order Item", po_item_name, "custom_batch_no"
+
+		# Fetch source PO Item values needed for accurate remaining computation
+		po_item = frappe.db.get_value(
+			"Purchase Order Item",
+			po_item_name,
+			["qty", "received_qty", "conversion_factor", "custom_batch_no"],
+			as_dict=True,
 		)
-		if custom_batch_no and not getattr(item, "batch_no", None):
-			item.batch_no = custom_batch_no
+
+		# Default to current mapped qty if lookup fails for any reason
+		if not po_item:
+			items_to_keep.append(item)
+			continue
+
+		po_qty = frappe.utils.flt(po_item.qty)
+		received_qty = frappe.utils.flt(po_item.received_qty)
+		po_cf = frappe.utils.flt(po_item.conversion_factor) or 1.0
+
+		# Base remaining in stock units from Submitted PRs
+		base_remaining_stock_qty = max((po_qty - received_qty), 0) * po_cf
+
+		# Add quantities already present in Draft PRs for the same PO Item (in stock units)
+		draft_pr_stock_qty = frappe.db.sql(
+			"""
+			SELECT COALESCE(SUM(pri.stock_qty), 0)
+			FROM `tabPurchase Receipt Item` pri
+			INNER JOIN `tabPurchase Receipt` pr ON pri.parent = pr.name
+			WHERE pr.docstatus = 0
+			  AND pri.purchase_order_item = %s
+			""",
+			(po_item_name,),
+		)[0][0]
+
+		remaining_stock_qty = max(base_remaining_stock_qty - frappe.utils.flt(draft_pr_stock_qty), 0)
+
+		# Use target item's conversion factor to set displayed qty
+		item_cf = frappe.utils.flt(getattr(item, "conversion_factor", None)) or 1.0
+		new_qty = remaining_stock_qty / item_cf if item_cf else 0
+		item.qty = new_qty
+		item.stock_qty = remaining_stock_qty
+
+		# Map custom_batch_no from PO Item to PR Item.batch_no if empty
+		if po_item.custom_batch_no and not getattr(item, "batch_no", None):
+			item.batch_no = po_item.custom_batch_no
+
+		# Keep only rows with positive qty
+		if new_qty and new_qty > 0:
+			items_to_keep.append(item)
+
+	# Replace items with filtered list to avoid zero-qty rows
+	if pr.items is not None:
+		pr.items = items_to_keep
 
 	return pr
 
+
 def before_save(doc, method):
-	for i in doc.items:
-		if not i.po_qty:
-			po_qty = frappe.get_doc("Purchase Order", i.purchase_order)
-			for item in po_qty.items:
-				if item.item_code == i.item_code:
-					i.po_qty = item.qty
-					i.po_line_no = item.idx
-					break
+    for item in doc.items:
+        if not item.po_qty:
+            # Fetch PO qty and line number
+            po_doc = frappe.get_doc("Purchase Order", item.purchase_order)
+            for po_item in po_doc.items:
+                if po_item.item_code == item.item_code and item.purchase_order_item == po_item.name :
+                    item.po_qty = po_item.qty
+                    item.po_line_no = po_item.idx
+                    break
+
+        # Get branch from item row
+        branch = item.branch
+
+        # Fetch warehouses linked to this branch and marked as raw_material_warehouse and stock_warehouse
+        warehouses = frappe.get_all(
+            "Warehouse",
+            filters={
+                "branch": branch,
+                "raw_material_warehouse": 1,
+                "store_warehouse": 1
+            },
+            pluck="name"
+        )
+
+        if warehouses:
+            # Sum projected_qty from Bin for the item in these warehouses
+            total_projected_qty = frappe.get_all(
+                "Bin",
+                filters={
+                    "item_code": item.item_code,
+                    "warehouse": ["in", warehouses]
+                },
+                fields=["sum(projected_qty) as total"]
+            )
+            item.on_hand_qty = total_projected_qty[0].total or 0
+        else:
+            item.on_hand_qty = 0
+
 
 @frappe.whitelist()
 def get_po_items(purchase_order):

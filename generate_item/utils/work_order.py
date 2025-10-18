@@ -9,6 +9,10 @@ def before_insert(doc, method=None):
             sales_order = frappe.get_doc('Sales Order', doc.sales_order)
             logger.info(f"Fetched Sales Order {sales_order.name} with {len(sales_order.items or [])} items")
 
+            for item in (getattr(doc, 'required_items', []) or []):
+                if hasattr(item, 'sales_order'):
+                    item.sales_order = doc.sales_order
+
             batch_no = None
             branch = None
 
@@ -24,6 +28,7 @@ def before_insert(doc, method=None):
                 if soi:
                     batch_no = soi[0].get('custom_batch_no')
                     branch = soi[0].get('branch')
+                    sales_order = soi[0].get('parent')
                     logger.info(f"Batch from exact Sales Order Item {sales_order_item_name}: {batch_no}")
 
             # Fallback: resolve by item_code (production_item) and, if present, BOM
@@ -71,6 +76,7 @@ def before_insert(doc, method=None):
                     logger.info(f"Applied branch {branch} to Work Order child rows where missing")
                 except Exception as set_branch_err:
                     logger.error(f"Failed to set child branch: {set_branch_err}")
+
 
         if getattr(doc, 'bom_no', None):
             bom = frappe.get_doc("BOM", doc.bom_no)

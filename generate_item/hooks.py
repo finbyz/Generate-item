@@ -52,12 +52,15 @@ app_license = "mit"
 doctype_js = {"Item" : "public/js/item.js",
               "Sales Order" : "public/js/sales_order.js",
               "BOM" : "public/js/bom.js",
+              "BOM Creator" : "public/js/bom_creator.js",
               "Material Request" : "public/js/material_request.js",
               "Purchase Receipt" : "public/js/purchase_receipt.js",
               "Production Plan" : "public/js/production_plan.js",
               "Purchase Order" : "public/js/purchase_order.js",
               "Stock Entry" : "public/js/stock_entry.js",
               "Subcontracting Order" : "public/js/subcontracting_order.js",
+              "Delivery Note" : "public/js/delivery_note.js",
+              "Sales Invoice" : "public/js/sales_invoice.js",
               }
 
 doctype_list_js = {"Item Generator" : "public/js/item_generator_list.js"}
@@ -152,6 +155,9 @@ doctype_list_js = {"Item Generator" : "public/js/item_generator_list.js"}
 override_doctype_class = {
     "BOM": "generate_item.overrides.custombom.CustomBOM",
     "Production Plan": "generate_item.overrides.production_plan.ProductionPlan",
+    "BOM Creator": "generate_item.overrides.custom_bom_creator.BOMCreator",
+    "Work Order": "generate_item.overrides.customWorkorder.WorkOrder",
+    "Sales Order": "generate_item.overrides.custom_sales_order.CustomSalesOrder",
     # "Purchase Receipt": "generate_item.overrides.purchase_receipt.PurchaseReceipt",
 }
 
@@ -163,7 +169,8 @@ override_doctype_class = {
 doc_events = {
     "Purchase Order": {
         "before_insert": "generate_item.utils.purchase_order.before_insert",
-        "validate": "generate_item.utils.purchase_order.validate"
+        "validate": "generate_item.utils.purchase_order.validate",
+        "before_save": "generate_item.utils.purchase_order.before_save"
     },
     "Purchase Receipt": {
         "before_save": "generate_item.utils.purchase_receipt.before_save"
@@ -237,6 +244,13 @@ override_whitelisted_methods = {
     "erpnext.stock.doctype.material_request.material_request.make_purchase_order": "generate_item.utils.material_request.make_purchase_order",
     # Map custom_batch_no from Purchase Order Item to Purchase Receipt Item.batch_no
     "erpnext.buying.doctype.purchase_order.purchase_order.make_purchase_receipt": "generate_item.utils.purchase_receipt.make_purchase_receipt",
+    # Ensure Delivery Note mapping uses remaining qty excluding Draft DNs
+    "erpnext.selling.doctype.sales_order.sales_order.make_delivery_note": "generate_item.utils.delivery_note.make_delivery_note",
+    # Ensure Sales Invoice mapping from Delivery Note excludes Draft SI qty
+    "erpnext.stock.doctype.delivery_note.delivery_note.make_sales_invoice": "generate_item.utils.sales_invoice.make_sales_invoice",
+    # "erpnext.stock.get_item_details.get_item_details": "generate_item.utils.purchase_order.get_item_details",
+    # Ensure Production Plan Get Items for MR returns BOM and drawing
+    "erpnext.manufacturing.doctype.production_plan.production_plan.get_items_for_material_requests": "generate_item.overrides.production_plan.get_items_for_material_requests_patched"
 }
 #
 # each overriding function accepts a `data` argument;
@@ -267,7 +281,9 @@ override_whitelisted_methods = {
 
 # User Data Protection
 # --------------------
-
+queries = {
+    "Delivery Note.sales_order": "generate_item.utils.delivery_note.get_dispatchable_sales_orders",
+}
 # user_data_fields = [
 # 	{
 # 		"doctype": "{doctype_1}",

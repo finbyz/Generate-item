@@ -58,11 +58,12 @@ frappe.ui.form.on('Purchase Receipt', {
                             callback: function(r) {
                                 if (r.message) {
                                     let po_doc = r.message;
+                                    console.log(po_doc)
     
                                     for (let po_item of po_doc.items) {
-                                        if (po_item.item_code === item.item_code) {
-                                            frappe.model.set_value(item.doctype, item.name, 'po_qty', po_item.qty);
+                                        if (po_item.item_code === item.item_code && item.purchase_order_item == po_item.name) {
                                             frappe.model.set_value(item.doctype, item.name, 'po_line_no', po_item.idx);
+                                            frappe.model.set_value(item.doctype, item.name, 'po_qty', po_item.qty);
                                             break; 
                                         }
                                     }
@@ -108,7 +109,7 @@ frappe.ui.form.on('Purchase Receipt', {
                 },
                 allow_child_item_selection: true,
                 child_fieldname: 'items',
-                child_columns: ['idx', 'item_code','item_name','qty', 'received_qty']
+                child_columns: ['po_line_no', 'item_code','item_name','qty', 'received_qty']
             });
         }, __('Get Items From'));
     }

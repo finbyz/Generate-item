@@ -150,3 +150,17 @@ def _populate_subassembly_item_from_sales_order(doc, row):
             ).format(doc.name, getattr(row, "name", ""), str(e)),
             title=_("Production Plan Subassembly SO Sync Error"),
         )
+
+
+@frappe.whitelist()
+def set_actual_qty_for_child_row(cdt, cdn):
+    # Fetch the planned_qty value from the child row
+    planned_qty = frappe.db.get_value(cdt, cdn, 'planned_qty') or 0
+
+    # Get the current actual_qty value
+    actual_qty = frappe.db.get_value(cdt, cdn, 'actual_qty') or 0
+
+    # Set actual_qty = planned_qty only if actual_qty is 0 or None
+    if not actual_qty:
+        frappe.db.set_value(cdt, cdn, 'actual_qty', planned_qty)
+        frappe.db.commit()

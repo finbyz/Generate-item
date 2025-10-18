@@ -1,5 +1,13 @@
 frappe.ui.form.on('BOM', {
     refresh: function(frm) {
+        setTimeout(() => {
+            $('.dropdown-menu a').each(function() {
+                if ($(this).text().trim() === 'Material Request') {
+                    $(this).hide();
+                }
+            });
+        }, 100);
+        
         frm.set_query("custom_batch_no", function() {
             return {
                 filters: {
@@ -29,7 +37,38 @@ frappe.ui.form.on('BOM', {
                 ]
             };
         });
-    }})
+    },
+    branch: function(frm) {
+        const branch_value = frm.doc.branch || '';
+        const rows = frm.doc.items || [];
+
+        rows.forEach(row => {
+            frappe.model.set_value(row.doctype, row.name, 'branch', branch_value);
+        });
+        frm.refresh_field('items');
+    },
+    custom_batch_no: function(frm) {
+        if (frm.doc.custom_batch_no) {
+            frappe.db.get_list('BOM', {
+                fields: ['name', 'custom_batch_no'],
+                filters: {
+                    custom_batch_no: frm.doc.custom_batch_no,
+                    name: ['!=', frm.doc.name] // exclude current BOM
+                },
+                limit: 1
+            }).then(records => {
+                if (records && records.length > 0) {
+                    frappe.msgprint({
+                        title: __('Duplicate Batch Number'),
+                        message: __('Batch No <b>{0}</b> is already used in BOM <b>{1}</b>.', [frm.doc.custom_batch_no, records[0].name]),
+                        indicator: 'red'
+                    });
+                    frm.set_value('custom_batch_no', '');
+                }
+            });
+        }
+    }
+})
 
 
         

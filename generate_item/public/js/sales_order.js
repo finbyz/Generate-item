@@ -1,5 +1,15 @@
 frappe.ui.form.on('Sales Order', {
     refresh: function(frm) {
+        frm.fields_dict.items.grid.get_field('component_of').get_query = function(doc, cdt, cdn) {
+            let child = locals[cdt][cdn];
+
+            // Only show items from same Sales Order
+            return {
+                filters: {
+                    name: ["in", frm.doc.items.map(i => i.item_code)]
+                }
+            };
+        };
 
         if (!frm.doc.__islocal) {
             frm.add_custom_button(__('BOM'), function() {
@@ -183,6 +193,15 @@ frappe.ui.form.on('Sales Order', {
     onload: function(frm) {
         handle_item_generator_return(frm);
     },
+    branch: function(frm) {
+        const branch_value = frm.doc.branch || '';
+        const rows = frm.doc.items || [];
+
+        rows.forEach(row => {
+            frappe.model.set_value(row.doctype, row.name, 'branch', branch_value);
+        });
+        frm.refresh_field('items');
+    },
     after_save: function(frm) {
         if (frm.doc.amended_from) {
             update_batch_links(frm);
@@ -294,6 +313,22 @@ frappe.ui.form.on('Sales Order Item', {
     item_code: function(frm, cdt, cdn) {
         let row = locals[cdt][cdn];
         let entered_item_code = frm.last_entered_item_codes ? frm.last_entered_item_codes[cdn] : null;
+        if (entered_item_code) {
+            frappe.db.get_value('Item', entered_item_code, 'item_group')
+                .then(r => {
+                    if (r.message && r.message.item_group === "Services") {
+                        frappe.model.set_value(cdt, cdn, 'qty', 1);
+                            row.is_service_item = true;
+                    } else {
+                        row.is_service_item = false;
+                    }
+                    
+                    // Refresh the field
+                    frm.refresh_field('items');
+                });
+            }
+
+        
 
         if (!row.item_code && entered_item_code && entered_item_code.trim() !== '') {
             frappe.db.exists('Item', entered_item_code).then(exists => {
@@ -310,6 +345,22 @@ frappe.ui.form.on('Sales Order Item', {
                 }
             });
         }
+    },
+     qty: function(frm, cdt, cdn) {
+        let row = locals[cdt][cdn];
+        
+        // Check if it's a service item and qty is not provided
+        if (row.is_service_item && (!row.qty || row.qty <= 0)) {
+            frappe.msgprint(__('Service items require quantity greater than 0.'));
+            frappe.model.set_value(cdt, cdn, 'qty', 1);
+            frm.refresh_field('items');
+        }
+    },
+    
+    items_add: function(frm, cdt, cdn) {
+        setTimeout(() => {
+            update_component_of_options(frm);
+        }, 200);
     },
     custom_item_generator: async function(frm, cdt, cdn) {
         try {
