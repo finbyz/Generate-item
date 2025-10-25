@@ -99,3 +99,22 @@ def update_supplied_items_in_db(parent, data):
         )
     frappe.db.commit()
     return "Supplied items updated successfully in DB."
+
+
+
+def before_save(doc, method):
+    """Set custom_batch_no from BOM in items and supplied_items"""
+    
+    # Update custom_batch_no in items table
+    for item in doc.items:
+        if not item.custom_batch_no and item.bom:
+            batch_no = frappe.get_value("BOM", item.bom, "custom_batch_no")
+            if batch_no:
+                item.custom_batch_no = batch_no
+    
+def before_submit(doc, method):
+    for supplied_item in doc.supplied_items:
+        if not supplied_item.custom_batch_no and supplied_item.bom_reference:
+            batch_no = frappe.get_value("BOM", supplied_item.bom_reference, "custom_batch_no")
+            if batch_no:
+                supplied_item.custom_batch_no = batch_no

@@ -183,7 +183,9 @@ doc_events = {
     },
     "Subcontracting Order": {
         "before_insert": "generate_item.utils.subcontracting_order.before_insert",
-        "validate": "generate_item.utils.subcontracting_order.validate"
+        "validate": "generate_item.utils.subcontracting_order.validate",
+        "before_save": "generate_item.utils.subcontracting_order.before_save",
+        "after_save": "generate_item.utils.subcontracting_order.after_save"
     },
     "Material Request":{
         "before_insert": "generate_item.utils.material_request.before_insert",

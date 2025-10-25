@@ -889,11 +889,11 @@ class ProductionPlan(_ProductionPlan):
                         custom_batch_no = po_item.custom_batch_no
                         break
 
-            # Check for existing material requests with same sales order and linking_batch == custom_batch_no
+            # Check for existing material requests with same item_code and custom_batch_no
             existing_qty = 0
-            if getattr(item, "sales_order", None) and custom_batch_no:
+            if custom_batch_no:
                 existing_qty = self._get_existing_material_request_qty(
-                    item.sales_order, 
+                    getattr(item, "sales_order", None), 
                     item.item_code, 
                     custom_batch_no
                 )
@@ -906,7 +906,7 @@ class ProductionPlan(_ProductionPlan):
                     frappe.log_error(
                         "Material Request Qty Adjustment",
                         f"Item {item.item_code}: Original qty={original_qty}, Existing MR qty={existing_qty}, "
-                        f"Adjusted qty={item.quantity} for Sales Order {item.sales_order} and batch {custom_batch_no}"
+                        f"Adjusted qty={item.quantity} for batch {custom_batch_no}"
                     )
                     
                     # Skip this item if quantity becomes zero or negative
@@ -1229,10 +1229,11 @@ class ProductionPlan(_ProductionPlan):
             }
 
     def _get_existing_material_request_qty(self, sales_order, item_code, custom_batch_no):
-        """Get existing material request quantity for the same sales order and linking_batch == custom_batch_no
+        """Get existing material request quantity for the same item_code and custom_batch_no
+        regardless of whether the MR came from Sales Order or Production Plan
         
         Args:
-            sales_order (str): Sales Order name
+            sales_order (str): Sales Order name (for logging purposes)
             item_code (str): Item code
             custom_batch_no (str): Custom batch number from production plan
             
@@ -1240,25 +1241,28 @@ class ProductionPlan(_ProductionPlan):
             float: Total existing quantity in material requests
         """
         try:
-            # Query to find existing material requests with same sales order and linking_batch == custom_batch_no
+            # Query to find existing material requests with same item_code and custom_batch_no
+            # Check both MR items with custom_batch_no and MR header with linked_batch
             existing_mr_data = frappe.db.sql("""
                 SELECT 
                     SUM(mri.qty) as total_qty
                 FROM `tabMaterial Request Item` mri
                 INNER JOIN `tabMaterial Request` mr ON mri.parent = mr.name
                 WHERE mr.docstatus IN (0, 1)
-                AND mri.sales_order = %s
                 AND mri.item_code = %s
-                AND mr.linked_batch = %s
+                AND (
+                    mri.custom_batch_no = %s 
+                    OR mr.linked_batch = %s
+                )
                 AND mr.name != %s
-            """, (sales_order, item_code, custom_batch_no, self.name or ""), as_dict=True)
+            """, (item_code, custom_batch_no, custom_batch_no, self.name or ""), as_dict=True)
             
             total_qty = flt(existing_mr_data[0].total_qty) if existing_mr_data else 0
             
             frappe.log_error(
                 "Existing Material Request Check",
-                f"Sales Order: {sales_order}, Item: {item_code}, Batch: {custom_batch_no}, "
-                f"Existing MR Qty: {total_qty}"
+                f"Item: {item_code}, Batch: {custom_batch_no}, "
+                f"Existing MR Qty: {total_qty} (checked both MR items and MR header)"
             )
             
             return total_qty
@@ -1266,8 +1270,8 @@ class ProductionPlan(_ProductionPlan):
         except Exception as e:
             frappe.log_error(
                 "Material Request Qty Check Error",
-                f"Error checking existing material request qty for SO {sales_order}, "
-                f"Item {item_code}, Batch {custom_batch_no}: {str(e)}"
+                f"Error checking existing material request qty for Item {item_code}, "
+                f"Batch {custom_batch_no}: {str(e)}"
             )
             return 0
 

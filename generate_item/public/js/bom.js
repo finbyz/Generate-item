@@ -40,12 +40,30 @@ frappe.ui.form.on('BOM', {
     },
     branch: function(frm) {
         const branch_value = frm.doc.branch || '';
+        
+        // Branch abbreviation mapping
+        const branch_abbr_map = {
+            'Rabale': 'RA',
+            'Nandikoor': 'NA',
+            'Sanand': 'SA'
+        };
+        
+        // Set branch abbreviation based on branch value
+        if (branch_abbr_map[branch_value]) {
+            frm.set_value('branch_abbr', branch_abbr_map[branch_value]);
+        } else {
+            frm.set_value('branch_abbr', '');
+        }
+        
+        // Update branch in child table items
         const rows = frm.doc.items || [];
-
-        rows.forEach(row => {
-            frappe.model.set_value(row.doctype, row.name, 'branch', branch_value);
-        });
-        frm.refresh_field('items');
+        
+        if (rows.length > 0) {
+            rows.forEach(row => {
+                frappe.model.set_value(row.doctype, row.name, 'branch', branch_value);
+            });
+            frm.refresh_field('items');
+        }
     },
     custom_batch_no: function(frm) {
         if (frm.doc.custom_batch_no) {

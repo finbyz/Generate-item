@@ -21,7 +21,6 @@ frappe.ui.form.on('Subcontracting Order Item', {
                 callback: function(r) {
                     if (r.message && Object.keys(r.message).length > 0) {
                         let bom_item = r.message;
-                        
                         // Update custom fields from BOM Item to items table
                         frappe.model.set_value(row.doctype, row.name, {
                             "custom_drawing_no": bom_item.custom_drawing_no || "",

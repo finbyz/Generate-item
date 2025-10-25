@@ -55,7 +55,8 @@ frappe.ui.form.on('Sales Order', {
                                     item: values.item,
                                     custom_batch_no: so_item.custom_batch_no || "",   // from SO child table
                                     quantity: so_item.qty || 1,
-                                    sales_order: frm.doc.name,   
+                                    sales_order: frm.doc.name,
+                                    branch : frm.doc.branch,   
                                     items: [
                                         {
                                             item_code: values.item,
