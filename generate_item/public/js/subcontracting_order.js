@@ -1,114 +1,3 @@
-// frappe.ui.form.on('Subcontracting Order', {
-//     onload: function(frm) {
-//         if (frm.doc.custom_batch_no) {
-//             set_batch_no_in_items(frm, frm.doc.custom_batch_no);
-//         }
-
-//     },
-
-//     custom_batch_no: function(frm) {
-//         // Whenever batch is manually set/changed, update in items
-//         if (frm.doc.custom_batch_no) {
-//             set_batch_no_in_items(frm, frm.doc.custom_batch_no);
-//         }
-//     },
-//     before_submit: function(frm) {
-//         if (!frm._bom_fields_fetched) {
-//             fetch_bom_custom_fields_on_load(frm);
-//             frm._bom_fields_fetched = true;
-//         }
-//     }
-// });
-
-// // Helper function to set batch no in items table
-// function set_batch_no_in_items(frm, batch_no) {
-//     if (frm.doc.items && frm.doc.items.length > 0) {
-//         frm.doc.items.forEach(item => {
-//             frappe.model.set_value(item.doctype, item.name, 'custom_batch_no', batch_no);
-//         });
-//         frm.refresh_field('items');
-//     }
-// }
-
-// // Helper function to fetch BOM custom fields on form load/refresh
-// function fetch_bom_custom_fields_on_load(frm) {
-//     if (frm.doc.items && frm.doc.items.length > 0) {
-//         frm.doc.items.forEach((item, index) => {
-//             // Check for both bom_no and bom field names
-//             let bom_value = item.bom_no || item.bom;
-            
-//             if (bom_value && item.item_code) {
-//                 // Fetch custom fields for items table
-//                 frappe.call({
-//                     method: "generate_item.api.bom_item.get_bom_item_custom_fields",
-//                     args: {
-//                         bom_no: bom_value,
-//                         item_code: item.item_code
-//                     },
-//                     callback: function(r) {
-//                         if (r.message && Object.keys(r.message).length > 0) {
-//                             let bom_item = r.message;
-                            
-//                             // Update custom fields in items table
-//                             frappe.model.set_value(item.doctype, item.name, {
-//                                 "custom_drawing_no": bom_item.custom_drawing_no || "",
-//                                 "custom_pattern_drawing_no": bom_item.custom_pattern_drawing_no || "",
-//                                 "custom_purchase_specification_no": bom_item.custom_purchase_specification_no || "",
-//                                 "custom_drawing_rev_no": bom_item.custom_drawing_rev_no || "",
-//                                 "custom_pattern_drawing_rev_no": bom_item.custom_pattern_drawing_rev_no || "",
-//                                 "custom_purchase_specification_rev_no": bom_item.custom_purchase_specification_rev_no || ""
-//                             });
-                            
-//                             frm.refresh_field('items');
-//                         }
-//                     }
-//                 });
-//             }
-//         });
-        
-//         // Also process supplied_items on load
-//         if (frm.doc.supplied_items && frm.doc.supplied_items.length > 0) {
-//             frm.doc.supplied_items.forEach((supplied_item, index) => {
-//                 if (supplied_item.rm_item_code) {
-//                     // Find the corresponding BOM from items table
-//                     let corresponding_item = frm.doc.items.find(item => 
-//                         item.item_code === supplied_item.main_item_code
-//                     );
-                    
-//                     let corresponding_bom = corresponding_item ? (corresponding_item.bom_no || corresponding_item.bom) : null;
-                    
-//                     if (corresponding_item && corresponding_bom) {
-//                         frappe.call({
-//                             method: "generate_item.api.bom_item.get_bom_item_custom_fields",
-//                             args: {
-//                                 bom_no: corresponding_bom,
-//                                 item_code: supplied_item.rm_item_code
-//                             },
-//                             callback: function(supplied_r) {
-//                                 if (supplied_r.message && Object.keys(supplied_r.message).length > 0) {
-//                                     let supplied_bom_item = supplied_r.message;
-                                    
-//                                     // Update custom fields in supplied_items
-//                                     frappe.model.set_value(supplied_item.doctype, supplied_item.name, {
-//                                         "custom_drawing_no": supplied_bom_item.custom_drawing_no || "",
-//                                         "custom_pattern_drawing_no": supplied_bom_item.custom_pattern_drawing_no || "",
-//                                         "custom_purchase_specification_no": supplied_bom_item.custom_purchase_specification_no || "",
-//                                         "custom_drawing_rev_no": supplied_bom_item.custom_drawing_rev_no || "",
-//                                         "custom_pattern_drawing_rev_no": supplied_bom_item.custom_pattern_drawing_rev_no || "",
-//                                         "custom_purchase_specification_rev_no": supplied_bom_item.custom_purchase_specification_rev_no || ""
-//                                     });
-                                    
-//                                     frm.refresh_field('supplied_items');
-//                                 }
-//                             }
-//                         });
-//                     }
-//                 }
-//             });
-//         }
-//     }
-// }
-
 frappe.ui.form.on('Subcontracting Order Item', {
     item_code: function(frm, cdt, cdn) {
         let row = locals[cdt][cdn];
@@ -140,7 +29,9 @@ frappe.ui.form.on('Subcontracting Order Item', {
                             "custom_purchase_specification_no": bom_item.custom_purchase_specification_no || "",
                             "custom_drawing_rev_no": bom_item.custom_drawing_rev_no || "",
                             "custom_pattern_drawing_rev_no": bom_item.custom_pattern_drawing_rev_no || "",
-                            "custom_purchase_specification_rev_no": bom_item.custom_purchase_specification_rev_no || ""
+                            "custom_purchase_specification_rev_no": bom_item.custom_purchase_specification_rev_no || "",
+                            "custom_batch_no": bom_item.custom_batch_no || "",
+                            "bom_reference": bom_item.parent || ""
                         });
                         
                         frm.refresh_field('items');
@@ -168,7 +59,9 @@ frappe.ui.form.on('Subcontracting Order Item', {
                                                     "custom_purchase_specification_no": supplied_bom_item.custom_purchase_specification_no || "",
                                                     "custom_drawing_rev_no": supplied_bom_item.custom_drawing_rev_no || "",
                                                     "custom_pattern_drawing_rev_no": supplied_bom_item.custom_pattern_drawing_rev_no || "",
-                                                    "custom_purchase_specification_rev_no": supplied_bom_item.custom_purchase_specification_rev_no || ""
+                                                    "custom_purchase_specification_rev_no": supplied_bom_item.custom_purchase_specification_rev_no || "",
+                                                    "custom_batch_no": supplied_bom_item.custom_batch_no || "",
+                                                    "bom_reference": supplied_bom_item.parent || ""
                                                 });
                                                 
                                                 frm.refresh_field('supplied_items');
