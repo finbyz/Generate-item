@@ -1,16 +1,14 @@
 frappe.ui.form.on('Sales Order', {
     refresh: function(frm) {
-        frm.fields_dict.items.grid.get_field('component_of').get_query = function(doc, cdt, cdn) {
-            let child = locals[cdt][cdn];
-
-            // Only show items from same Sales Order
+        frm.fields_dict["items"].grid.get_field("component_of").get_query = function(doc, cdt, cdn) {
+            // Get all item_code values in the current Sales Order
+            const item_codes = (doc.items || [])
+                .map(row => row.item_code)
+                .filter(code => code && code !== locals[cdt][cdn].item_code); // exclude self
             return {
-                filters: {
-                    name: ["in", frm.doc.items.map(i => i.item_code)]
-                }
+                filters: [["name", "in", item_codes]]
             };
         };
-
         if (!frm.doc.__islocal) {
             frm.add_custom_button(__('BOM'), function() {
                 let so_items = frm.doc.items || [];
@@ -310,6 +308,9 @@ frappe.ui.form.on('Sales Order', {
 });
 
 frappe.ui.form.on('Sales Order Item', {
+    component_of: function(frm, cdt, cdn) {
+        frm.refresh_field("items"); // Ensures UI & backend sync
+    },
     item_code: function(frm, cdt, cdn) {
         let row = locals[cdt][cdn];
         let entered_item_code = frm.last_entered_item_codes ? frm.last_entered_item_codes[cdn] : null;
@@ -357,11 +358,6 @@ frappe.ui.form.on('Sales Order Item', {
         }
     },
     
-    items_add: function(frm, cdt, cdn) {
-        setTimeout(() => {
-            update_component_of_options(frm);
-        }, 200);
-    },
     custom_item_generator: async function(frm, cdt, cdn) {
         try {
             let row = locals[cdt][cdn];

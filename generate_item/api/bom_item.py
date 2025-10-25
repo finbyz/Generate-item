@@ -18,7 +18,9 @@ def get_bom_item_custom_fields(bom_no, item_code):
             "custom_pattern_drawing_rev_no",
             "custom_purchase_specification_no",
             "custom_purchase_specification_rev_no",
-            "custom_batch_no"
+            "custom_batch_no",
+            "parent",
+            
         ],
         as_dict=True
     )

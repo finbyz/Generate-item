@@ -51,5 +51,5 @@ def before_save(doc, method=None):
                 raise_exception=True
                 )
         if i.is_free_item:
-            if i.qty != 0:
+            if i.qty == 0:
                 frappe.throw("Quantity cannot be 0 for free items.")

@@ -1,5 +1,6 @@
 import frappe
 
+
 def before_insert(doc, method):
     """Set custom_batch_no for subcontracting order and its items from purchase order"""
     if not doc.purchase_order:
@@ -69,3 +70,32 @@ def validate(doc, method):
             )
             if mr_item:
                 so_item.production_plan = mr_item
+
+
+
+import frappe, json
+
+@frappe.whitelist()
+def update_supplied_items_in_db(parent, data):
+    data = json.loads(data)
+    for row in data:
+        if not row.get("name"):
+            continue
+
+        # Corrected table name for ERPNext v15
+        frappe.db.set_value(
+            "Subcontracting Order Supplied Item",  # corrected name
+            row["name"],
+            {
+                "custom_drawing_no": row.get("custom_drawing_no", ""),
+                "custom_pattern_drawing_no": row.get("custom_pattern_drawing_no", ""),
+                "custom_purchase_specification_no": row.get("custom_purchase_specification_no", ""),
+                "custom_drawing_rev_no": row.get("custom_drawing_rev_no", ""),
+                "custom_pattern_drawing_rev_no": row.get("custom_pattern_drawing_rev_no", ""),
+                "custom_purchase_specification_rev_no": row.get("custom_purchase_specification_rev_no", ""),
+                "custom_batch_no": row.get("custom_batch_no", ""),
+                "bom_reference": row.get("bom_reference", "")
+            }
+        )
+    frappe.db.commit()
+    return "Supplied items updated successfully in DB."

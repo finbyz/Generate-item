@@ -728,6 +728,18 @@ def get_columns():
             "options": "UOM",
             "width": 80
         },
+         {
+            "fieldname": "custom_drawing_no",
+            "label": _("Drawing No (As per Bom)"),
+            "fieldtype": "Data",
+            "width": 80
+        },
+         {
+            "fieldname": "custom_drawing_rev_no",
+            "label": _("Drawing Rev No (As per Bom)"),
+            "fieldtype": "Data",
+            "width": 80
+        },
         {
             "fieldname": "per_valve_input",
             "label": _("Per Valve Input Material Qty"),
@@ -752,6 +764,12 @@ def get_columns():
             "fieldtype": "Float",
             "width": 100
         },
+         {
+            "fieldname": "allocated_qty",
+            "label": _("Allocated Qty"),
+            "fieldtype": "Float",
+            "width": 100
+        },
         {
             "fieldname": "on_hand_qty",
             "label": _("On hand Qty"),
@@ -759,14 +777,26 @@ def get_columns():
             "width": 110
         },
         {
-            "fieldname": "after_29_nov",
-            "label": _("After 29-Nov"),
-            "fieldtype": "Float",
-            "width": 110
-        },
-        {
             "fieldname": "shortage_qty",
             "label": _("Shortage Qty"),
+            "fieldtype": "Float",
+            "width": 120
+        },
+         {
+            "fieldname": "po_qty",
+            "label": _("PO Qty"),
+            "fieldtype": "Float",
+            "width": 120
+        },
+         {
+            "fieldname": "po_received_qty",
+            "label": _("PO Received Qty"),
+            "fieldtype": "Float",
+            "width": 120
+        },
+         {
+            "fieldname": "stock_transfer_qty",
+            "label": _("Stock Transfer Qty(from PP)"),
             "fieldtype": "Float",
             "width": 120
         },
@@ -784,6 +814,14 @@ def get_columns():
             "options": "Material Request",
             "width": 150
         },
+         {
+            "fieldname": "material_transferrequest_no",
+            "label": _("Material Transfer Request No.."),
+            "fieldtype": "Data",
+            "width": 150
+        },
+
+
         {
             "fieldname": "material_transfer_no",
             "label": _("Material Transfer No."),
@@ -805,8 +843,14 @@ def get_columns():
             "width": 100
         },
         {
-            "fieldname": "po_line_required_by",
-            "label": _("PO Line, Required By"),
+            "fieldname": "po_line_no",
+            "label": _("PO Line No"),
+            "fieldtype": "Date",
+            "width": 140
+        },
+         {
+            "fieldname": "required_by",
+            "label": _("Required By"),
             "fieldtype": "Date",
             "width": 140
         },
@@ -828,7 +872,7 @@ def get_data(filters):
         filters["age"] = 0
         
     data = frappe.db.sql(f"""
-    SELECT
+    SELECT DISTINCT
         -- Production Plan Info
         pp.name AS production_plan_no,
         pp.posting_date AS pp_date,
@@ -853,17 +897,51 @@ def get_data(filters):
         COALESCE(woi.description, mri.description, poi.description) AS input_item_description,
         COALESCE(woi.stock_uom, mri.stock_uom, poi.stock_uom) AS uom,
         
-        -- Quantities from Work Order Item
+        -- Drawing Numbers from BOM Item
+        COALESCE(woi.custom_drawing_no, mri.custom_drawing_no, poi.custom_drawing_no) AS custom_drawing_no,
+        COALESCE(woi.custom_drawing_rev_no, mri.custom_drawing_rev_no, poi.custom_drawing_rev_no) AS custom_drawing_rev_no,
+        
+        -- Per Valve Input Material Qty - Direct fetch from BOM
         CASE 
             WHEN woi.item_code IS NOT NULL AND wo.qty > 0 THEN (woi.required_qty / wo.qty)
             ELSE 0
         END AS per_valve_input,
         
-        -- Total Required Qty (prioritize WO, then MR, then PO)
-        COALESCE(woi.required_qty, mri.qty, poi.qty, 0) AS total_req_qty,
+        -- Total Required Qty = Per Valve Input Material Qty x FG to be Produce Qty
+        CASE 
+            WHEN woi.item_code IS NOT NULL AND wo.qty > 0 THEN 
+                (woi.required_qty / wo.qty) * wo.qty
+            ELSE COALESCE(woi.required_qty, mri.qty, poi.qty, 0)
+        END AS total_req_qty,
         
-        -- Issued Qty (WO transferred + MR received + PO received)
-        COALESCE(woi.transferred_qty, 0) + COALESCE(mri.received_qty, 0) + COALESCE(poi.received_qty, 0) AS issued_qty,
+        -- Issued Qty - Against Work Order Issue Qty Store to Production
+        COALESCE(woi.transferred_qty, 0) AS issued_qty,
+        
+        -- Allocated Qty = PO Qty + Stock Transfer Qty
+        (COALESCE(poi.qty, 0) + IFNULL((
+            SELECT SUM(sed.qty)
+            FROM `tabStock Entry Detail` sed
+            INNER JOIN `tabStock Entry` se ON se.name = sed.parent
+            WHERE sed.material_request = mr.name
+            AND sed.item_code = COALESCE(woi.item_code, mri.item_code, poi.item_code)
+            AND se.purpose = 'Material Transfer'
+            AND se.docstatus IN (0, 1)
+        ), 0)) AS allocated_qty,
+        
+        -- PO Quantities
+        COALESCE(poi.qty, 0) AS po_qty,
+        COALESCE(poi.received_qty, 0) AS po_received_qty,
+        
+        -- Stock Transfer Qty from Production Plan (Material Transfer Stock Entries)
+        IFNULL((
+            SELECT SUM(sed.qty)
+            FROM `tabStock Entry Detail` sed
+            INNER JOIN `tabStock Entry` se ON se.name = sed.parent
+            WHERE sed.material_request = mr.name
+            AND sed.item_code = COALESCE(woi.item_code, mri.item_code, poi.item_code)
+            AND se.purpose = 'Material Transfer'
+            AND se.docstatus IN (0, 1)
+        ), 0) AS stock_transfer_qty,
         
         -- Individual quantities for reference
         woi.required_qty AS wo_total_req_qty,
@@ -871,10 +949,8 @@ def get_data(filters):
         mri.qty AS mr_qty,
         mri.ordered_qty AS mr_ordered_qty,
         mri.received_qty AS mr_received_qty,
-        poi.qty AS po_qty,
-        poi.received_qty AS po_received_qty,
         
-        -- On Hand Quantity
+        -- On Hand Quantity (Store and RM Combined Qty)
         IFNULL((
             SELECT SUM(bin.projected_qty)
             FROM `tabBin` bin
@@ -883,30 +959,27 @@ def get_data(filters):
                 SELECT wh.name
                 FROM `tabWarehouse` wh
                 WHERE wh.company = pp.company
-                AND wh.raw_material_warehouse = 1
-                AND wh.store_warehouse = 1
+                AND (wh.raw_material_warehouse = 1 OR wh.store_warehouse = 1)
             )
         ), 0) AS on_hand_qty,
         
-        -- Shortage Calculation
+        -- Shortage Calculation = Total Req. Qty - Allocated Qty
         GREATEST(
             0,
-            COALESCE(woi.required_qty, mri.qty, poi.qty, 0)
-            - IFNULL(woi.transferred_qty, 0)
-            - IFNULL(mri.received_qty, 0)
-            - IFNULL(poi.received_qty, 0)
-            - IFNULL((
-                SELECT SUM(bin.projected_qty)
-                FROM `tabBin` bin
-                WHERE bin.item_code = COALESCE(woi.item_code, mri.item_code, poi.item_code)
-                AND bin.warehouse IN (
-                    SELECT wh.name
-                    FROM `tabWarehouse` wh
-                    WHERE wh.company = pp.company
-                    AND wh.raw_material_warehouse = 1
-                    AND wh.store_warehouse = 1
-                )
-            ), 0)
+            CASE 
+                WHEN woi.item_code IS NOT NULL AND wo.qty > 0 THEN 
+                    (woi.required_qty / wo.qty) * wo.qty
+                ELSE COALESCE(woi.required_qty, mri.qty, poi.qty, 0)
+            END
+            - (COALESCE(poi.qty, 0) + IFNULL((
+                SELECT SUM(sed.qty)
+                FROM `tabStock Entry Detail` sed
+                INNER JOIN `tabStock Entry` se ON se.name = sed.parent
+                WHERE sed.material_request = mr.name
+                AND sed.item_code = COALESCE(woi.item_code, mri.item_code, poi.item_code)
+                AND se.purpose = 'Material Transfer'
+                AND se.docstatus IN (0, 1)
+            ), 0))
         ) AS shortage_qty,
         
         -- Material Request Info
@@ -915,6 +988,12 @@ def get_data(filters):
         mr.material_request_type,
         mr.status AS mr_status,
         mr.schedule_date AS mr_schedule_date,
+        
+        -- Material Transfer Request (Material Request with type 'Material Transfer')
+        CASE 
+            WHEN mr.material_request_type = 'Material Transfer' THEN mr.name
+            ELSE NULL
+        END AS material_transferrequest_no,
         
         -- Stock Entry Info (combined from both sources)
         COALESCE(se.name, se_mr.name) AS material_transfer_no,
@@ -927,6 +1006,8 @@ def get_data(filters):
         po.supplier_name,
         po.status AS po_status,
         poi.schedule_date AS po_line_required_by,
+        poi.name AS po_line_no,
+        poi.schedule_date AS required_by,
         
         -- Additional fields
         0 AS after_29_nov,
@@ -938,7 +1019,18 @@ def get_data(filters):
             WHEN mr.name IS NOT NULL AND wo.name IS NULL THEN 'Material Request'
             WHEN po.name IS NOT NULL AND mr.name IS NULL AND wo.name IS NULL THEN 'Direct Purchase Order'
             ELSE 'Production Plan Only'
-        END AS source_type
+        END AS source_type,
+        
+        -- Unique identifier for duplicate detection
+        CONCAT(
+            COALESCE(pp.name, ''),
+            '|',
+            COALESCE(wo.name, ''),
+            '|',
+            COALESCE(woi.item_code, mri.item_code, poi.item_code, ''),
+            '|',
+            COALESCE(woi.name, mri.name, poi.name, '')
+        ) AS unique_key
 
     FROM
         `tabProduction Plan` pp
@@ -956,7 +1048,7 @@ def get_data(filters):
     LEFT JOIN
         `tabMaterial Request Item` mri ON mri.production_plan = pp.name
         AND mri.docstatus IN (0, 1)
-        AND (mri.item_code = woi.item_code OR woi.item_code IS NULL)
+        AND (woi.item_code IS NULL OR mri.item_code = woi.item_code)
     
     LEFT JOIN
         `tabMaterial Request` mr ON mr.name = mri.parent
@@ -994,9 +1086,27 @@ def get_data(filters):
         pp.docstatus IN (0, 1)
         {conditions}
     
+    GROUP BY
+        pp.name, wo.name, woi.item_code, mri.item_code, poi.item_code
+    
     ORDER BY
         pp.posting_date DESC, pp.name DESC, wo.planned_start_date ASC
 """, filters, as_dict=1)
+    
+    # Remove duplicates based on unique_key
+    seen_keys = set()
+    unique_data = []
+    
+    for row in data:
+        unique_key = row.get("unique_key")
+        if unique_key and unique_key not in seen_keys:
+            seen_keys.add(unique_key)
+            unique_data.append(row)
+        elif not unique_key:
+            # Include rows without unique_key (shouldn't happen but safety check)
+            unique_data.append(row)
+    
+    data = unique_data
     
     # Calculate age and apply age filter
     for row in data:

@@ -78,4 +78,12 @@ frappe.ui.form.on("Delivery Note", {
             );
         }
     },
+     onload(frm) {
+        const is_delivery_user = frappe.user_roles.includes("Delivery User");
+
+        if (is_delivery_user) {
+            
+            frm.set_df_property("customer_address", "read_only", 1);
+        }
+    }
 });

@@ -62,6 +62,38 @@ class ProductionPlan(_ProductionPlan):
         if not wo_list:
             frappe.msgprint(_("No Work Orders were created"))
 
+    def make_work_order_for_finished_goods(self, wo_list, default_warehouses):
+        """Override to add naming series for finished goods work orders"""
+        from erpnext.manufacturing.doctype.work_order.work_order import get_default_warehouse
+        
+        # Get naming series mapping
+        series_mapping = self._get_naming_series_mapping()
+        work_order_naming_series = series_mapping.get('work_order_fg', 'WOFS.YY.####')
+        
+        frappe.log_error(
+            "Work Order Naming Series - Finished Goods",
+            f"Setting naming_series={work_order_naming_series} for finished goods work orders"
+        )
+        
+        # Call the parent method
+        super().make_work_order_for_finished_goods(wo_list, default_warehouses)
+        
+        # Update naming series for created work orders
+        for wo_name in wo_list:
+            try:
+                wo_doc = frappe.get_doc("Work Order", wo_name)
+                if wo_doc.naming_series != work_order_naming_series:
+                    wo_doc.db_set("naming_series", work_order_naming_series, update_modified=False)
+                    frappe.log_error(
+                        "Work Order Naming Series Updated",
+                        f"Updated naming_series to {work_order_naming_series} for Work Order {wo_name}"
+                    )
+            except Exception as e:
+                frappe.log_error(
+                    "Work Order Naming Series Update Error",
+                    f"Error updating naming series for Work Order {wo_name}: {str(e)}"
+                )
+
     @frappe.whitelist()
     def get_sub_assembly_items(self, manufacturing_type=None):
         """Override to ensure sub_assembly_items inherit custom fields from po_items"""
@@ -524,6 +556,27 @@ class ProductionPlan(_ProductionPlan):
             if work_order_data.get("qty") <= 0:
                 continue
 
+            # Set naming series for work order based on item type
+            series_mapping = self._get_naming_series_mapping()
+            
+            # Determine if this is a sub-assembly item or finished good
+            is_subassembly = getattr(row, "production_plan_item", None) is not None
+            if is_subassembly:
+                work_order_naming_series = series_mapping.get('work_order_subassembly', 'WOAS.YY.####')
+                frappe.log_error(
+                    "Work Order Naming Series - Sub Assembly",
+                    f"Setting naming_series={work_order_naming_series} for sub-assembly item {getattr(row, 'production_item', 'Unknown')}"
+                )
+            else:
+                work_order_naming_series = series_mapping.get('work_order_fg', 'WOFS.YY.####')
+                frappe.log_error(
+                    "Work Order Naming Series - Finished Good",
+                    f"Setting naming_series={work_order_naming_series} for FG item {getattr(row, 'production_item', 'Unknown')}"
+                )
+            
+            # Add naming series to work order data
+            work_order_data["naming_series"] = work_order_naming_series
+            
             work_order = self.create_work_order(work_order_data)
             if work_order:
                 # Ensure custom fields are actually set on the created Work Order
@@ -812,6 +865,8 @@ class ProductionPlan(_ProductionPlan):
         1. For each raw material in mr_items, find which assembly BOM contains it
         2. Copy custom fields from that BOM item to the Material Request item
         3. Group MRs by Sales Order, MR Type, and Customer
+        4. Check for existing material requests with same sales order and linking_batch == custom_batch_no
+        5. Reduce existing qty from making qty in production plan
         """
         from frappe import _, msgprint
         from frappe.utils import add_days, nowdate, cint, comma_and, get_link_to_form
@@ -825,6 +880,42 @@ class ProductionPlan(_ProductionPlan):
                 
             item_doc = frappe.get_cached_doc("Item", item.item_code)
             material_request_type = item.material_request_type or item_doc.default_material_request_type
+
+            # Get custom_batch_no from production plan po_items
+            custom_batch_no = None
+            if hasattr(self, 'po_items') and self.po_items:
+                for po_item in self.po_items:
+                    if hasattr(po_item, 'custom_batch_no') and po_item.custom_batch_no:
+                        custom_batch_no = po_item.custom_batch_no
+                        break
+
+            # Check for existing material requests with same sales order and linking_batch == custom_batch_no
+            existing_qty = 0
+            if getattr(item, "sales_order", None) and custom_batch_no:
+                existing_qty = self._get_existing_material_request_qty(
+                    item.sales_order, 
+                    item.item_code, 
+                    custom_batch_no
+                )
+                
+                # Reduce the quantity by existing material request quantity
+                if existing_qty > 0:
+                    original_qty = flt(item.quantity)
+                    item.quantity = max(0, original_qty - existing_qty)
+                    
+                    frappe.log_error(
+                        "Material Request Qty Adjustment",
+                        f"Item {item.item_code}: Original qty={original_qty}, Existing MR qty={existing_qty}, "
+                        f"Adjusted qty={item.quantity} for Sales Order {item.sales_order} and batch {custom_batch_no}"
+                    )
+                    
+                    # Skip this item if quantity becomes zero or negative
+                    if item.quantity <= 0:
+                        frappe.log_error(
+                            "Material Request Item Skipped",
+                            f"Skipping item {item.item_code} as adjusted quantity is {item.quantity}"
+                        )
+                        continue
 
             # Get customer from Sales Order if available
             customer = ""
@@ -842,13 +933,40 @@ class ProductionPlan(_ProductionPlan):
 
             if key not in material_request_map:
                 mr = frappe.new_doc("Material Request")
+                
+                # Get naming series mapping
+                series_mapping = self._get_naming_series_mapping()
+                
+                # Determine the appropriate naming series based on material request type
+                if material_request_type == "Purchase":
+                    naming_series = series_mapping.get('material_request_purchase', 'PMRS.YY.####')
+                elif material_request_type == "Material Transfer":
+                    naming_series = series_mapping.get('material_request_transfer', 'PTRS.YY.####')
+                else:
+                    naming_series = series_mapping.get('material_request_purchase', 'PMRS.YY.####')
+                
                 mr.update({
                     "transaction_date": nowdate(),
                     "status": "Draft",
                     "company": self.company,
                     "material_request_type": material_request_type,
                     "customer": customer,
+                    "naming_series": naming_series,
                 })
+                
+                # Set linked_batch if custom_batch_no is available
+                if custom_batch_no:
+                    mr.linked_batch = custom_batch_no
+                    frappe.log_error(
+                        "Material Request Linked Batch Set",
+                        f"Setting linked_batch={custom_batch_no} for Material Request"
+                    )
+                
+                frappe.log_error(
+                    "Material Request Naming Series Set",
+                    f"Setting naming_series={naming_series} for Material Request type {material_request_type}"
+                )
+                
                 material_request_map[key] = mr
                 material_request_list.append(mr)
             else:
@@ -866,6 +984,10 @@ class ProductionPlan(_ProductionPlan):
                 "material_request_plan_item": item.name,
                 "project": frappe.db.get_value("Sales Order", item.sales_order, "project") if item.sales_order else None,
             }
+            
+            # Set custom_batch_no on MR item if available
+            if custom_batch_no:
+                mr_item_data["custom_batch_no"] = custom_batch_no
 
             # Find BOM and get custom fields for this MR item
             bom_no, custom_fields = self._get_bom_custom_fields_for_mr_item(item.item_code)
@@ -957,6 +1079,10 @@ class ProductionPlan(_ProductionPlan):
         if material_request_list:
             links = [get_link_to_form("Material Request", m.name) for m in material_request_list]
             msgprint(_("{0} created").format(comma_and(links)))
+            
+            # Show additional info about quantity adjustments if any
+            if custom_batch_no:
+                msgprint(_("Note: Quantities have been adjusted to account for existing Material Requests with the same Sales Order and batch number ({0})").format(custom_batch_no))
         else:
             msgprint(_("No material request created"))
 
@@ -1038,6 +1164,308 @@ class ProductionPlan(_ProductionPlan):
             f"Item {item_code} not found in any assembly BOM. Searched BOMs: {list(assembly_boms)}"
         )
         return None, {}
+
+    def _get_naming_series_mapping(self):
+        """Get naming series mapping based on production plan naming series
+        
+        Returns:
+            dict: Mapping of document types to naming series
+        """
+        try:
+            # Get the production plan naming series
+            pp_series = getattr(self, 'naming_series', None) or ''
+            
+            # Extract the prefix from the naming series (e.g., PPOS, PPOR, PPON)
+            if 'PPOS' in pp_series:
+                prefix = 'PPOS'
+            elif 'PPOR' in pp_series:
+                prefix = 'PPOR'
+            elif 'PPON' in pp_series:
+                prefix = 'PPON'
+            else:
+                # Default to PPOS if no specific prefix found
+                prefix = 'PPOS'
+            
+            # Define naming series mappings
+            series_mapping = {
+                'PPOS': {
+                    'material_request_purchase': 'PMRS.YY.####',
+                    'material_request_transfer': 'PTRS.YY.####',
+                    'work_order_fg': 'WOFS.YY.####',
+                    'work_order_subassembly': 'WOAS.YY.####'
+                },
+                'PPOR': {
+                    'material_request_purchase': 'PMRR.YY.####',
+                    'material_request_transfer': 'PTRR.YY.####',
+                    'work_order_fg': 'WOFS.YY.####',
+                    'work_order_subassembly': 'WOAR.YY.####'
+                },
+                'PPON': {
+                    'material_request_purchase': 'PMRN.YY.####',
+                    'material_request_transfer': 'PTRN.YY.####',
+                    'work_order_fg': 'WOFN.YY.####',
+                    'work_order_subassembly': 'WOAN.YY.####'
+                }
+            }
+            
+            frappe.log_error(
+                "Naming Series Mapping",
+                f"Production Plan series: {pp_series}, Prefix: {prefix}, Mapping: {series_mapping.get(prefix, {})}"
+            )
+            
+            return series_mapping.get(prefix, series_mapping['PPOS'])
+            
+        except Exception as e:
+            frappe.log_error(
+                "Naming Series Mapping Error",
+                f"Error getting naming series mapping: {str(e)}"
+            )
+            # Return default mapping
+            return {
+                'material_request_purchase': 'PMRS.YY.####',
+                'material_request_transfer': 'PTRS.YY.####',
+                'work_order_fg': 'WOFS.YY.####',
+                'work_order_subassembly': 'WOAS.YY.####'
+            }
+
+    def _get_existing_material_request_qty(self, sales_order, item_code, custom_batch_no):
+        """Get existing material request quantity for the same sales order and linking_batch == custom_batch_no
+        
+        Args:
+            sales_order (str): Sales Order name
+            item_code (str): Item code
+            custom_batch_no (str): Custom batch number from production plan
+            
+        Returns:
+            float: Total existing quantity in material requests
+        """
+        try:
+            # Query to find existing material requests with same sales order and linking_batch == custom_batch_no
+            existing_mr_data = frappe.db.sql("""
+                SELECT 
+                    SUM(mri.qty) as total_qty
+                FROM `tabMaterial Request Item` mri
+                INNER JOIN `tabMaterial Request` mr ON mri.parent = mr.name
+                WHERE mr.docstatus IN (0, 1)
+                AND mri.sales_order = %s
+                AND mri.item_code = %s
+                AND mr.linked_batch = %s
+                AND mr.name != %s
+            """, (sales_order, item_code, custom_batch_no, self.name or ""), as_dict=True)
+            
+            total_qty = flt(existing_mr_data[0].total_qty) if existing_mr_data else 0
+            
+            frappe.log_error(
+                "Existing Material Request Check",
+                f"Sales Order: {sales_order}, Item: {item_code}, Batch: {custom_batch_no}, "
+                f"Existing MR Qty: {total_qty}"
+            )
+            
+            return total_qty
+            
+        except Exception as e:
+            frappe.log_error(
+                "Material Request Qty Check Error",
+                f"Error checking existing material request qty for SO {sales_order}, "
+                f"Item {item_code}, Batch {custom_batch_no}: {str(e)}"
+            )
+            return 0
+
+    # def make_subcontracted_purchase_order(self, subcontracted_po, po_list):
+    #     """Enhanced make_subcontracted_purchase_order function to fetch custom fields and transfer them to Purchase Order
+        
+    #     Args:
+    #         subcontracted_po (dict): Dictionary containing subcontracted items grouped by supplier
+    #         po_list (list): List to append created purchase orders
+    #     """
+    #     try:
+    #         for supplier, subcontracted_items in subcontracted_po.items():
+    #             if not subcontracted_items:
+    #                 continue
+                
+    #             # Create Purchase Order
+    #             po = frappe.new_doc("Purchase Order")
+    #             po.supplier = supplier
+    #             po.company = self.company
+    #             po.transaction_date = nowdate()
+    #             po.schedule_date = add_days(nowdate(), 1)
+                
+    #             # Get custom fields from the first subcontracted item's parent po_item
+    #             custom_fields_data = self._get_custom_fields_for_subcontracted_po(subcontracted_items)
+                
+    #             # Set custom fields on Purchase Order
+    #             if custom_fields_data:
+    #                 for field_name, field_value in custom_fields_data.items():
+    #                     if field_value and hasattr(po, field_name):
+    #                         setattr(po, field_name, field_value)
+    #                         frappe.log_error(
+    #                             "Purchase Order Custom Field Set",
+    #                             f"Set {field_name}={field_value} on Purchase Order for supplier {supplier}"
+    #                         )
+                
+    #             # Add items to Purchase Order
+    #             for item in subcontracted_items:
+    #                 po_item = po.append("items", {
+    #                     "item_code": item.production_item,
+    #                     "qty": flt(item.qty) - flt(item.ordered_qty),
+    #                     "rate": 0,  # Will be set by supplier
+    #                     "schedule_date": add_days(nowdate(), 1),
+    #                     "warehouse": item.fg_warehouse,
+    #                     "production_plan": self.name,
+    #                     "production_plan_sub_assembly_item": item.name,
+    #                 })
+                    
+    #                 # Set custom fields on Purchase Order Item
+    #                 if custom_fields_data:
+    #                     for field_name, field_value in custom_fields_data.items():
+    #                         if field_value and hasattr(po_item, field_name):
+    #                             setattr(po_item, field_name, field_value)
+    #                             frappe.log_error(
+    #                                 "Purchase Order Item Custom Field Set",
+    #                                 f"Set {field_name}={field_value} on PO Item {item.production_item}"
+    #                             )
+                
+    #             # Save Purchase Order
+    #             po.flags.ignore_permissions = 1
+    #             po.run_method("set_missing_values")
+    #             po.save()
+                
+    #             # After save, verify and update custom fields if needed
+    #             self._verify_and_update_po_custom_fields(po, custom_fields_data)
+                
+    #             po_list.append(po.name)
+                
+    #             frappe.log_error(
+    #                 "Subcontracted Purchase Order Created",
+    #                 f"Created Purchase Order {po.name} for supplier {supplier} with custom fields: {custom_fields_data}"
+    #             )
+                
+    #     except Exception as e:
+    #         frappe.log_error(
+    #             "Subcontracted Purchase Order Creation Error",
+    #             f"Error creating subcontracted purchase orders: {str(e)}"
+    #         )
+
+    # def _get_custom_fields_for_subcontracted_po(self, subcontracted_items):
+    #     """Get custom fields from parent po_items for subcontracted purchase order
+        
+    #     Args:
+    #         subcontracted_items (list): List of subcontracted items
+            
+    #     Returns:
+    #         dict: Dictionary containing custom field values
+    #     """
+    #     try:
+    #         custom_fields_data = {}
+            
+    #         # Get custom fields from the first subcontracted item's parent
+    #         for item in subcontracted_items:
+    #             parent_po_item = None
+    #             ppi_name = getattr(item, "production_plan_item", None)
+                
+    #             if ppi_name:
+    #                 # Find parent po_item by production_plan_item reference
+    #                 for po_item in self.po_items:
+    #                     if getattr(po_item, "name", None) == ppi_name:
+    #                         parent_po_item = po_item
+    #                         break
+                
+    #             if not parent_po_item:
+    #                 # Fallback: find by production_item
+    #                 for po_item in self.po_items:
+    #                     if getattr(po_item, "item_code", None) == getattr(item, "production_item", None):
+    #                         parent_po_item = po_item
+    #                         break
+                
+    #             if parent_po_item:
+    #                 # Get custom fields from parent po_item
+    #                 custom_fields = [
+    #                     "custom_batch_no", "branch", "sales_order", "sales_order_item"
+    #                 ]
+                    
+    #                 for field in custom_fields:
+    #                     if hasattr(parent_po_item, field) and getattr(parent_po_item, field, None):
+    #                         custom_fields_data[field] = getattr(parent_po_item, field)
+                    
+    #                 # Also get the 6 drawing fields if available
+    #                 drawing_fields = [
+    #                     "custom_drawing_no", "custom_drawing_rev_no",
+    #                     "custom_purchase_specification_no", "custom_purchase_specification_rev_no",
+    #                     "custom_pattern_drawing_no", "custom_pattern_drawing_rev_no"
+    #                 ]
+                    
+    #                 for field in drawing_fields:
+    #                     if hasattr(parent_po_item, field) and getattr(parent_po_item, field, None):
+    #                         custom_fields_data[field] = getattr(parent_po_item, field)
+                    
+    #                 # If we found custom fields, break (use first parent found)
+    #                 if custom_fields_data:
+    #                     break
+            
+    #         frappe.log_error(
+    #             "Custom Fields for Subcontracted PO",
+    #             f"Retrieved custom fields for subcontracted PO: {custom_fields_data}"
+    #         )
+            
+    #         return custom_fields_data
+            
+    #     except Exception as e:
+    #         frappe.log_error(
+    #             "Custom Fields Retrieval Error",
+    #             f"Error getting custom fields for subcontracted PO: {str(e)}"
+    #         )
+    #         return {}
+
+    # def _verify_and_update_po_custom_fields(self, po, custom_fields_data):
+    #     """Verify and update custom fields on Purchase Order after save
+        
+    #     Args:
+    #         po: Purchase Order document
+    #         custom_fields_data (dict): Custom fields data to verify
+    #     """
+    #     try:
+    #         if not custom_fields_data:
+    #             return
+            
+    #         needs_update = False
+    #         updates = {}
+            
+    #         # Check if custom fields need to be set via db_set
+    #         for field_name, field_value in custom_fields_data.items():
+    #             if field_value and hasattr(po, field_name):
+    #                 current_value = getattr(po, field_name, None)
+    #                 if current_value != field_value:
+    #                     updates[field_name] = field_value
+    #                     needs_update = True
+            
+    #         if needs_update:
+    #             frappe.log_error(
+    #                 "Purchase Order Custom Fields Update",
+    #                 f"Updating Purchase Order {po.name} with custom fields: {updates}"
+    #             )
+    #             po.db_set(updates, update_modified=False)
+            
+    #         # Also update Purchase Order Items
+    #         for po_item in po.items:
+    #             item_updates = {}
+    #             for field_name, field_value in custom_fields_data.items():
+    #                 if field_value and hasattr(po_item, field_name):
+    #                     current_value = getattr(po_item, field_name, None)
+    #                     if current_value != field_value:
+    #                         item_updates[field_name] = field_value
+                
+    #             if item_updates:
+    #                 frappe.log_error(
+    #                     "Purchase Order Item Custom Fields Update",
+    #                     f"Updating PO Item {po_item.name} with custom fields: {item_updates}"
+    #                 )
+    #                 po_item.db_set(item_updates, update_modified=False)
+                    
+    #     except Exception as e:
+    #         frappe.log_error(
+    #             "Purchase Order Custom Fields Verification Error",
+    #             f"Error verifying custom fields on Purchase Order {po.name}: {str(e)}"
+    #         )
 
 @frappe.whitelist()
 def get_items_for_material_requests_patched(doc, warehouses=None, get_parent_warehouse_data=None):
