@@ -670,12 +670,33 @@ frappe.ui.form.on('Material Request', {
                     onchange: function() {
                         var sales_order = d.get_value("sales_order");
                         if (sales_order) {
+                            // Clear dependent fields
                             d.set_value("batch_reference", "");
                             d.set_value("bom", "");
+    
+                            // Fetch branch from Sales Order
+                            frappe.db.get_value("Sales Order", sales_order, "branch")
+                                .then(r => {
+                                    if (r && r.message && r.message.branch) {
+                                        d.set_value("branch", r.message.branch);
+                                    } else {
+                                        d.set_value("branch", "");
+                                    }
+                                });
+                        } else {
+                            d.set_value("branch", "");
                         }
+    
                         d.fields_dict.batch_reference.refresh();
                         d.fields_dict.bom.refresh();
+                    
                     }
+                },
+                {
+                    fieldname: "branch",
+                    fieldtype: "Data",
+                    label: __("Branch"),
+                    read_only: 1,
                 },
                 {
                     fieldname: "batch_reference",
@@ -739,6 +760,17 @@ frappe.ui.form.on('Material Request', {
                     label: __("For Warehouse"),
                     options: "Warehouse",
                     reqd: 1,
+                    get_query: function () {
+                        var branch = d.get_value("branch");
+                        if (branch) {
+                            return {
+                                filters: {
+                                    branch: branch
+                                }
+                            };
+                        }
+                        return {};
+                    }
                 },
                 { 
                     fieldname: "qty", 
