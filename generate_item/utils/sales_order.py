@@ -42,14 +42,37 @@ def create_item_generator_doc(item_code: str | None = None, is_create_with_sales
     }
 
 
+# def before_save(doc, method=None):
+#     for i in doc.items:
+#         if i.rate == 0:
+#             frappe.msgprint(
+#                 (f"Please enter a valid rate for item in line No. {i.idx}. The rate cannot be 0."),
+#                 title=("Invalid Value"),
+#                 raise_exception=True
+#                 )
+#         if i.is_free_item:
+#             i.rate = 0;
+#             if i.qty == 0:
+#                 frappe.throw("Quantity cannot be 0 for free items.")
+
 def before_save(doc, method=None):
     for i in doc.items:
-        if i.rate == 0:
-            frappe.msgprint(
-                (f"Please enter a valid rate for item in line No. {i.idx}. The rate cannot be 0."),
-                title=("Invalid Value"),
-                raise_exception=True
-                )
         if i.is_free_item:
-            if i.qty == 0:
-                frappe.throw("Quantity cannot be 0 for free items.")
+            # Set rate to 0 for free items
+            i.rate = 0
+
+            # Validate that qty is present and greater than 0
+            if not i.qty or i.qty == 0:
+                frappe.throw(f"Quantity cannot be 0 for free item in line No. {i.idx}")
+
+            # Validate that component_of is specified
+            if not i.component_of:
+                frappe.throw(f"'Component Of' must be set for free item in line No. {i.idx}")
+        else:
+            # For non-free items, rate must be > 0
+            if i.rate == 0:
+                frappe.throw(
+                    f"Please enter a valid rate for item in line No. {i.idx}. The rate cannot be 0.",
+                    title="Invalid Value"
+                )
+

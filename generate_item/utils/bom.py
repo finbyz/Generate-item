@@ -1,4 +1,22 @@
 import frappe
+from generate_item.utils.bom_naming import get_custom_bom_name
+
+def before_insert(doc, method=None):
+    """Set custom BOM name before document is inserted"""
+    try:
+        if not doc.name and doc.item:
+            # Get branch abbreviation from the document
+            branch_abbr = getattr(doc, 'branch_abbr', None)
+            
+            # Generate custom BOM name
+            custom_name = get_custom_bom_name(doc.item, branch_abbr)
+            if custom_name:
+                doc.name = custom_name
+    except Exception as e:
+        frappe.log_error(
+            "BOM Before Insert Error",
+            f"Failed to set custom name for BOM {getattr(doc, 'item', 'None')}: {str(e)}"
+        )
 
 def before_validate(doc, method=None):
     set_branch_details(doc, method)

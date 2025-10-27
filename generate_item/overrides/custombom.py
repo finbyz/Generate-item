@@ -1,8 +1,30 @@
 import frappe
 from frappe.utils import flt
 from erpnext.manufacturing.doctype.bom.bom import BOM as OriginalBOM
+from generate_item.utils.bom_naming import get_custom_bom_name
 
 class CustomBOM(OriginalBOM):
+
+    def autoname(self):
+        """Override autoname to use custom naming pattern"""
+        if not self.name and self.item:
+            try:
+                # Get branch abbreviation from the document
+                branch_abbr = getattr(self, 'branch_abbr', None)
+                
+                # Generate custom BOM name
+                custom_name = get_custom_bom_name(self.item, branch_abbr)
+                if custom_name:
+                    self.name = custom_name
+                    return
+            except Exception as e:
+                frappe.log_error(
+                    "Custom BOM Autoname Error",
+                    f"Failed to generate custom name for BOM {self.item}: {str(e)}"
+                )
+        
+        # Fallback to standard naming
+        super().autoname()
 
     def validate(self):
         super().validate()  # Call original validations

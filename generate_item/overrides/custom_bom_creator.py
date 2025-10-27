@@ -413,6 +413,12 @@ class BOMCreator(CoreBOMCreator):
             "bom_creator_item": bom_creator_item,
         })
 
+        # CUSTOM: Pass branch information to BOM for custom naming
+        if hasattr(self, 'branch') and self.branch:
+            bom.branch = self.branch
+        if hasattr(self, 'branch_abbr') and self.branch_abbr:
+            bom.branch_abbr = self.branch_abbr
+
         # Copy standard BOM fields from BOM Creator header
         from erpnext.manufacturing.doctype.bom_creator.bom_creator import BOM_FIELDS, BOM_ITEM_FIELDS
         

@@ -312,6 +312,12 @@ frappe.ui.form.on('Sales Order Item', {
     component_of: function(frm, cdt, cdn) {
         frm.refresh_field("items"); // Ensures UI & backend sync
     },
+    is_free_item: function(frm, cdt, cdn) {
+        let row = locals[cdt][cdn];
+        if (row.is_free_item) {
+            frappe.model.set_value(cdt, cdn, 'rate', 0);
+        }
+    },   
     item_code: function(frm, cdt, cdn) {
         let row = locals[cdt][cdn];
         let entered_item_code = frm.last_entered_item_codes ? frm.last_entered_item_codes[cdn] : null;
