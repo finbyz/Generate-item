@@ -26,20 +26,10 @@ def get_custom_bom_name(item_code, branch_abbr=None):
         
         # Create the base name pattern
         if branch_abbr:
-            base_pattern = f"BOM-{branch_abbr}-{clean_item_code}-"
+            base_name = f"BOM-{branch_abbr}-{clean_item_code}"
         else:
-            base_pattern = f"BOM-{clean_item_code}-"
-        
-        # Get the next sequence number for this pattern
-        next_number = get_next_sequence_number(base_pattern)
-        
-        # Generate the final BOM name
-        bom_name = f"{base_pattern}{next_number:03d}"
-        
-        # Cache this number to prevent duplicates in the same session
-        _session_number_cache[bom_name] = True
-        
-        return bom_name
+            base_name = f"BOM-{clean_item_code}"
+        return base_name
         
     except Exception as e:
         frappe.log_error(

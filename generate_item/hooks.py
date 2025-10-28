@@ -191,6 +191,10 @@ doc_events = {
         "before_insert": "generate_item.utils.material_request.before_insert",
         "validate":"generate_item.utils.material_request.validate"
     },
+    "Sales Invoice": {
+        "after_insert": "generate_item.utils.sales_invoice.after_insert",
+        "validate": "generate_item.utils.sales_invoice.validate",
+    },
     "Production Plan":{
         "before_save": "generate_item.utils.production_plan.before_save"
     },
