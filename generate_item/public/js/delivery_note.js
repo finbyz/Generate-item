@@ -1,5 +1,8 @@
 frappe.ui.form.on("Delivery Note", {
     refresh(frm) {
+        if (frm.is_new() && frm.doc.items?.some(d => d.against_sales_order)) {
+            fetch_and_update_taxes(frm);
+        }
         const is_delivery_user = frappe.user_roles.includes("Delivery User");
 
         frm.fields_dict["items"].grid.update_docfield_property(
@@ -82,8 +85,86 @@ frappe.ui.form.on("Delivery Note", {
         const is_delivery_user = frappe.user_roles.includes("Delivery User");
 
         if (is_delivery_user) {
-            
             frm.set_df_property("customer_address", "read_only", 1);
+        }
+    },
+    items_add(frm, cdt, cdn) {
+        const row = locals[cdt][cdn];
+        if (frm.is_new() && row.against_sales_order) {
+            fetch_and_update_taxes(frm);
+        }
+    },
+
+    // Optional — if user edits an existing row to add sales_order
+    items_on_form_rendered(frm) {
+        if (frm.is_new() && frm.doc.items?.some(d => d.against_sales_order)) {
+            fetch_and_update_taxes(frm);
         }
     }
 });
+
+
+
+function fetch_and_update_taxes(frm) {
+    if (frm.__fetching_remaining_taxes) return;
+    frm.__fetching_remaining_taxes = true;
+
+    const sales_orders = [...new Set(
+        frm.doc.items
+            .filter(item => item.against_sales_order)
+            .map(item => item.against_sales_order)
+    )];
+
+    if (!sales_orders.length) {
+        frappe.msgprint({
+            title: __("No Sales Order"),
+            message: __("No items are linked to a Sales Order."),
+            indicator: "orange"
+        });
+        frm.__fetching_remaining_taxes = false;
+        return;
+    }
+
+    frappe.call({
+        method: "generate_item.utils.delivery_note.get_remaining_taxes_for_draft",
+        args: {
+            sales_orders: sales_orders,
+            current_dn_name: frm.doc.name || null
+        },
+        freeze: true,
+        freeze_message: __("Fetching remaining taxes..."),
+        callback: function(r) {
+            frm.__fetching_remaining_taxes = false;
+
+            if (r.message && !r.exc) {
+                const remaining_taxes = r.message;
+                let updated = false;
+
+                frm.doc.taxes.forEach(tax_row => {
+                    if (tax_row.charge_type === "Actual") {
+                        const account_head = tax_row.account_head;
+                        if (remaining_taxes[account_head] !== undefined) {
+                            const remaining_amount = remaining_taxes[account_head];
+                            frappe.model.set_value(
+                                tax_row.doctype,
+                                tax_row.name,
+                                "tax_amount",
+                                remaining_amount
+                            );
+                            updated = true;
+                        }
+                    }
+                });
+
+                if (updated) {
+                    frm.trigger("calculate_taxes_and_totals");
+                    frm.refresh_field("taxes");
+                    frappe.show_alert({
+                        message: __("Actual taxes adjusted successfully!"),
+                        indicator: "green"
+                    }, 5);
+                }
+            }
+        }
+    });
+}

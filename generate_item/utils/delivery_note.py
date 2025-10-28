@@ -246,3 +246,156 @@ def make_delivery_note(source_name, target_doc=None, kwargs=None):
 	return dn
 
 
+
+@frappe.whitelist()
+def set_remaining_actual_taxes(delivery_name):
+    """
+    Whitelisted method to calculate and set remaining actual taxes
+    FOR SAVED DOCUMENTS ONLY (Delivery Note)
+    """
+    if not frappe.db.exists("Delivery Note", delivery_name):
+        frappe.throw(_("Delivery Note {0} not found").format(delivery_name))
+    
+    doc = frappe.get_doc("Delivery Note", delivery_name)
+    
+    if doc.docstatus == 2:
+        frappe.throw(_("Cannot update taxes for a cancelled Delivery Note"))
+    
+    _calculate_and_set_remaining_taxes(doc)
+    doc.save()
+    frappe.db.commit()
+    
+    return {
+        "success": True,
+        "message": _("Actual taxes updated successfully on Delivery Note")
+    }
+
+
+@frappe.whitelist()
+def get_remaining_taxes_for_draft(sales_orders, current_dn_name=None):
+    """
+    Calculate remaining actual taxes for DRAFT/UNSAVED Delivery Note
+    """
+    if isinstance(sales_orders, str):
+        import json
+        sales_orders = json.loads(sales_orders)
+
+    remaining_taxes = {}
+
+    for so_name in sales_orders:
+        # Get Sales Order actual taxes
+        so_doc = frappe.get_doc("Sales Order", so_name)
+        so_actual_taxes = {}
+        for tax in so_doc.taxes:
+            if tax.charge_type == "Actual":
+                so_actual_taxes[tax.account_head] = so_actual_taxes.get(tax.account_head, 0) + (tax.tax_amount or 0)
+
+        if not so_actual_taxes:
+            continue
+
+        # Get all existing Delivery Notes against the SO
+        filters = {
+            "against_sales_order": so_name,
+            "docstatus": ["!=", 2],
+        }
+
+        if current_dn_name and frappe.db.exists("Delivery Note", current_dn_name):
+            filters["parent"] = ["!=", current_dn_name]
+
+        existing_dns = frappe.get_all(
+            "Delivery Note Item",
+            filters=filters,
+            fields=["parent"],
+            distinct=True
+        )
+
+        billed_taxes = {}
+        for dn in existing_dns:
+            dn_doc = frappe.get_doc("Delivery Note", dn.parent)
+            for tax in dn_doc.taxes:
+                if tax.charge_type == "Actual":
+                    billed_taxes[tax.account_head] = billed_taxes.get(tax.account_head, 0) + (tax.tax_amount or 0)
+
+        # Compute remaining
+        for account_head, total_amount in so_actual_taxes.items():
+            billed_amount = billed_taxes.get(account_head, 0)
+            remaining = max(total_amount - billed_amount, 0)
+            if account_head in remaining_taxes:
+                remaining_taxes[account_head] = min(remaining_taxes[account_head], remaining)
+            else:
+                remaining_taxes[account_head] = remaining
+
+    return remaining_taxes
+
+
+def after_insert(doc, method=None):
+    """Run after new Delivery Note is inserted"""
+    _calculate_and_set_remaining_taxes(doc)
+
+
+def _calculate_and_set_remaining_taxes(doc):
+    """
+    Internal function to calculate remaining taxes for Delivery Note
+    """
+    sales_orders = list(set([item.against_sales_order for item in doc.items if item.against_sales_order]))
+    if not sales_orders:
+        return
+
+    taxes_updated = False
+
+    for so_name in sales_orders:
+        so_doc = frappe.get_doc("Sales Order", so_name)
+        so_actual_taxes = {}
+        for tax in so_doc.taxes:
+            if tax.charge_type == "Actual":
+                so_actual_taxes[tax.account_head] = {
+                    "amount": tax.tax_amount or 0,
+                    "description": tax.description,
+                    "cost_center": tax.cost_center,
+                    "branch": tax.get("branch"),
+                }
+
+        if not so_actual_taxes:
+            continue
+
+        # Get existing DNs (exclude current)
+        existing_dns = frappe.get_all(
+            "Delivery Note Item",
+            filters={"against_sales_order": so_name, "docstatus": ["!=", 2], "parent": ["!=", doc.name]},
+            fields=["parent"],
+            distinct=True
+        )
+
+        billed_taxes = {}
+        for dn in existing_dns:
+            dn_doc = frappe.get_doc("Delivery Note", dn.parent)
+            for tax in dn_doc.taxes:
+                if tax.charge_type == "Actual":
+                    billed_taxes[tax.account_head] = billed_taxes.get(tax.account_head, 0) + (tax.tax_amount or 0)
+
+        # Update current doc taxes
+        for tax in doc.taxes:
+            if tax.charge_type == "Actual" and tax.account_head in so_actual_taxes:
+                so_total = so_actual_taxes[tax.account_head]["amount"]
+                billed = billed_taxes.get(tax.account_head, 0)
+                remaining = max(so_total - billed, 0)
+
+                if tax.tax_amount != remaining:
+                    tax.tax_amount = remaining
+                    tax.base_tax_amount = remaining
+                    tax.tax_amount_after_discount_amount = remaining
+                    tax.base_tax_amount_after_discount_amount = remaining
+                    taxes_updated = True
+
+                    frappe.msgprint(
+                        _("Updated '{0}' tax to remaining amount {1}").format(
+                            tax.account_head, frappe.format_value(remaining, {"fieldtype": "Currency"})
+                        ),
+                        alert=True, indicator="blue"
+                    )
+
+    if taxes_updated:
+        doc.calculate_taxes_and_totals()
+        if doc.name and not doc.get("__islocal"):
+            doc.db_update()
+        frappe.msgprint(_("Actual taxes adjusted successfully"), alert=True, indicator="green")

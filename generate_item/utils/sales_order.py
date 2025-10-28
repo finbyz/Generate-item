@@ -66,8 +66,8 @@ def before_save(doc, method=None):
                 frappe.throw(f"Quantity cannot be 0 for free item in line No. {i.idx}")
 
             # Validate that component_of is specified
-            if not i.component_of:
-                frappe.throw(f"'Component Of' must be set for free item in line No. {i.idx}")
+            # if not i.component_of:
+            #     frappe.throw(f"'Component Of' must be set for free item in line No. {i.idx}")
         else:
             # For non-free items, rate must be > 0
             if i.rate == 0:

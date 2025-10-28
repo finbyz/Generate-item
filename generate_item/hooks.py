@@ -202,6 +202,10 @@ doc_events = {
         "before_insert": "generate_item.utils.work_order.before_insert",
         "before_validate": "generate_item.utils.work_order.before_insert"
     },
+    "Delivery Note": {
+        "after_insert": "generate_item.utils.delivery_note.after_insert",
+        
+    },
      "BOM":{
         "before_validate": "generate_item.utils.bom.before_validate",
         "before_insert": "generate_item.utils.bom.before_insert",
