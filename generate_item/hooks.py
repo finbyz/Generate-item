@@ -61,6 +61,7 @@ doctype_js = {"Item" : "public/js/item.js",
               "Subcontracting Order" : "public/js/subcontracting_order.js",
               "Delivery Note" : "public/js/delivery_note.js",
               "Sales Invoice" : "public/js/sales_invoice.js",
+              "Quality Inspection" : "public/js/quality_inspection.js",
               }
 
 doctype_list_js = {"Item Generator" : "public/js/item_generator_list.js"}
@@ -204,7 +205,7 @@ doc_events = {
     },
     "Delivery Note": {
         "after_insert": "generate_item.utils.delivery_note.after_insert",
-        
+
     },
      "BOM":{
         "before_validate": "generate_item.utils.bom.before_validate",
@@ -212,6 +213,9 @@ doc_events = {
         "before_save": "generate_item.utils.bom.before_save",
         "on_cancel": "generate_item.utils.bom.clear_custom_fields_on_cancel",
         "on_submit": "generate_item.utils.bom.on_submit"
+    },
+    "Quality Inspection": {
+        "before_save": "generate_item.utils.quality_inspection.before_save"
     },
    
 }
