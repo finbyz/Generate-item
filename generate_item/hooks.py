@@ -217,6 +217,10 @@ doc_events = {
     "Quality Inspection": {
         "before_save": "generate_item.utils.quality_inspection.before_save"
     },
+    "Subcontracting Receipt": {
+        "before_save": "generate_item.utils.subcontracting_receipt.before_save",
+        "after_save": "generate_item.utils.subcontracting_receipt.after_save"
+    },
    
 }
 # 	"*": {

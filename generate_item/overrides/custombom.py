@@ -1,7 +1,7 @@
 import frappe
 from frappe.utils import flt
 from erpnext.manufacturing.doctype.bom.bom import BOM as OriginalBOM
-from generate_item.utils.bom_naming import get_custom_bom_name
+from generate_item.utils.bom_naming import get_custom_bom_name, get_available_bom_name
 
 class CustomBOM(OriginalBOM):
 
@@ -15,7 +15,8 @@ class CustomBOM(OriginalBOM):
                 # Generate custom BOM name
                 custom_name = get_custom_bom_name(self.item, branch_abbr)
                 if custom_name:
-                    self.name = custom_name
+                    # Ensure name uniqueness by suffixing when a duplicate exists
+                    self.name = get_available_bom_name(custom_name)
                     return
             except Exception as e:
                 frappe.log_error(

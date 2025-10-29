@@ -1,5 +1,5 @@
 import frappe
-from generate_item.utils.bom_naming import get_custom_bom_name
+from generate_item.utils.bom_naming import get_custom_bom_name, get_available_bom_name
 
 def before_insert(doc, method=None):
     """Set custom BOM name before document is inserted"""
@@ -11,7 +11,8 @@ def before_insert(doc, method=None):
             # Generate custom BOM name
             custom_name = get_custom_bom_name(doc.item, branch_abbr)
             if custom_name:
-                doc.name = custom_name
+                # Ensure uniqueness by adding suffix when needed
+                doc.name = get_available_bom_name(custom_name)
     except Exception as e:
         frappe.log_error(
             "BOM Before Insert Error",
@@ -40,19 +41,19 @@ def before_validate(doc, method=None):
         # Do not block validation if Item fetch fails; log and continue
         frappe.log_error(f"Failed to backfill BOM custom fields from Item for {getattr(doc, 'name', '')}")
 
-    for item in doc.items:
-        if item.bom_no:
-            bom = frappe.get_doc("BOM", item.bom_no)
-            if bom.custom_batch_no and bom.sales_order:
-                frappe.throw(
-                    (
-                    f"<p>Item <strong>{item.item_code}</strong> cannot be submitted.</p>"
-                    f"<p>The linked Bill of Materials (<strong>{item.bom_no}</strong>) is "
-                    "configured for both a <strong>specific Sales Order</strong> and a "
-                    "<strong>Batch Number</strong>, which is a conflict in production.</p>"
-                    ),
-                    ("Conflicting BOM Data")
-                )
+    # for item in doc.items:
+    #     if item.bom_no:
+    #         bom = frappe.get_doc("BOM", item.bom_no)
+    #         if bom.custom_batch_no and bom.sales_order:
+    #             frappe.throw(
+    #                 (
+    #                 f"<p>Item <strong>{item.item_code}</strong> cannot be submitted.</p>"
+    #                 f"<p>The linked Bill of Materials (<strong>{item.bom_no}</strong>) is "
+    #                 "configured for both a <strong>specific Sales Order</strong> and a "
+    #                 "<strong>Batch Number</strong>, which is a conflict in production.</p>"
+    #                 ),
+    #                 ("Conflicting BOM Data")
+    #             )
 
     # 1. Determine the Production Plan name (guarding against missing attributes)
     production_plan = getattr(doc, "production_plan", None)

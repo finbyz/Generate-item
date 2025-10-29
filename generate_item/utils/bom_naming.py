@@ -19,10 +19,10 @@ def get_custom_bom_name(item_code, branch_abbr=None):
     try:
         # Get branch abbreviation if not provided
         if not branch_abbr:
-            branch_abbr = get_branch_abbreviation_for_item(item_code)
+            branch_abbr = branch_abbr
         
         # Clean the item code for naming (remove special characters)
-        clean_item_code = clean_item_code_for_naming(item_code)
+        clean_item_code = item_code.upper()
         
         # Create the base name pattern
         if branch_abbr:
@@ -39,178 +39,51 @@ def get_custom_bom_name(item_code, branch_abbr=None):
         # Fallback to standard naming if custom naming fails
         return make_autoname("BOM-{item}-.####", "BOM")
 
-def get_next_sequence_number(base_pattern):
+
+
+def get_available_bom_name(base_name: str) -> str:
     """
-    Get the next sequence number for a given base pattern by checking existing BOMs
-    
-    Args:
-        base_pattern (str): The base pattern like "BOM-RA-VALVE_001-"
-    
-    Returns:
-        int: Next sequence number
+    Ensure BOM name is unique. If `base_name` exists, append a zero-padded numeric suffix.
+
+    Examples:
+    - base exists: BOM-ABC-ITEM -> BOM-ABC-ITEM-001 (or next available)
+    - base not exists: returns base
     """
     try:
-        # Extract item code from the base pattern
-        # Pattern: BOM-{branch_abbr}-{item}- -> we need the item part
-        pattern_parts = base_pattern.split('-')
-        if len(pattern_parts) >= 3:
-            item_code = pattern_parts[2]  # The item code part
-        else:
-            item_code = pattern_parts[1] if len(pattern_parts) >= 2 else ""
-        
-        # Query existing BOMs that match this pattern (custom pattern)
-        existing_boms_custom = frappe.db.sql("""
-            SELECT name 
-            FROM `tabBOM` 
-            WHERE name LIKE %s
+        # If base name does not exist, use it
+        if not frappe.db.exists("BOM", base_name):
+            return base_name
+
+        # Find the highest existing suffix for this base
+        last = frappe.db.sql(
+            """
+            SELECT name FROM `tabBOM`
+            WHERE name = %s OR name LIKE %s
             ORDER BY name DESC
             LIMIT 1
-        """, f"{base_pattern}%", as_dict=True)
-        
-        # Also check for existing BOMs with standard pattern for the same item
-        existing_boms_standard = frappe.db.sql("""
-            SELECT name 
-            FROM `tabBOM` 
-            WHERE name LIKE %s
-            ORDER BY name DESC
-            LIMIT 1
-        """, f"BOM-{item_code}-%", as_dict=True)
-        
-        # Get the highest number from both patterns
-        max_number = 0
-        
-        # Check custom pattern BOMs
-        if existing_boms_custom:
-            last_name = existing_boms_custom[0].name
-            number_part = last_name.split('-')[-1]
+            """,
+            (base_name, f"{base_name}-%"),
+            as_dict=True,
+        )
+
+        next_num = 1
+        if last:
             try:
-                number = int(number_part)
-                max_number = max(max_number, number)
-            except ValueError:
-                pass
-        
-        # Check standard pattern BOMs
-        if existing_boms_standard:
-            last_name = existing_boms_standard[0].name
-            number_part = last_name.split('-')[-1]
-            try:
-                number = int(number_part)
-                max_number = max(max_number, number)
-            except ValueError:
-                pass
-        
-        # Check session cache for numbers used in this session
-        for cached_name in _session_number_cache:
-            if cached_name.startswith(base_pattern):
-                try:
-                    cached_number = int(cached_name.split('-')[-1])
-                    max_number = max(max_number, cached_number)
-                except ValueError:
-                    pass
-        
-        # Return next number
-        return max_number + 1 if max_number > 0 else 1
-            
+                parts = last[0].name.rsplit("-", 1)
+                if len(parts) == 2 and parts[1].isdigit():
+                    next_num = int(parts[1]) + 1
+            except Exception:
+                next_num = 1
+
+        # Return next available suffixed name
+        return f"{base_name}-{next_num:03d}"
     except Exception as e:
         frappe.log_error(
-            "Sequence Number Error",
-            f"Failed to get next sequence number for pattern {base_pattern}: {str(e)}"
+            "BOM Unique Naming Error",
+            f"Failed to compute unique BOM name for base {base_name}: {str(e)}",
         )
-        return 1
-
-def get_branch_abbreviation_for_item(item_code):
-    """
-    Get branch abbreviation for an item by looking up related documents
-    
-    Args:
-        item_code (str): The item code
-    
-    Returns:
-        str: Branch abbreviation or empty string
-    """
-    try:
-        # First try to get from Item's default BOM if it exists
-        default_bom = frappe.get_cached_value("Item", item_code, "default_bom")
-        if default_bom:
-            branch_abbr = frappe.get_cached_value("BOM", default_bom, "branch_abbr")
-            if branch_abbr:
-                return branch_abbr
-        
-        # Try to get from Production Plan context if available
-        # This is useful when BOMs are created from Production Plans
-        production_plan = frappe.local.get("current_production_plan")
-        if production_plan:
-            branch_abbr = frappe.get_cached_value("Production Plan", production_plan, "branch_abbr")
-            if branch_abbr:
-                return branch_abbr
-        
-        # Try to get from Sales Order context if available
-        sales_order = frappe.local.get("current_sales_order")
-        if sales_order:
-            branch_abbr = frappe.get_cached_value("Sales Order", sales_order, "branch_abbr")
-            if branch_abbr:
-                return branch_abbr
-        
-        # Default branch abbreviation mapping
-        branch_abbr_map = {
-            'Rabale': 'RA',
-            'Nandikoor': 'NA',
-            'Sanand': 'SA'
-        }
-        
-        # Try to get branch from Item's warehouse or other sources
-        warehouses = frappe.get_all(
-            "Warehouse",
-            filters={"item_code": item_code},
-            fields=["branch"],
-            limit=1
-        )
-        
-        if warehouses and warehouses[0].branch:
-            return branch_abbr_map.get(warehouses[0].branch, '')
-        
-        # Return empty string if no branch found
-        return ''
-        
-    except Exception as e:
-        frappe.log_error(
-            "Branch Abbreviation Lookup Error",
-            f"Failed to get branch abbreviation for item {item_code}: {str(e)}"
-        )
-        return ''
-
-def clean_item_code_for_naming(item_code):
-    """
-    Clean item code for use in naming (remove special characters, limit length)
-    
-    Args:
-        item_code (str): Original item code
-    
-    Returns:
-        str: Cleaned item code
-    """
-    if not item_code:
-        return "ITEM"
-    
-    # Remove special characters and replace with underscores
-    import re
-    clean_code = re.sub(r'[^a-zA-Z0-9]', '_', item_code)
-    
-    # Remove multiple consecutive underscores
-    clean_code = re.sub(r'_+', '_', clean_code)
-    
-    # Remove leading/trailing underscores
-    clean_code = clean_code.strip('_')
-    
-    # Limit length to 20 characters for naming
-    if len(clean_code) > 20:
-        clean_code = clean_code[:20]
-    
-    # Ensure we have something to work with
-    if not clean_code:
-        clean_code = "ITEM"
-    
-    return clean_code.upper()
+        # As a last resort, let Frappe generate a unique hash-based name
+        return make_autoname("BOM-.########", "BOM")
 
 def set_bom_naming_series(doc):
     """
@@ -224,10 +97,10 @@ def set_bom_naming_series(doc):
             return
         
         # Get branch abbreviation
-        branch_abbr = getattr(doc, 'branch_abbr', None) or get_branch_abbreviation_for_item(doc.item)
+        branch_abbr = getattr(doc, 'branch_abbr', None) 
         
         # Clean item code
-        clean_item_code = clean_item_code_for_naming(doc.item)
+        clean_item_code = doc.item.upper()
         
         # Create custom naming pattern
         if branch_abbr:

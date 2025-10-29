@@ -45,24 +45,24 @@ frappe.ui.form.on('Purchase Order', {
 	
 	refresh: function(frm) {
 		// Make qty field read-only for Purchase User role only if Material Request exists in items
-		if (frappe.user_roles.includes('Purchase User')) {
-			let hasMaterialRequest = false;
+		// if (frappe.user_roles.includes('Purchase User')) {
+		// 	let hasMaterialRequest = false;
 			
-			// Check if any item has material_request field populated
-			if (frm.doc.items && frm.doc.items.length > 0) {
-				hasMaterialRequest = frm.doc.items.some(item => item.material_request || item.production_plan);
-			}
+		// 	// Check if any item has material_request field populated
+		// 	if (frm.doc.items && frm.doc.items.length > 0) {
+		// 		hasMaterialRequest = frm.doc.items.some(item => item.material_request || item.production_plan);
+		// 	}
 			
-			if (hasMaterialRequest) {
-				frm.fields_dict.items.grid.wrapper
-					.find('[data-fieldname="qty"]')
-					.prop('readonly', true);
+		// 	if (hasMaterialRequest) {
+		// 		frm.fields_dict.items.grid.wrapper
+		// 			.find('[data-fieldname="qty"]')
+		// 			.prop('readonly', true);
 				
-				frm.fields_dict["items"].grid.update_docfield_property(
-					"qty", "read_only", 1
-				);
-			}
-		}
+		// 		frm.fields_dict["items"].grid.update_docfield_property(
+		// 			"qty", "read_only", 1
+		// 		);
+		// 	}
+		// }
 		// Check if items exist and iterate properly
 		if (frm.doc.docstatus == 1)
 		{

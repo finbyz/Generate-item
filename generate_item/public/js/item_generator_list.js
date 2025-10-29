@@ -22,7 +22,7 @@ frappe.listview_settings['Item Generator'] = {
                             let base_item = r.message;
 
                             // Check if item is already duplicated
-                            if (base_item.duplicated_subassembly === 1 ) {
+                            if (base_item.duplicated_subassembly === 1) {
                                 frappe.msgprint({
                                     title: __('Cannot Duplicate'),
                                     message: __('Item {0} is already a sub-assembly item and cannot be duplicated again.', [base_item.item_code]),
@@ -56,10 +56,24 @@ frappe.listview_settings['Item Generator'] = {
 
                             // Apply changes
                             new_item.item_code = base_item.item_code + "A4";
-                            new_item.short_description = (base_item.short_description || "") + " SUB ASSY KIT";
+                            
+                            // FIXED: Handle short description with 140 char limit
+                            let suffix = " SUB ASSY KIT";
+                            let base_short_desc = (base_item.short_description || "").trim();
+                            let room = 140 - suffix.length;
+                            
+                            if (room < 0) {
+                                new_item.short_description = suffix.substring(0, 140);
+                            } else {
+                                new_item.short_description = (base_short_desc.substring(0, room).trim() + suffix).trim();
+                            }
+                            
                             new_item.description = (base_item.description || "") + " SUB ASSEMBLY KIT";
                             new_item.item_group_name = "Ready Valves";
                             new_item.duplicated_subassembly = 1;
+                            
+                            // Also set custom_conditional_description to match
+                            new_item.custom_conditional_description = new_item.short_description;
 
                             // Insert the new item
                             frappe.call({
@@ -127,7 +141,7 @@ frappe.listview_settings['Item Generator'] = {
                                 return;
                             }
 
-                            // Check if item already ends with A4
+                            // Check if item already ends with M4
                             if (base_item.item_code && base_item.item_code.endsWith("M4")) {
                                 frappe.msgprint({
                                     title: __('Cannot Duplicate'),
@@ -152,10 +166,24 @@ frappe.listview_settings['Item Generator'] = {
 
                             // Apply changes
                             new_item.item_code = base_item.item_code + "M4";
-                            new_item.short_description = (base_item.short_description || "") + " M/C KIT";
-                            new_item.description = (base_item.description || "") + "  SUB MACHINING KIT";
+                            
+                            // FIXED: Handle short description with 140 char limit
+                            let suffix = " M/C KIT";
+                            let base_short_desc = (base_item.short_description || "").trim();
+                            let room = 140 - suffix.length;
+                            
+                            if (room < 0) {
+                                new_item.short_description = suffix.substring(0, 140);
+                            } else {
+                                new_item.short_description = (base_short_desc.substring(0, room).trim() + suffix).trim();
+                            }
+                            
+                            new_item.description = (base_item.description || "") + " SUB MACHINING KIT";
                             new_item.item_group_name = base_item.item_group_name;
                             new_item.duplicated_machining_kit = 1;
+                            
+                            // Also set custom_conditional_description to match
+                            new_item.custom_conditional_description = new_item.short_description;
 
                             // Insert the new item
                             frappe.call({
