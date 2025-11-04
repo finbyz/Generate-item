@@ -980,6 +980,7 @@ class ProductionPlan(_ProductionPlan):
                         LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
                         WHERE mri.item_code = %s
                           AND mri.production_plan IS NULL
+                          AND mr.docstatus != 2
                           AND (
                             mri.custom_batch_no = %s OR mr.linked_batch = %s
                           )
@@ -987,8 +988,11 @@ class ProductionPlan(_ProductionPlan):
                 else:
                     unlinked_qty = flt(frappe.db.sql("""
                         SELECT IFNULL(SUM(qty), 0)
-                        FROM `tabMaterial Request Item`
-                        WHERE sales_order = %s AND item_code = %s AND production_plan IS NULL
+                        FROM `tabMaterial Request Item` mri
+                        LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
+                        WHERE mri.sales_order = %s AND mri.item_code = %s 
+                        AND mri.production_plan IS NULL
+                        AND mr.docstatus != 2
                     """, (so, item.item_code))[0][0])
 
                 # Get total existing qty - for cap
@@ -998,16 +1002,19 @@ class ProductionPlan(_ProductionPlan):
                         FROM `tabMaterial Request Item` mri
                         LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
                         WHERE mri.item_code = %s
+                        AND mr.docstatus != 2
                           AND (
                             mri.custom_batch_no = %s OR mr.linked_batch = %s
                           )
                     """, (item.item_code, custom_batch_no, custom_batch_no))[0][0])
                 else:
                     total_existing_qty = flt(frappe.db.sql("""
-                        SELECT IFNULL(SUM(qty), 0)
-                        FROM `tabMaterial Request Item`
-                        WHERE sales_order = %s AND item_code = %s
-                    """, (so, item.item_code))[0][0])
+                    SELECT IFNULL(SUM(qty), 0)
+                    FROM `tabMaterial Request Item` mri
+                    LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
+                    WHERE mri.sales_order = %s AND mri.item_code = %s
+                      AND mr.docstatus != 2
+                """, (so, item.item_code))[0][0])
 
                 remaining_so_qty = flt(so_qty) - flt(total_existing_qty)
                 coverage_from_unlinked = min(plan_qty, unlinked_qty)
@@ -1035,6 +1042,7 @@ class ProductionPlan(_ProductionPlan):
                             FROM `tabMaterial Request Item` mri
                             LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
                             WHERE mri.item_code = %s AND mri.production_plan IS NULL
+                            AND mr.docstatus != 2
                               AND (mri.custom_batch_no = %s OR mr.linked_batch = %s)
                             ORDER BY mri.creation ASC
                         """, (item.item_code, custom_batch_no, custom_batch_no), as_dict=True)
@@ -1043,7 +1051,9 @@ class ProductionPlan(_ProductionPlan):
                             SELECT mri.name, mri.parent, mri.qty, mri.warehouse, mri.bom_no,
                                 mri.custom_drawing_no, mri.custom_pattern_drawing_no, mri.from_warehouse
                             FROM `tabMaterial Request Item` mri
+                            LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
                             WHERE mri.sales_order = %s AND mri.item_code = %s AND mri.production_plan IS NULL
+                            AND mr.docstatus != 2
                             ORDER BY mri.creation ASC
                         """, (so, item.item_code), as_dict=True)
 
@@ -1053,7 +1063,7 @@ class ProductionPlan(_ProductionPlan):
                             break
                         mr_name = ui['parent']
                         mr = frappe.get_doc("Material Request", mr_name)
-                        if mr.docstatus == 1:
+                        if mr.docstatus in (1, 2):
                             continue  # Skip submitted MRs
 
                         ui_qty = ui['qty']
@@ -1122,14 +1132,17 @@ class ProductionPlan(_ProductionPlan):
                         FROM `tabMaterial Request Item` mri
                         LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
                         WHERE mri.item_code = %s
+                        AND mr.docstatus != 2
                           AND (mri.custom_batch_no = %s OR mr.linked_batch = %s)
                     """, (item.item_code, custom_batch_no, custom_batch_no))[0][0])
                 else:
                     total_existing_qty_by_batch = flt(frappe.db.sql("""
-                        SELECT IFNULL(SUM(qty), 0)
-                        FROM `tabMaterial Request Item`
-                        WHERE item_code = %s
-                    """, (item.item_code,))[0][0])
+                    SELECT IFNULL(SUM(qty), 0)
+                    FROM `tabMaterial Request Item` mri
+                    LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
+                    WHERE mri.item_code = %s
+                      AND mr.docstatus != 2
+                """, (item.item_code,))[0][0])
 
                 item.quantity = max(0, plan_qty - total_existing_qty_by_batch)
                 if item.quantity <= 0:

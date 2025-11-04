@@ -3,7 +3,6 @@
 
 import frappe
 from frappe import _
-import frappe
 import json
 
 @frappe.whitelist()
@@ -203,18 +202,22 @@ def get_dispatchable_sales_orders(doctype, txt, searchfield, start, page_len, fi
     return frappe.db.sql(query, values, as_list=True)
 
 
-@frappe.whitelist()
-def get_dispatchable_sales_orders_list(customer, company=None, project=None, warehouse=None):
-    """
-    Used in custom Dispatchable SO button.
-    Returns list of dispatchable Sales Orders with batch info.
-    """
+import frappe
+from frappe.utils import flt
 
+@frappe.whitelist()
+def get_dispatchable_sales_orders_list(customer=None, company=None, project=None, warehouse=None):
+    """
+    Returns Sales Orders that:
+    1. Belong to given customer
+    2. Have at least one Work Order (all completed)
+    3. Are not fully delivered
+    4. All items have sufficient stock (>= required qty)
+    """
     if not customer:
-        return []
+        frappe.throw("Customer is required")
 
     values = {"customer": customer}
-
     conditions = [
         "so.docstatus = 1",
         "so.status NOT IN ('Closed', 'On Hold', 'Completed')",
@@ -224,57 +227,68 @@ def get_dispatchable_sales_orders_list(customer, company=None, project=None, war
         """EXISTS (
             SELECT 1 FROM `tabWork Order` wo
             WHERE wo.sales_order = so.name
-            AND wo.docstatus = 1
-            AND wo.status = 'Completed'
+              AND wo.docstatus = 1
+              AND wo.status = 'Completed'
         )""",
-        # No Work Orders that are not completed
+        # Has no Work Order that is not completed
         """NOT EXISTS (
             SELECT 1 FROM `tabWork Order` wo2
             WHERE wo2.sales_order = so.name
-            AND wo2.docstatus = 1
-            AND wo2.status != 'Completed'
+              AND wo2.docstatus = 1
+              AND wo2.status != 'Completed'
         )"""
     ]
 
     if company:
         conditions.append("so.company = %(company)s")
         values["company"] = company
+
     if project:
         conditions.append("so.project = %(project)s")
         values["project"] = project
-    if warehouse:
-        # Only include SOs that have at least one item with stock available in the selected warehouse
-        conditions.append(
-            """
-            EXISTS (
-                SELECT 1
-                FROM `tabSales Order Item` soi
-                JOIN `tabBin` b ON b.item_code = soi.item_code AND b.warehouse = %(warehouse)s
-                WHERE soi.parent = so.name
-                  AND (COALESCE(b.actual_qty, 0) - COALESCE(b.reserved_qty, 0) - COALESCE(b.reserved_qty_for_production, 0)) > 0
-            )
-            """
-        )
-        values["warehouse"] = warehouse
 
     where_clause = " AND ".join(conditions)
 
-    query = f"""
-        SELECT 
-            so.name,
-            so.customer_name,
-            COALESCE((
-                SELECT MAX(soi.custom_batch_no)
-                FROM `tabSales Order Item` soi
-                WHERE soi.parent = so.name
-                AND COALESCE(soi.custom_batch_no, '') != ''
-            ), '') AS batch_no
+    # Step 1: Fetch candidate Sales Orders that meet criteria
+    sales_orders = frappe.db.sql(f"""
+        SELECT so.name
         FROM `tabSales Order` so
         WHERE {where_clause}
         ORDER BY so.modified DESC
-    """
+    """, values, as_dict=True)
 
-    return frappe.db.sql(query, values, as_dict=True)
+    dispatchable_orders = []
+
+    # Step 2: Check stock availability for all items in each SO
+    for so in sales_orders:
+        items = frappe.get_all(
+            "Sales Order Item",
+            filters={"parent": so.name},
+            fields=["item_code", "qty", "warehouse"]
+        )
+
+        all_items_in_stock = True
+        for item in items:
+            item_warehouse = warehouse or item.warehouse
+            if not item_warehouse:
+                all_items_in_stock = False
+                break
+
+            actual_qty = flt(frappe.db.get_value(
+                "Bin",
+                {"item_code": item.item_code, "warehouse": item_warehouse},
+                "actual_qty"
+            ) or 0)
+
+            if actual_qty < flt(item.qty):
+                all_items_in_stock = False
+                break
+
+        if all_items_in_stock:
+            dispatchable_orders.append({"name": so.name})
+
+    return dispatchable_orders
+
 
 
 
@@ -521,3 +535,42 @@ def _calculate_and_set_remaining_taxes(doc):
         frappe.msgprint(_("Actual taxes adjusted successfully"), alert=True, indicator="green")
 
 
+
+
+def validate_duplicate_delivery_note(doc, method):
+    """
+    Prevent creating duplicate Delivery Notes (DRAFT only)
+    for same batch_no + item_code + qty + customer combination.
+    """
+    for item in doc.items:
+        if not item.custom_batch_no:
+            continue
+
+        # Look for another DRAFT Delivery Note with same details
+        duplicate = frappe.db.sql(
+            """
+            SELECT dni.parent
+            FROM `tabDelivery Note Item` dni
+            INNER JOIN `tabDelivery Note` dn ON dn.name = dni.parent
+            WHERE dni.custom_batch_no = %s
+              AND dni.item_code = %s
+              AND dni.qty = %s
+              AND dn.customer = %s
+              AND dn.docstatus = 0
+              AND dni.parent != %s
+            LIMIT 1
+            """,
+            (item.custom_batch_no, item.item_code, item.qty, doc.customer, doc.name),
+        )
+
+        if duplicate:
+            dn_name = duplicate[0][0]
+            frappe.throw(
+                _(
+                    f"Duplicate Draft Delivery Note found for Batch: <b>{item.custom_batch_no}</b>, "
+                    f"Item: <b>{item.item_code}</b>, Qty: <b>{item.qty}</b>, "
+                    f"Customer: <b>{doc.customer}</b>.<br><br>"
+                    f"Existing Draft DN: <b><a href='/app/delivery-note/{dn_name}'>{dn_name}</a></b>"
+                ),
+                title=_("Duplicate Draft Delivery Note"),
+            )
