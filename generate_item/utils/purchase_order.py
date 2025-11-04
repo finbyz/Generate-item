@@ -1,4 +1,57 @@
 import frappe
+from frappe import _
+
+
+
+def validate(doc, method):
+    validate_duplicate_po(doc, method)
+    for i in doc.items:
+        i.po_line_no = i.idx
+        if i.rate == 0:
+            frappe.throw(f"Please enter a valid rate for item in line No. {i.idx}. The rate cannot be 0.",
+                         title="Zero Rate Found")
+
+def validate_duplicate_po(doc, method):
+    """Prevent duplicate draft Purchase Orders for same supplier, item, and qty."""
+    
+    # Skip validation for cancelled or submitted docs
+    if doc.docstatus != 0:
+        return
+
+    for item in doc.items:
+        duplicates = frappe.db.get_all(
+            "Purchase Order",
+            filters={
+                "supplier": doc.supplier,
+                "docstatus": 0,  # Only Draft
+                "name": ["!=", doc.name],  # Exclude current
+            },
+            fields=["name"]
+        )
+
+        if not duplicates:
+            continue
+
+        # Check for matching item + qty in other POs
+        for d in duplicates:
+            duplicate_items = frappe.db.get_all(
+                "Purchase Order Item",
+                filters={
+                    "parent": d.name,
+                    "item_code": item.item_code,
+                    "qty": item.qty,
+                    "material_request": item.material_request,
+                    "material_request_item": item.material_request_item,
+                },
+                fields=["item_code", "qty"]
+            )
+            if duplicate_items:
+                frappe.throw(_(
+                    f"Duplicate Purchase Order Found: <b>{d.name}</b><br>"
+                    f"Supplier <b>{doc.supplier}</b> already has a Draft PO "
+                    f"for Item <b>{item.item_code}</b> with Qty <b>{item.qty}</b>."
+                ))
+
 
 def before_insert(doc, method):
     """Set custom_batch_no for purchase order and its items from linked Production Plan Item"""
@@ -34,12 +87,6 @@ def before_insert(doc, method):
             "Purchase Order before_insert Error"
         )
 
-def validate(doc, method):
-    for i in doc.items:
-        i.po_line_no = i.idx
-        if i.rate == 0:
-            frappe.throw(f"Please enter a valid rate for item in line No. {i.idx}. The rate cannot be 0.",
-                         title="Zero Rate Found")
     
 def before_save(doc, method):
     for i in doc.items:

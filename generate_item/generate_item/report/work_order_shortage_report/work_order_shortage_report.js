@@ -90,6 +90,15 @@ frappe.query_reports["Work Order Shortage Report"] = {
             "fieldtype": "Select",
             "options": ["Status", "Age", "Quantity"],
             "default": "Status"
+        },
+        {
+            "label": __("Branch"),
+            "fieldname": "branch",
+            "fieldtype": "Link",
+            "options": "Branch",
+            "default": " ",
+            "reqd":1,
+            "placeholder":"Branch"
         }
     ],
     

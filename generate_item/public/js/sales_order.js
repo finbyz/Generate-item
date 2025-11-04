@@ -627,6 +627,7 @@ function create_batch_for_item(frm, item, index) {
             'doctype': 'Batch',
             'item': item.item_code,
             'batch_id': batch_id,
+            'branch': item.branch,
             // 'batch_qty': item.qty,
             'stock_uom': item.uom,
             'manufacturing_date': manufacturing_date,

@@ -5,11 +5,18 @@ def get_reference_name(reference_name, reference_type):
     return ref_data
 
 
-def before_save(doc, method=None):
-    if doc.reference_name and doc.reference_type:
-        ref_data = frappe.get_value(doc.reference_type, doc.reference_name, "branch")
-        doc.branch = ref_data
-        doc.refresh_field("branch")
+
+def before_save(doc, method):
+    if doc.branch or not (doc.reference_type and doc.reference_name):
+        return
+
+    try:
+        branch = frappe.db.get_value(doc.reference_type, doc.reference_name, "branch")
+        if branch:
+            doc.branch = branch
+    except Exception as e:
+        frappe.log_error(f"Failed to fetch branch for {doc.reference_type} - {doc.reference_name}: {e}", "Quality Inspection before_save")
+
         
 
 @frappe.whitelist()

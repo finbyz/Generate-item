@@ -111,7 +111,7 @@ frappe.ui.form.on('Purchase Order', {
 					get_query_filters: {
 						material_request_type: 'Purchase',
 						docstatus: 1,
-						status: ['in', ['Partially Received', 'Pending']],
+						status: ['in', ['Partially Received', 'Pending','Partially ordered']],
 						company: frm.doc.company,
 					},
 					allow_child_item_selection: true,

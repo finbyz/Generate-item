@@ -12,6 +12,15 @@ frappe.ui.form.on('Production Plan', {
         {
             update_actual_qty_for_items(frm);
         }
+        frm.set_query("for_warehouse", function (doc) {
+			return {
+				filters: {
+					company: doc.company,
+					is_group: 0,
+                    branch: frm.doc.branch
+				},
+			};
+		});
         
         // Ensure the form is fully loaded and the document name is available
         if (!frm.doc.name) return;
@@ -78,6 +87,15 @@ frappe.ui.form.on('Production Plan', {
             };
         });
     },
+    branch: function(frm) {
+        if (frm.doc.branch) {
+            // Filter sales_orders table by branch
+            if (frm.doc.sales_orders && frm.doc.sales_orders.length > 0) {
+                frm.trigger("get_sales_orders");
+            }
+        }
+    },
+    // Remove recursive get_sales_orders handler; server-side override handles branch filtering
     custom_batch_wise_assembly: function(frm) {
         let selected_batch = frm.doc.custom_batch_wise_assembly;
         if (!selected_batch) {
@@ -120,6 +138,19 @@ frappe.ui.form.on('Production Plan', {
         });
         frm.refresh_field('sub_assembly_items');
     } 
+});
+frappe.ui.form.on('Production Plan Sales Order', {
+    sales_order: function(frm, cdt, cdn) {
+        // When sales order is added, fetch and set its branch
+        let row = locals[cdt][cdn];
+        if (row.sales_order) {
+            frappe.db.get_value('Sales Order', row.sales_order, 'branch', (r) => {
+                if (r && r.branch) {
+                    frappe.model.set_value(cdt, cdn, 'branch', r.branch);
+                }
+            });
+        }
+    }
 });
 
 // Handle Production Plan Item changes

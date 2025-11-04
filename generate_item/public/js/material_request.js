@@ -663,7 +663,8 @@ frappe.ui.form.on('Material Request', {
                                 docstatus: 1,
                                 status: ["not in", ["Closed", "On Hold"]],
                                 per_delivered: ["<", 99.99],
-                                company: frm.doc.company
+                                company: frm.doc.company,
+                                branch: frm.doc.branch
                             } 
                         };
                     },
@@ -710,7 +711,7 @@ frappe.ui.form.on('Material Request', {
                             return {
                                 filters: {
                                     reference_doctype: "Sales Order",
-                                    reference_name: sales_order
+                                    reference_name: sales_order,
                                 }
                             };
                         }
@@ -740,7 +741,7 @@ frappe.ui.form.on('Material Request', {
                         
                         var filters = { 
                             docstatus: 1, 
-                            is_active: 1 
+                            // is_active: 1 
                         };
                         
                         if (sales_order) {
@@ -855,6 +856,8 @@ frappe.ui.form.on('Material Request', {
                 });
             },
         });
+        d.set_value("branch", frm.doc.branch || "");
+        d.set_value("batch_reference", frm.doc.linked_batch || "");
 
         d.show();
     },

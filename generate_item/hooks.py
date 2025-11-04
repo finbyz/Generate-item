@@ -62,6 +62,7 @@ doctype_js = {"Item" : "public/js/item.js",
               "Delivery Note" : "public/js/delivery_note.js",
               "Sales Invoice" : "public/js/sales_invoice.js",
               "Quality Inspection" : "public/js/quality_inspection.js",
+              "Work Order" : "public/js/work_order.js",
               }
 
 doctype_list_js = {"Item Generator" : "public/js/item_generator_list.js"}
@@ -173,8 +174,12 @@ doc_events = {
         "validate": "generate_item.utils.purchase_order.validate",
         "before_save": "generate_item.utils.purchase_order.before_save"
     },
+    "Batch":{
+        "before_save":"generate_item.utils.batch.before_save",
+    },
     "Purchase Receipt": {
-        "before_save": "generate_item.utils.purchase_receipt.before_save"
+        "before_save": "generate_item.utils.purchase_receipt.before_save",
+        "validate": "generate_item.utils.purchase_receipt.validate",
     },  
     "Stock Entry": {
         "before_insert": "generate_item.utils.stock_entry.before_insert"
@@ -201,11 +206,12 @@ doc_events = {
     },
     "Work Order":{
         "before_insert": "generate_item.utils.work_order.before_insert",
-        "before_validate": "generate_item.utils.work_order.before_insert"
     },
     "Delivery Note": {
         "after_insert": "generate_item.utils.delivery_note.after_insert",
-
+    },
+    "Purchase Invoice": {
+        "validate": "generate_item.utils.purchase_invoice.validate",
     },
      "BOM":{
         "before_validate": "generate_item.utils.bom.before_validate",

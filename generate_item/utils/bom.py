@@ -136,3 +136,37 @@ def set_branch_details(doc, method):
         
         # Set branch abbreviation
         doc.branch_abbr = branch_abbr_map.get(doc.branch, '') if doc.branch else ''
+
+
+
+import frappe
+
+@frappe.whitelist()
+def get_available_batches(item, branch, current_bom=None):
+    """Return list of Batch names not linked to any other BOM."""
+    if not item or not branch:
+        return []
+
+    # 1️⃣ Get all batches already linked to other BOMs
+    used_batches = frappe.get_all(
+        "BOM",
+        filters={
+            "custom_batch_no": ["is", "set"],
+            "docstatus": ["!=", 2],
+            "name": ["!=", current_bom]
+        },
+        pluck="custom_batch_no"
+    )
+
+    # 2️⃣ Get all batches for this item + branch + Sales Order ref
+    filters = {
+        "item": item,
+        "branch": branch,
+        "reference_doctype": "Sales Order"
+    }
+    all_batches = frappe.get_all("Batch", filters=filters, pluck="name")
+
+    # 3️⃣ Exclude those already used
+    available_batches = [b for b in all_batches if b not in used_batches]
+
+    return available_batches

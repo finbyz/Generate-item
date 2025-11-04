@@ -179,7 +179,8 @@ frappe.listview_settings['Item Generator'] = {
                             }
                             
                             new_item.description = (base_item.description || "") + " SUB MACHINING KIT";
-                            new_item.item_group_name = base_item.item_group_name;
+                            // new_item.item_group_name = base_item.item_group_name;
+                            new_item.item_group_name = "Sub Assembly";
                             new_item.duplicated_machining_kit = 1;
                             
                             // Also set custom_conditional_description to match

@@ -103,6 +103,8 @@ class CustomBOM(OriginalBOM):
         is populated even when referenced `bom_no` is not yet submitted.
         """
         child_fb_items = frappe.db.sql(
+            
+            
             """
             SELECT
                 bom_item.item_code,

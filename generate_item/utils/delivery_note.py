@@ -3,6 +3,112 @@
 
 import frappe
 from frappe import _
+import frappe
+import json
+
+@frappe.whitelist()
+def get_custom_batches_for_dn_items(items_data):
+    """
+    Fetch custom batch numbers from linked Sales Orders for Delivery Note items.
+    items_data: list of dicts e.g.,
+        [{'against_sales_order': 'SO-001', 'so_detail': 'SO-ITEM-ROW-ID', 'item_code': 'ITEM-1',
+          'item_name': 'Item Name', 'dn_item_name': 'DN-ITEM-ROW-ID'}]
+    Returns: dict {dn_item_name: custom_batch_no} for items where batch is available.
+    """
+    if isinstance(items_data, str):
+        items_data = frappe.parse_json(items_data)
+    elif not isinstance(items_data, list):
+        frappe.throw(_("Invalid items_data format. Expected list of dicts."))
+
+    if not items_data:
+        return {}
+
+    results = {}
+
+    for data in items_data:
+        so_name = data.get('against_sales_order')
+        so_detail = data.get('so_detail')
+        item_code = data.get('item_code')
+        item_name = data.get('item_name')
+        dn_item_name = data.get('dn_item_name')
+
+        if not all([so_name, so_detail, item_code, dn_item_name]):
+            continue
+
+        try:
+            so_item = frappe.get_all(
+                "Sales Order Item",
+                filters={
+                    "parent": so_name,
+                    "name": so_detail,
+                    "item_code": item_code
+                },
+                fields=["item_name", "custom_batch_no"],
+                limit=1
+            )
+
+            if not so_item:
+                continue
+
+            so_data = so_item[0]
+
+            # Optional: strict match on item_name (can be skipped if same code = same item)
+            if so_data.item_name != item_name:
+                frappe.log_error(f"Item name mismatch for {item_code} in Sales Order Item {so_detail} (SO: {so_name})")
+                continue
+
+            if so_data.custom_batch_no:
+                results[dn_item_name] = so_data.custom_batch_no
+
+        except frappe.PermissionError:
+            frappe.log_error(f"Permission denied accessing Sales Order Item {so_detail} (SO: {so_name}) for item {item_code}")
+            continue
+        except Exception as e:
+            frappe.log_error(f"Error fetching batch for {item_code} in SO Item {so_detail} (SO: {so_name}): {str(e)}")
+            continue
+
+    return results
+
+
+def set_batch_from_sales_order(doc, method):
+    """
+    Server-side hook to set batches on save (backup for any missed client-side sets).
+    Runs only for new documents.
+    """
+    if not doc.get("__islocal"):
+        return
+
+    # Collect items data similar to JS
+    items_data = []
+    for item in doc.items:
+        if item.against_sales_order and item.so_detail and not item.custom_batch_no:
+            items_data.append({
+                'against_sales_order': item.against_sales_order,
+                'so_detail': item.so_detail,
+                'item_code': item.item_code,
+                'item_name': item.item_name,
+                'dn_item_name': item.name  # Not used here, but for consistency
+            })
+
+    if items_data:
+        batches = get_custom_batches_for_dn_items(items_data)
+        updated_count = 0
+        for dn_item_name, batch_no in batches.items():
+            # Find and set in doc
+            for item in doc.items:
+                if item.name == dn_item_name:
+                    item.custom_batch_no = batch_no
+                    updated_count += 1
+                    break
+
+        if updated_count > 0:
+            frappe.msgprint(
+                f"{updated_count} custom batch(es) set from Sales Orders.",
+                title=__("Batches Updated"),
+                indicator="green"
+            )
+
+
 
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
@@ -98,7 +204,7 @@ def get_dispatchable_sales_orders(doctype, txt, searchfield, start, page_len, fi
 
 
 @frappe.whitelist()
-def get_dispatchable_sales_orders_list(customer, company=None, project=None):
+def get_dispatchable_sales_orders_list(customer, company=None, project=None, warehouse=None):
     """
     Used in custom Dispatchable SO button.
     Returns list of dispatchable Sales Orders with batch info.
@@ -136,6 +242,20 @@ def get_dispatchable_sales_orders_list(customer, company=None, project=None):
     if project:
         conditions.append("so.project = %(project)s")
         values["project"] = project
+    if warehouse:
+        # Only include SOs that have at least one item with stock available in the selected warehouse
+        conditions.append(
+            """
+            EXISTS (
+                SELECT 1
+                FROM `tabSales Order Item` soi
+                JOIN `tabBin` b ON b.item_code = soi.item_code AND b.warehouse = %(warehouse)s
+                WHERE soi.parent = so.name
+                  AND (COALESCE(b.actual_qty, 0) - COALESCE(b.reserved_qty, 0) - COALESCE(b.reserved_qty_for_production, 0)) > 0
+            )
+            """
+        )
+        values["warehouse"] = warehouse
 
     where_clause = " AND ".join(conditions)
 
@@ -399,3 +519,5 @@ def _calculate_and_set_remaining_taxes(doc):
         if doc.name and not doc.get("__islocal"):
             doc.db_update()
         frappe.msgprint(_("Actual taxes adjusted successfully"), alert=True, indicator="green")
+
+

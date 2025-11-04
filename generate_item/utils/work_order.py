@@ -15,6 +15,9 @@ def before_insert(doc, method=None):
 
             batch_no = None
             branch = None
+            drawing_no = None
+            drawing_rev_no = None
+
 
             # Prefer exact Sales Order Item when provided on Work Order
             sales_order_item_name = getattr(doc, 'sales_order_item', None)
