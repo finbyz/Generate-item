@@ -228,6 +228,9 @@ doc_events = {
         "before_save": "generate_item.utils.subcontracting_receipt.before_save",
         "after_save": "generate_item.utils.subcontracting_receipt.after_save"
     },
+    "Customer":{
+        "validate":"generate_item.utils.customer.validate"
+    }
    
 }
 # 	"*": {
