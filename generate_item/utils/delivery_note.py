@@ -205,14 +205,95 @@ def get_dispatchable_sales_orders(doctype, txt, searchfield, start, page_len, fi
 import frappe
 from frappe.utils import flt
 
+# @frappe.whitelist()
+# def get_dispatchable_sales_orders_list(customer=None, company=None, project=None, warehouse=None):
+#     """
+#     Returns Sales Orders that:
+#     1. Belong to given customer
+#     2. Have at least one Work Order (all completed)
+#     3. Are not fully delivered
+#     4. All items have sufficient stock (>= required qty)
+#     """
+#     if not customer:
+#         frappe.throw("Customer is required")
+
+#     values = {"customer": customer}
+#     conditions = [
+#         "so.docstatus = 1",
+#         "so.status NOT IN ('Closed', 'On Hold', 'Completed')",
+#         "COALESCE(so.per_delivered, 0) < 99.99",
+#         "so.customer = %(customer)s",
+#         # Has at least one completed Work Order
+#         """EXISTS (
+#             SELECT 1 FROM `tabWork Order` wo
+#             WHERE wo.sales_order = so.name
+#               AND wo.docstatus = 1
+#         )""",
+#         # Has no Work Order that is not completed
+#         """NOT EXISTS (
+#             SELECT 1 FROM `tabWork Order` wo2
+#             WHERE wo2.sales_order = so.name
+#               AND wo2.docstatus = 1
+              
+#         )"""
+#     ]
+
+#     if company:
+#         conditions.append("so.company = %(company)s")
+#         values["company"] = company
+
+#     if project:
+#         conditions.append("so.project = %(project)s")
+#         values["project"] = project
+
+#     where_clause = " AND ".join(conditions)
+
+#     # Step 1: Fetch candidate Sales Orders that meet criteria
+#     sales_orders = frappe.db.sql(f"""
+#         SELECT so.name
+#         FROM `tabSales Order` so
+#         WHERE {where_clause}
+#         ORDER BY so.modified DESC
+#     """, values, as_dict=True)
+
+#     dispatchable_orders = []
+
+#     # Step 2: Check stock availability for all items in each SO
+#     for so in sales_orders:
+#         items = frappe.get_all(
+#             "Sales Order Item",
+#             filters={"parent": so.name},
+#             fields=["item_code", "qty", "warehouse"]
+#         )
+
+#         all_items_in_stock = True
+#         for item in items:
+#             item_warehouse = warehouse or item.warehouse
+#             if not item_warehouse:
+#                 all_items_in_stock = False
+#                 break
+
+#             actual_qty = flt(frappe.db.get_value(
+#                 "Bin",
+#                 {"item_code": item.item_code, "warehouse": item_warehouse},
+#                 "actual_qty"
+#             ) or 0)
+
+#             if actual_qty < flt(item.qty):
+#                 all_items_in_stock = False
+#                 break
+
+#         if all_items_in_stock:
+#             dispatchable_orders.append({"name": so.name})
+
+#     return dispatchable_orders
 @frappe.whitelist()
 def get_dispatchable_sales_orders_list(customer=None, company=None, project=None, warehouse=None):
     """
     Returns Sales Orders that:
     1. Belong to given customer
-    2. Have at least one Work Order (all completed)
-    3. Are not fully delivered
-    4. All items have sufficient stock (>= required qty)
+    2. Are not fully delivered
+    3. All items have sufficient stock (>= required qty)
     """
     if not customer:
         frappe.throw("Customer is required")
@@ -222,21 +303,7 @@ def get_dispatchable_sales_orders_list(customer=None, company=None, project=None
         "so.docstatus = 1",
         "so.status NOT IN ('Closed', 'On Hold', 'Completed')",
         "COALESCE(so.per_delivered, 0) < 99.99",
-        "so.customer = %(customer)s",
-        # Has at least one completed Work Order
-        """EXISTS (
-            SELECT 1 FROM `tabWork Order` wo
-            WHERE wo.sales_order = so.name
-              AND wo.docstatus = 1
-              AND wo.status = 'Completed'
-        )""",
-        # Has no Work Order that is not completed
-        """NOT EXISTS (
-            SELECT 1 FROM `tabWork Order` wo2
-            WHERE wo2.sales_order = so.name
-              AND wo2.docstatus = 1
-              AND wo2.status != 'Completed'
-        )"""
+        "so.customer = %(customer)s"
     ]
 
     if company:
