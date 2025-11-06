@@ -1,6 +1,7 @@
 import frappe
 from erpnext.manufacturing.doctype.bom_creator.bom_creator import BOMCreator as CoreBOMCreator
 from generate_item.utils.bom_naming import set_bom_naming_series, get_custom_bom_name, get_available_bom_name
+from frappe.utils import get_link_to_form
 
 from collections import OrderedDict
 
@@ -34,6 +35,8 @@ class BOMCreator(CoreBOMCreator):
             )
 
         self.db_set("status", "In Progress")
+        # Track successfully created BOM names for user message with links
+        self._created_boms = []
         production_item_wise_rm = OrderedDict()
 
         # Initialize root production item (FG item from BOM Creator header)
@@ -88,7 +91,18 @@ class BOMCreator(CoreBOMCreator):
                 self.create_bom(fg_item_data, production_item_wise_rm, group_key)
 
             self.db_set("status", "Completed")
-            frappe.msgprint("BOMs created successfully")
+            # Build a message with links to the created BOM(s)
+            links = []
+            for bom_name in getattr(self, "_created_boms", []) or []:
+                try:
+                    links.append(get_link_to_form("BOM", bom_name))
+                except Exception:
+                    pass
+            if links:
+                message = "Created BOM(s): " + ", ".join(links)
+                frappe.msgprint(message, title="BOMs Created", indicator="green")
+            else:
+                frappe.msgprint("BOMs created successfully", title="BOMs Created", indicator="green")
         except Exception:
             traceback = frappe.get_traceback(with_context=True)
             self.db_set({"status": "Failed", "error_log": traceback})
@@ -273,15 +287,13 @@ class BOMCreator(CoreBOMCreator):
         try:
             bom.save(ignore_permissions=True)
             bom.submit()
-            
-            # Store BOM number back in production dict for parent references
+            # Track created BOM for user message and parent references
             production_item_wise_rm[group_key].bom_no = bom.name
-            
+            self._created_boms.append(bom.name)
             frappe.log_error(
                 "BOM Created Successfully",
                 f"Created BOM {bom.name} for item {correct_item_code} (group_key: {group_key})"
             )
-            
         except Exception as e:
             # Duplicate-safe fallback: if name conflict, add incremental suffix and retry once
             try:
