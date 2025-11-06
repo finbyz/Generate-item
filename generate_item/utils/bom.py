@@ -4,6 +4,10 @@ from generate_item.utils.bom_naming import get_custom_bom_name, get_available_bo
 def before_insert(doc, method=None):
     """Set custom BOM name before document is inserted"""
     try:
+        # Map fields from BOM Creator if this BOM was created from BOM Creator
+        if hasattr(doc, 'bom_creator') and doc.bom_creator:
+            _map_fields_from_bom_creator(doc)
+        
         if not doc.name and doc.item:
             # Get branch abbreviation from the document
             branch_abbr = getattr(doc, 'branch_abbr', None)
@@ -104,6 +108,10 @@ def on_submit(self,method):
 
 def before_save(doc,method):
     try:
+        # Map fields from BOM Creator if this BOM was created from BOM Creator
+        if hasattr(doc, 'bom_creator') and doc.bom_creator:
+            _map_fields_from_bom_creator(doc)
+        
         if getattr(doc, "item", None):
             item_doc = frappe.get_doc("Item", doc.item)
 
@@ -121,6 +129,111 @@ def before_save(doc,method):
     except Exception:
         # Do not block validation if Item fetch fails; log and continue
         frappe.log_error(f"Failed to backfill BOM custom fields from Item for {getattr(doc, 'name', '')}")
+
+
+def _map_fields_from_bom_creator(bom_doc):
+    """
+    Map fields from BOM Creator to BOM when BOM is created from BOM Creator.
+    """
+    try:
+        bom_creator = frappe.get_doc("BOM Creator", bom_doc.bom_creator)
+        
+        # Map sales_order and custom_batch_no to parent BOM
+        if hasattr(bom_creator, 'sales_order') and bom_creator.sales_order:
+            if not bom_doc.sales_order:
+                bom_doc.sales_order = bom_creator.sales_order
+        
+        if hasattr(bom_creator, 'custom_batch_no') and bom_creator.custom_batch_no:
+            if not bom_doc.custom_batch_no:
+                bom_doc.custom_batch_no = bom_creator.custom_batch_no
+        
+        # Map branch_abbr from sales order
+        if bom_doc.sales_order and not getattr(bom_doc, 'branch_abbr', None):
+            try:
+                branch = frappe.get_cached_value("Sales Order", bom_doc.sales_order, "branch")
+                if branch:
+                    bom_doc.branch = branch
+                    # Get branch_abbr from Branch master
+                    branch_abbr = frappe.get_cached_value("Branch", branch, "abbr") or \
+                                 frappe.get_cached_value("Branch", branch, "custom_abbr")
+                    if branch_abbr:
+                        bom_doc.branch_abbr = branch_abbr
+                    else:
+                        # Fallback mapping
+                        branch_abbr_map = {'Rabale': 'RA', 'Nandikoor': 'NA', 'Sanand': 'SA'}
+                        bom_doc.branch_abbr = branch_abbr_map.get(branch, None)
+            except Exception:
+                pass
+        
+        # Map drawing fields to BOM items
+        _map_drawing_fields_from_bom_creator_items(bom_doc, bom_creator)
+        
+    except Exception as e:
+        frappe.log_error(
+            "Failed to map fields from BOM Creator",
+            f"BOM: {bom_doc.name}, BOM Creator: {bom_doc.bom_creator}\n\n{frappe.get_traceback()}"
+        )
+
+
+def _map_drawing_fields_from_bom_creator_items(bom_doc, bom_creator):
+    """
+    Map drawing fields from BOM Creator items to BOM items.
+    """
+    try:
+        # Build a map of item_code to BOM Creator item row
+        bom_creator_item_map = {}
+        for item in bom_creator.items:
+            if item.item_code:
+                bom_creator_item_map[item.item_code] = item
+        
+        # Process each BOM item
+        for bom_item in bom_doc.items:
+            item_code = bom_item.item_code
+            
+            # Get corresponding BOM Creator item
+            bom_creator_item = bom_creator_item_map.get(item_code)
+            
+            if bom_creator_item:
+                # Map custom_drawing_no to BOM item
+                if hasattr(bom_creator_item, 'custom_drawing_no') and bom_creator_item.custom_drawing_no:
+                    if not bom_item.custom_drawing_no:
+                        bom_item.custom_drawing_no = bom_creator_item.custom_drawing_no
+                
+                if hasattr(bom_creator_item, 'custom_drawing_rev_no') and bom_creator_item.custom_drawing_rev_no:
+                    if not bom_item.custom_drawing_rev_no:
+                        bom_item.custom_drawing_rev_no = bom_creator_item.custom_drawing_rev_no
+                
+                # Check if this item is expandable (is_expandable marked)
+                is_expandable = getattr(bom_creator_item, 'is_expandable', False)
+                
+                if is_expandable:
+                    # Map custom_drawing and custom_drawing_rev_no to custom_ga_drawing_no and custom_ga_drawing_rev_no
+                    if hasattr(bom_creator_item, 'custom_drawing') and bom_creator_item.custom_drawing:
+                        if not bom_item.custom_ga_drawing_no:
+                            bom_item.custom_ga_drawing_no = bom_creator_item.custom_drawing
+                    
+                    if hasattr(bom_creator_item, 'custom_drawing_rev_no') and bom_creator_item.custom_drawing_rev_no:
+                        if not bom_item.custom_ga_drawing_rev_no:
+                            bom_item.custom_ga_drawing_rev_no = bom_creator_item.custom_drawing_rev_no
+                
+                # Also map other drawing-related fields if they exist
+                drawing_fields_map = {
+                    'custom_pattern_drawing_no': 'custom_pattern_drawing_no',
+                    'custom_pattern_drawing_rev_no': 'custom_pattern_drawing_rev_no',
+                    'custom_purchase_specification_no': 'custom_purchase_specification_no',
+                    'custom_purchase_specification_rev_no': 'custom_purchase_specification_rev_no',
+                }
+                
+                for source_field, target_field in drawing_fields_map.items():
+                    if hasattr(bom_creator_item, source_field) and getattr(bom_creator_item, source_field):
+                        if not getattr(bom_item, target_field, None):
+                            setattr(bom_item, target_field, getattr(bom_creator_item, source_field))
+    
+    except Exception as e:
+        frappe.log_error(
+            "Failed to map drawing fields from BOM Creator items",
+            f"BOM: {bom_doc.name}\n\n{frappe.get_traceback()}"
+        )
     
 
 
@@ -137,9 +250,6 @@ def set_branch_details(doc, method):
         # Set branch abbreviation
         doc.branch_abbr = branch_abbr_map.get(doc.branch, '') if doc.branch else ''
 
-
-
-import frappe
 
 @frappe.whitelist()
 def get_available_batches(item, branch, current_bom=None):

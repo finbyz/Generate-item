@@ -156,8 +156,8 @@ doctype_list_js = {"Item Generator" : "public/js/item_generator_list.js"}
 # }
 override_doctype_class = {
     "BOM": "generate_item.overrides.custombom.CustomBOM",
-    "Production Plan": "generate_item.overrides.production_plan.ProductionPlan",
     "BOM Creator": "generate_item.overrides.custom_bom_creator.BOMCreator",
+    "Production Plan": "generate_item.overrides.production_plan.ProductionPlan",
     "Work Order": "generate_item.overrides.customWorkorder.WorkOrder",
     "Sales Order": "generate_item.overrides.custom_sales_order.CustomSalesOrder",
     # "Purchase Receipt": "generate_item.overrides.purchase_receipt.PurchaseReceipt",
@@ -221,6 +221,9 @@ doc_events = {
         "before_save": "generate_item.utils.bom.before_save",
         "on_cancel": "generate_item.utils.bom.clear_custom_fields_on_cancel",
         "on_submit": "generate_item.utils.bom.on_submit"
+    },
+    "BOM Creator": {
+        "validate": "generate_item.utils.bom_creator.validate"
     },
     "Quality Inspection": {
         "before_save": "generate_item.utils.quality_inspection.before_save"
