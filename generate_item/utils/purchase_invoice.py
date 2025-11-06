@@ -3,44 +3,54 @@ from frappe import _
 
 
 def validate(doc, method):
-    validate_duplicate_po(doc, method)
+    validate_duplicate_pi(doc, method)
    
 
-import frappe
-from frappe import _
-
-def validate_duplicate_purchase_invoice(doc, method):
-    """
-    Prevent duplicate Purchase Invoices for the same Purchase Order and item combination.
-    Checks all items, not just the first one.
-    """
-
-    if not doc.supplier or not doc.items:
+def validate_duplicate_pi(doc, method):
+    """Prevent duplicate draft Purchase Invoices for same supplier, item, qty, custom_batch_no, material_request, and material_request_item."""
+    
+    # Skip validation for cancelled or submitted docs
+    if doc.docstatus != 0:
         return
 
+    # Only proceed if custom_batch_no is set
+    if not doc.custom_batch_no:
+        return
+
+    # Get potential duplicate PIs first (outside item loop for efficiency)
+    duplicates = frappe.db.get_all(
+        "Purchase Invoice",
+        filters={
+            "supplier": doc.supplier,
+            "custom_batch_no": doc.custom_batch_no,
+            "docstatus": 0,  # Only Draft
+            "name": ["!=", doc.name],  # Exclude current
+        },
+        fields=["name"]
+    )
+
+    if not duplicates:
+        return
+
+    # Now check each item against these potential duplicates
     for item in doc.items:
-        if not item.purchase_order or not item.item_code:
-            continue
-
-        # Find if any other Purchase Invoice already has this PO + Item
-        duplicate_invoices = frappe.db.get_all(
-            "Purchase Invoice Item",
-            filters={
-                "purchase_order": item.purchase_order,
-                "item_code": item.item_code,
-                "parent": ["!=", doc.name],
-            },
-            fields=["parent"]
-        )
-
-        if duplicate_invoices:
-            # Get the first duplicate doc for reference
-            existing_pi = duplicate_invoices[0].parent
-            frappe.throw(
-                _(
-                    f"Duplicate Purchase Invoice found for Item <b>{item.item_code}</b> "
-                    f"linked to Purchase Order <b>{item.purchase_order}</b>.<br>"
-                    f"Existing Invoice: <b>{existing_pi}</b>"
-                ),
-                title="Duplicate Purchase Invoice Detected"
+        for d in duplicates:
+            duplicate_items = frappe.db.get_all(
+                "Purchase Invoice Item",
+                filters={
+                    "parent": d.name,
+                    "item_code": item.item_code,
+                    "qty": item.qty,
+                    "material_request": item.material_request or "",
+                    "material_request_item": item.material_request_item or "",
+                },
+                fields=["item_code", "qty"]
             )
+            if duplicate_items:
+                frappe.throw(_(
+                    f"Duplicate Purchase Invoice Found: <b>{d.name}</b><br>"
+                    f"Supplier <b>{doc.supplier}</b> already has a Draft PI "
+                    f"for Item <b>{item.item_code}</b> with Qty <b>{item.qty}</b>, "
+                    f"Batch No <b>{doc.custom_batch_no}</b>, "
+                  
+                ))

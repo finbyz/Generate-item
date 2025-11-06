@@ -229,6 +229,7 @@ def validate(doc, method=None):
     Optional: Validate before save to show warning if taxes exceed Sales Order
     This prevents over-billing
     """
+    validate_duplicate_si(doc, method)
     sales_orders = list(set([item.sales_order for item in doc.items if item.sales_order]))
     
     for so_name in sales_orders:
@@ -294,6 +295,77 @@ def validate(doc, method=None):
                         ),
                         title=_("Tax Amount Exceeded")
                     )
+
+
+import frappe
+from frappe import _
+
+def validate_duplicate_si(doc, method):
+    """Prevent duplicate draft Sales Invoices for same customer, branch, item, rate, and taxes_and_charges."""
+    
+    # Skip validation for cancelled or submitted docs
+    if doc.docstatus != 0:
+        return
+
+    # Get potential duplicate SIs first (outside item loop for efficiency)
+    # Removed sales_order filter to catch duplicates even if SO is not linked
+    duplicates = frappe.db.get_all(
+        "Sales Invoice",
+        filters={
+            "customer": doc.customer,
+            "branch": doc.branch or "",
+            "taxes_and_charges": doc.taxes_and_charges or "",
+            "docstatus": 0,  # Only Draft
+            "name": ["!=", doc.name],  # Exclude current
+        },
+        fields=["name"]
+    )
+
+    if not duplicates:
+        return
+
+    # Collect all violations
+    violations = []
+    for item in doc.items:
+        for d in duplicates:
+            duplicate_items = frappe.db.get_all(
+                "Sales Invoice Item",
+                filters={
+                    "parent": d.name,
+                    "item_code": item.item_code,
+                    # Removed qty check to restrict even on qty differences
+                    "rate": item.rate,
+                },
+                fields=["item_code", "qty", "rate"]
+            )
+            if duplicate_items:
+                violations.append({
+                    "doc_name": d.name,
+                    "item_code": item.item_code,
+                    "qty": item.qty,
+                    "rate": item.rate,
+                    "existing_qty": duplicate_items[0].qty if duplicate_items else 'N/A'  # For message
+                })
+
+    if violations:
+        # Format a single error message with all issues
+        error_msg = "<b>Multiple Duplicate Sales Invoices Found:</b><br><br>"
+        seen_docs = {}  # To group by doc if multiple items per doc
+        for v in violations:
+            doc_key = v["doc_name"]
+            if doc_key not in seen_docs:
+                seen_docs[doc_key] = []
+            seen_docs[doc_key].append(f"- Item <b>{v['item_code']}</b> (Your Qty: <b>{v['qty']}</b>, Existing Qty: <b>{v['existing_qty']}</b>, Rate: <b>{v['rate']}</b>)")
+        
+        for doc_name, items_list in seen_docs.items():
+            error_msg += f"Existing Draft Sales Invoice: <b><a href='/app/sales-invoice/{doc_name}'>{doc_name}</a></b><br>"
+            error_msg += f"(Customer: <b>{doc.customer}</b>, Branch: <b>{doc.branch or 'N/A'}</b>, Sales Order: <b>N/A</b>, Commercial TC: <b>{doc.taxes_and_charges or 'N/A'}</b>)<br><br>"
+            error_msg += "<br>".join(items_list)
+            error_msg += "<br><br>"
+        
+        frappe.throw(_(error_msg))
+
+
 
 @frappe.whitelist()
 def make_sales_invoice(source_name, target_doc=None, args=None):

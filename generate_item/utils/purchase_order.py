@@ -11,28 +11,35 @@ def validate(doc, method):
             frappe.throw(f"Please enter a valid rate for item in line No. {i.idx}. The rate cannot be 0.",
                          title="Zero Rate Found")
 
+
 def validate_duplicate_po(doc, method):
-    """Prevent duplicate draft Purchase Orders for same supplier, item, and qty."""
+    """Prevent duplicate draft Purchase Orders for same supplier, item, qty, custom_batch_no, material_request, and material_request_item."""
     
     # Skip validation for cancelled or submitted docs
     if doc.docstatus != 0:
         return
 
+    # Only proceed if custom_batch_no is set
+    if not doc.custom_batch_no:
+        return
+
+    # Get potential duplicate POs first (outside item loop for efficiency)
+    duplicates = frappe.db.get_all(
+        "Purchase Order",
+        filters={
+            "supplier": doc.supplier,
+            "custom_batch_no": doc.custom_batch_no,
+            "docstatus": 0,  # Only Draft
+            "name": ["!=", doc.name],  # Exclude current
+        },
+        fields=["name"]
+    )
+
+    if not duplicates:
+        return
+
+    # Now check each item against these potential duplicates
     for item in doc.items:
-        duplicates = frappe.db.get_all(
-            "Purchase Order",
-            filters={
-                "supplier": doc.supplier,
-                "docstatus": 0,  # Only Draft
-                "name": ["!=", doc.name],  # Exclude current
-            },
-            fields=["name"]
-        )
-
-        if not duplicates:
-            continue
-
-        # Check for matching item + qty in other POs
         for d in duplicates:
             duplicate_items = frappe.db.get_all(
                 "Purchase Order Item",
@@ -40,8 +47,8 @@ def validate_duplicate_po(doc, method):
                     "parent": d.name,
                     "item_code": item.item_code,
                     "qty": item.qty,
-                    "material_request": item.material_request,
-                    "material_request_item": item.material_request_item,
+                    "material_request": item.material_request or "",
+                    "material_request_item": item.material_request_item or "",
                 },
                 fields=["item_code", "qty"]
             )
@@ -49,7 +56,9 @@ def validate_duplicate_po(doc, method):
                 frappe.throw(_(
                     f"Duplicate Purchase Order Found: <b>{d.name}</b><br>"
                     f"Supplier <b>{doc.supplier}</b> already has a Draft PO "
-                    f"for Item <b>{item.item_code}</b> with Qty <b>{item.qty}</b>."
+                    f"for Item <b>{item.item_code}</b> with Qty <b>{item.qty}</b>, "
+                    f"Batch No <b>{doc.custom_batch_no}</b>, "
+                   
                 ))
 
 
@@ -254,3 +263,175 @@ def update_po_line(po):
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), "update_po_line error")
         frappe.throw(f"Error updating PO line numbers: {str(e)}")
+
+
+
+
+from frappe.model.mapper import get_mapped_doc
+
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def get_material_requests_with_pending_qty(doctype, txt, searchfield, start, page_len, filters):
+	"""
+	Show only those Material Requests that still have pending qty to order.
+	Hide all MRs whose total item qty is fully covered by existing POs (Draft + Submitted).
+	"""
+
+	sql_query = """
+		SELECT
+			mr.name,
+			mr.transaction_date,
+			mr.schedule_date,
+			mr.status
+		FROM `tabMaterial Request` mr
+		WHERE
+			mr.docstatus = 1
+			AND mr.material_request_type = %(material_request_type)s
+			AND mr.company = %(company)s
+			AND mr.status IN ('Pending', 'Partially Ordered', 'Partially Received')
+			AND (
+				mr.name LIKE %(txt)s
+				OR mr.transaction_date LIKE %(txt)s
+				OR mr.schedule_date LIKE %(txt)s
+			)
+			AND (
+				-- Only include MRs where total MR qty > total ordered qty (non-cancelled)
+				(
+					SELECT IFNULL(SUM(mri.qty), 0)
+					FROM `tabMaterial Request Item` mri
+					WHERE mri.parent = mr.name
+				)
+				>
+				IFNULL((
+					SELECT SUM(poi.qty)
+					FROM `tabPurchase Order Item` poi
+					INNER JOIN `tabPurchase Order` po ON po.name = poi.parent
+					WHERE poi.material_request = mr.name
+					AND po.docstatus IN (0, 1)
+				), 0)
+			)
+		ORDER BY
+			CASE WHEN mr.name LIKE %(txt)s THEN 0 ELSE 1 END,
+			mr.schedule_date DESC,
+			mr.transaction_date DESC,
+			mr.name DESC
+		LIMIT %(page_len)s OFFSET %(start)s
+	"""
+
+	params = {
+		'material_request_type': filters.get('material_request_type', 'Purchase'),
+		'company': filters.get('company'),
+		'txt': f"%{txt}%",
+		'start': start,
+		'page_len': page_len
+	}
+
+	return frappe.db.sql(sql_query, params, as_dict=False)
+
+
+
+@frappe.whitelist()
+def make_purchase_order_from_mr(source_name, target_doc=None, args=None):
+	"""
+	Create Purchase Order from Material Request with accurate pending quantities.
+	This ensures only the remaining qty (not already in Draft/Submitted POs) is added.
+	"""
+	
+	def update_item(source, target, parent):
+		"""Calculate and set the pending quantity for each item"""
+		
+		# Get total quantity already ordered in Draft/Submitted POs (excluding Cancelled)
+		ordered_qty = frappe.db.sql("""
+			SELECT COALESCE(SUM(poi.qty), 0)
+			FROM `tabPurchase Order Item` poi
+			INNER JOIN `tabPurchase Order` po ON po.name = poi.parent
+			WHERE poi.material_request = %s
+				AND poi.material_request_item = %s
+				AND po.docstatus IN (0, 1)
+		""", (source.parent, source.name))[0][0] or 0
+		
+		# Calculate pending quantity
+		pending_qty = source.qty - ordered_qty
+		
+		if pending_qty > 0:
+			target.qty = pending_qty
+			target.stock_qty = pending_qty * (source.conversion_factor or 1)
+		else:
+			# If no pending qty, set to 0 (will be filtered out)
+			target.qty = 0
+			target.stock_qty = 0
+	
+	def set_missing_values(source, target):
+		"""Set default values and validate"""
+		target.run_method("set_missing_values")
+		target.run_method("calculate_taxes_and_totals")
+	
+	# Map Material Request to Purchase Order
+	doclist = get_mapped_doc(
+		"Material Request",
+		source_name,
+		{
+			"Material Request": {
+				"doctype": "Purchase Order",
+				"validation": {
+					"docstatus": ["=", 1],
+					"material_request_type": ["=", "Purchase"]
+				}
+			},
+			"Material Request Item": {
+				"doctype": "Purchase Order Item",
+				"field_map": {
+					"name": "material_request_item",
+					"parent": "material_request",
+					"uom": "stock_uom",
+					"sales_order": "sales_order"
+				},
+				"postprocess": update_item,
+				"condition": lambda doc: doc.ordered_qty < doc.stock_qty
+			}
+		},
+		target_doc,
+		set_missing_values
+	)
+	
+	# Remove items with 0 quantity (fully ordered)
+	doclist.items = [item for item in doclist.items if item.qty > 0]
+	
+	return doclist
+
+
+@frappe.whitelist()
+def get_pending_qty_for_mr_item(material_request, material_request_item):
+	"""
+	Utility function to get pending quantity for a specific MR item.
+	Returns the quantity not yet ordered in any Draft/Submitted PO.
+	"""
+	
+	# Get original MR item qty
+	mr_item = frappe.db.get_value(
+		'Material Request Item',
+		material_request_item,
+		['qty', 'stock_qty', 'conversion_factor'],
+		as_dict=True
+	)
+	
+	if not mr_item:
+		return 0
+	
+	# Get total ordered in Draft/Submitted POs
+	ordered_qty = frappe.db.sql("""
+		SELECT COALESCE(SUM(poi.qty), 0)
+		FROM `tabPurchase Order Item` poi
+		INNER JOIN `tabPurchase Order` po ON po.name = poi.parent
+		WHERE poi.material_request = %s
+			AND poi.material_request_item = %s
+			AND po.docstatus IN (0, 1)
+	""", (material_request, material_request_item))[0][0] or 0
+	
+	pending_qty = mr_item.qty - ordered_qty
+	
+	return {
+		'original_qty': mr_item.qty,
+		'ordered_qty': ordered_qty,
+		'pending_qty': max(0, pending_qty)
+	}

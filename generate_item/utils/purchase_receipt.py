@@ -130,37 +130,35 @@ def validate(doc, method):
 def validate_duplicate_po(doc, method):
     """Prevent duplicate draft Purchase Orders for same supplier, item, and qty."""
 
-    if doc.docstatus != 0:
-        return
-
     for item in doc.items:
-        duplicates = frappe.db.get_all(
-            "Purchase Invoice",
-            filters={
-                "supplier": doc.supplier,
-                "docstatus": 0,  # Only Draft
-                "name": ["!=", doc.name],  # Exclude current
-            },
-            fields=["name"]
-        )
-
-        if not duplicates:
+        if not item.custom_batch_no:
             continue
 
-        # Check for matching item + qty in other POs
-        for d in duplicates:
-            duplicate_items = frappe.db.get_all(
-                "Purchase Invoice Item",
-                filters={
-                    "parent": d.name,
-                    "item_code": item.item_code,
-                    "qty": item.qty,
-                },
-                fields=["item_code", "qty"]
+        # Look for another DRAFT Delivery Note with same details
+        duplicate = frappe.db.sql(
+            """
+            SELECT dni.parent
+            FROM `tabPurchase Receipt Item` dni
+            INNER JOIN `tabPurchase Receipt` dn ON dn.name = dni.parent
+            WHERE dni.custom_batch_no = %s
+              AND dni.item_code = %s
+              AND dni.qty = %s
+              AND dn.supplier = %s
+              AND dn.docstatus = 0
+              AND dni.parent != %s
+            LIMIT 1
+            """,
+            (item.custom_batch_no, item.item_code, item.qty, doc.supplier, doc.name),
+        )
+
+        if duplicate:
+            dn_name = duplicate[0][0]
+            frappe.throw(
+                (
+                    f"Duplicate Draft Purchase Receipt found for Batch: <b>{item.custom_batch_no}</b>, "
+                    f"Item: <b>{item.item_code}</b>, Qty: <b>{item.qty}</b>, "
+                    f"Supplier: <b>{doc.supplier}</b>.<br><br>"
+                    f"Existing Draft Purchase Receipt: <b><a href='/app/purchase-receipt/{dn_name}'>{dn_name}</a></b>"
+                ),
+                title=("Duplicate Draft Purchase Receipt Detected")
             )
-            if duplicate_items:
-                frappe.throw(_(
-                    f"Duplicate Purchase Invoice Found: <b>{d.name}</b><br>"
-                    f"Supplier <b>{doc.supplier}</b> already has a Draft PO "
-                    f"for Item <b>{item.item_code}</b> with Qty <b>{item.qty}</b>."
-                ))

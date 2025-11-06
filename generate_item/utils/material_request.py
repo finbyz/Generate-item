@@ -5,6 +5,7 @@ from frappe.utils import flt, getdate, nowdate, escape_html
 from erpnext.stock.doctype.item.item import get_item_defaults
 
 def validate(doc,method):
+    validate_duplicate_mr(doc, method)
     if doc.custom_batch_no:
         for row in doc.items:
             row.db_set("custom_batch_no", doc.custom_batch_no)
@@ -12,6 +13,75 @@ def validate(doc,method):
 def before_insert(doc, method=None):
     """Run only when creating new Material Request"""
     populate_custom_fields(doc)
+
+
+
+def validate_duplicate_mr(doc, method):
+    """Prevent duplicate draft Material Requests for same custom_batch_no, item, qty, and custom_drawing_no."""
+    
+    # Skip validation for cancelled or submitted docs
+    if doc.docstatus != 0:
+        return
+
+    # Only proceed if custom_batch_no is set
+    if not doc.custom_batch_no:
+        return
+
+    # Get potential duplicate MRs first (outside item loop for efficiency)
+    duplicates = frappe.db.get_all(
+        "Material Request",
+        filters={
+            "custom_batch_no": doc.custom_batch_no,
+            "docstatus": 0,  # Only Draft
+            "name": ["!=", doc.name],  # Exclude current
+        },
+        fields=["name"]
+    )
+
+    if not duplicates:
+        return
+
+    # Collect all violations
+    violations = []
+    for item in doc.items:
+        drawing_no = item.custom_drawing_no or ""
+        for d in duplicates:
+            duplicate_items = frappe.db.get_all(
+                "Material Request Item",
+                filters={
+                    "parent": d.name,
+                    "item_code": item.item_code,
+                    "qty": item.qty,
+                    "custom_drawing_no": drawing_no,
+                },
+                fields=["item_code", "qty", "custom_drawing_no"]
+            )
+            if duplicate_items:
+                violations.append({
+                    "doc_name": d.name,
+                    "item_code": item.item_code,
+                    "qty": item.qty,
+                    "batch_no": doc.custom_batch_no,
+                    "drawing_no": drawing_no or 'N/A'
+                })
+
+    if violations:
+        # Format a single error message with all issues
+        error_msg = "<b>Multiple Duplicate Material Requests Found:</b><br><br>"
+        seen_docs = {}  # To group by doc if multiple items per doc
+        for v in violations:
+            doc_key = v["doc_name"]
+            if doc_key not in seen_docs:
+                seen_docs[doc_key] = []
+            seen_docs[doc_key].append(f"- Item <b>{v['item_code']}</b> (Qty: <b>{v['qty']}</b>)")
+        
+        for doc_name, items_list in seen_docs.items():
+            error_msg += f"Existing Draft Material Request: <b><a href='/app/material-request/{doc_name}'>{doc_name}</a></b><br>"
+            error_msg += f"<br>Batch No: <b>{violations[0]['batch_no']}</b><br><br>" 
+            error_msg += "<br>".join(items_list)
+            # Assuming same batch for all
+        
+        frappe.throw(_(error_msg))
 
 # def before_save(doc, method=None):
 #     """Run before saving (both insert and update)"""

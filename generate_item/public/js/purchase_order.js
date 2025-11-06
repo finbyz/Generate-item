@@ -111,8 +111,19 @@ frappe.ui.form.on('Purchase Order', {
 					get_query_filters: {
 						material_request_type: 'Purchase',
 						docstatus: 1,
-						status: ['in', ['Partially Received', 'Pending','Partially ordered']],
+						status: ['in', ['Partially Received', 'Pending', 'Partially Ordered']],
 						company: frm.doc.company,
+					},
+					get_query: function() {
+						return {
+							query: 'generate_item.utils.purchase_order.get_material_requests_with_pending_qty',
+							filters: {
+								material_request_type: 'Purchase',
+								docstatus: 1,
+								status: ['in', ['Partially Received', 'Pending', 'Partially Ordered']],
+								company: frm.doc.company,
+							}
+						};
 					},
 					allow_child_item_selection: true,
 					child_fieldname: 'items',
