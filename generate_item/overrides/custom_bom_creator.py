@@ -1,4 +1,7 @@
+import time
+
 import frappe
+from frappe.exceptions import QueryDeadlockError
 from erpnext.manufacturing.doctype.bom_creator.bom_creator import BOMCreator as CoreBOMCreator
 
 class BOMCreator(CoreBOMCreator):
@@ -77,6 +80,52 @@ class BOMCreator(CoreBOMCreator):
                     "BOM Creator - Failed to update BOM",
                     f"BOM: {bom_data.name}\n\n{frappe.get_traceback()}"
                 )
+    
+    def create_bom(self, row, production_item_wise_rm):
+        """Wrap core create_bom with retry to gracefully handle deadlocks."""
+        max_retries = 2
+        last_exception = None
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                return super().create_bom(row, production_item_wise_rm)
+            except QueryDeadlockError as exc:
+                frappe.db.rollback()
+                last_exception = exc
+
+                bom_creator_item = row.name if getattr(row, "name", None) != self.name else ""
+                existing_bom = frappe.db.get_value(
+                    "BOM",
+                    {
+                        "bom_creator": self.name,
+                        "item": row.item_code,
+                        "bom_creator_item": bom_creator_item,
+                        "docstatus": 1,
+                    },
+                )
+
+                if existing_bom:
+                    key = (row.item_code, getattr(row, "name", None))
+                    context = production_item_wise_rm.get(key)
+                    if context:
+                        context.bom_no = existing_bom
+
+                    frappe.logger("generate_item").warning(
+                        "Handled BOM Creator deadlock by reusing existing BOM %s for item %s (Creator %s)",
+                        existing_bom,
+                        row.item_code,
+                        self.name,
+                    )
+                    return
+
+                if attempt < max_retries:
+                    time.sleep(0.5 * attempt)
+                    continue
+
+                break
+
+        if last_exception:
+            raise last_exception
     
     def _map_drawing_fields_to_bom_items(self, bom, bom_creator_item_ref):
         """

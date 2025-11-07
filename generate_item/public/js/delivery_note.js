@@ -275,7 +275,6 @@ frappe.ui.form.on("Delivery Note", {
                         args: {
                             customer: frm.doc.customer,
                             company: frm.doc.company,
-                            project: frm.doc.project,
                             warehouse: frm.doc.set_warehouse || (frm.doc.items && frm.doc.items.length ? frm.doc.items[0].warehouse : undefined)
                         },
                         callback: function (r) {
@@ -296,7 +295,6 @@ frappe.ui.form.on("Delivery Note", {
                                         status: ["not in", ["Closed", "On Hold"]],
                                         per_delivered: ["<", 99.99],
                                         company: frm.doc.company,
-                                        project: frm.doc.project || undefined,
                                     },
                                     allow_child_item_selection: true,
                                     child_fieldname: "items",

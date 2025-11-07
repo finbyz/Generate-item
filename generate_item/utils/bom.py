@@ -8,8 +8,46 @@ def before_insert(doc, method=None):
         if hasattr(doc, 'bom_creator') and doc.bom_creator:
             _map_fields_from_bom_creator(doc)
         
+        # Ensure branch_abbr is set before generating name
+        # This is needed when BOM is created from Sales Order or other sources
+        branch_abbr = getattr(doc, 'branch_abbr', None)
+        if not branch_abbr and getattr(doc, 'branch', None):
+            try:
+                # Get branch_abbr from Branch master
+                branch_abbr = frappe.get_cached_value("Branch", doc.branch, "abbr") or \
+                             frappe.get_cached_value("Branch", doc.branch, "custom_abbr")
+                if branch_abbr:
+                    doc.branch_abbr = branch_abbr
+                else:
+                    # Fallback mapping
+                    branch_abbr_map = {'Rabale': 'RA', 'Nandikoor': 'NA', 'Sanand': 'SA'}
+                    branch_abbr = branch_abbr_map.get(doc.branch, None)
+                    if branch_abbr:
+                        doc.branch_abbr = branch_abbr
+            except Exception:
+                pass
+        
+        # Also try to get branch_abbr from sales_order if branch is not set
+        if not getattr(doc, 'branch_abbr', None) and hasattr(doc, 'sales_order') and doc.sales_order:
+            try:
+                branch = frappe.get_cached_value("Sales Order", doc.sales_order, "branch")
+                if branch:
+                    doc.branch = branch
+                    branch_abbr = frappe.get_cached_value("Branch", branch, "abbr") or \
+                                 frappe.get_cached_value("Branch", branch, "custom_abbr")
+                    if branch_abbr:
+                        doc.branch_abbr = branch_abbr
+                    else:
+                        # Fallback mapping
+                        branch_abbr_map = {'Rabale': 'RA', 'Nandikoor': 'NA', 'Sanand': 'SA'}
+                        branch_abbr = branch_abbr_map.get(branch, None)
+                        if branch_abbr:
+                            doc.branch_abbr = branch_abbr
+            except Exception:
+                pass
+        
         if not doc.name and doc.item:
-            # Get branch abbreviation from the document
+            # Get branch abbreviation from the document (now it should be set)
             branch_abbr = getattr(doc, 'branch_abbr', None)
             
             # Generate custom BOM name
