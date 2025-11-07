@@ -1,50 +1,30 @@
 frappe.ui.form.on('BOM', {
+    onload: function(frm) {
+        const so_input = frm.get_field('sales_order').$input;
+
+        so_input.on('change', function() {
+            const current_so_value = frm.doc.sales_order;
+
+            if (current_so_value && !frm.doc.custom_batch_no) {
+                
+                frappe.msgprint({
+                    title: __("Batch Selection Required"),
+                    message: __("Please select a valid Batch Number before linking a Sales Order. The entered Sales Order has been cleared."),
+                    indicator: "red"
+                });
+                
+                frm.set_value('sales_order', null);
+                
+                frm.refresh_field('sales_order');
+            }
+        });
+    },
     item: async function(frm) {
         await set_available_batches_query(frm);
     },
     branch: async function(frm) {
         await set_available_batches_query(frm);
     },
-    sales_order: function(frm) {
-        if (!frm.doc.custom_batch_no) {
-            frm.set_value("sales_order", "");
-            frappe.msgprint({
-                title: __("Missing Batch Number"),
-                message: __("Please select a valid Batch before choosing a Sales Order."),
-                indicator: "red"
-            });
-        }
-    },
-
-    // item: async function(frm) {
-    //     if (!frm.doc.item) return;
-
-    //     // Find batches already used for this item in other BOMs
-    //     const used_batches = (await frappe.db.get_list('BOM', {
-    //         fields: ['custom_batch_no'],
-    //         filters: {
-    //             item: frm.doc.item,
-    //             custom_batch_no: ['is', 'set'],
-    //             docstatus: ['!=', 2],
-    //             name: ['!=', frm.doc.name]
-    //         }
-    //     })).map(r => r.custom_batch_no);
-
-    //     // Apply filter on custom_batch_no
-    //     frm.set_query("custom_batch_no", function() {
-    //         return {
-    //             filters: [
-    //                 ['Batch', 'item', '=', frm.doc.item],              // same item only
-    //                 ['Batch', 'name', 'not in', used_batches],         // exclude already used
-    //                 ['Batch', 'branch', '=', frm.doc.branch],     // include branch filter
-    //                 ['Batch', 'reference_doctype', '=', "Sales Order"]           // include branch filter
-    //             ]
-                
-    //         };
-    //     });
-
-    //     frm.refresh_field('custom_batch_no');
-    // },
 
     refresh: function(frm) {
         setTimeout(() => {
@@ -84,16 +64,6 @@ frappe.ui.form.on('BOM', {
             };
         });
 
-        
-        
-        // frm.set_query("sales_order", function() {
-        //     return {
-        //         filters: { 
-        //             docstatus:["in",["0","1"]],
-        //             branch: frm.doc.branch,
-        //         }
-        //     };
-        // });
         frm.add_custom_button(__('Material Request'), function() {
             create_material_request_from_bom(frm);
         }, __('Create'));
@@ -175,22 +145,6 @@ frappe.ui.form.on('BOM', {
                 });
                 return;
             }
-
-            // Step 3: Validate that batch is linked with a Sales Order
-            if (b.reference_doctype !== "Sales Order" || !b.reference_name) {
-                frm.set_value("custom_batch_no", "");
-                frm.set_value("sales_order", "");
-                frappe.msgprint({
-                    title: __("Invalid Batch Link"),
-                    message: __(
-                        "Batch <b>{0}</b> must be linked with a Sales Order.",
-                        [frm.doc.custom_batch_no]
-                    ),
-                    indicator: "red"
-                });
-                return;
-            }
-
             // Step 4: Check duplicate use in another active BOM
             const existing_boms = await frappe.db.get_list("BOM", {
                 fields: ["name"],
@@ -228,28 +182,6 @@ frappe.ui.form.on('BOM', {
             frm.set_value("sales_order", "");
         }
     }
-    // custom_batch_no: function(frm) {
-    //     if (frm.doc.custom_batch_no) {
-    //         frappe.db.get_list('BOM', {
-    //             fields: ['name', 'custom_batch_no'],
-    //             filters: {
-    //                 custom_batch_no: frm.doc.custom_batch_no,
-    //                 name: ['!=', frm.doc.name] ,
-    //                 docstatus: ['!=', 2],
-    //             },
-    //             limit: 1
-    //         }).then(records => {
-    //             if (records && records.length > 0) {
-    //                 frappe.msgprint({
-    //                     title: __('Duplicate Batch Number'),
-    //                     message: __('Batch No <b>{0}</b> is already used in BOM <b>{1}</b>.', [frm.doc.custom_batch_no, records[0].name]),
-    //                     indicator: 'red'
-    //                 });
-    //                 frm.set_value('custom_batch_no', '');
-    //             }
-    //         });
-    //     }
-    // }
 })
 
 
