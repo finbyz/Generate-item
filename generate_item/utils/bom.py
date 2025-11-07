@@ -178,30 +178,86 @@ def _map_fields_from_bom_creator(bom_doc):
 def _map_drawing_fields_from_bom_creator_items(bom_doc, bom_creator):
     """
     Map drawing fields from BOM Creator items to BOM items.
+    Handles both direct item_code matching and parent-child relationships.
     """
     try:
-        # Build a map of item_code to BOM Creator item row
+        # Build multiple maps for flexible matching
+        # 1. Map by item_code
         bom_creator_item_map = {}
+        # 2. Map by name (for parent-child relationships)
+        bom_creator_item_by_name = {}
+        # 3. Map by fg_reference_id (links child items to parent)
+        bom_creator_item_by_fg_ref = {}
+        # 4. Map by idx (row index)
+        bom_creator_item_by_idx = {}
+        
         for item in bom_creator.items:
             if item.item_code:
                 bom_creator_item_map[item.item_code] = item
+            if item.name:
+                bom_creator_item_by_name[item.name] = item
+            if hasattr(item, 'fg_reference_id') and item.fg_reference_id:
+                if item.fg_reference_id not in bom_creator_item_by_fg_ref:
+                    bom_creator_item_by_fg_ref[item.fg_reference_id] = []
+                bom_creator_item_by_fg_ref[item.fg_reference_id].append(item)
+            if hasattr(item, 'idx') and item.idx:
+                bom_creator_item_by_idx[item.idx] = item
         
         # Process each BOM item
         for bom_item in bom_doc.items:
             item_code = bom_item.item_code
+            bom_creator_item = None
             
-            # Get corresponding BOM Creator item
+            # Strategy 1: Direct item_code match
             bom_creator_item = bom_creator_item_map.get(item_code)
             
+            # Strategy 2: If not found and bom_item has fg_reference_id, try to find by fg_reference_id
+            if not bom_creator_item and hasattr(bom_item, 'fg_reference_id') and bom_item.fg_reference_id:
+                fg_ref_items = bom_creator_item_by_fg_ref.get(bom_item.fg_reference_id, [])
+                # Try to find exact match by item_code in fg_ref items
+                for fg_item in fg_ref_items:
+                    if fg_item.item_code == item_code:
+                        bom_creator_item = fg_item
+                        break
+                # If still not found, use first item with matching fg_reference_id
+                if not bom_creator_item and fg_ref_items:
+                    bom_creator_item = fg_ref_items[0]
+            
+            # Strategy 3: If bom_item has parent_row_no, find parent and use its fields
+            if not bom_creator_item and hasattr(bom_item, 'parent_row_no') and bom_item.parent_row_no:
+                try:
+                    parent_idx = int(bom_item.parent_row_no)
+                    parent_item = bom_creator_item_by_idx.get(parent_idx)
+                    if parent_item:
+                        # For child items, we might want to use parent's fields or find child-specific item
+                        # First try to find child item by matching item_code in items with same fg_reference_id
+                        if hasattr(parent_item, 'fg_reference_id') and parent_item.fg_reference_id:
+                            fg_ref_items = bom_creator_item_by_fg_ref.get(parent_item.fg_reference_id, [])
+                            for fg_item in fg_ref_items:
+                                if fg_item.item_code == item_code:
+                                    bom_creator_item = fg_item
+                                    break
+                        # If still not found, use parent item (child inherits from parent)
+                        if not bom_creator_item:
+                            bom_creator_item = parent_item
+                except (ValueError, TypeError):
+                    pass
+            
             if bom_creator_item:
-                # Map custom_drawing_no to BOM item
-                if hasattr(bom_creator_item, 'custom_drawing_no') and bom_creator_item.custom_drawing_no:
-                    if not bom_item.custom_drawing_no:
-                        bom_item.custom_drawing_no = bom_creator_item.custom_drawing_no
+                # Map all custom drawing fields
+                custom_fields_to_map = [
+                    'custom_drawing_no',
+                    'custom_drawing_rev_no',
+                    'custom_pattern_drawing_no',
+                    'custom_pattern_drawing_rev_no',
+                    'custom_purchase_specification_no',
+                    'custom_purchase_specification_rev_no',
+                ]
                 
-                if hasattr(bom_creator_item, 'custom_drawing_rev_no') and bom_creator_item.custom_drawing_rev_no:
-                    if not bom_item.custom_drawing_rev_no:
-                        bom_item.custom_drawing_rev_no = bom_creator_item.custom_drawing_rev_no
+                for field_name in custom_fields_to_map:
+                    if hasattr(bom_creator_item, field_name) and getattr(bom_creator_item, field_name):
+                        if not getattr(bom_item, field_name, None):
+                            setattr(bom_item, field_name, getattr(bom_creator_item, field_name))
                 
                 # Check if this item is expandable (is_expandable marked)
                 is_expandable = getattr(bom_creator_item, 'is_expandable', False)
@@ -209,25 +265,12 @@ def _map_drawing_fields_from_bom_creator_items(bom_doc, bom_creator):
                 if is_expandable:
                     # Map custom_drawing and custom_drawing_rev_no to custom_ga_drawing_no and custom_ga_drawing_rev_no
                     if hasattr(bom_creator_item, 'custom_drawing') and bom_creator_item.custom_drawing:
-                        if not bom_item.custom_ga_drawing_no:
+                        if not getattr(bom_item, 'custom_ga_drawing_no', None):
                             bom_item.custom_ga_drawing_no = bom_creator_item.custom_drawing
                     
                     if hasattr(bom_creator_item, 'custom_drawing_rev_no') and bom_creator_item.custom_drawing_rev_no:
-                        if not bom_item.custom_ga_drawing_rev_no:
+                        if not getattr(bom_item, 'custom_ga_drawing_rev_no', None):
                             bom_item.custom_ga_drawing_rev_no = bom_creator_item.custom_drawing_rev_no
-                
-                # Also map other drawing-related fields if they exist
-                drawing_fields_map = {
-                    'custom_pattern_drawing_no': 'custom_pattern_drawing_no',
-                    'custom_pattern_drawing_rev_no': 'custom_pattern_drawing_rev_no',
-                    'custom_purchase_specification_no': 'custom_purchase_specification_no',
-                    'custom_purchase_specification_rev_no': 'custom_purchase_specification_rev_no',
-                }
-                
-                for source_field, target_field in drawing_fields_map.items():
-                    if hasattr(bom_creator_item, source_field) and getattr(bom_creator_item, source_field):
-                        if not getattr(bom_item, target_field, None):
-                            setattr(bom_item, target_field, getattr(bom_creator_item, source_field))
     
     except Exception as e:
         frappe.log_error(
