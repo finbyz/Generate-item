@@ -167,20 +167,20 @@ class BOMCreator(CoreBOMCreator):
                                 setattr(bom_item, field_name, getattr(bom_creator_item, field_name))
                                 item_updated = True
                     
-                    # Check if this item is expandable (is_expandable marked)
-                    is_expandable = getattr(bom_creator_item, 'is_expandable', False)
+                    # # Check if this item is expandable (is_expandable marked)
+                    # is_expandable = getattr(bom_creator_item, 'is_expandable', False)
                     
-                    if is_expandable:
-                        # Map custom_drawing and custom_drawing_rev_no to custom_ga_drawing_no and custom_ga_drawing_rev_no
-                        if hasattr(bom_creator_item, 'custom_drawing') and bom_creator_item.custom_drawing:
-                            if not getattr(bom_item, 'custom_ga_drawing_no', None):
-                                bom_item.custom_ga_drawing_no = bom_creator_item.custom_drawing
-                                item_updated = True
+                    # if is_expandable:
+                    #     # Map custom_drawing and custom_drawing_rev_no to custom_ga_drawing_no and custom_ga_drawing_rev_no
+                    #     if hasattr(bom_creator_item, 'custom_drawing') and bom_creator_item.custom_drawing:
+                    #         if not getattr(bom_item, 'custom_ga_drawing_no', None):
+                    #             bom_item.custom_ga_drawing_no = bom_creator_item.custom_drawing
+                    #             item_updated = True
                         
-                        if hasattr(bom_creator_item, 'custom_drawing_rev_no') and bom_creator_item.custom_drawing_rev_no:
-                            if not getattr(bom_item, 'custom_ga_drawing_rev_no', None):
-                                bom_item.custom_ga_drawing_rev_no = bom_creator_item.custom_drawing_rev_no
-                                item_updated = True
+                    #     if hasattr(bom_creator_item, 'custom_drawing_rev_no') and bom_creator_item.custom_drawing_rev_no:
+                    #         if not getattr(bom_item, 'custom_ga_drawing_rev_no', None):
+                    #             bom_item.custom_ga_drawing_rev_no = bom_creator_item.custom_drawing_rev_no
+                    #             item_updated = True
                 
                 return item_updated
             
