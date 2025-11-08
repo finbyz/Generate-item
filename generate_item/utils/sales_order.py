@@ -1,3 +1,4 @@
+from multiprocessing import parent_process
 import frappe
 from frappe.utils import nowdate
 from frappe import _
@@ -56,7 +57,8 @@ def create_item_generator_doc(item_code: str | None = None, is_create_with_sales
 #                 frappe.throw("Quantity cannot be 0 for free items.")
 
 def validate(doc, method):
-    validate_duplicate_so(doc, method)
+    pass
+    # validate_duplicate_so(doc, method)
 
 def before_save(doc, method=None):
     for i in doc.items:

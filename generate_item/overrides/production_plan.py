@@ -171,46 +171,30 @@ class ProductionPlan(_ProductionPlan):
 
     @frappe.whitelist()
     def get_items(self):
-        """Populate branch and custom_batch_no on po_items immediately after fetching items so it shows in grid"""
+        """Populate branch on po_items immediately after fetching items so it shows in grid"""
         super().get_items()
         try:
             # Recalculate pending/planned qty on po_items based on existing Production Plans
             self._recalculate_pending_qty_on_po_items()
             
-            # Populate custom_batch_no and branch from Sales Order Item BEFORE BOM matching
-            # This ensures BOM matching can use the batch number to find the correct BOM
-            if getattr(self, "po_items", None):
-                soi_names = [d.sales_order_item for d in self.po_items if getattr(d, "sales_order_item", None)]
-                if soi_names:
-                    soi_rows = frappe.get_all(
-                        "Sales Order Item",
-                        filters={"name": ("in", soi_names)},
-                        fields=["name", "branch", "custom_batch_no"],
-                    )
-                    soi_data_map = {row["name"]: row for row in soi_rows}
-                    for d in self.po_items:
-                        if getattr(d, "sales_order_item", None):
-                            soi_data = soi_data_map.get(d.sales_order_item)
-                            if soi_data:
-                                # Populate branch (set if field exists and value is missing)
-                                if hasattr(d, "branch"):
-                                    if not getattr(d, "branch", None):
-                                        d.branch = soi_data.get("branch")
-                                # Populate custom_batch_no - always sync from Sales Order Item (source of truth)
-                                # This is critical for BOM matching by batch number
-                                if hasattr(d, "custom_batch_no"):
-                                    soi_batch = soi_data.get("custom_batch_no")
-                                    current_batch = getattr(d, "custom_batch_no", None)
-                                    if soi_batch != current_batch:
-                                        d.custom_batch_no = soi_batch
-                                        frappe.log_error(
-                                            "Production Plan Batch Sync",
-                                            f"Synced custom_batch_no from SO Item {d.sales_order_item}: {current_batch} -> {soi_batch}"
-                                        )
-            
             # Ensure po_items BOM only from same Sales Order as the row
-            # This will now use the populated custom_batch_no to match BOMs
             self._enforce_bom_matches_sales_order_on_po_items()
+
+            if not getattr(self, "po_items", None):
+                return
+            soi_names = [d.sales_order_item for d in self.po_items if getattr(d, "sales_order_item", None)]
+            if not soi_names:
+                return
+            soi_rows = frappe.get_all(
+                "Sales Order Item",
+                filters={"name": ("in", soi_names)},
+                fields=["name", "branch"],
+            )
+            soi_branch_map = {row["name"]: row.get("branch") for row in soi_rows}
+            for d in self.po_items:
+                if hasattr(d, "branch") and getattr(d, "sales_order_item", None):
+                    if not getattr(d, "branch", None):
+                        d.branch = soi_branch_map.get(d.sales_order_item)
                         
         except Exception as e:
             frappe.log_error("Production Plan Branch Populate Error", f"Error populating branch on po_items: {str(e)}")
@@ -320,36 +304,14 @@ class ProductionPlan(_ProductionPlan):
                 if not row_item or not row_so:
                     continue
 
-                # If bom_no set, validate that it belongs to the same SO and batch (if batch is specified)
+                # If bom_no set, validate that it belongs to the same SO
                 if row_bom:
                     try:
-                        bom_data = frappe.db.get_value(
-                            "BOM",
-                            row_bom,
-                            ["sales_order", "custom_batch_no"],
-                            as_dict=True
-                        )
-                        if bom_data:
-                            # Clear BOM if sales_order doesn't match
-                            if bom_data.get("sales_order") and bom_data.get("sales_order") != row_so:
-                                frappe.log_error(
-                                    "BOM Sales Order Mismatch",
-                                    f"Clearing BOM {row_bom} for item {row_item}: BOM SO={bom_data.get('sales_order')}, Row SO={row_so}"
-                                )
-                                d.bom_no = None
-                            # Clear BOM if batch doesn't match (when batch is specified on row)
-                            elif row_batch and bom_data.get("custom_batch_no") and bom_data.get("custom_batch_no") != row_batch:
-                                frappe.log_error(
-                                    "BOM Batch Mismatch",
-                                    f"Clearing BOM {row_bom} for item {row_item}: BOM batch={bom_data.get('custom_batch_no')}, Row batch={row_batch}"
-                                )
-                                d.bom_no = None
-                    except Exception as e:
+                        bom_so = frappe.db.get_value("BOM", row_bom, "sales_order")
+                        if bom_so and bom_so != row_so:
+                            d.bom_no = None
+                    except Exception:
                         # If BOM not found or error, clear it
-                        frappe.log_error(
-                            "BOM Validation Error",
-                            f"Error validating BOM {row_bom} for item {row_item}: {str(e)}"
-                        )
                         d.bom_no = None
 
                 # If bom_no still empty, try to fetch a matching BOM
@@ -357,10 +319,10 @@ class ProductionPlan(_ProductionPlan):
                     bom_filters = {
                         "item": row_item,
                         "sales_order": row_so,
-                        "is_active": 1,
+                        # "is_active": 1,
                     }
                     order_by = "modified desc"
-                    # If batch context exists, try batch-specific first (preferred match)
+                    # If batch context exists, try batch-specific first
                     candidate = None
                     if row_batch:
                         try:
@@ -371,18 +333,8 @@ class ProductionPlan(_ProductionPlan):
                                 order_by=order_by,
                                 limit=1,
                             )
-                            if candidate:
-                                frappe.log_error(
-                                    "BOM Matched by Batch",
-                                    f"Found BOM {candidate[0]['name']} for item {row_item}, SO {row_so}, batch {row_batch}"
-                                )
-                        except Exception as e:
-                            frappe.log_error(
-                                "BOM Batch Search Error",
-                                f"Error searching BOM by batch for item {row_item}, batch {row_batch}: {str(e)}"
-                            )
+                        except Exception:
                             candidate = None
-                    # Fallback: try without batch filter
                     if not candidate:
                         try:
                             candidate = frappe.get_all(
@@ -392,24 +344,10 @@ class ProductionPlan(_ProductionPlan):
                                 order_by=order_by,
                                 limit=1,
                             )
-                            if candidate:
-                                frappe.log_error(
-                                    "BOM Matched (No Batch)",
-                                    f"Found BOM {candidate[0]['name']} for item {row_item}, SO {row_so} (no batch match)"
-                                )
-                        except Exception as e:
-                            frappe.log_error(
-                                "BOM Search Error",
-                                f"Error searching BOM for item {row_item}, SO {row_so}: {str(e)}"
-                            )
+                        except Exception:
                             candidate = None
                     if candidate:
                         d.bom_no = candidate[0]["name"]
-                    else:
-                        frappe.log_error(
-                            "BOM Not Found",
-                            f"No matching BOM found for item {row_item}, SO {row_so}, batch {row_batch or 'N/A'}"
-                        )
         except Exception as e:
             frappe.log_error("Production Plan BOM Enforcement Error", f"Error enforcing BOM by Sales Order on po_items: {str(e)}")
             
