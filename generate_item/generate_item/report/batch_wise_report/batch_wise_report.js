@@ -14,6 +14,15 @@ frappe.query_reports["Batch Wise Report"] = {
 			fieldtype: "Date"
 		},
 		{
+            "label": __("Branch"),
+            "fieldname": "branch",
+            "fieldtype": "Link",
+            "options": "Branch",
+            "default": " ",
+            "reqd":1,
+            "placeholder":"Branch"
+        },
+		{
 			fieldname: "bom",
 			label: "BOM",
 			fieldtype: "Link",

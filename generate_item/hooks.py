@@ -25,10 +25,10 @@ app_license = "mit"
 # ------------------
 
 # Export/import fixtures for this app
-# fixtures = [
-#     {"doctype": "Custom Field", "filters": [["module", "=", "Generate Item"]]},
-#     {"doctype": "Property Setter", "filters": [["module", "=", "Generate Item"]]},
-# ]
+fixtures = [
+    {"doctype": "Custom Field", "filters": [["module", "=", "Generate Item"]]},
+    {"doctype": "Property Setter", "filters": [["module", "=", "Generate Item"]]},
+]
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/generate_item/css/generate_item.css"

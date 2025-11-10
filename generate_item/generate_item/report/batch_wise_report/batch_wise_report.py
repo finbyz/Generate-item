@@ -36,6 +36,10 @@ def get_conditions(filters):
 		conditions.append("so.name = %(sales_order)s")
 		values["sales_order"] = filters.get("sales_order")
 
+	if filters.get("branch"):
+		conditions.append("so.branch = %(branch)s")
+		values["branch"] = filters.get("branch")
+
 	if filters.get("item_code"):
 		conditions.append("soi.item_code = %(item_code)s")
 		values["item_code"] = filters.get("item_code")
@@ -68,6 +72,8 @@ def map_docstatus_to_status(docstatus):
 
 
 def get_data(filters):
+	if not filters.get("branch"):
+		return []
 	conditions_sql, values = get_conditions(filters)
 
 	query = f"""

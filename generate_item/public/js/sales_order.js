@@ -652,14 +652,14 @@ function create_batch_for_item(frm, item, index) {
                         console.error('Error setting batch values:', e);
                     }
 
-                    try {
-                        if (item.bom_no) {
-                            console.log('Updating BOM:', item.bom_no, 'with batch:', batch_id);
-                            update_bom_batch_no(frm, item, batch_id);
-                        }
-                    } catch (e) {
-                        console.log('BOM update error:', e);
-                    }
+                    // try {
+                    //     if (item.bom_no) {
+                    //         console.log('Updating BOM:', item.bom_no, 'with batch:', batch_id);
+                    //         // update_bom_batch_no(frm, item, batch_id);
+                    //     }
+                    // } catch (e) {
+                    //     console.log('BOM update error:', e);
+                    // }
                     
                     resolve({
                         batch_id: batch_id,
@@ -682,12 +682,16 @@ function update_bom_batch_no(frm, item, batch_id) {
         return;
     }
     // Only set if BOM.custom_batch_no is empty
-    frappe.db.get_value('BOM', item.bom_no, 'custom_batch_no').then(r => {
-        const current = (r && r.message) ? r.message.custom_batch_no : null;
-        if (!current) {
-            frappe.db.set_value('BOM', item.bom_no, 'custom_batch_no', batch_id);
+    frappe.db.get_value('BOM', item.bom_no, ['custom_batch_no', 'is_active']).then(r => {
+        const data = r && r.message ? r.message : null;
+        if (data && data.is_active) {
+            // Only update if active and custom_batch_no is not already set
+            if (!data.custom_batch_no) {
+                frappe.db.set_value('BOM', item.bom_no, 'custom_batch_no', batch_id);
+            }
         }
     });
+    
 }
 
 function generate_batch_id_sequential(frm, item, index) {
