@@ -371,20 +371,7 @@ class ProductionPlan(_ProductionPlan):
                 frappe.log_error(
                     "Work Order Naming Series Update Error",
                     f"Error updating naming series for Work Order {wo_name}: {str(e)}"
-                )
-
-    @frappe.whitelist()
-    def get_sub_assembly_items(self, manufacturing_type=None):
-        """Override to ensure sub_assembly_items inherit custom fields from po_items"""
-        super().get_sub_assembly_items(manufacturing_type)
-        self._populate_subassembly_items_from_po_items()
-        
-
-        if self.name and self.docstatus < 2 and hasattr(self, 'po_items') and self.po_items:
-            try:
-                cleanup_all_orphaned_references(self)
-            except Exception as e:
-                frappe.log_error("Subassembly Cleanup", f"Cleanup error in get_sub_assembly_items: {str(e)}")
+                )      
 
 
     @frappe.whitelist()
@@ -441,6 +428,14 @@ class ProductionPlan(_ProductionPlan):
             self.append("sub_assembly_items", row)
 
         self.set_default_supplier_for_subcontracting_order()
+        self._populate_subassembly_items_from_po_items()
+        
+
+        if self.name and self.docstatus < 2 and hasattr(self, 'po_items') and self.po_items:
+            try:
+                cleanup_all_orphaned_references(self)
+            except Exception as e:
+                frappe.log_error("Subassembly Cleanup", f"Cleanup error in get_sub_assembly_items: {str(e)}")
 
     @frappe.whitelist()
     def get_items(self):
