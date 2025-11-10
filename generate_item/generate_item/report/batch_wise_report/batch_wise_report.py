@@ -24,7 +24,7 @@ def get_columns():
 		{"label": "Production Plan", "fieldname": "production_plan", "fieldtype": "Link", "options": "Production Plan", "width": 160},
 		{"label": "Production Plan Status", "fieldname": "production_plan_status", "fieldtype": "Data", "width": 170},
 		{"label": "Customer PO No", "fieldname": "po_no", "fieldtype": "Data", "width": 140},
-		{"label": "Item Qty", "fieldname": "so_qty", "fieldtype": "Float", "width": 100},
+		{"label": "Item Qty", "fieldname": "so_qty", "fieldtype": "Int", "width": 100},
 	]
 
 
