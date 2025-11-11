@@ -229,6 +229,7 @@ def validate(doc, method=None):
     Optional: Validate before save to show warning if taxes exceed Sales Order
     This prevents over-billing
     """
+    fetch_po_line_no_from_sales_order(doc)
     validate_duplicate_si(doc, method)
     sales_orders = list(set([item.sales_order for item in doc.items if item.sales_order]))
     
@@ -297,8 +298,55 @@ def validate(doc, method=None):
                     )
 
 
-import frappe
-from frappe import _
+def fetch_po_line_no_from_sales_order(doc,method=None):
+    so_item_names = []
+    for item in doc.items:
+        so_item = item.get('so_detail') or item.get('sales_order_item')
+        if so_item and so_item not in so_item_names:
+            so_item_names.append(so_item)
+
+    # Fetch po_line_no from Sales Order Items
+    if so_item_names:
+        so_items_data = frappe.get_all(
+            'Sales Order Item',
+            filters={"name": ["in", so_item_names]},
+            fields=["name", "po_line_no"]
+        )
+        
+        po_line_map = {item["name"]: item.get("po_line_no") for item in so_items_data}
+    else:
+        po_line_map = {}
+
+    # Fetch Sales Orders to get their po_no
+    so_names = []
+    for item in doc.items:
+        so_name = item.get('sales_order')
+        if so_name and so_name not in so_names:
+            so_names.append(so_name)
+
+    if so_names:
+        so_data = frappe.get_all(
+            'Sales Order',
+            filters={"name": ["in", so_names]},
+            fields=["name", "po_no"]
+        )
+        
+        so_po_map = {so["name"]: so.get("po_no") for so in so_data}
+    else:
+        so_po_map = {}
+
+    # Set PO Line No in Sales Invoice items
+    for item in doc.items:
+        so_item = item.get('so_detail') or item.get('sales_order_item')
+        so_name = item.get('sales_order')
+        
+        if so_item and so_item in po_line_map:
+            item.po_line_no = po_line_map[so_item]
+        
+        # Also set po_no if needed
+        if so_name and so_name in so_po_map:
+            item.po_no = so_po_map[so_name]
+
 
 def validate_duplicate_si(doc, method):
     """Prevent duplicate draft Sales Invoices for same customer, branch, item, rate, and taxes_and_charges."""

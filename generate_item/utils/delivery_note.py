@@ -602,7 +602,10 @@ def _calculate_and_set_remaining_taxes(doc):
         frappe.msgprint(_("Actual taxes adjusted successfully"), alert=True, indicator="green")
 
 
-
+def validate(doc, method):
+    """Validate Delivery Note"""
+    fetch_po_line_no_from_sales_order(doc)
+    validate_duplicate_delivery_note(doc, method)
 
 def validate_duplicate_delivery_note(doc, method):
     """
@@ -641,3 +644,57 @@ def validate_duplicate_delivery_note(doc, method):
                 ),
                 title=_("Duplicate Draft Delivery Note"),
             )
+
+
+def fetch_po_line_no_from_sales_order(doc, method=None):
+    """Populate po_line_no (and optionally po_no) on Delivery Note Item rows using SO linkage.
+
+    Resolution strategy (per row):
+    1) Use exact Sales Order Item row via item.so_detail -> copy po_line_no
+    2) Use parent Sales Order via item.against_sales_order -> copy po_no
+    """
+    try:
+        # Collect unique Sales Order Item row names from DN items
+        so_item_names = []
+        for it in (doc.items or []):
+            so_detail = getattr(it, 'so_detail', None)
+            if so_detail and so_detail not in so_item_names:
+                so_item_names.append(so_detail)
+
+        po_line_map = {}
+        if so_item_names:
+            so_items = frappe.get_all(
+                'Sales Order Item',
+                filters={'name': ['in', so_item_names]},
+                fields=['name', 'po_line_no']
+            )
+            po_line_map = {row['name']: row.get('po_line_no') for row in so_items}
+
+        # Collect unique Sales Orders from DN items
+        so_names = []
+        for it in (doc.items or []):
+            so_name = getattr(it, 'against_sales_order', None)
+            if so_name and so_name not in so_names:
+                so_names.append(so_name)
+
+        po_no_map = {}
+        if so_names:
+            so_rows = frappe.get_all(
+                'Sales Order',
+                filters={'name': ['in', so_names]},
+                fields=['name', 'po_no']
+            )
+            po_no_map = {row['name']: row.get('po_no') for row in so_rows}
+
+        # Set values on each DN item
+        for it in (doc.items or []):
+            so_detail = getattr(it, 'so_detail', None)
+            so_name = getattr(it, 'against_sales_order', None)
+
+            if hasattr(it, 'po_line_no') and so_detail and so_detail in po_line_map:
+                it.po_line_no = po_line_map[so_detail]
+
+            
+
+    except Exception as e:
+        frappe.log_error('DN Fetch PO Line No', f'Error populating po_line_no on DN {getattr(doc, "name", "Unsaved")}: {str(e)}')
