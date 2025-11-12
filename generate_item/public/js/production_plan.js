@@ -75,7 +75,6 @@ frappe.ui.form.on('Production Plan', {
     
     setup: function(frm) {
         frm.set_query('custom_batch_wise_assembly', function() {
-            // Get all custom_batch_no values from po_items child table
             let batch_nos = (frm.doc.po_items || [])
                 .filter(row => row.custom_batch_no)
                 .map(row => row.custom_batch_no);
@@ -86,6 +85,18 @@ frappe.ui.form.on('Production Plan', {
                 ]
             };
         });
+    },
+    setup_queries(frm) {
+		frm.set_query("sales_order", "sales_orders", () => {
+			return {
+				query: "erpnext.manufacturing.doctype.production_plan.production_plan.sales_order_query",
+				filters: {
+					company: frm.doc.company,
+					item_code: frm.doc.item_code,
+                    branch:frm.doc.branch
+				},
+			};
+		});
     },
     branch: function(frm) {
         if (frm.doc.branch) {

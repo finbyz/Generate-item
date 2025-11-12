@@ -622,11 +622,7 @@ class ProductionPlan(_ProductionPlan):
                 row_so = getattr(d, "sales_order", None)
                 row_item = getattr(d, "item_code", None)
                 row_bom = getattr(d, "bom_no", None)
-                row_batch = (
-                    getattr(d, "custom_batch_no", None)
-                    or getattr(d, "custom_batch_ref", None)
-                    or getattr(d, "batch_no", None)
-                )
+                row_batch = getattr(d, "custom_batch_no", None)
 
                 # Skip rows without essential context
                 if not row_item or not row_so:
@@ -647,7 +643,8 @@ class ProductionPlan(_ProductionPlan):
                     bom_filters = {
                         "item": row_item,
                         "sales_order": row_so,
-                        # "is_active": 1,
+                        "custom_batch_no":row_batch,
+                        "is_active":1, 
                     }
                     order_by = "modified desc"
                     # If batch context exists, try batch-specific first
