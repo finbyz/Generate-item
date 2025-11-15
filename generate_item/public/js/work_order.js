@@ -1,5 +1,12 @@
 frappe.ui.form.on('Work Order', {
     refresh: function(frm) {
+        if (!frappe.user.has_role("System Manager")) {
+            frm.set_df_property('billing_address', 'read_only', 1);
+            frm.set_df_property('shipping_address', 'read_only', 1);
+        } else {
+            frm.set_df_property('billing_address', 'read_only', 0);
+            frm.set_df_property('shipping_address', 'read_only', 0);
+        }
         frm.set_query("sales_order", function() {
             return {
                 filters: {
@@ -39,3 +46,53 @@ frappe.ui.form.on('Work Order', {
         });
     },
 });
+
+// Override get_max_transferable_qty with standard ERPNext implementation
+// This overrides the incorrect implementation from foundry app
+erpnext.work_order = erpnext.work_order || {};
+erpnext.work_order.get_max_transferable_qty = (frm, purpose) => {
+	let max = 0;
+	if (purpose === "Disassemble") {
+		return flt(frm.doc.produced_qty - frm.doc.disassembled_qty);
+	}
+
+	if (frm.doc.skip_transfer) {
+		max = flt(frm.doc.qty) - flt(frm.doc.produced_qty);
+	} else {
+		if (purpose === "Manufacture") {
+			max = flt(frm.doc.material_transferred_for_manufacturing) - flt(frm.doc.produced_qty);
+		} else {
+			max = flt(frm.doc.qty) - flt(frm.doc.material_transferred_for_manufacturing);
+		}
+	}
+	return flt(max, precision("qty"));
+};
+
+
+// get_max_transferable_qty: (frm, purpose) => {
+	// 	console.log(frm.doc.qty)
+	// 	let max = frm.doc.qty;
+	// 	if (frm.doc.skip_transfer) {
+	// 		max = flt(frm.doc.pending_finish) - flt(frm.doc.material_transferred_for_manufacturing);
+	// 	} else {
+	// 		if (purpose === 'Manufacture') {
+	// 			max = flt(frm.doc.pending_finish) - flt(frm.doc.material_transferred_for_manufacturing);
+	// 		} else {
+	// 			max = flt(frm.doc.pending_finish) - flt(frm.doc.material_transferred_for_manufacturing);
+	// 		}
+	// 	}
+	// 	return flt(max, precision('qty'));
+	// },
+
+	// get_max_transferable_qty: (frm, purpose) => {
+	// 	let default_qty = flt(frm.doc.qty);
+	// 	let transferred = [];
+	
+	// 	if (frm.doc.required_items && frm.doc.required_items.length) {
+	// 		transferred = frm.doc.required_items.map(i => flt(i.transferred_qty));
+	// 	}
+	
+	// 	let has_non_zero = transferred.some(qty => qty > 0);
+	// 	let max = has_non_zero ? Math.max(...transferred) : default_qty;
+	// 	return flt(max, precision('qty'));
+	// },

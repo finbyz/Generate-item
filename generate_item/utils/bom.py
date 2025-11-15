@@ -1,6 +1,15 @@
 import frappe
 from generate_item.utils.bom_naming import get_custom_bom_name, get_available_bom_name
 
+def on_trash(doc, method):
+    doc.sales_order = ""
+    doc.custom_batch_no = ""
+    items = frappe.get_all("Sales Order Item", filters={"bom_no": doc.name})
+    for row in items:
+        frappe.db.set_value("Sales Order Item", row.name, "bom_no", "")
+    
+
+
 def before_insert(doc, method=None):
     """Set custom BOM name before document is inserted"""
     try:

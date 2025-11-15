@@ -79,13 +79,7 @@ frappe.ui.form.on("Delivery Note", {
             );
         }
     },
-    onload(frm) {
-        const is_delivery_user = frappe.user_roles.includes("Delivery User");
 
-        if (is_delivery_user) {
-            frm.set_df_property("customer_address", "read_only", 1);
-        }
-    },
     items_add(frm, cdt, cdn) {
         const row = locals[cdt][cdn];
         if (frm.is_new() && row.against_sales_order) {
