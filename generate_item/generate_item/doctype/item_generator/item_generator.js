@@ -26,8 +26,40 @@ frappe.ui.form.on("Item Generator", {
     },
 
     refresh: function(frm) {
-        if (frappe.user_roles.includes('System Manager')) {
-            unlockform(frm);
+        // SECURITY: Check user roles
+const is_system_manager = frappe.user_roles.includes('System Manager');
+
+// Handle permissions based on document state
+        if (frm.doc.__islocal) {
+            // NEW document - ALL users can save
+            try {
+                frm.enable_save && frm.enable_save();
+                if (frm.page && frm.page.set_primary_action) {
+                    frm.page.set_primary_action(__('Save'), function() {
+                        frm.save().then(function() {
+                            frappe.show_alert("Document saved successfully.");
+                            frm.refresh();
+                        }).catch(function(err) {
+                            frappe.msgprint({
+                                title: __("Save Error"),
+                                message: __("Failed to save the document. Please try again."),
+                                indicator: "red"
+                            });
+                            console.error("Save error:", err);
+                        });
+                    });
+                }
+                if (frm.page && frm.page.btn_primary && !frm.page.btn_primary.is(':visible')) {
+                    frm.page.btn_primary.show();
+                }
+            } catch (e) {
+                console.error("Error setting save button:", e);
+            }
+        } else {
+            // SAVED document - Only System Managers can edit
+            if (!is_system_manager) {
+                lock_form(frm);
+            }
         }
         // Apply query for template_name
         frm.set_query("template_name", function() {
@@ -363,32 +395,6 @@ function load_selective_products(frm) {
     });
 }
 
-function unlockform(frm) {
-    if (doc.docstatus = 1) {
-        frm.set_read_only(false);
-        ['item_name', 'description', 'item_code'].forEach(field => {
-            frm.set_df_property(field, 'read_only', 0);
-        });
-        frm.meta.fields.forEach(df => {
-            try {
-                frm.set_df_property(df.fieldname, "read_only", 0);
-                if (df.fieldtype === "Table") {
-                    let grid = frm.fields_dict[df.fieldname].grid;
-                    if (grid) {
-                        grid.wrapper.find(".grid-add-row, .grid-remove-rows, .grid-delete-row, .grid-append-row").show();
-                        grid.set_allow_on_grid_editing(true);
-                        grid.toolbar.find("button").prop("disabled", false);
-                    }
-                }
-            } catch (e) {
-                // ignore errors here
-            }
-        });
-        if (frm.page && frm.page.btn_primary) {
-            frm.page.btn_primary.show();
-        }
-    }
-}
 
 
 function lock_form(frm) {
