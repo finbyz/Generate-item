@@ -246,8 +246,36 @@ def get_dispatchable_sales_orders_list(customer=None, company=None, project=None
         items = frappe.get_all(
             "Sales Order Item",
             filters={"parent": so.name},
-            fields=["item_code", "qty", "warehouse"]
+            fields=["name", "item_code", "qty", "warehouse"]
         )
+
+        if not items:
+            continue
+
+        delivered_qty_map = {
+            row.so_detail: row.dn_qty
+            for row in frappe.db.sql(
+                """
+                SELECT dni.so_detail, SUM(dni.qty) AS dn_qty
+                FROM `tabDelivery Note Item` dni
+                INNER JOIN `tabDelivery Note` dn ON dn.name = dni.parent
+                WHERE dn.docstatus != 2
+                  AND dni.against_sales_order = %s
+                GROUP BY dni.so_detail
+                """,
+                so.name,
+                as_dict=True,
+            )
+        }
+
+        # Skip SO if all its items are already fully covered by existing Delivery Notes (docstatus 0/1)
+        all_items_delivered = all(
+            delivered_qty_map.get(item.name, 0) >= flt(item.qty)
+            for item in items
+        )
+
+        if all_items_delivered:
+            continue
 
         all_items_in_stock = True
         at_least_one_in_stock = False
