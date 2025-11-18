@@ -129,7 +129,8 @@ def get_columns():
 		{
 			"label": _("Batch Number"),
 			"fieldname": "batch_number",
-			"fieldtype": "Data",
+			"fieldtype": "Link",
+			"options": "Batch",
 			"width": 100
 		},
 		{
@@ -423,6 +424,10 @@ def get_data(filters):
 			freight_charges = freight_row[0].freight_total or 0
 
 		so_conditions_for_items = {"parent": so.sales_order, "docstatus": 1}
+		if filters.get("item_code"):
+			so_conditions_for_items["item_code"] = filters.item_code
+		if filters.get("batch_no"):
+			so_conditions_for_items["custom_batch_no"] = filters.batch_no
 		item_fields = [
 			"name as item_id",
 			"idx as order_line_index",
@@ -560,6 +565,7 @@ def get_so_conditions(filters):
 		conditions["status"] = filters.status
 	if filters.get("sales_order"):
 		conditions["name"] = filters.sales_order
+	
 	return conditions
 
 

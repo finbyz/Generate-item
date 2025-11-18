@@ -455,65 +455,13 @@
 
 frappe.ui.form.on("Delivery Note", {
     onload: function(frm) {
-        const is_delivery_user = frappe.user_roles.includes("Delivery User");
-        const is_sales_user = frappe.user_roles.includes("Sales User");
-        const is_system_manager = frappe.user_roles.includes("System Manager");
-        
-        setTimeout(() => {
-            if (!frm.doc.__islocal) {
-                set_items_readonly(frm, !is_delivery_user);
-                set_shipping_readonly(frm, !(is_delivery_user || is_sales_user || is_system_manager));
-                set_billing_readonly(frm, !is_system_manager);
-            }
-        }, 500);
+        apply_permissions(frm);
     },
     items_on_form_rendered: function(frm) {      
         check_insufficient_items(frm);
     },
     refresh(frm) {
-        if (frm.is_new() && frm.doc.items?.some(d => d.against_sales_order)) {
-            validate_and_set_batch_from_sales_order(frm);
-            fetch_and_update_taxes(frm);
-        }
-
-        const is_delivery_user = frappe.user_roles.includes("Delivery User");
-        const is_sales_user = frappe.user_roles.includes("Sales User");
-        const is_system_manager = frappe.user_roles.includes("System Manager");
-
-        if (frm.doc.__islocal) {
-            set_items_readonly(frm, false);
-            set_shipping_readonly(frm, false);
-            set_billing_readonly(frm, false);
-        } else {
-            set_items_readonly(frm, !is_delivery_user);
-            set_shipping_readonly(frm, !(is_delivery_user || is_sales_user || is_system_manager));
-            set_billing_readonly(frm, !is_system_manager);
-            
-            if (is_delivery_user) {
-                frappe.show_alert({
-                    message: __("You can edit items and shipping address as Delivery User"),
-                    indicator: "blue"
-                }, 3);
-            } else if (is_sales_user) {
-                frappe.show_alert({
-                    message: __("You can edit shipping address as Sales User. Items are locked unless you are a Delivery User. Billing address requires System Manager access."),
-                    indicator: "blue"
-                }, 3);
-            } else if (is_system_manager) {
-                frappe.show_alert({
-                    message: __("You can edit shipping and billing address as System Manager. Items are locked unless you are a Delivery User."),
-                    indicator: "blue"
-                }, 3);
-            } else {
-                if (frm.doc.items && frm.doc.items.length > 0) {
-                    frappe.show_alert({
-                        message: __("Items and shipping address are locked. Only Delivery Users can modify items; Sales Users and System Managers can modify shipping address. Billing address is locked unless you are a System Manager."),
-                        indicator: "orange"
-                    }, 5);
-                }
-            }
-        }
-
+        apply_permissions(frm);
         if (
             !frm.doc.is_return &&
             (frm.doc.status !== "Closed" || frm.is_new()) &&
@@ -719,189 +667,53 @@ function validate_and_set_batch_from_sales_order(frm) {
 }
 
 
+function apply_permissions(frm) {
+    const roles = frappe.user_roles || [];
+    const is_delivery = roles.includes('Delivery User');
+    const is_sales     = roles.includes('Sales User');
+    const is_sys_mgr   = roles.includes('System Manager');
 
-function set_items_readonly(frm, read_only) {
-    try {
-        if (!frm || !frm.fields_dict) {
-            console.log("Form not ready, skipping permission setup");
-            return;
+    const can_edit_shipping = is_delivery || is_sales || is_sys_mgr;
+    const can_edit_billing  = is_sys_mgr;
+    const can_edit_items    = is_delivery;
+
+    // ─────── 1. Items Grid (only Delivery User) ───────
+    if (frm.fields_dict.items && frm.fields_dict.items.grid) {
+        const grid = frm.fields_dict.items.grid;
+
+        // First lock everything
+        grid.set_column_property_all?.('read_only', 1);
+
+        if (can_edit_items) {
+            // Unlock the fields Delivery User needs
+            ['qty', 'uom', 'conversion_factor', 'stock_qty',
+             'batch_no', 'serial_no', 'custom_batch_no',
+             'warehouse', 'target_warehouse', 'quality_inspection',
+             'expense_account', 'rate', 'amount'].forEach(field => {
+                grid.set_column_property?.(field, 'read_only', 0);
+            });
+
+            // Show add/remove row buttons
+            grid.wrapper.find('.grid-add-row, .grid-remove-rows, .grid-delete-row').show();
+        } else {
+            // Hide add/remove buttons for everyone else
+            grid.wrapper.find('.grid-add-row, .grid-remove-rows, .grid-delete-row').hide();
         }
-        
-        let fields_updated = 0;
-        
-        if (frm.fields_dict["items"] && frm.fields_dict["items"].grid) {
-            const grid = frm.fields_dict["items"].grid;
-            
-            if (!grid.grid_rows || grid.grid_rows.length === 0) {
-                console.log("Grid rows not loaded, retrying...");
-                setTimeout(() => set_items_readonly(frm, read_only), 200);
-                return;
-            }
-            
-            const editable_fields = [
-                "qty", "batch_no", "serial_no", "warehouse", "custom_batch_no",
-                "target_warehouse", "quality_inspection", "expense_account"
-            ];
-            
-
-            const docfields = grid.get_docfields ? grid.get_docfields() : [];
-            
-            if (docfields.length > 0) {
-                docfields.forEach(df => {
-                    try {
-
-                        const should_be_readonly = read_only ? 
-                            (df.fieldname !== "item_code" && df.fieldname !== "item_name") : 
-                            !editable_fields.includes(df.fieldname);
-                        
-                        frm.fields_dict["items"].grid.update_docfield_property(
-                            df.fieldname,
-                            "read_only",
-                            should_be_readonly ? 1 : 0
-                        );
-                        
-                        if (should_be_readonly) fields_updated++;
-                    } catch (fieldError) {
-                        console.warn(`Error updating field ${df.fieldname}:`, fieldError);
-                    }
-                });
-            } else {
-                editable_fields.forEach(fieldname => {
-                    try {
-                        frm.fields_dict["items"].grid.update_docfield_property(
-                            fieldname,
-                            "read_only",
-                            read_only ? 1 : 0
-                        );
-                        fields_updated++;
-                    } catch (e) {
-                        console.warn(`Error updating ${fieldname}:`, e);
-                    }
-                });
-            }
-
-            if (read_only) {
-                grid.wrapper.find('.grid-add-row, .grid-remove-rows, .grid-delete-row, .grid-append-row').hide();
-                if (grid.set_allow_on_grid_editing) {
-                    grid.set_allow_on_grid_editing(false);
-                }
-            } else {
-                grid.wrapper.find('.grid-add-row, .grid-remove-rows, .grid-delete-row, .grid-append-row').show();
-                if (grid.set_allow_on_grid_editing) {
-                    grid.set_allow_on_grid_editing(true);
-                }
-            }
-        }
-
-        setTimeout(() => {
-            try {
-                frm.refresh_field("items");
-            } catch (refreshError) {
-                console.warn("Error refreshing items:", refreshError);
-            }
-        }, 100);
-
-        console.log(`Items: ${read_only ? 'Locked' : 'Unlocked'} for ${frm.doc.__islocal ? 'new' : 'saved'} document`);
-        
-    } catch (error) {
-        console.error("Error in set_items_readonly:", error);
     }
-}
 
-function set_shipping_readonly(frm, read_only) {
-    try {
-        if (!frm || !frm.fields_dict) {
-            console.log("Form not ready, skipping permission setup");
-            return;
+    // ─────── 2. Shipping Address (Delivery + Sales + Sys Mgr) ───────
+    ['shipping_address_name'].forEach(f => {
+        if (frm.fields_dict[f]) {
+            frm.set_df_property(f, 'read_only', can_edit_shipping ? 0 : 1);
         }
-        
-        let fields_updated = 0;
-        
-        const shipping_fields = ["shipping_address", "shipping_address_name"];
-        shipping_fields.forEach(fieldname => {
-            if (frm.fields_dict[fieldname]) {
-                try {
-                    frm.set_df_property(fieldname, "read_only", read_only ? 1 : 0);
-                    fields_updated++;
-                } catch (e) {
-                    console.warn(`Error updating ${fieldname}:`, e);
-                }
-            }
-        });
+    });
 
-        if (frm.fields_dict["shipping_rule"]) {
-            try {
-                frm.set_df_property("shipping_rule", "read_only", read_only ? 1 : 0);
-                fields_updated++;
-            } catch (e) {
-                console.warn("Error updating shipping_rule:", e);
-            }
+    // ─────── 3. Billing Address (ONLY System Manager) ───────
+    ['customer_address'].forEach(f => {
+        if (frm.fields_dict[f]) {
+            frm.set_df_property(f, 'read_only', can_edit_billing ? 0 : 1);
         }
-
-        setTimeout(() => {
-            try {
-                shipping_fields.forEach(fieldname => {
-                    if (frm.fields_dict[fieldname]) {
-                        frm.refresh_field(fieldname);
-                    }
-                });
-                if (frm.fields_dict["shipping_rule"]) {
-                    frm.refresh_field("shipping_rule");
-                }
-            } catch (refreshError) {
-                console.warn("Error refreshing shipping fields:", refreshError);
-            }
-        }, 100);
-
-        console.log(`Shipping: ${read_only ? 'Locked' : 'Unlocked'} ${fields_updated} fields for ${frm.doc.__islocal ? 'new' : 'saved'} document`);
-        
-    } catch (error) {
-        console.error("Error in set_shipping_readonly:", error);
-    }
-}
-
-function set_billing_readonly(frm, read_only) {
-    try {
-        if (!frm || !frm.fields_dict) {
-            console.log("Form not ready, skipping permission setup");
-            return;
-        }
-        
-        let fields_updated = 0;
-        
-        const billing_fields = [
-            "billing_address_name",
-            "billing_address",
-            "address_display"
-        ];
-        billing_fields.forEach(fieldname => {
-            if (frm.fields_dict[fieldname]) {
-                try {
-                    frm.set_df_property(fieldname, "read_only", read_only ? 1 : 0);
-                    fields_updated++;
-                } catch (e) {
-                    console.warn(`Error updating ${fieldname}:`, e);
-                }
-            }
-        });
-
-        setTimeout(() => {
-            try {
-                billing_fields.forEach(fieldname => {
-                    if (frm.fields_dict[fieldname]) {
-                        frm.refresh_field(fieldname);
-                    }
-                });
-            } catch (refreshError) {
-                console.warn("Error refreshing billing fields:", refreshError);
-            }
-        }, 100);
-
-        console.log(`Billing: ${read_only ? 'Locked' : 'Unlocked'} ${fields_updated} fields for ${frm.doc.__islocal ? 'new' : 'saved'} document`);
-        
-    } catch (error) {
-        console.error("Error in set_billing_readonly:", error);
-    }
+    });
 }
 
 
