@@ -455,15 +455,14 @@
 
 frappe.ui.form.on("Delivery Note", {
     onload: function(frm) {
-
-            apply_permissions(frm);
+        apply_permissions(frm);
     },
     items_on_form_rendered: function(frm) {      
         check_insufficient_items(frm);
     },
     refresh(frm) {
-        // Re-apply permissions on every refresh so role-based editability is preserved
         apply_permissions(frm);
+        validate_and_set_batch_from_sales_order(frm)
         if (
             !frm.doc.is_return &&
             (frm.doc.status !== "Closed" || frm.is_new()) &&
@@ -675,19 +674,15 @@ function apply_permissions(frm) {
     const is_sales    = roles.includes('Sales User');
     const is_sys_mgr  = roles.includes('System Manager');
 
-    // Shipping fields: editable by Delivery User, Sales User, OR System Manager
     const can_edit_shipping = is_delivery || is_sales || is_sys_mgr;
     
-    // Billing fields: editable ONLY by System Manager
     const can_edit_billing = is_sys_mgr;
     
-    // Items grid: editable by Delivery User
     const can_edit_items = is_delivery;
 
     console.log('Delivery User:', is_delivery, 'Sales User:', is_sales, 'System Manager:', is_sys_mgr);
     console.log('Can edit shipping:', can_edit_shipping, 'Can edit billing:', can_edit_billing);
 
-    // ─────── 1. Items Grid – Only Delivery User ───────
     if (frm.fields_dict.items && frm.fields_dict.items.grid) {
         const grid = frm.fields_dict.items.grid;
         grid.set_column_property_all?.('read_only', 1);
@@ -704,8 +699,6 @@ function apply_permissions(frm) {
         }
     }
 
-    // ─────── 2. SHIPPING FIELDS (Ship To Address) ───────
-    // Editable by: Delivery User, Sales User, OR System Manager
     const shipping_fields = [
         'shipping_address_name',
     ];
@@ -716,8 +709,6 @@ function apply_permissions(frm) {
         }
     });
 
-    // ─────── 3. BILLING FIELDS (Bill To Address) ───────
-    // Editable by: System Manager ONLY
     const billing_fields = [
         'customer_address',
     ];
@@ -728,7 +719,6 @@ function apply_permissions(frm) {
         }
     });
 
-    // ─────── Force refresh after a tiny delay ───────
     setTimeout(() => {
         shipping_fields.forEach(f => frm.fields_dict[f] && frm.refresh_field(f));
         billing_fields.forEach(f => frm.fields_dict[f] && frm.refresh_field(f));
