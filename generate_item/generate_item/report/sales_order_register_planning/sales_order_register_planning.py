@@ -429,7 +429,7 @@ def get_data(filters):
 		if filters.get("batch_no"):
 			so_conditions_for_items["custom_batch_no"] = filters.batch_no
 		item_fields = [
-			"name as item_id",
+			"idx as item_id",
 			"idx as order_line_index",
 			"item_code",
 			"item_name",

@@ -455,12 +455,14 @@
 
 frappe.ui.form.on("Delivery Note", {
     onload: function(frm) {
-        apply_permissions(frm);
+
+            apply_permissions(frm);
     },
     items_on_form_rendered: function(frm) {      
         check_insufficient_items(frm);
     },
     refresh(frm) {
+        // Re-apply permissions on every refresh so role-based editability is preserved
         apply_permissions(frm);
         if (
             !frm.doc.is_return &&
@@ -670,50 +672,67 @@ function validate_and_set_batch_from_sales_order(frm) {
 function apply_permissions(frm) {
     const roles = frappe.user_roles || [];
     const is_delivery = roles.includes('Delivery User');
-    const is_sales     = roles.includes('Sales User');
-    const is_sys_mgr   = roles.includes('System Manager');
+    const is_sales    = roles.includes('Sales User');
+    const is_sys_mgr  = roles.includes('System Manager');
 
+    // Shipping fields: editable by Delivery User, Sales User, OR System Manager
     const can_edit_shipping = is_delivery || is_sales || is_sys_mgr;
-    const can_edit_billing  = is_sys_mgr;
-    const can_edit_items    = is_delivery;
+    
+    // Billing fields: editable ONLY by System Manager
+    const can_edit_billing = is_sys_mgr;
+    
+    // Items grid: editable by Delivery User
+    const can_edit_items = is_delivery;
 
-    // ─────── 1. Items Grid (only Delivery User) ───────
+    console.log('Delivery User:', is_delivery, 'Sales User:', is_sales, 'System Manager:', is_sys_mgr);
+    console.log('Can edit shipping:', can_edit_shipping, 'Can edit billing:', can_edit_billing);
+
+    // ─────── 1. Items Grid – Only Delivery User ───────
     if (frm.fields_dict.items && frm.fields_dict.items.grid) {
         const grid = frm.fields_dict.items.grid;
-
-        // First lock everything
         grid.set_column_property_all?.('read_only', 1);
 
         if (can_edit_items) {
-            // Unlock the fields Delivery User needs
-            ['qty', 'uom', 'conversion_factor', 'stock_qty',
-             'batch_no', 'serial_no', 'custom_batch_no',
-             'warehouse', 'target_warehouse', 'quality_inspection',
-             'expense_account', 'rate', 'amount'].forEach(field => {
-                grid.set_column_property?.(field, 'read_only', 0);
+            ['qty','rate','amount','uom','conversion_factor','stock_qty',
+             'batch_no','serial_no','custom_batch_no','warehouse',
+             'target_warehouse','quality_inspection','expense_account'].forEach(f => {
+                grid.set_column_property?.(f, 'read_only', 0);
             });
-
-            // Show add/remove row buttons
             grid.wrapper.find('.grid-add-row, .grid-remove-rows, .grid-delete-row').show();
         } else {
-            // Hide add/remove buttons for everyone else
             grid.wrapper.find('.grid-add-row, .grid-remove-rows, .grid-delete-row').hide();
         }
     }
 
-    // ─────── 2. Shipping Address (Delivery + Sales + Sys Mgr) ───────
-    ['shipping_address_name'].forEach(f => {
+    // ─────── 2. SHIPPING FIELDS (Ship To Address) ───────
+    // Editable by: Delivery User, Sales User, OR System Manager
+    const shipping_fields = [
+        'shipping_address_name',
+    ];
+    
+    shipping_fields.forEach(f => {
         if (frm.fields_dict[f]) {
             frm.set_df_property(f, 'read_only', can_edit_shipping ? 0 : 1);
         }
     });
 
-    // ─────── 3. Billing Address (ONLY System Manager) ───────
-    ['customer_address'].forEach(f => {
+    // ─────── 3. BILLING FIELDS (Bill To Address) ───────
+    // Editable by: System Manager ONLY
+    const billing_fields = [
+        'customer_address',
+    ];
+    
+    billing_fields.forEach(f => {
         if (frm.fields_dict[f]) {
             frm.set_df_property(f, 'read_only', can_edit_billing ? 0 : 1);
         }
     });
+
+    // ─────── Force refresh after a tiny delay ───────
+    setTimeout(() => {
+        shipping_fields.forEach(f => frm.fields_dict[f] && frm.refresh_field(f));
+        billing_fields.forEach(f => frm.fields_dict[f] && frm.refresh_field(f));
+    }, 300);
 }
 
 
