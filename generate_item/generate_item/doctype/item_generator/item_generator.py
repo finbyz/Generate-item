@@ -126,6 +126,7 @@ class ItemGenerator(Document):
         doc.item_name = self.short_description
         doc.description = self.description
         doc.gst_hsn_code = igd.hsn_code
+        doc.created_by_ig = 1
 
         # Map fields directly
         field_list = [

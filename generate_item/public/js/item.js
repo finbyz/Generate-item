@@ -1,9 +1,15 @@
 frappe.ui.form.on("Item", {
     onload: function(frm) {
-        apply_item_permissions(frm);
+        if (frm.doc.created_by_ig == 1)
+        {
+            apply_item_permissions(frm);
+        }
     },
     refresh: function (frm) {
-        apply_item_permissions(frm);
+        if (frm.doc.created_by_ig == 1)
+            {
+                apply_item_permissions(frm);
+            }
         frm.add_custom_button("Open Item Generator", function () {
             frappe.db.get_value("Item Generator", { created_item: frm.doc.name }, "name")
                 .then(r => {
@@ -23,9 +29,6 @@ frappe.ui.form.on("Item", {
 function apply_item_permissions(frm) {
     const roles = frappe.user_roles || [];
     const is_sys_mgr = roles.includes('System Manager');
-
-    console.log('System Manager:', is_sys_mgr);
-
     const restricted_fields = [
         'item_code',
         'item_name',
