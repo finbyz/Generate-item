@@ -1,4 +1,5 @@
 from multiprocessing import parent_process
+
 import frappe
 from frappe.utils import nowdate
 from frappe import _
@@ -57,18 +58,21 @@ def create_item_generator_doc(item_code: str | None = None, is_create_with_sales
 #                 frappe.throw("Quantity cannot be 0 for free items.")
 
 def validate(doc, method):
-    pass
+    for i in doc.items:
+        if i.bom_no:
+            i.bom_no = ""
     # validate_duplicate_so(doc, method)
 
 def before_save(doc, method=None):
     for i in doc.items:
         if i.is_free_item:
-            # Set rate to 0 for free items
             i.rate = 0
 
-            # Validate that qty is present and greater than 0
             if not i.qty or i.qty == 0:
                 frappe.throw(f"Quantity cannot be 0 for free item in line No. {i.idx}")
+
+            if i.bom_no:
+                i.bom_no = ""
 
             # Validate that component_of is specified
             # if not i.component_of:
@@ -146,3 +150,35 @@ def validate_duplicate_so(doc, method):
             error_msg += "<br><br>"
         
         frappe.throw(_(error_msg))
+
+
+@frappe.whitelist()
+def update_sales_order_child_custom_fields(parent: str, items: list | str, child_table: str | None = None):
+    """Persist custom fields edited via Update Items dialog for Sales Order rows."""
+    if not parent or not items:
+        return
+
+    if isinstance(items, str):
+        items = frappe.parse_json(items)
+
+    if not isinstance(items, (list, tuple)):
+        return
+
+    allowed_fields = {"po_line_no", "tag_no", "line_remark", "description", "custom_shipping_address"}
+
+    for row in items:
+        if not isinstance(row, dict):
+            continue
+        docname = row.get("docname") or row.get("name")
+        if not docname:
+            continue
+        if not frappe.db.exists("Sales Order Item", {"name": docname, "parent": parent}):
+            continue
+
+        updates = {}
+        for field in allowed_fields:
+            if field in row:
+                updates[field] = row.get(field)
+
+        if updates:
+            frappe.db.set_value("Sales Order Item", docname, updates)

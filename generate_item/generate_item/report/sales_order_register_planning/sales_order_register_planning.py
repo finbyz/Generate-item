@@ -92,8 +92,8 @@ def get_columns():
 		},
 		{
 			"label": _("Freight Charges"),
-			"fieldname": "freight_charges",
-			"fieldtype": "Currency",
+			"fieldname": "custom_freight_charges",
+			"fieldtype": "Data",
 			"width": 100
 		},
 		{
@@ -490,7 +490,7 @@ def get_data(filters):
 				so.approved_by or "",
 				so.custom_payment_terms or "",
 				so.custom_mode_of_dispatch or "",
-				freight_charges,
+				so.custom_freight_charges or "",
 				so.custom_price_basis or "",
 				so.order_currency,
 				so.exchange_rate,

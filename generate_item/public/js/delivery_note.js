@@ -667,63 +667,88 @@ function validate_and_set_batch_from_sales_order(frm) {
     });
 }
 
-
 function apply_permissions(frm) {
     const roles = frappe.user_roles || [];
     const is_delivery = roles.includes('Delivery User');
-    const is_sales    = roles.includes('Sales User');
-    const is_sys_mgr  = roles.includes('System Manager');
 
-    const can_edit_shipping = is_delivery || is_sales || is_sys_mgr;
-    
-    const can_edit_billing = is_sys_mgr;
-    
-    const can_edit_items = is_delivery;
+    console.log('Delivery User:', is_delivery);
 
-    console.log('Delivery User:', is_delivery, 'Sales User:', is_sales, 'System Manager:', is_sys_mgr);
-    console.log('Can edit shipping:', can_edit_shipping, 'Can edit billing:', can_edit_billing);
-
+    // ITEMS TABLE PERMISSIONS
     if (frm.fields_dict.items && frm.fields_dict.items.grid) {
         const grid = frm.fields_dict.items.grid;
+
+        // Make entire table read-only by default
         grid.set_column_property_all?.('read_only', 1);
 
-        if (can_edit_items) {
-            ['qty','rate','amount','uom','conversion_factor','stock_qty',
-             'batch_no','serial_no','custom_batch_no','warehouse',
-             'target_warehouse','quality_inspection','expense_account'].forEach(f => {
+        if (is_delivery) {
+            [
+                'qty', 'rate', 'amount', 'uom', 'conversion_factor',
+                'stock_qty', 'batch_no', 'serial_no', 'custom_batch_no',
+                'warehouse', 'target_warehouse', 'quality_inspection',
+                'expense_account'
+            ].forEach(f => {
                 grid.set_column_property?.(f, 'read_only', 0);
             });
-            grid.wrapper.find('.grid-add-row, .grid-remove-rows, .grid-delete-row').show();
-        } else {
-            grid.wrapper.find('.grid-add-row, .grid-remove-rows, .grid-delete-row').hide();
         }
     }
-
-    const shipping_fields = [
-        'shipping_address_name',
-    ];
-    
-    shipping_fields.forEach(f => {
-        if (frm.fields_dict[f]) {
-            frm.set_df_property(f, 'read_only', can_edit_shipping ? 0 : 1);
-        }
-    });
-
-    const billing_fields = [
-        'customer_address',
-    ];
-    
-    billing_fields.forEach(f => {
-        if (frm.fields_dict[f]) {
-            frm.set_df_property(f, 'read_only', can_edit_billing ? 0 : 1);
-        }
-    });
-
-    setTimeout(() => {
-        shipping_fields.forEach(f => frm.fields_dict[f] && frm.refresh_field(f));
-        billing_fields.forEach(f => frm.fields_dict[f] && frm.refresh_field(f));
-    }, 300);
 }
+
+// function apply_permissions(frm) {
+//     const roles = frappe.user_roles || [];
+//     const is_delivery = roles.includes('Delivery User');
+//     const is_sales    = roles.includes('Sales User');
+//     const is_sys_mgr  = roles.includes('System Manager');
+
+//     const can_edit_shipping = is_delivery || is_sales || is_sys_mgr;
+    
+//     const can_edit_billing = is_sys_mgr;
+    
+//     const can_edit_items = is_delivery;
+
+//     console.log('Delivery User:', is_delivery, 'Sales User:', is_sales, 'System Manager:', is_sys_mgr);
+//     console.log('Can edit shipping:', can_edit_shipping, 'Can edit billing:', can_edit_billing);
+
+//     if (frm.fields_dict.items && frm.fields_dict.items.grid) {
+//         const grid = frm.fields_dict.items.grid;
+//         grid.set_column_property_all?.('read_only', 1);
+
+//         if (can_edit_items) {
+//             ['qty','rate','amount','uom','conversion_factor','stock_qty',
+//              'batch_no','serial_no','custom_batch_no','warehouse',
+//              'target_warehouse','quality_inspection','expense_account'].forEach(f => {
+//                 grid.set_column_property?.(f, 'read_only', 0);
+//             });
+//             grid.wrapper.find('.grid-add-row, .grid-remove-rows, .grid-delete-row').show();
+//         } else {
+//             grid.wrapper.find('.grid-add-row, .grid-remove-rows, .grid-delete-row').hide();
+//         }
+//     }
+
+//     const shipping_fields = [
+//         'shipping_address_name',
+//     ];
+    
+//     shipping_fields.forEach(f => {
+//         if (frm.fields_dict[f]) {
+//             frm.set_df_property(f, 'read_only', can_edit_shipping ? 0 : 1);
+//         }
+//     });
+
+//     const billing_fields = [
+//         'customer_address',
+//     ];
+    
+//     billing_fields.forEach(f => {
+//         if (frm.fields_dict[f]) {
+//             frm.set_df_property(f, 'read_only', can_edit_billing ? 0 : 1);
+//         }
+//     });
+
+//     setTimeout(() => {
+//         shipping_fields.forEach(f => frm.fields_dict[f] && frm.refresh_field(f));
+//         billing_fields.forEach(f => frm.fields_dict[f] && frm.refresh_field(f));
+//     }, 300);
+// }
 
 
 function check_insufficient_items(frm) {

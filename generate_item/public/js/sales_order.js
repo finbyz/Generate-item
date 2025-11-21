@@ -1,3 +1,328 @@
+(function () {
+    if (!erpnext || !erpnext.utils || erpnext.utils.__gi_so_child_update_patched) {
+        return;
+    }
+
+    const original_update_child_items = erpnext.utils.update_child_items;
+
+    const applySalesOrderPatch = function (opts) {
+        const frm = opts.frm;
+        const cannot_add_row = typeof opts.cannot_add_row === "undefined" ? true : opts.cannot_add_row;
+        const child_docname = typeof opts.cannot_add_row === "undefined" ? "items" : opts.child_docname;
+        const child_meta = frappe.get_meta(`${frm.doc.doctype} Item`);
+        const has_reserved_stock = opts.has_reserved_stock ? true : false;
+        const table_fieldname = opts.child_docname || child_docname;
+        const custom_fields = ["po_line_no", "tag_no", "line_remark", "description", "custom_shipping_address","item_name"];
+        const get_precision = (fieldname) => {
+            const meta_fields = (child_meta && child_meta.fields) || [];
+            const field = meta_fields.find((f) => f.fieldname === fieldname);
+            return field ? field.precision : undefined;
+        };
+
+        const source_rows = frm.doc[table_fieldname] || [];
+        const source_data = source_rows.map((d) => ({
+            docname: d.name,
+            name: d.name,
+            item_name: d.item_name,
+            item_code: d.item_code,
+            delivery_date: d.delivery_date,
+            conversion_factor: d.conversion_factor,
+            qty: d.qty,
+            rate: d.rate,
+            uom: d.uom,
+            po_line_no: d.po_line_no,
+            tag_no: d.tag_no,
+            line_remark: d.line_remark,
+            description: d.description,
+            custom_shipping_address: d.custom_shipping_address,
+        }));
+
+        const fields = [
+            {
+                fieldtype: "Data",
+                fieldname: "docname",
+                read_only: 1,
+                hidden: 1,
+            },
+            {
+                fieldtype: "Data",
+                fieldname: "item_name",
+                label: __("Item Name"),
+                in_list_view: 1,
+                read_only: 1,
+            },
+            {
+                fieldtype: "Link",
+                fieldname: "item_code",
+                options: "Item",
+                in_list_view: 1,
+                read_only: 0,
+                disabled: 0,
+                label: __("Item Code"),
+                get_query: function () {
+                    return {
+                        query: "erpnext.controllers.queries.item_query",
+                        filters: { is_sales_item: 1 },
+                    };
+                },
+                onchange: function () {
+                    const me = this;
+
+                    frm.call({
+                        method: "erpnext.stock.get_item_details.get_item_details",
+                        args: {
+                            doc: frm.doc,
+                            args: {
+                                item_code: this.value,
+                                set_warehouse: frm.doc.set_warehouse,
+                                customer: frm.doc.customer || frm.doc.party_name,
+                                quotation_to: frm.doc.quotation_to,
+                                supplier: frm.doc.supplier,
+                                currency: frm.doc.currency,
+                                is_internal_supplier: frm.doc.is_internal_supplier,
+                                is_internal_customer: frm.doc.is_internal_customer,
+                                conversion_rate: frm.doc.conversion_rate,
+                                price_list: frm.doc.selling_price_list || frm.doc.buying_price_list,
+                                price_list_currency: frm.doc.price_list_currency,
+                                plc_conversion_rate: frm.doc.plc_conversion_rate,
+                                company: frm.doc.company,
+                                order_type: frm.doc.order_type,
+                                is_pos: cint(frm.doc.is_pos),
+                                is_return: cint(frm.doc.is_return),
+                                is_subcontracted: frm.doc.is_subcontracted,
+                                ignore_pricing_rule: frm.doc.ignore_pricing_rule,
+                                doctype: frm.doc.doctype,
+                                name: frm.doc.name,
+                                qty: me.doc.qty || 1,
+                                uom: me.doc.uom,
+                                pos_profile: cint(frm.doc.is_pos) ? frm.doc.pos_profile : "",
+                                tax_category: frm.doc.tax_category,
+                                child_doctype: frm.doc.doctype + " Item",
+                                is_old_subcontracting_flow: frm.doc.is_old_subcontracting_flow,
+                            },
+                        },
+                        callback: function (r) {
+                            if (r.message) {
+                                const { qty, price_list_rate: rate, uom, conversion_factor, bom_no } = r.message;
+
+                                const row = dialog.fields_dict.trans_items.df.data.find(
+                                    (doc) => doc.idx == me.doc.idx
+                                );
+                                if (row) {
+                                    Object.assign(row, {
+                                        conversion_factor: me.doc.conversion_factor || conversion_factor,
+                                        uom: me.doc.uom || uom,
+                                        qty: me.doc.qty || qty,
+                                        rate: me.doc.rate || rate,
+                                        bom_no: bom_no,
+                                    });
+                                    dialog.fields_dict.trans_items.grid.refresh();
+                                }
+                            }
+                        },
+                    });
+                },
+            },
+            {
+                fieldtype: "Link",
+                fieldname: "uom",
+                options: "UOM",
+                read_only: 0,
+                label: __("UOM"),
+                reqd: 1,
+                onchange: function () {
+                    frappe.call({
+                        method: "erpnext.stock.get_item_details.get_conversion_factor",
+                        args: { item_code: this.doc.item_code, uom: this.value },
+                        callback: (r) => {
+                            if (!r.exc) {
+                                if (this.doc.conversion_factor == r.message.conversion_factor) return;
+
+                                const docname = this.doc.docname;
+                                dialog.fields_dict.trans_items.df.data.some((doc) => {
+                                    if (doc.docname == docname) {
+                                        doc.conversion_factor = r.message.conversion_factor;
+                                        dialog.fields_dict.trans_items.grid.refresh();
+                                        return true;
+                                    }
+                                });
+                            }
+                        },
+                    });
+                },
+            },
+            {
+                fieldtype: "Float",
+                fieldname: "qty",
+                default: 0,
+                read_only: 0,
+                in_list_view: 1,
+                label: __("Qty"),
+                precision: get_precision("qty"),
+            },
+            {
+                fieldtype: "Currency",
+                fieldname: "rate",
+                options: "currency",
+                default: 0,
+                read_only: 0,
+                in_list_view: 1,
+                label: __("Rate"),
+                precision: get_precision("rate"),
+            },
+            {
+                fieldtype: "Data",
+                fieldname: "po_line_no",
+                label: __("PO Line No"),
+                in_list_view: 1,
+            },
+            {
+                fieldtype: "Data",
+                fieldname: "tag_no",
+                label: __("Tag No"),
+                in_list_view: 1,
+            },
+            {
+                fieldtype: "Small Text",
+                fieldname: "line_remark",
+                label: __("Line Remark"),
+                in_list_view: 1,
+            },
+            {
+                fieldtype: "Small Text",
+                fieldname: "description",
+                label: __("Description"),
+            },
+            {
+                fieldtype: "Link",
+                fieldname: "custom_shipping_address",
+                options: "Address",
+                label: __("Custom Shipping Address"),
+                in_list_view: 1,
+                get_query: () => {
+                    return {
+                        filters: [
+                            ['Address', 'link_doctype', '=', 'Customer'],
+                            ['Address', 'link_name', '=', frm.doc.customer]
+                        ]
+                    };
+                },
+            },
+        ];
+
+        fields.splice(2, 0, {
+            fieldtype: "Date",
+            fieldname: "delivery_date",
+            in_list_view: 1,
+            label: __("Delivery Date"),
+            reqd: 1,
+        });
+        fields.splice(3, 0, {
+            fieldtype: "Float",
+            fieldname: "conversion_factor",
+            label: __("Conversion Factor"),
+            precision: get_precision("conversion_factor"),
+        });
+
+        const dialog = new frappe.ui.Dialog({
+            title: __("Update Items"),
+            size: "extra-large",
+            fields: [
+                {
+                    fieldname: "trans_items",
+                    fieldtype: "Table",
+                    label: "Items",
+                    cannot_add_rows: cannot_add_row,
+                    in_place_edit: false,
+                    reqd: 1,
+                    data: source_data,
+                    get_data: () => source_data,
+                    fields: fields,
+                },
+            ],
+            primary_action: function () {
+                if (has_reserved_stock) {
+                    this.hide();
+                    frappe.confirm(
+                        __("The reserved stock will be released when you update items. Are you certain you wish to proceed?"),
+                        () => this.update_items()
+                    );
+                } else {
+                    this.update_items();
+                }
+            },
+            update_items: function () {
+                const dialogInstance = this;
+                const trans_items = dialogInstance
+                    .get_values()["trans_items"]
+                    .filter((item) => !!item.item_code);
+
+                const run_standard_update = () => {
+                    frappe.call({
+                        method: "erpnext.controllers.accounts_controller.update_child_qty_rate",
+                        freeze: true,
+                        args: {
+                            parent_doctype: frm.doc.doctype,
+                            trans_items: trans_items,
+                            parent_doctype_name: frm.doc.name,
+                            child_docname: table_fieldname,
+                        },
+                        callback: function () {
+                            frm.reload_doc();
+                        },
+                    });
+                    dialogInstance.hide();
+                    refresh_field(table_fieldname);
+                };
+
+                const custom_payload = trans_items
+                    .map((row) => {
+                        const docname = row.docname || row.name;
+                        if (!docname) {
+                            return null;
+                        }
+                        const filtered = { docname };
+                        let hasCustom = false;
+                        custom_fields.forEach((field) => {
+                            if (row[field] !== undefined) {
+                                filtered[field] = row[field];
+                                hasCustom = true;
+                            }
+                        });
+                        return hasCustom ? filtered : null;
+                    })
+                    .filter(Boolean);
+
+                if (custom_payload.length) {
+                    frappe.call({
+                        method: "generate_item.utils.sales_order.update_sales_order_child_custom_fields",
+                        args: {
+                            parent: frm.doc.name,
+                            items: custom_payload,
+                            child_table: table_fieldname,
+                        },
+                        callback: run_standard_update,
+                    });
+                } else {
+                    run_standard_update();
+                }
+            },
+            primary_action_label: __("Update"),
+        });
+
+        dialog.show();
+    };
+
+    erpnext.utils.update_child_items = function (opts) {
+        if (opts && opts.frm && opts.frm.doc && opts.frm.doc.doctype === "Sales Order") {
+            return applySalesOrderPatch(opts);
+        }
+        return original_update_child_items.apply(this, arguments);
+    };
+
+    erpnext.utils.__gi_so_child_update_patched = true;
+})();
+
 frappe.ui.form.on('Sales Order', {
     refresh: function(frm) {
         frm.fields_dict["items"].grid.get_field("component_of").get_query = function(doc, cdt, cdn) {
