@@ -157,6 +157,7 @@
                 default: 0,
                 read_only: 0,
                 in_list_view: 1,
+                precision: 2,
                 label: __("Qty"),
                 precision: get_precision("qty"),
             },
@@ -221,7 +222,7 @@
             fieldtype: "Float",
             fieldname: "conversion_factor",
             label: __("Conversion Factor"),
-            precision: get_precision("conversion_factor"),
+            precision: 2,
         });
 
         const dialog = new frappe.ui.Dialog({
@@ -516,6 +517,18 @@ frappe.ui.form.on('Sales Order', {
     },
     onload: function(frm) {
         handle_item_generator_return(frm);
+    },
+    validate: function(frm) {
+        const parent_branch = frm.doc.branch || '';
+        const rows = frm.doc.items || [];
+    
+        rows.forEach(row => {
+            if (!row.branch) {  // If branch is not set on child row
+                frappe.model.set_value(row.doctype, row.name, 'branch', parent_branch);
+            }
+        });
+    
+        frm.refresh_field('items');
     },
     branch: function(frm) {
         const branch_value = frm.doc.branch || '';
@@ -1020,7 +1033,12 @@ function update_bom_batch_no(frm, item, batch_id) {
 }
 
 function generate_batch_id_sequential(frm, item, index) {
-    const so_name = frm.doc.name;
+    if (frm.doc.amended_from) {
+        so_name = frm.doc.amended_from;
+    } else {
+        so_name = frm.doc.name;
+    }
+    so_name = so_name.replace(/-\d+$/, "");
     const item_number = (index + 1).toString().padStart(3, '0');
     return `${so_name}-${item_number}`;
 }
