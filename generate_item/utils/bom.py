@@ -141,34 +141,48 @@ def before_validate(doc, method=None):
             item.custom_batch_no = batch_no
 
 def clear_custom_fields_on_cancel(doc, method):
-    # Check if BOM is used in any Production Plan that is in draft state
+    # Check if BOM is used in any Production Plan (main or sub-assembly items) that is in draft state
+    # 1️⃣ From Production Plan Item table
     production_plan_items = frappe.get_all(
         "Production Plan Item",
         filters={"bom_no": doc.name},
-        fields=["parent", "name"],
+        fields=["parent"],
         limit=100
     )
-    
-    if production_plan_items:
-        # Get unique Production Plan names
-        production_plan_names = list(set([item.parent for item in production_plan_items]))
-        
+
+    # 2️⃣ From Production Plan Sub Assembly Item table
+    sub_assembly_items = frappe.get_all(
+        "Production Plan Sub Assembly Item",
+        filters={"bom_no": doc.name},
+        fields=["parent"],
+        limit=100
+    )
+
+    # 3️⃣ Collect unique Production Plan parents from both tables
+    production_plan_names = list(
+        set(
+            [item.parent for item in production_plan_items]
+            + [item.parent for item in sub_assembly_items]
+        )
+    )
+
+    if production_plan_names:
         # Check which Production Plans are in draft state
         draft_production_plans = frappe.get_all(
             "Production Plan",
             filters={
                 "name": ["in", production_plan_names],
-                "docstatus": 0  # Draft state
+                "docstatus": 0,  # Draft state
             },
             fields=["name"],
             limit=100
         )
-        
+
         if draft_production_plans:
             plan_names = ", ".join([plan.name for plan in draft_production_plans])
             frappe.throw(
                 f"Cannot cancel BOM <b>{doc.name}</b> because it is referenced in the following Production Plan(s) that are in draft state: <b>{plan_names}</b>. Please remove the BOM from these Production Plans or submit/cancel them first.",
-                title="BOM Cannot Be Cancelled"
+                title="BOM Cannot Be Cancelled",
             )
     
     doc.custom_batch_no = ""
