@@ -383,6 +383,12 @@ def set_branch_details(doc, method):
         
         # Set branch abbreviation
         doc.branch_abbr = branch_abbr_map.get(doc.branch, '') if doc.branch else ''
+        
+        # Propagate branch to all BOM items
+        if doc.branch and doc.items:
+            for item in doc.items:
+                if not getattr(item, 'branch', None):
+                    item.branch = doc.branch
 
 
 @frappe.whitelist()

@@ -48,22 +48,35 @@ class BOMCreator(CoreBOMCreator):
                         bom.custom_batch_no = self.custom_batch_no
                         updated = True
                 
-                # 2. Map branch_abbr from sales order
-                if bom.sales_order and not getattr(bom, 'branch_abbr', None):
+                # 2. Map branch from sales order
+                if bom.sales_order:
                     try:
                         branch = frappe.get_cached_value("Sales Order", bom.sales_order, "branch")
                         if branch:
-                            bom.branch = branch
-                            # Get branch_abbr from Branch master
-                            branch_abbr = frappe.get_cached_value("Branch", branch, "abbr") or \
-                                         frappe.get_cached_value("Branch", branch, "custom_abbr")
-                            if branch_abbr:
-                                bom.branch_abbr = branch_abbr
-                            else:
-                                # Fallback mapping
-                                branch_abbr_map = {'Rabale': 'RA', 'Nandikoor': 'NA', 'Sanand': 'SA'}
-                                bom.branch_abbr = branch_abbr_map.get(branch, None)
-                            updated = True
+                            # Set branch on parent BOM if not set
+                            if not bom.branch:
+                                bom.branch = branch
+                                updated = True
+                            
+                            # Set branch_abbr on parent BOM if not set
+                            if not getattr(bom, 'branch_abbr', None):
+                                # Get branch_abbr from Branch master
+                                branch_abbr = frappe.get_cached_value("Branch", branch, "abbr") or \
+                                             frappe.get_cached_value("Branch", branch, "custom_abbr")
+                                if branch_abbr:
+                                    bom.branch_abbr = branch_abbr
+                                else:
+                                    # Fallback mapping
+                                    branch_abbr_map = {'Rabale': 'RA', 'Nandikoor': 'NA', 'Sanand': 'SA'}
+                                    bom.branch_abbr = branch_abbr_map.get(branch, None)
+                                updated = True
+                            
+                            # Always set branch in BOM items if not already set
+                            for bom_item in bom.items:
+                                if not getattr(bom_item, 'branch', None):
+                                    bom_item.branch = branch
+                                    updated = True
+                            
                     except Exception:
                         pass
                 
