@@ -55,23 +55,41 @@ def get_available_bom_name(base_name: str) -> str:
             return base_name
 
         # Find the highest existing suffix for this base
+        # FIXED: Use LIKE with proper pattern to match base name without suffix
         last = frappe.db.sql(
             """
             SELECT name FROM `tabBOM`
-            WHERE name = %s OR name LIKE %s
-            ORDER BY name DESC
+            WHERE name LIKE %s
+            ORDER BY LENGTH(name) DESC, name DESC
             LIMIT 1
             """,
-            (base_name, f"{base_name}-%"),
+            f"{base_name}%",
             as_dict=True,
         )
 
         next_num = 1
         if last:
             try:
-                parts = last[0].name.rsplit("-", 1)
-                if len(parts) == 2 and parts[1].isdigit():
-                    next_num = int(parts[1]) + 1
+                # Extract suffix from the found BOM name
+                bom_name = last[0].name
+                
+                # If the name is exactly the base name, start with 001
+                if bom_name == base_name:
+                    next_num = 1
+                else:
+                    # Try to extract suffix number
+                    # Remove base_name from the beginning
+                    suffix_part = bom_name[len(base_name):]
+                    
+                    # Remove leading hyphen if present
+                    if suffix_part.startswith("-"):
+                        suffix_part = suffix_part[1:]
+                    
+                    # Extract numeric part
+                    import re
+                    match = re.match(r'^(\d+)', suffix_part)
+                    if match:
+                        next_num = int(match.group(1)) + 1
             except Exception:
                 next_num = 1
 
