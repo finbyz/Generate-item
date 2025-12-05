@@ -1,34 +1,32 @@
 import frappe
 from frappe.model.naming import make_autoname
-from frappe.utils import cstr
+from frappe.utils import cstr, now_datetime
 
 # Cache to track used numbers in the current session
 _session_number_cache = {}
 
 def get_custom_bom_name(item_code, branch_abbr=None):
     """
-    Generate custom BOM name in the format: BOM-{branch_abbr}-{item}-{###}
+    Generate custom BOM name in the format: BOM-{branch_abbr}-{item}
     
     Args:
         item_code (str): The item code for the BOM
-        branch_abbr (str): Branch abbreviation (optional, will be fetched if not provided)
+        branch_abbr (str): Branch abbreviation (can be "NA" or any other value)
     
     Returns:
-        str: Generated BOM name
+        str: Generated BOM name without suffix
     """
     try:
-        # Get branch abbreviation if not provided
-        if not branch_abbr:
-            branch_abbr = branch_abbr
-        
-        # Clean the item code for naming (remove special characters)
-        clean_item_code = item_code.upper()
+        # Clean the item code for naming
+        clean_item_code = item_code.upper().strip()
         
         # Create the base name pattern
-        if branch_abbr:
+        # If branch_abbr is provided (even if it's "NA"), use it
+        if branch_abbr is not None:
             base_name = f"BOM-{branch_abbr}-{clean_item_code}"
         else:
             base_name = f"BOM-{clean_item_code}"
+            
         return base_name
         
     except Exception as e:
@@ -37,9 +35,7 @@ def get_custom_bom_name(item_code, branch_abbr=None):
             f"Failed to generate BOM name for item {item_code}: {str(e)}"
         )
         # Fallback to standard naming if custom naming fails
-        return make_autoname("BOM-{item}-.####", "BOM")
-
-
+        return f"BOM-{item_code}"
 
 def get_available_bom_name(base_name: str) -> str:
     """
@@ -77,34 +73,30 @@ def get_available_bom_name(base_name: str) -> str:
             as_dict=True,
         )
 
-        # Find the highest suffix number
-        max_suffix = 0
+        # Track all used suffix numbers
+        used_suffixes = set()
         
         for bom in all_existing:
             bom_name = bom.name
             
             # Check if it's the exact base name (no suffix)
             if bom_name == base_name:
-                max_suffix = max(max_suffix, 1)
+                used_suffixes.add(0)  # 0 represents no suffix
                 continue
             
             # Try to extract suffix
             if bom_name.startswith(base_name + "-"):
                 suffix_part = bom_name[len(base_name) + 1:]  # Remove base_name and "-"
                 
-                # Check if suffix is numeric
                 if suffix_part.isdigit():
                     suffix_num = int(suffix_part)
-                    max_suffix = max(max_suffix, suffix_num)
+                    used_suffixes.add(suffix_num)
         
-        # Calculate next available number
-        next_num = max_suffix + 1
+        next_num = 1
+        while next_num in used_suffixes:
+            next_num += 1
         
-        # If we found a base without suffix (max_suffix would be 1), start from 001
-        if max_suffix == 1:
-            next_num = 1
-        
-        # Return next available suffixed name
+        # Return next available suffixed name with 3-digit zero padding
         return f"{base_name}-{next_num:03d}"
         
     except Exception as e:
@@ -126,14 +118,14 @@ def set_bom_naming_series(doc):
         if not doc.item:
             return
         
-        # Get branch abbreviation
+        # Get branch abbreviation (even if it's "NA")
         branch_abbr = getattr(doc, 'branch_abbr', None) 
         
         # Clean item code
         clean_item_code = doc.item.upper()
         
         # Create custom naming pattern
-        if branch_abbr:
+        if branch_abbr is not None:
             naming_pattern = f"BOM-{branch_abbr}-{clean_item_code}-.###"
         else:
             naming_pattern = f"BOM-{clean_item_code}-.###"
