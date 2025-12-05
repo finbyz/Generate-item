@@ -50,51 +50,63 @@ def get_available_bom_name(base_name: str) -> str:
     - base not exists: returns base
     """
     try:
-        # If base name does not exist, use it
+        # First, check if the exact base_name exists
         if not frappe.db.exists("BOM", base_name):
-            return base_name
-
-        # Find the highest existing suffix for this base
-        # FIXED: Use LIKE with proper pattern to match base name without suffix
-        last = frappe.db.sql(
+            # Also check if any BOM exists with this base_name plus suffix
+            existing_boms = frappe.db.sql(
+                """
+                SELECT name FROM `tabBOM`
+                WHERE name LIKE %s
+                ORDER BY name DESC
+                """,
+                f"{base_name}-%",
+                as_dict=True,
+            )
+            
+            if not existing_boms:
+                return base_name
+        
+        # Find all existing BOMs with this base (with or without suffix)
+        all_existing = frappe.db.sql(
             """
             SELECT name FROM `tabBOM`
-            WHERE name LIKE %s
-            ORDER BY LENGTH(name) DESC, name DESC
-            LIMIT 1
+            WHERE name = %s OR name LIKE %s
+            ORDER BY name DESC
             """,
-            f"{base_name}%",
+            (base_name, f"{base_name}-%"),
             as_dict=True,
         )
 
-        next_num = 1
-        if last:
-            try:
-                # Extract suffix from the found BOM name
-                bom_name = last[0].name
+        # Find the highest suffix number
+        max_suffix = 0
+        
+        for bom in all_existing:
+            bom_name = bom.name
+            
+            # Check if it's the exact base name (no suffix)
+            if bom_name == base_name:
+                max_suffix = max(max_suffix, 1)
+                continue
+            
+            # Try to extract suffix
+            if bom_name.startswith(base_name + "-"):
+                suffix_part = bom_name[len(base_name) + 1:]  # Remove base_name and "-"
                 
-                # If the name is exactly the base name, start with 001
-                if bom_name == base_name:
-                    next_num = 1
-                else:
-                    # Try to extract suffix number
-                    # Remove base_name from the beginning
-                    suffix_part = bom_name[len(base_name):]
-                    
-                    # Remove leading hyphen if present
-                    if suffix_part.startswith("-"):
-                        suffix_part = suffix_part[1:]
-                    
-                    # Extract numeric part
-                    import re
-                    match = re.match(r'^(\d+)', suffix_part)
-                    if match:
-                        next_num = int(match.group(1)) + 1
-            except Exception:
-                next_num = 1
-
+                # Check if suffix is numeric
+                if suffix_part.isdigit():
+                    suffix_num = int(suffix_part)
+                    max_suffix = max(max_suffix, suffix_num)
+        
+        # Calculate next available number
+        next_num = max_suffix + 1
+        
+        # If we found a base without suffix (max_suffix would be 1), start from 001
+        if max_suffix == 1:
+            next_num = 1
+        
         # Return next available suffixed name
         return f"{base_name}-{next_num:03d}"
+        
     except Exception as e:
         frappe.log_error(
             "BOM Unique Naming Error",
