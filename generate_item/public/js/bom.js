@@ -70,12 +70,26 @@ frappe.ui.form.on('BOM', {
         
         frm.set_query('bom_no', 'items', function(doc, cdt, cdn) {
             let row = locals[cdt][cdn];
+            let filters = [
+                ['item', '=', row.item_code],
+                ['is_active', '=', 1],
+                ['docstatus', 'in', [0, 1]]
+            ];
+            
+            // Add branch filter from parent BOM
+            if (doc.branch) {   
+                filters.push(['branch', '=', doc.branch]);
+            }
+            
+            // Add batch_no_ref filter from BOM Item row if available
+            // Check batch_no_ref first, fallback to custom_batch_no if batch_no_ref doesn't exist
+            let batch_ref = row.batch_no_ref || row.custom_batch_no;
+            if (batch_ref) {
+                filters.push(['custom_batch_no', '=', batch_ref]);
+            }
+            
             return {
-                filters: [
-                    ['item', '=', row.item_code],
-                    ['is_active', '=', 1],
-                    ['docstatus', 'in', [0, 1]]
-                ]
+                filters: filters
             };
         });
     },
