@@ -345,7 +345,7 @@ fixtures = [
         "doctype": "Custom Field",
         "filters": {
             "dt": "Subcontracting Order",
-            "fieldname": "format"
+            "fieldname": "remarks"
         }
     }
 ]
