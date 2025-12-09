@@ -57,11 +57,22 @@ def create_item_generator_doc(item_code: str | None = None, is_create_with_sales
 #             if i.qty == 0:
 #                 frappe.throw("Quantity cannot be 0 for free items.")
 
+    
+
 def validate(doc, method):
     for i in doc.items:
+        if not i.branch:
+            i.branch = doc.branch
         if i.bom_no:
             i.bom_no = ""
     # validate_duplicate_so(doc, method)
+
+def on_update(doc, method):
+    for i in doc.items:
+        if not i.branch:
+            i.branch = doc.branch
+        if i.bom_no:
+            i.bom_no = ""
 
 def before_save(doc, method=None):
     for i in doc.items:
@@ -134,9 +145,8 @@ def validate_duplicate_so(doc, method):
                 })
 
     if violations:
-        # Format a single error message with all issues
         error_msg = "<b>Multiple Duplicate Sales Orders Found:</b><br><br>"
-        seen_docs = {}  # To group by doc if multiple items per doc
+        seen_docs = {}
         for v in violations:
             doc_key = v["doc_name"]
             if doc_key not in seen_docs:
@@ -182,3 +192,71 @@ def update_sales_order_child_custom_fields(parent: str, items: list | str, child
 
         if updates:
             frappe.db.set_value("Sales Order Item", docname, updates)
+
+
+@frappe.whitelist()
+def remove_bom_no_from_sales_order(sales_order_name):
+    """
+    Remove bom_no from all items in a Sales Order and set branch from parent
+    """
+    try:
+        # Get the Sales Order document
+        doc = frappe.get_doc('Sales Order', sales_order_name)
+        
+        # Count items with bom_no and branch updates
+        items_updated = 0
+        branch_updated = 0
+        
+        # Get parent branch
+        parent_branch = doc.get('branch')
+        
+        # Clear bom_no and set branch for all items
+        for item in doc.items:
+            # Remove bom_no
+            if item.bom_no:
+                item.bom_no = ''
+                items_updated += 1
+            
+            # Set branch from parent if not already set
+            if parent_branch and not item.get('branch'):
+                item.branch = parent_branch
+                branch_updated += 1
+        
+        # Save the document
+        if items_updated > 0 or branch_updated > 0:
+            doc.save(ignore_permissions=False)
+            frappe.db.commit()
+        
+        # Build message
+        messages = []
+        if items_updated > 0:
+            messages.append(f'Removed bom_no from {items_updated} items')
+        if branch_updated > 0:
+            messages.append(f'Updated branch for {branch_updated} items')
+        
+        message = ' and '.join(messages) if messages else 'No changes made'
+        
+        return {
+            'success': True,
+            'items_updated': items_updated,
+            'branch_updated': branch_updated,
+            'message': f'Successfully {message}'
+        }
+    
+    except Exception as e:
+        frappe.log_error(f'Error removing bom_no: {str(e)}')
+        return {
+            'success': False,
+            'message': str(e)
+        }
+        
+@frappe.whitelist()
+def get_so_items(sales_order):
+    return frappe.db.get_list(
+        "Sales Order Item",
+        filters={
+            "parent": sales_order,
+            "bom_no": ["is", "set"]
+        },
+        fields=["name", "bom_no", "item_code"]
+    )

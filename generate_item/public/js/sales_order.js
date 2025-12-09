@@ -982,61 +982,38 @@ function remove_bom_no_from_items(frm) {
         
         // Query database directly to find all Sales Order Items with bom_no for this Sales Order
         frappe.call({
-            method: 'frappe.client.get_list',
+            method: "generate_item.utils.sales_order.get_so_items",  // update the path
             args: {
-                doctype: 'Sales Order Item',
-                filters: [
-                    ['parent', '=', sales_order_name],
-                    ['bom_no', 'is', 'set']
-                ],
-                fields: ['name', 'bom_no', 'item_code'],
-                limit_page_length: 1000
+                sales_order: sales_order_name
             },
             callback: function(r) {
-                if (r.exc) {
-                    console.error('Error querying Sales Order Items:', r.exc);
+                console.log("Fetched Sales Order Items for bom_no removal:", r);    
+                const items_with_bom = (r.message || []).filter(item =>
+                    item && item.name && item.bom_no
+                );
+
+                if (!items_with_bom.length) {
                     resolve();
                     return;
                 }
-                
-                const items_with_bom = (r.message || []).filter((item) => {
-                    // Filter out items where bom_no is empty or null
-                    return item && item.name && item.bom_no && item.bom_no.trim() !== '';
-                });
-                
-                if (items_with_bom.length === 0) {
-                    resolve();
-                    return;
-                }
-                
+
                 console.log(`Removing bom_no from ${items_with_bom.length} items`);
-                
-                // Update all items with bom_no at database level
-                const update_promises = items_with_bom.map((item) => {
-                    if (!item.name) {
-                        return Promise.resolve();
-                    }
-                    return frappe.db.set_value('Sales Order Item', item.name, {
-                        'bom_no': ''
-                    }).catch((error) => {
-                        console.error(`Error removing bom_no from item ${item.name} (${item.item_code}):`, error);
-                        return Promise.resolve(); // Continue even if one fails
+
+                const update_promises = items_with_bom.map(item => {
+                    return frappe.db.set_value("Sales Order Item", item.name, {
+                        bom_no: ""
+                    }).catch(err => {
+                        console.error(`Error removing bom_no from ${item.name}:`, err);
                     });
                 });
-                
+
                 Promise.all(update_promises).then(() => {
-                    console.log('Successfully removed bom_no from all items');
-                    // Reload form to show updated values
-                    frm.reload_doc().then(() => {
-                        resolve();
-                    }).catch(() => {
-                        resolve(); // Resolve anyway
-                    });
-                }).catch(() => {
-                    resolve(); // Resolve anyway
+                    console.log("Successfully removed bom_no from all items");
+                    frm.reload_doc().then(resolve).catch(resolve);
                 });
             }
         });
+
     });
 }
 
