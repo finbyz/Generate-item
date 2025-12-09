@@ -285,7 +285,7 @@ override_whitelisted_methods = {
     # "erpnext.stock.get_item_details.get_item_details": "generate_item.utils.purchase_order.get_item_details",
     # Ensure Production Plan Get Items for MR returns BOM and drawing
     "erpnext.manufacturing.doctype.production_plan.production_plan.get_items_for_material_requests": "generate_item.overrides.production_plan.get_items_for_material_requests_patched",
-    # "erpnext.controllers.accounts_controller.update_child_qty_rate": "generate_item.overrides.accounts_controller.update_child_qty_rate",
+    "erpnext.controllers.accounts_controller.update_child_qty_rate": "generate_item.overrides.accounts_controller.update_child_qty_rate",
 }
 #
 # each overriding function accepts a `data` argument;
