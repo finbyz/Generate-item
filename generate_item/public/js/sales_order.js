@@ -30,11 +30,13 @@
             qty: d.qty,
             rate: d.rate,
             uom: d.uom,
-            po_line_no: d.po_line_no,
+            po_line_no: d.po_line_no || "",
             tag_no: d.tag_no,
-            line_remark: d.line_remark,
+            line_remark: d.line_remark || "",
             description: d.description,
             custom_shipping_address: d.custom_shipping_address,
+            custom_batch_no: d.custom_batch_no,
+            batch_no: d.batch_no,
         }));
 
         const fields = [
@@ -176,6 +178,7 @@
                 fieldname: "po_line_no",
                 label: __("PO Line No"),
                 in_list_view: 1,
+                reqd: 1,
             },
             {
                 fieldtype: "Data",
@@ -188,6 +191,7 @@
                 fieldname: "line_remark",
                 label: __("Line Remark"),
                 in_list_view: 1,
+                reqd: 1,
             },
             {
                 fieldtype: "Small Text",
@@ -242,71 +246,165 @@
                 },
             ],
             primary_action: function () {
+                const dialogInstance = this;
+                const run_batch_creation = () => {
+                    // Explicitly reload the form to ensure items are updated, then create batches
+                    frm.reload_doc().then(() => {
+                        // Wait a moment for form to be fully ready
+                        setTimeout(() => {
+                            frm.refresh_field('items');
+                            // Ensure form data is fresh before creating batches
+                            if (!frm.doc.items || frm.doc.items.length === 0) {
+                                console.warn("No items found after reload, skipping batch creation");
+                                remove_bom_no_from_items(frm).catch(() => {});
+                                return;
+                            }
+                            // Now create batches with the updated form data
+                            make_batch(frm).then(() => {
+                                return remove_bom_no_from_items(frm);
+                            }).catch((error) => {
+                                // Log error but continue
+                                console.error("Error creating batches:", error);
+                                return remove_bom_no_from_items(frm);
+                            }).catch(() => {}); // Catch any errors from remove_bom_no
+                        }, 500);
+                    }).catch((error) => {
+                        console.error("Error reloading document:", error);
+                        // Try to create batches anyway after a delay
+                        setTimeout(() => {
+                            make_batch(frm).then(() => {
+                                return remove_bom_no_from_items(frm);
+                            }).catch(() => {
+                                return remove_bom_no_from_items(frm);
+                            }).catch(() => {}); // Catch any errors from remove_bom_no
+                        }, 500);
+                    });
+                };
+                
                 if (has_reserved_stock) {
                     this.hide();
                     frappe.confirm(
                         __("The reserved stock will be released when you update items. Are you certain you wish to proceed?"),
-                        () => this.update_items()
+                        () => {
+                            dialogInstance.update_items().then(() => {
+                                run_batch_creation();
+                            }).catch((error) => {
+                                console.error("Error updating items:", error);
+                            });
+                        }
                     );
                 } else {
-                    this.update_items();
+                    dialogInstance.update_items().then(() => {
+                        run_batch_creation();
+                    }).catch((error) => {
+                        console.error("Error updating items:", error);
+                    });
                 }
             },
             update_items: function () {
-                const dialogInstance = this;
-                const trans_items = dialogInstance
-                    .get_values()["trans_items"]
-                    .filter((item) => !!item.item_code);
+                return new Promise((resolve, reject) => {
+                    const dialogInstance = this;
+                    const trans_items = dialogInstance
+                        .get_values()["trans_items"]
+                        .filter((item) => !!item.item_code);
 
-                const run_standard_update = () => {
-                    frappe.call({
-                        method: "erpnext.controllers.accounts_controller.update_child_qty_rate",
-                        freeze: true,
-                        args: {
-                            parent_doctype: frm.doc.doctype,
-                            trans_items: trans_items,
-                            parent_doctype_name: frm.doc.name,
-                            child_docname: table_fieldname,
-                        },
-                        callback: function () {
-                            frm.reload_doc();
-                        },
-                    });
-                    dialogInstance.hide();
-                    refresh_field(table_fieldname);
-                };
+                    const missing_required = trans_items.find(
+                        (row) => !(row.po_line_no && row.line_remark)
+                    );
 
-                const custom_payload = trans_items
-                    .map((row) => {
-                        const docname = row.docname || row.name;
-                        if (!docname) {
-                            return null;
-                        }
-                        const filtered = { docname };
-                        let hasCustom = false;
-                        custom_fields.forEach((field) => {
-                            if (row[field] !== undefined) {
-                                filtered[field] = row[field];
-                                hasCustom = true;
-                            }
+                    if (missing_required) {
+                        frappe.msgprint(
+                            __("Please fill PO Line No and Line Remark for all items before updating.")
+                        );
+                        reject(__("Missing mandatory child fields"));
+                        return;
+                    }
+
+                    // Find deleted items by comparing source_data with trans_items
+                    const deleted_items = source_data.filter((original_item) => {
+                        const docname = original_item.docname || original_item.name;
+                        return !trans_items.some((updated_item) => {
+                            const updated_docname = updated_item.docname || updated_item.name;
+                            return updated_docname === docname;
                         });
-                        return hasCustom ? filtered : null;
-                    })
-                    .filter(Boolean);
-
-                if (custom_payload.length) {
-                    frappe.call({
-                        method: "generate_item.utils.sales_order.update_sales_order_child_custom_fields",
-                        args: {
-                            parent: frm.doc.name,
-                            items: custom_payload,
-                            child_table: table_fieldname,
-                        },
-                        callback: run_standard_update,
                     });
-                } else {
-                    run_standard_update();
-                }
+
+                    // Delete batches for deleted items
+                    const delete_batches_promise = delete_batches_for_items(deleted_items, frm);
+
+                    const run_standard_update = () => {
+                        frappe.call({
+                            method: "erpnext.controllers.accounts_controller.update_child_qty_rate",
+                            freeze: true,
+                            args: {
+                                parent_doctype: frm.doc.doctype,
+                                trans_items: trans_items,
+                                parent_doctype_name: frm.doc.name,
+                                child_docname: table_fieldname,
+                            },
+                            callback: function (r) {
+                                if (r.exc) {
+                                    reject(r.exc);
+                                    return;
+                                }
+                                // Wait for batch deletion to complete before reloading
+                                delete_batches_promise.then(() => {
+                                    frm.reload_doc().then(() => {
+                                        refresh_field(table_fieldname);
+                                        dialogInstance.hide();
+                                        resolve();
+                                    }).catch(reject);
+                                }).catch((error) => {
+                                    // Continue even if batch deletion fails
+                                    console.error("Error deleting batches:", error);
+                                    frm.reload_doc().then(() => {
+                                        refresh_field(table_fieldname);
+                                        dialogInstance.hide();
+                                        resolve();
+                                    }).catch(reject);
+                                });
+                            },
+                        });
+                    };
+
+                    const custom_payload = trans_items
+                        .map((row) => {
+                            const docname = row.docname || row.name;
+                            if (!docname) {
+                                return null;
+                            }
+                            const filtered = { docname };
+                            let hasCustom = false;
+                            custom_fields.forEach((field) => {
+                                if (row[field] !== undefined) {
+                                    filtered[field] = row[field];
+                                    hasCustom = true;
+                                }
+                            });
+                            return hasCustom ? filtered : null;
+                        })
+                        .filter(Boolean);
+
+                    if (custom_payload.length) {
+                        frappe.call({
+                            method: "generate_item.utils.sales_order.update_sales_order_child_custom_fields",
+                            args: {
+                                parent: frm.doc.name,
+                                items: custom_payload,
+                                child_table: table_fieldname,
+                            },
+                            callback: function (r) {
+                                if (r.exc) {
+                                    reject(r.exc);
+                                    return;
+                                }
+                                run_standard_update();
+                            },
+                        });
+                    } else {
+                        run_standard_update();
+                    }
+                });
             },
             primary_action_label: __("Update"),
         });
@@ -871,6 +969,145 @@ function update_all_reasons(frm) {
     frm.set_value("custom_rejection_reason_all", reasons.join("\n"));
 }
 
+function remove_bom_no_from_items(frm) {
+    // Remove bom_no from all items in the items table at database level
+    return new Promise((resolve) => {
+        // Ensure we have a valid form and Sales Order name
+        if (!frm || !frm.doc || !frm.doc.name) {
+            resolve();
+            return;
+        }
+        
+        const sales_order_name = frm.doc.name;
+        
+        // Query database directly to find all Sales Order Items with bom_no for this Sales Order
+        frappe.call({
+            method: 'frappe.client.get_list',
+            args: {
+                doctype: 'Sales Order Item',
+                filters: [
+                    ['parent', '=', sales_order_name],
+                    ['bom_no', 'is', 'set']
+                ],
+                fields: ['name', 'bom_no', 'item_code'],
+                limit_page_length: 1000
+            },
+            callback: function(r) {
+                if (r.exc) {
+                    console.error('Error querying Sales Order Items:', r.exc);
+                    resolve();
+                    return;
+                }
+                
+                const items_with_bom = (r.message || []).filter((item) => {
+                    // Filter out items where bom_no is empty or null
+                    return item && item.name && item.bom_no && item.bom_no.trim() !== '';
+                });
+                
+                if (items_with_bom.length === 0) {
+                    resolve();
+                    return;
+                }
+                
+                console.log(`Removing bom_no from ${items_with_bom.length} items`);
+                
+                // Update all items with bom_no at database level
+                const update_promises = items_with_bom.map((item) => {
+                    if (!item.name) {
+                        return Promise.resolve();
+                    }
+                    return frappe.db.set_value('Sales Order Item', item.name, {
+                        'bom_no': ''
+                    }).catch((error) => {
+                        console.error(`Error removing bom_no from item ${item.name} (${item.item_code}):`, error);
+                        return Promise.resolve(); // Continue even if one fails
+                    });
+                });
+                
+                Promise.all(update_promises).then(() => {
+                    console.log('Successfully removed bom_no from all items');
+                    // Reload form to show updated values
+                    frm.reload_doc().then(() => {
+                        resolve();
+                    }).catch(() => {
+                        resolve(); // Resolve anyway
+                    });
+                }).catch(() => {
+                    resolve(); // Resolve anyway
+                });
+            }
+        });
+    });
+}
+
+function delete_batches_for_items(deleted_items, frm) {
+    // Delete batch documents for deleted items
+    if (!deleted_items || deleted_items.length === 0) {
+        return Promise.resolve();
+    }
+
+    if (!frm || !frm.doc) {
+        return Promise.resolve();
+    }
+
+    const delete_promises = [];
+    
+    deleted_items.forEach((item) => {
+        const batch_id = item.custom_batch_no || item.batch_no;
+        if (batch_id) {
+            // Find batch by batch_id field (not document name)
+            const delete_promise = new Promise((resolve) => {
+                frappe.call({
+                    method: 'frappe.client.get_list',
+                    args: {
+                        doctype: 'Batch',
+                        filters: {
+                            batch_id: batch_id,
+                            reference_doctype: 'Sales Order',
+                            reference_name: frm.doc.name
+                        },
+                        fields: ['name', 'batch_id', 'reference_doctype', 'reference_name'],
+                        limit_page_length: 100
+                    },
+                    callback: function(r) {
+                        if (r.exc) {
+                            console.error(`Error finding batch with batch_id ${batch_id}:`, r.exc);
+                            resolve();
+                            return;
+                        }
+                        
+                        const batches = r.message || [];
+                        if (batches && batches.length > 0) {
+                            // Delete each batch found (should be only one)
+                            const batch_delete_promises = batches.map((batch) => {
+                                return frappe.call({
+                                    method: 'frappe.client.delete',
+                                    args: {
+                                        doctype: 'Batch',
+                                        name: batch.name
+                                    },
+                                    silent: true
+                                }).catch((error) => {
+                                    console.error(`Error deleting batch ${batch.name} (batch_id: ${batch_id}):`, error);
+                                    // Don't throw, just log the error
+                                    return Promise.resolve();
+                                });
+                            });
+                            Promise.all(batch_delete_promises).then(() => resolve()).catch(() => resolve());
+                        } else {
+                            resolve();
+                        }
+                    }
+                });
+            });
+            
+            delete_promises.push(delete_promise);
+        }
+    });
+
+    return Promise.all(delete_promises);
+}
+
 function make_batch(frm) {
     return new Promise((resolve, reject) => {
         if (!frm.doc.items || frm.doc.items.length === 0) {
@@ -912,6 +1149,16 @@ function make_batch(frm) {
         const total = frm.doc.items.length;
 
         frm.doc.items.forEach(function(item, index) {
+            // Skip if item doesn't have item_code
+            if (!item.item_code) {
+                processed++;
+                if (processed === total) {
+                    finalize_batch_process(frm, created_batches, errors).then(resolve).catch(reject);
+                }
+                return;
+            }
+            
+            // If item already has a batch, skip it
             if (item.custom_batch_no) {
                 processed++;
                 if (processed === total) {
@@ -919,6 +1166,8 @@ function make_batch(frm) {
                 }
                 return;
             }
+            
+            // Check if item is batch-enabled
             frappe.db.get_value('Item', item.item_code, 'has_batch_no')
             .then(r => {
                 if (r.message.has_batch_no) {
@@ -931,7 +1180,24 @@ function make_batch(frm) {
                         }
                     })
                     .catch(error => {
-                        errors.push({item: item.item_code, error: error.message || error});
+                        // Format error message for better display
+                        let error_msg = '';
+                        if (error && error.message) {
+                            error_msg = error.message;
+                        } else if (typeof error === 'string') {
+                            error_msg = error;
+                        } else if (error && error.toString) {
+                            error_msg = error.toString();
+                        } else {
+                            error_msg = 'Unknown error';
+                        }
+                        
+                        // Check if it's a duplicate error
+                        if (error_msg.includes('Duplicate') || error_msg.includes('DuplicateEntryError')) {
+                            error_msg = `Duplicate batch ID (batch may already exist)`;
+                        }
+                        
+                        errors.push({item: item.item_code, error: error_msg});
                         processed++;
                         if (processed === total) {
                             finalize_batch_process(frm, created_batches, errors).then(resolve).catch(reject);
@@ -961,57 +1227,141 @@ function create_batch_for_item(frm, item, index) {
         const batch_id = generate_batch_id_sequential(frm, item, index);
         const manufacturing_date = frm.doc.transaction_date || frappe.datetime.get_today();
 
-        let batch_doc = {
-            'doctype': 'Batch',
-            'item': item.item_code,
-            'batch_id': batch_id,
-            'branch': item.branch,
-            // 'batch_qty': item.qty,
-            'stock_uom': item.uom,
-            'manufacturing_date': manufacturing_date,
-            'expiry_date': null,
-            'reference_doctype': 'Sales Order',
-            'reference_name': frm.doc.name,
-            'supplier': frm.doc.supplier || null,
-            'customer': frm.doc.customer || null
-        };
-
+        // First check if batch already exists
         frappe.call({
-            method: 'frappe.client.insert',
+            method: 'frappe.client.get_list',
             args: {
-                doc: batch_doc
+                doctype: 'Batch',
+                filters: { batch_id: batch_id },
+                fields: ['name', 'batch_id', 'item', 'reference_doctype', 'reference_name'],
+                limit_page_length: 1
             },
             callback: function(r) {
-                if (!r.exc) {
-                    try {
-                        frappe.model.set_value(item.doctype, item.name, 'custom_batch_no', batch_id);
-                        frappe.model.set_value(item.doctype, item.name, 'batch_no', batch_id);
-                    } catch (e) {
-                        console.error('Error setting batch values:', e);
-                    }
-
-                    // try {
-                    //     if (item.bom_no) {
-                    //         console.log('Updating BOM:', item.bom_no, 'with batch:', batch_id);
-                    //         // update_bom_batch_no(frm, item, batch_id);
-                    //     }
-                    // } catch (e) {
-                    //     console.log('BOM update error:', e);
-                    // }
-                    
-                    resolve({
-                        batch_id: batch_id,
-                        document_name: r.message.name,
-                        item_code: item.item_code,
-                        row_name: item.name,
-                        success: true,
-                        created: true
+                if (r.exc) {
+                    // Error checking, try to create anyway
+                    create_new_batch();
+                    return;
+                }
+                
+                const existing_batches = r.message || [];
+                if (existing_batches && existing_batches.length > 0) {
+                    // Batch already exists, delete it and create a new one
+                    const existing_batch = existing_batches[0];
+                    frappe.call({
+                        method: 'frappe.client.delete',
+                        args: {
+                            doctype: 'Batch',
+                            name: existing_batch.name
+                        },
+                        callback: function(delete_r) {
+                            if (delete_r.exc) {
+                                console.error('Error deleting existing batch:', delete_r.exc);
+                                // Continue to create new batch anyway
+                            }
+                            // Create new batch after deleting the existing one
+                            create_new_batch();
+                        }
                     });
                 } else {
-                    reject(r.exc);
+                    // Batch doesn't exist, create new one
+                    create_new_batch();
                 }
             }
         });
+        
+        function create_new_batch() {
+            let batch_doc = {
+                'doctype': 'Batch',
+                'item': item.item_code,
+                'batch_id': batch_id,
+                'branch': item.branch,
+                'stock_uom': item.uom,
+                'manufacturing_date': manufacturing_date,
+                'expiry_date': null,
+                'reference_doctype': 'Sales Order',
+                'reference_name': frm.doc.name,
+                'supplier': frm.doc.supplier || null,
+                'customer': frm.doc.customer || null
+            };
+
+            frappe.call({
+                method: 'frappe.client.insert',
+                args: {
+                    doc: batch_doc
+                },
+                callback: function(r) {
+                    if (!r.exc) {
+                        // Update directly at database level to avoid form update prompts
+                        frappe.db.set_value(item.doctype, item.name, {
+                            'custom_batch_no': batch_id,
+                            'batch_no': batch_id
+                        }).then(() => {
+                            resolve({
+                                batch_id: batch_id,
+                                document_name: r.message.name,
+                                item_code: item.item_code,
+                                row_name: item.name,
+                                success: true,
+                                created: true
+                            });
+                        }).catch((e) => {
+                            console.error('Error setting batch values:', e);
+                            // Still resolve even if update fails
+                            resolve({
+                                batch_id: batch_id,
+                                document_name: r.message.name,
+                                item_code: item.item_code,
+                                row_name: item.name,
+                                success: true,
+                                created: true
+                            });
+                        });
+                    } else {
+                        // Handle duplicate error - delete existing batch and create new one
+                        const error_msg = r.exc.toString() || '';
+                        if (error_msg.includes('Duplicate') || error_msg.includes('DuplicateEntryError')) {
+                            // Try to find the batch that was created
+                            frappe.call({
+                                method: 'frappe.client.get_list',
+                                args: {
+                                    doctype: 'Batch',
+                                    filters: { batch_id: batch_id },
+                                    fields: ['name', 'batch_id'],
+                                    limit_page_length: 1
+                                },
+                                callback: function(r2) {
+                                    if (!r2.exc && r2.message && r2.message.length > 0) {
+                                        // Delete the existing batch
+                                        const existing_batch_name = r2.message[0].name;
+                                        frappe.call({
+                                            method: 'frappe.client.delete',
+                                            args: {
+                                                doctype: 'Batch',
+                                                name: existing_batch_name
+                                            },
+                                            callback: function(delete_r) {
+                                                if (delete_r.exc) {
+                                                    console.error('Error deleting existing batch:', delete_r.exc);
+                                                    // Continue to create new batch anyway
+                                                }
+                                                // Create new batch after deleting the existing one
+                                                create_new_batch();
+                                            }
+                                        });
+                                    } else {
+                                        // Batch doesn't exist, try to create anyway
+                                        create_new_batch();
+                                    }
+                                }
+                            });
+                        } else {
+                            // Other error, reject normally
+                            reject(r.exc);
+                        }
+                    }
+                }
+            });
+        }
     });
 }
 
@@ -1082,12 +1432,15 @@ function show_results_with_doc_names(created_batches, errors) {
         message = __('No batches were created. Please check if items are batch-enabled.');
     }
     
-    // frappe.msgprint({
-    //     title: __('Batch Creation Results'),
-    //     message: message,
-    //     indicator: errors.length > 0 ? 'orange' : 'green',
-    //     wide: true
-    // });
+    // Show results if there are batches created or errors
+    if (created_batches.length > 0 || errors.length > 0) {
+        frappe.msgprint({
+            title: __('Batch Creation Results'),
+            message: message,
+            indicator: errors.length > 0 ? 'orange' : 'green',
+            wide: true
+        });
+    }
 }
 
 function finalize_batch_process(frm, created_batches, errors) {
@@ -1102,9 +1455,9 @@ function finalize_batch_process(frm, created_batches, errors) {
         const persist = async (retry=false) => {
             try {
                 if (created_batches.length > 0) {
-                    // Ensure form is refreshed before saving
-                    frm.refresh();
-                    await frm.save();
+                    // Since we updated at DB level, just reload to show updated values
+                    // No need to save as changes are already in database
+                    await frm.reload_doc();
                 }
                 resolve();
             } catch (e) {
@@ -1112,17 +1465,17 @@ function finalize_batch_process(frm, created_batches, errors) {
                 if (!retry && msg.includes('Document has been modified')) {
                     try {
                         await frm.reload_doc();
-                        (created_batches || []).forEach(b => {
-                            try {
-                                const row = (frm.doc.items || []).find(it => it.name === b.row_name);
-                                if (row) {
-                                    frappe.model.set_value(row.doctype, row.name, 'batch_no', b.batch_id);
-                                    frappe.model.set_value(row.doctype, row.name, 'custom_batch_no', b.batch_id);
-                                }
-                            } catch (se) {
+                        // Update batches directly at database level
+                        const batch_update_promises = (created_batches || []).map(b => {
+                            return frappe.db.set_value('Sales Order Item', b.row_name, {
+                                'batch_no': b.batch_id,
+                                'custom_batch_no': b.batch_id
+                            }).catch((se) => {
                                 console.error('Error setting batch values on retry:', se);
-                            }
+                                return Promise.resolve();
+                            });
                         });
+                        await Promise.all(batch_update_promises);
                         frm.refresh();
                         await persist(true);
                     } catch (re) {
