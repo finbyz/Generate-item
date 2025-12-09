@@ -1,15 +1,18 @@
 import frappe
 from typing import List
 
-
 @frappe.whitelist()
-def get_batches_linked_to_partly_delivered_sales_orders(item_code: str | None = None) -> List[str]:
+def get_batches_linked_to_partly_delivered_sales_orders(branch=None, item_code=None):
     conditions = [
         "b.reference_doctype = 'Sales Order'",
         "so.docstatus = 1",
-        "so.status IN ('Partly Delivered', 'To Deliver and Bill')",
+        "so.status IN ('Partly Delivered', 'To Deliver and Bill')"
     ]
-    params: dict[str, str] = {}
+    params = {}
+
+    if branch:
+        conditions.append("so.branch = %(branch)s")
+        params["branch"] = branch
 
     if item_code:
         conditions.append("b.item = %(item_code)s")
@@ -27,5 +30,4 @@ def get_batches_linked_to_partly_delivered_sales_orders(item_code: str | None = 
     """
 
     return [r.name for r in frappe.db.sql(query, params, as_dict=True)]
-
 

@@ -562,7 +562,9 @@ frappe.ui.form.on('Material Request', {
     before_save(frm) {
         mr_propagate_parent_fields_to_children(frm);
     },
-    
+    branch(frm) {
+        frm.events.load_linked_batches(frm);
+    },
     linked_batch: function(frm) {
         const batch_value = frm.doc.linked_batch || '';
         const rows = frm.doc.items || [];
@@ -613,6 +615,7 @@ frappe.ui.form.on('Material Request', {
     },
     
     refresh(frm) {
+        frm.events.load_linked_batches(frm);
         // Add custom button for BOM
         if (frm.doc.docstatus == 0) {
             frm.add_custom_button(
@@ -623,20 +626,56 @@ frappe.ui.form.on('Material Request', {
         }
         
         // Populate linked_batch options
-        const df = frappe.meta.get_docfield('Material Request', 'linked_batch');
-        if (df && df.fieldtype === 'Select') {
-            frappe.call({
-                method: 'generate_item.api.material_request.get_batches_linked_to_partly_delivered_sales_orders',
-                args: { item_code: null },
-                callback: (r) => {
-                    if (!r.exc) {
-                        const batches = r.message || [];
-                        const options = [''].concat(batches);
-                        frm.set_df_property('linked_batch', 'options', options);
+        // const df = frappe.meta.get_docfield('Material Request', 'linked_batch');
+        // if (df && df.fieldtype === 'Select') {
+    
+        //     // Only run if branch is selected
+        //     if (!frm.doc.branch) {
+        //         frm.set_df_property('linked_batch', 'options', ['']);
+        //         return;
+        //     }
+    
+        //     frappe.call({
+        //         method: 'generate_item.api.material_request.get_batches_linked_to_partly_delivered_sales_orders',
+        //         args: { 
+        //             item_code: null,
+        //             branch: frm.doc.branch   // <<< NEW
+        //         },
+        //         callback: (r) => {
+        //             if (!r.exc) {
+        //                 const batches = r.message || [];
+        //                 const options = [''].concat(batches);
+        //                 frm.set_df_property('linked_batch', 'options', options);
+        //             }
+        //         }
+        //     });
+        // }
+    },
+    load_linked_batches(frm) {
+        // Only load batches when branch is selected
+        if (!frm.doc.branch) {
+            frm.set_df_property("linked_batch", "options", [""]);
+            frm.set_value("linked_batch", "");
+            return;
+        }
+
+        frappe.call({
+            method: "generate_item.api.material_request.get_batches_linked_to_partly_delivered_sales_orders",
+            args: { branch: frm.doc.branch },
+            callback: (r) => {
+                if (!r.exc) {
+                    const batches = r.message || [];
+                    const options = [''].concat(batches);
+
+                    frm.set_df_property("linked_batch", "options", options);
+
+                    // Reset selection if it is not in valid options
+                    if (!options.includes(frm.doc.linked_batch)) {
+                        frm.set_value("linked_batch", "");
                     }
                 }
-            });
-        }
+            }
+        });
     },
     
     custom_drawing_no: mr_propagate_parent_fields_to_children,
