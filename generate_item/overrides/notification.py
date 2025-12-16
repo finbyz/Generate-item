@@ -156,7 +156,7 @@ class CustomNotification(Notification):
         )
 
         if not user_permissions:
-            return True
+            return False
 
         for perm in user_permissions:
             applies_to_doctype = perm.apply_to_all_doctypes or not perm.applicable_for or perm.applicable_for == doctype
