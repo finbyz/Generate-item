@@ -373,7 +373,19 @@ def get_columns():
 			"fieldname": "inspection",
 			"fieldtype": "Data",
 			"width": 100
-		}
+		},
+		{
+			"label": _("Additional Charges"),
+			"fieldname": "additional_charges",
+			"fieldtype": "Currency",
+			"width": 120
+		},
+		{
+			"label": _("Grand Total"),
+			"fieldname": "grand_total",
+			"fieldtype": "Currency",
+			"width": 120
+		},
 	]
 	return columns
 
@@ -402,6 +414,9 @@ def get_data(filters):
 		"custom_mode_of_dispatch",
 		"custom_freight_charges",
 		"custom_price_basis",
+		"discount_amount",
+		"grand_total",
+  		"total_taxes_and_charges"
 	]
 	sales_orders = frappe.get_all("Sales Order", filters=so_conditions, fields=so_fields)
 
@@ -475,6 +490,31 @@ def get_data(filters):
 			quality_special_requirement_nde = item_gen.get("attribute_22_value") or ""
 			service = item_gen.get("attribute_23_value") or ""
 			inspection = item_gen.get("attribute_24_value") or ""
+			actual_charges = 0
+			actual_tax_row = frappe.db.sql(
+				"""
+				SELECT SUM(tax_amount) AS actual_total
+				FROM `tabSales Taxes and Charges`
+				WHERE parent = %s
+				AND parenttype = 'Sales Order'
+				AND docstatus = 1
+				AND charge_type = 'Actual'
+				""",
+				so.sales_order,
+				as_dict=True,
+			)
+
+			if actual_tax_row and actual_tax_row[0].actual_total:
+				actual_charges = actual_tax_row[0].actual_total or 0
+
+			additional_charges = actual_charges
+
+			calculated_grand_total = (
+				(so.grand_total or 0)
+				- (item.order_amount_inr or 0)
+				+ (additional_charges or 0) 
+				+ (so.total_taxes_and_charges or 0)
+			)
 
 			row = [
 				so.sales_order,
@@ -536,7 +576,9 @@ def get_data(filters):
 				special_requirement_for_valve,
 				quality_special_requirement_nde,
 				service,
-				inspection
+				inspection,
+				additional_charges,
+				calculated_grand_total,
 			]
 			data.append(row)
 
