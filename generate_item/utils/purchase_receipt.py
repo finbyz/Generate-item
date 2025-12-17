@@ -26,7 +26,7 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
 		po_item = frappe.db.get_value(
 			"Purchase Order Item",
 			po_item_name,
-			["qty", "received_qty", "conversion_factor", "custom_batch_no"],
+			["qty", "received_qty", "conversion_factor", "custom_batch_no","stock_qty"],
 			as_dict=True,
 		)
 
@@ -61,6 +61,10 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
 		new_qty = remaining_stock_qty / item_cf if item_cf else 0
 		item.qty = new_qty
 		item.stock_qty = remaining_stock_qty
+
+        # 🔹 ADDED: map PO stock_qty → PR stock_uom_qty
+		if po_item.stock_qty:
+			item.qty_in_stock_uom = po_item.stock_qty
 
 		# Map custom_batch_no from PO Item to PR Item.batch_no if empty
 		if po_item.custom_batch_no and not getattr(item, "batch_no", None):

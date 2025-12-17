@@ -98,12 +98,40 @@ frappe.ui.form.on('Production Plan', {
 			};
 		});
     },
-    branch: function(frm) {
-        if (frm.doc.branch) {
-            // Filter sales_orders table by branch
-            if (frm.doc.sales_orders && frm.doc.sales_orders.length > 0) {
-                frm.trigger("get_sales_orders");
-            }
+naming_series: function (frm) {
+        if (!frm.doc.naming_series) return;
+
+        const series_branch_map = {
+            "PPOS.YY.####": "Sanand",
+            "PPOR.YY.####": "Rabale",
+            "PPON.YY.####": "Nandikoor"
+        };
+
+        let branch = series_branch_map[frm.doc.naming_series];
+
+        if (branch && frm.doc.branch !== branch) {
+            frm.set_value("branch", branch);
+        }
+    },
+
+    branch: function (frm) {
+        if (!frm.doc.branch) return;
+
+        const branch_series_map = {
+            "Sanand": "PPOS.YY.####",
+            "Rabale": "PPOR.YY.####",
+            "Nandikoor": "PPON.YY.####"
+        };
+
+        let naming_series = branch_series_map[frm.doc.branch];
+
+        if (naming_series && frm.doc.naming_series !== naming_series) {
+            frm.set_value("naming_series", naming_series);
+        }
+
+        // Your existing logic
+        if (frm.doc.sales_orders && frm.doc.sales_orders.length > 0) {
+            frm.trigger("get_sales_orders");
         }
     },
     // Remove recursive get_sales_orders handler; server-side override handles branch filtering

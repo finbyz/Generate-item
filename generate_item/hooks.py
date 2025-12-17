@@ -201,7 +201,7 @@ doc_events = {
     "Sales Invoice": {
         "after_insert": "generate_item.utils.sales_invoice.after_insert",
         "validate": "generate_item.utils.sales_invoice.validate",
-        # "before_save": "generate_item.utils.sales_invoice.before_save"
+        "before_save": "generate_item.utils.sales_invoice.before_save"
     },
     "Production Plan":{
         "before_save": "generate_item.utils.production_plan.before_save"
@@ -212,7 +212,7 @@ doc_events = {
     "Delivery Note": {
         "after_insert": "generate_item.utils.delivery_note.after_insert",
         "validate": "generate_item.utils.delivery_note.validate",
-        # "before_save":"generate_item.utils.delivery_note.before_save"
+        "before_save":"generate_item.utils.delivery_note.before_save"
     },
     "Purchase Invoice": {
         "validate": "generate_item.utils.purchase_invoice.validate",
@@ -343,14 +343,22 @@ queries = {
 # ]
 
 fixtures = [
+    # {
+    #     "doctype": "Custom Field",
+    #     "filters": [
+    #         ["dt", "=", "Work Order"],
+    #         ["fieldname", "in", ["wo_remarks", "format", "additional_info"]]
+    #     ]
+    # }
     {
-        "doctype": "Custom Field",
-        "filters": [
-            ["dt", "=", "Work Order"],
-            ["fieldname", "in", ["wo_remarks", "format", "additional_info"]]
-        ]
+        "dt": "Custom Field",
+        "filters": {"module": ["in", ["Generate Item"]]},
     }
+    
 ]
+
+
+ 
 
 
 # Authentication and authorization

@@ -94,6 +94,7 @@ class ProductionPlan(_ProductionPlan):
                 frappe.throw(_("Error validating Production Plan due to invalid references: {0}").format(str(e)))
                 
     def get_so_items(self):
+        valid_items = []
         # Check for empty table or empty rows
         if not self.get("sales_orders") or not self.get_so_mr_list("sales_order", "sales_orders"):
             frappe.throw(_("Please fill the Sales Orders table"), title=_("Sales Orders Required"))
@@ -172,6 +173,10 @@ class ProductionPlan(_ProductionPlan):
                     },
                     "name"
                 )
+                if not bom_name:
+                    continue
+                item['bom_no'] = bom_name
+                valid_items.append(item)
                 
         
         # Existing packed items logic (unchanged, but add similar BOM resolution if needed)
@@ -210,6 +215,7 @@ class ProductionPlan(_ProductionPlan):
         packed_items = packed_items_query.run(as_dict=True)
         
         # NEW: Direct BOM lookup for packed_items (mirroring above)
+        valid_packed_items = []
         for packed_item in packed_items:
             if packed_item.get('pending_qty', 0) > 0:
                 bom_name = frappe.get_value(
@@ -223,8 +229,14 @@ class ProductionPlan(_ProductionPlan):
                     },
                     "name"
                 )
+
+                if not bom_name:
+                    continue
+
+
                 if bom_name:
                     packed_item['bom_no'] = bom_name
+                    valid_packed_items.append(packed_item)
                 else:
                     packed_item['bom_no'] = ""
                     frappe.msgprint(
@@ -232,7 +244,7 @@ class ProductionPlan(_ProductionPlan):
                         .format(packed_item.item_code, packed_item.parent, packed_item.custom_batch_no or "N/A")
                     )
         
-        self.add_items(items + packed_items)
+        self.add_items(valid_items + valid_packed_items)
         self.calculate_total_planned_qty()                        
         
     def add_items(self, items):
@@ -370,7 +382,6 @@ class ProductionPlan(_ProductionPlan):
 
     def make_work_order_for_finished_goods(self, wo_list, default_warehouses):
         """Override to add naming series for finished goods work orders"""
-        from erpnext.manufacturing.doctype.work_order.work_order import get_default_warehouse
         
         # Get naming series mapping
         series_mapping = self._get_naming_series_mapping()
@@ -378,46 +389,104 @@ class ProductionPlan(_ProductionPlan):
         
         frappe.log_error(
             "Work Order Naming Series - Finished Goods",
-            f"Setting naming_series={work_order_naming_series} for finished goods work orders"
+            f"Using naming_series={work_order_naming_series} for finished goods work orders"
         )
         
-        # Call the parent method
-        super().make_work_order_for_finished_goods(wo_list, default_warehouses)
+        # --- Start Re-implementation of Core Logic ---
+        # We re-implement this to inject naming series BEFORE creation
         
-        # Update naming series for created work orders
-        for wo_name in wo_list:
-            try:
-                wo_doc = frappe.get_doc("Work Order", wo_name)
-                if wo_doc.naming_series != work_order_naming_series:
-                    wo_doc.db_set("naming_series", work_order_naming_series, update_modified=False)
-                    frappe.log_error(
-                        "Work Order Naming Series Updated",
-                        f"Updated naming_series to {work_order_naming_series} for Work Order {wo_name}"
-                    )
+        items_data = self.get_production_items()
 
-                    branch_value = getattr(self, "branch", None)
-                    if not branch_value and getattr(self, "po_items", None):
-                        try:
-                            branch_value = next((pi.branch for pi in self.po_items if getattr(pi, "branch", None)), None)
-                            ga_drawing_no = next((pi.branch for pi in self.po_items if getattr(pi, "branch", None)), None)
-                            branch_value = next((pi.branch for pi in self.po_items if getattr(pi, "branch", None)), None)
-                        except Exception:
-                            branch_value = None
+        # Helper to match core logic
+        def set_default_warehouses_local(row, default_warehouses):
+            for field in ["wip_warehouse", "fg_warehouse"]:
+                if not row.get(field):
+                    row[field] = default_warehouses.get(field)
 
+        for _key, item in items_data.items():
+            if self.sub_assembly_items:
+                item["use_multi_level_bom"] = 0
+
+            set_default_warehouses_local(item, default_warehouses)
+            
+            # --- Custom Logic Injection ---
+            
+            # 1. Set Naming Series
+            item["naming_series"] = work_order_naming_series
+            
+            # 2. Set Branch (try to get from po_items if not on header)
+            branch_value = getattr(self, "branch", None)
+            if not branch_value and getattr(self, "po_items", None):
+                try:
+                    # Try to find matching po_item for this item
+                    po_item_match = next((pi for pi in self.po_items if pi.item_code == item.get("production_item") and pi.warehouse == item.get("fg_warehouse")), None)
+                    if po_item_match and getattr(po_item_match, "branch", None):
+                         branch_value = po_item_match.branch
                     
-                    updates = {}
-                    if branch_value and hasattr(wo_doc, "branch") and not getattr(wo_doc, "branch", None):
-                        updates["branch"] = branch_value
+                    if not branch_value:
+                         # Fallback to any branch found
+                         branch_value = next((pi.branch for pi in self.po_items if getattr(pi, "branch", None)), None)
+                except Exception:
+                    branch_value = None
+            
+            if branch_value:
+                item["branch"] = branch_value
+                
+            # 3. Set Custom Batch No
+            # The item dict here is constructed from po_items in get_production_items
+            # Check if custom_batch_no is available on the po_item source
+            # We can try to look it up again from po_items if missing
+            if not item.get("custom_batch_no"):
+                 # Find original po_item
+                 po_item_ref = item.get("production_plan_item")
+                 if po_item_ref:
+                     po_source = next((pi for pi in self.po_items if pi.name == po_item_ref), None)
+                     if po_source:
+                         if getattr(po_source, "custom_batch_no", None):
+                             item["custom_batch_no"] = po_source.custom_batch_no
+                         if getattr(po_source, "branch", None) and not item.get("branch"):
+                             item["branch"] = po_source.branch
 
+            # 4. Set GA Drawing fields (if available on po_item)
+            # Similar lookup
+            if not item.get("custom_ga_drawing_no") or not item.get("custom_ga_drawing_rev_no"):
+                po_item_ref = item.get("production_plan_item")
+                if po_item_ref:
+                    po_source = next((pi for pi in self.po_items if pi.name == po_item_ref), None)
+                    if po_source:
+                         if getattr(po_source, "custom_drawing_no", None):
+                             item["custom_ga_drawing_no"] = po_source.custom_drawing_no
+                         if getattr(po_source, "custom_drawing_rev_no", None):
+                             item["custom_ga_drawing_rev_no"] = po_source.custom_drawing_rev_no
 
-                    if updates:
-                        wo_doc.db_set(updates, update_modified=False)
+            # --- End Custom Logic Injection ---
 
-            except Exception as e:
-                frappe.log_error(
-                    "Work Order Naming Series Update Error",
-                    f"Error updating naming series for Work Order {wo_name}: {str(e)}"
-                )      
+            work_order = self.create_work_order(item)
+            if work_order:
+                wo_list.append(work_order)
+                
+                # Double check naming series on created doc
+                try:
+                    wo_doc = frappe.get_doc("Work Order", work_order)
+                    if wo_doc.naming_series != work_order_naming_series:
+                         # This shouldn't happen now, but as a safety net
+                         wo_doc.db_set("naming_series", work_order_naming_series, update_modified=False)
+                         frappe.log_error("Work Order Naming Series Logic Failed", f"Had to force update naming series for {work_order}")
+                         
+                    # Backfill required_items child table fields
+                    updates_needed = False
+                    for req in wo_doc.required_items:
+                        req_updates = {}
+                        if item.get("branch") and not req.branch:
+                            req_updates["branch"] = item["branch"]
+                        if item.get("custom_batch_no") and not req.custom_batch_no:
+                            req_updates["custom_batch_no"] = item["custom_batch_no"]
+                        
+                        if req_updates:
+                            req.db_set(req_updates, update_modified=False)
+
+                except Exception as e:
+                     frappe.log_error("Work Order Post-Create Check Error", str(e))      
 
 
     @frappe.whitelist()
@@ -1341,21 +1410,22 @@ class ProductionPlan(_ProductionPlan):
                       AND mr.docstatus != 2
                 """, (so, item.item_code))[0][0])
 
-                remaining_so_qty = flt(so_qty) - flt(total_existing_qty)
+                # Calculate how much of plan_qty can be covered by unlinked MRs
                 coverage_from_unlinked = min(plan_qty, unlinked_qty)
-                adjust_qty = plan_qty - coverage_from_unlinked
-                item.quantity = max(0, min(adjust_qty, remaining_so_qty))
+                # New MR qty = plan qty minus what unlinked MRs will cover
+                # Don't cap by SO qty here because plan_qty is already the correct requirement
+                item.quantity = max(0, plan_qty - coverage_from_unlinked)
 
                 frappe.log_error(
                     "MR Qty per Split/Advance Logic",
-                    f"Item: {item.item_code} | SO qty: {so_qty} | Total existing: {total_existing_qty} | Unlinked: {unlinked_qty} | Plan qty: {plan_qty} | Coverage from unlinked: {coverage_from_unlinked} | Allowed new MR: {item.quantity}"
+                    f"Item: {item.item_code} | Plan qty: {plan_qty} | Unlinked MR qty: {unlinked_qty} | Coverage from unlinked: {coverage_from_unlinked} | New MR qty needed: {item.quantity}"
                 )
                 if item.quantity <= 0:
                     frappe.log_error(
                         "MR Item Skipped",
-                        f"Skipping {item.item_code}: Nothing left to request (SO: {so_qty}, Total existing: {total_existing_qty}, Plan: {plan_qty})"
+                        f"Skipping {item.item_code}: Plan qty {plan_qty} fully covered by unlinked MR qty {unlinked_qty}"
                     )
-                    notifications.append(_(f"{item.item_code}: already requested {total_existing_qty}; remaining is 0, skipping."))
+                    notifications.append(_(f"{item.item_code}: plan qty {plan_qty} fully covered by existing unlinked MRs ({unlinked_qty}), skipping new MR."))
                     continue
 
                 # Try to link unlinked MR items to this plan (for tracking)
@@ -1460,14 +1530,14 @@ class ProductionPlan(_ProductionPlan):
                         AND mr.docstatus != 2
                           AND (mri.custom_batch_no = %s OR mr.linked_batch = %s)
                     """, (item.item_code, custom_batch_no, custom_batch_no))[0][0])
-                else:
-                    total_existing_qty_by_batch = flt(frappe.db.sql("""
-                    SELECT IFNULL(SUM(qty), 0)
-                    FROM `tabMaterial Request Item` mri
-                    LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
-                    WHERE mri.item_code = %s
-                      AND mr.docstatus != 2
-                """, (item.item_code,))[0][0])
+                # else:
+                #     total_existing_qty_by_batch = flt(frappe.db.sql("""
+                #     SELECT IFNULL(SUM(qty), 0)
+                #     FROM `tabMaterial Request Item` mri
+                #     LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
+                #     WHERE mri.item_code = %s
+                #       AND mr.docstatus != 2
+                # """, (item.item_code,))[0][0])
 
                 item.quantity = max(0, plan_qty - total_existing_qty_by_batch)
                 if item.quantity <= 0:
@@ -1750,17 +1820,32 @@ class ProductionPlan(_ProductionPlan):
         try:
             # Get the production plan naming series
             pp_series = getattr(self, 'naming_series', None) or ''
+
+            # Determine prefix based on Branch first, then Naming Series
+            branch = getattr(self, 'branch', None)
+
+            # If branch is not set on header, try to get from items
+            if not branch and getattr(self, 'po_items', None):
+                 branch = next((pi.branch for pi in self.po_items if getattr(pi, 'branch', None)), None)
+
+            prefix = None
+
+            if branch:
+                if "Rabale" in branch:
+                    prefix = 'PPOR'
+                elif "Sanand" in branch:
+                    prefix = 'PPOS'
+                elif "Nandikoor" in branch:
+                    prefix = 'PPON'
             
-            # Extract the prefix from the naming series (e.g., PPOS, PPOR, PPON)
-            if 'PPOS' in pp_series:
-                prefix = 'PPOS'
-            elif 'PPOR' in pp_series:
-                prefix = 'PPOR'
-            elif 'PPON' in pp_series:
-                prefix = 'PPON'
-            else:
-                # Default to PPOS if no specific prefix found
-                prefix = 'PPOS'
+            if not prefix:
+                # Fallback to naming series if branch not found
+                if 'PPOR' in pp_series:
+                    prefix = 'PPOR'
+                elif 'PPON' in pp_series:
+                    prefix = 'PPON'
+                elif 'PPOS' in pp_series:
+                    prefix = 'PPOS'
             
             # Define naming series mappings
             series_mapping = {
@@ -1773,7 +1858,7 @@ class ProductionPlan(_ProductionPlan):
                 'PPOR': {
                     'material_request_purchase': 'PMRR.YY.####',
                     'material_request_transfer': 'PTRR.YY.####',
-                    'work_order_fg': 'WOFS.YY.####',
+                    'work_order_fg': 'WOFR.YY.####',
                     'work_order_subassembly': 'WOAR.YY.####'
                 },
                 'PPON': {
@@ -1786,10 +1871,10 @@ class ProductionPlan(_ProductionPlan):
             
             frappe.log_error(
                 "Naming Series Mapping",
-                f"Production Plan series: {pp_series}, Prefix: {prefix}, Mapping: {series_mapping.get(prefix, {})}"
+                f"Branch: {branch}, Production Plan series: {pp_series}, Prefix: {prefix}, Mapping: {series_mapping.get(prefix, {})}"
             )
             
-            return series_mapping.get(prefix, series_mapping['PPOS'])
+            return series_mapping.get(prefix, {})
             
         except Exception as e:
             frappe.log_error(
