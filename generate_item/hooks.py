@@ -352,7 +352,9 @@ fixtures = [
     # }
     {
         "dt": "Custom Field",
-        "filters": {"module": ["in", ["Generate Item"]]},
+        "filters": [
+            ["module", "in", ["Generate Item"]]
+        ]
     }
     
 ]
