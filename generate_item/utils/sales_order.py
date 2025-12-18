@@ -260,3 +260,50 @@ def get_so_items(sales_order):
         },
         fields=["name", "bom_no", "item_code"]
     )
+
+@frappe.whitelist()
+def update_sales_order_item_batches(sales_order, batch_updates):
+    """
+    Update batch_no and custom_batch_no for multiple Sales Order Items atomically.
+    This avoids timestamp mismatch errors when updating multiple items.
+    
+    Args:
+        sales_order: Name of the Sales Order
+        batch_updates: List of dicts with keys: name, batch_no, custom_batch_no
+    """
+    import json
+    
+    # Parse batch_updates if it's a JSON string
+    if isinstance(batch_updates, str):
+        batch_updates = json.loads(batch_updates)
+    
+    if not batch_updates:
+        return {"success": True, "updated_count": 0}
+    
+    # Get the Sales Order document
+    so_doc = frappe.get_doc("Sales Order", sales_order)
+    
+    # Update each item in the child table
+    updated_count = 0
+    for update in batch_updates:
+        item_name = update.get("name")
+        batch_no = update.get("batch_no")
+        custom_batch_no = update.get("custom_batch_no")
+        
+        # Find the item in the child table
+        for item in so_doc.items:
+            if item.name == item_name:
+                item.batch_no = batch_no
+                item.custom_batch_no = custom_batch_no
+                updated_count += 1
+                break
+    
+    # Save the document once with all updates
+    so_doc.save(ignore_permissions=True)
+    frappe.db.commit()
+    
+    return {
+        "success": True,
+        "updated_count": updated_count,
+        "message": f"Updated {updated_count} items with batch information"
+    }

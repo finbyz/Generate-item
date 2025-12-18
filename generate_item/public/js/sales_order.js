@@ -1349,37 +1349,17 @@ function create_batch_for_item(frm, item, index) {
                             item_code: item.item_code
                         });
 
-                        console.log('📝 Setting batch values in Sales Order Item:', {
-                            doctype: item.doctype,
-                            item_name: item.name,
-                            batch_id: batch_id
-                        });
+                        console.log('📝 Batch info will be set after all batches are created to avoid timestamp conflicts');
 
-                        // Update directly at database level to avoid form update prompts
-                        frappe.db.set_value(item.doctype, item.name, {
-                            'custom_batch_no': batch_id,
-                            'batch_no': batch_id
-                        }).then(() => {
-                            console.log('✅ Batch values set successfully in database for item:', item.name);
-                            resolve({
-                                batch_id: batch_id,
-                                document_name: r.message.name,
-                                item_code: item.item_code,
-                                row_name: item.name,
-                                success: true,
-                                created: true
-                            });
-                        }).catch((e) => {
-                            console.error('❌ Error setting batch values in database:', e);
-                            // Still resolve even if update fails
-                            resolve({
-                                batch_id: batch_id,
-                                document_name: r.message.name,
-                                item_code: item.item_code,
-                                row_name: item.name,
-                                success: true,
-                                created: true
-                            });
+                        // Don't update database here - will be done in finalize_batch_process
+                        // to avoid timestamp mismatch errors when creating multiple batches
+                        resolve({
+                            batch_id: batch_id,
+                            document_name: r.message.name,
+                            item_code: item.item_code,
+                            row_name: item.name,
+                            success: true,
+                            created: true
                         });
                     } else {
                         // Handle duplicate error - delete existing batch and create new one
@@ -1526,9 +1506,29 @@ function finalize_batch_process(frm, created_batches, errors) {
         const persist = async (retry = false) => {
             try {
                 if (created_batches.length > 0) {
+                    console.log('� Updating all batch values in Sales Order Items...');
+
+                    // Prepare batch updates
+                    const batch_updates = created_batches.map(b => ({
+                        name: b.row_name,
+                        batch_no: b.batch_id,
+                        custom_batch_no: b.batch_id
+                    }));
+
+                    console.log('📦 Batch updates to apply:', batch_updates);
+
+                    // Update all items in a single server call to avoid timestamp conflicts
+                    await frappe.call({
+                        method: 'generate_item.utils.sales_order.update_sales_order_item_batches',
+                        args: {
+                            sales_order: frm.doc.name,
+                            batch_updates: batch_updates
+                        }
+                    });
+
+                    console.log('✅ All batch values updated successfully');
+
                     console.log('🔄 Reloading document to fetch updated batch values...');
-                    // Since we updated at DB level, just reload to show updated values
-                    // No need to save as changes are already in database
                     await frm.reload_doc();
                     console.log('✅ Document reloaded successfully');
 
@@ -1539,41 +1539,15 @@ function finalize_batch_process(frm, created_batches, errors) {
                 resolve();
             } catch (e) {
                 console.error('❌ Error in persist function:', e);
-                const msg = String((e && e.message) ? e.message : e || '');
-                if (!retry && msg.includes('Document has been modified')) {
-                    console.log('⚠️ Document modified, retrying...');
-                    try {
-                        await frm.reload_doc();
-                        // Update batches directly at database level
-                        const batch_update_promises = (created_batches || []).map(b => {
-                            console.log('🔄 Updating batch on retry:', b);
-                            return frappe.db.set_value('Sales Order Item', b.row_name, {
-                                'batch_no': b.batch_id,
-                                'custom_batch_no': b.batch_id
-                            }).catch((se) => {
-                                console.error('❌ Error setting batch values on retry:', se);
-                                return Promise.resolve();
-                            });
-                        });
-                        await Promise.all(batch_update_promises);
-                        frm.refresh();
-                        frm.refresh_field('items');
-                        console.log('✅ Retry completed successfully');
-                        await persist(true);
-                    } catch (re) {
-                        console.error('❌ Error during retry:', re);
-                        reject(re);
-                    }
-                } else {
-                    reject(e);
-                }
+                reject(e);
             } finally {
                 frm.__creating_batches = false;
                 try { frappe.dom.unfreeze(); } catch (e) { }
             }
         };
 
-        persist(false);
+
+persist(false);
     });
 }
 
