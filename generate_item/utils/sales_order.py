@@ -284,17 +284,15 @@ def update_sales_order_item_batches(sales_order, batch_updates):
     updated_count = 0
     for update in batch_updates:
         item_name = update.get("name")
-        batch_no = update.get("batch_no")
         custom_batch_no = update.get("custom_batch_no")
         
-        if item_name and (batch_no or custom_batch_no):
+        if item_name and ( custom_batch_no):
             # Verify the item belongs to this sales order
             if frappe.db.exists("Sales Order Item", {"name": item_name, "parent": sales_order}):
                 frappe.db.set_value(
                     "Sales Order Item",
                     item_name,
                     {
-                        "batch_no": batch_no,
                         "custom_batch_no": custom_batch_no
                     },
                     update_modified=False
