@@ -280,27 +280,26 @@ def update_sales_order_item_batches(sales_order, batch_updates):
     if not batch_updates:
         return {"success": True, "updated_count": 0}
     
-    # Get the Sales Order document
-    so_doc = frappe.get_doc("Sales Order", sales_order)
-    
-    # Update each item in the child table
+    # Update each item directly using db.set_value to avoid triggering hooks
     updated_count = 0
     for update in batch_updates:
         item_name = update.get("name")
         batch_no = update.get("batch_no")
         custom_batch_no = update.get("custom_batch_no")
         
-        # Find the item in the child table
-        for item in so_doc.items:
-            if item.name == item_name:
-                item.batch_no = batch_no
-                item.custom_batch_no = custom_batch_no
+        if item_name and (batch_no or custom_batch_no):
+            # Verify the item belongs to this sales order
+            if frappe.db.exists("Sales Order Item", {"name": item_name, "parent": sales_order}):
+                frappe.db.set_value(
+                    "Sales Order Item",
+                    item_name,
+                    {
+                        "batch_no": batch_no,
+                        "custom_batch_no": custom_batch_no
+                    },
+                    update_modified=False
+                )
                 updated_count += 1
-                break
-    
-    # Save the document once with all updates
-    so_doc.save(ignore_permissions=True)
-    frappe.db.commit()
     
     return {
         "success": True,
