@@ -728,7 +728,7 @@ frappe.ui.form.on('Sales Order', {
     // },
     before_workflow_action: function (frm) {
         const action = (frm.selected_workflow_action || "").toLowerCase();
-        
+
         if (action.includes("reject")) {
             return show_rejection_dialog(frm);
         }
@@ -739,7 +739,7 @@ frappe.ui.form.on('Sales Order', {
         }
 
         // Only verify and update batch item codes for amended Sales Orders
-        const verification_promise = frm.doc.amended_from 
+        const verification_promise = frm.doc.amended_from
             ? verify_and_update_batch_items(frm)
             : Promise.resolve();
 
@@ -768,7 +768,7 @@ frappe.ui.form.on('Sales Order', {
                 }
 
                 try { frappe.dom.freeze(__('Creating batches...')); } catch (e) { }
-                
+
                 return make_batch(frm)
                     .then(() => {
                         try { frappe.dom.unfreeze(); } catch (e) { }
@@ -1328,6 +1328,14 @@ function create_batch_for_item(frm, item, index) {
                 'customer': frm.doc.customer || null
             };
 
+            console.log('🔨 Creating batch for item:', {
+                item_code: item.item_code,
+                batch_id: batch_id,
+                item_name: item.name,
+                branch: item.branch,
+                uom: item.uom
+            });
+
             frappe.call({
                 method: 'frappe.client.insert',
                 args: {
@@ -1335,11 +1343,24 @@ function create_batch_for_item(frm, item, index) {
                 },
                 callback: function (r) {
                     if (!r.exc) {
+                        console.log('✅ Batch created successfully:', {
+                            batch_id: batch_id,
+                            document_name: r.message.name,
+                            item_code: item.item_code
+                        });
+
+                        console.log('📝 Setting batch values in Sales Order Item:', {
+                            doctype: item.doctype,
+                            item_name: item.name,
+                            batch_id: batch_id
+                        });
+
                         // Update directly at database level to avoid form update prompts
                         frappe.db.set_value(item.doctype, item.name, {
                             'custom_batch_no': batch_id,
                             'batch_no': batch_id
                         }).then(() => {
+                            console.log('✅ Batch values set successfully in database for item:', item.name);
                             resolve({
                                 batch_id: batch_id,
                                 document_name: r.message.name,
@@ -1349,7 +1370,7 @@ function create_batch_for_item(frm, item, index) {
                                 created: true
                             });
                         }).catch((e) => {
-                            console.error('Error setting batch values:', e);
+                            console.error('❌ Error setting batch values in database:', e);
                             // Still resolve even if update fails
                             resolve({
                                 batch_id: batch_id,
@@ -1489,6 +1510,12 @@ function show_results_with_doc_names(created_batches, errors) {
 
 function finalize_batch_process(frm, created_batches, errors) {
     return new Promise((resolve, reject) => {
+        console.log('🏁 Finalizing batch process:', {
+            created_batches_count: created_batches.length,
+            errors_count: errors.length,
+            created_batches: created_batches
+        });
+
         // Show results immediately
         try {
             show_results_with_doc_names(created_batches, errors);
@@ -1499,30 +1526,42 @@ function finalize_batch_process(frm, created_batches, errors) {
         const persist = async (retry = false) => {
             try {
                 if (created_batches.length > 0) {
+                    console.log('🔄 Reloading document to fetch updated batch values...');
                     // Since we updated at DB level, just reload to show updated values
                     // No need to save as changes are already in database
                     await frm.reload_doc();
+                    console.log('✅ Document reloaded successfully');
+
+                    // Refresh the items field to ensure UI is updated
+                    frm.refresh_field('items');
+                    console.log('✅ Items field refreshed');
                 }
                 resolve();
             } catch (e) {
+                console.error('❌ Error in persist function:', e);
                 const msg = String((e && e.message) ? e.message : e || '');
                 if (!retry && msg.includes('Document has been modified')) {
+                    console.log('⚠️ Document modified, retrying...');
                     try {
                         await frm.reload_doc();
                         // Update batches directly at database level
                         const batch_update_promises = (created_batches || []).map(b => {
+                            console.log('🔄 Updating batch on retry:', b);
                             return frappe.db.set_value('Sales Order Item', b.row_name, {
                                 'batch_no': b.batch_id,
                                 'custom_batch_no': b.batch_id
                             }).catch((se) => {
-                                console.error('Error setting batch values on retry:', se);
+                                console.error('❌ Error setting batch values on retry:', se);
                                 return Promise.resolve();
                             });
                         });
                         await Promise.all(batch_update_promises);
                         frm.refresh();
+                        frm.refresh_field('items');
+                        console.log('✅ Retry completed successfully');
                         await persist(true);
                     } catch (re) {
+                        console.error('❌ Error during retry:', re);
                         reject(re);
                     }
                 } else {
@@ -1677,7 +1716,7 @@ function update_batch_links(frm) {
 function verify_and_update_batch_items(frm) {
     return new Promise((resolve, reject) => {
         const items = frm.doc.items || [];
-        const items_with_batches = items.filter(item => 
+        const items_with_batches = items.filter(item =>
             item.item_code && (item.custom_batch_no || item.batch_no)
         );
 
@@ -1692,13 +1731,13 @@ function verify_and_update_batch_items(frm) {
 
         items_with_batches.forEach(item => {
             const batch_id = item.custom_batch_no || item.batch_no;
-            
+
             frappe.db.get_value('Batch', batch_id, ['item', 'name'])
                 .then(r => {
                     if (r.message) {
                         const batch_item = r.message.item;
                         const batch_name = r.message.name;
-                        
+
                         // Check if item codes match
                         if (batch_item !== item.item_code) {
                             mismatched_batches.push({
@@ -1710,7 +1749,7 @@ function verify_and_update_batch_items(frm) {
                             });
                         }
                     }
-                    
+
                     processed++;
                     if (processed === total) {
                         if (mismatched_batches.length > 0) {
@@ -1747,28 +1786,28 @@ function update_mismatched_batches(frm, mismatched_batches) {
         }
 
         console.log(`Found ${mismatched_batches.length} batches with mismatched item codes`);
-        
+
         const update_promises = mismatched_batches.map(mismatch => {
             return frappe.db.set_value('Batch', mismatch.batch_name, {
                 'item': mismatch.new_item
             })
-            .then(() => {
-                console.log(`Updated batch ${mismatch.batch_id}: ${mismatch.old_item} → ${mismatch.new_item}`);
-                return {
-                    success: true,
-                    batch_id: mismatch.batch_id,
-                    old_item: mismatch.old_item,
-                    new_item: mismatch.new_item
-                };
-            })
-            .catch(error => {
-                console.error(`Error updating batch ${mismatch.batch_id}:`, error);
-                return {
-                    success: false,
-                    batch_id: mismatch.batch_id,
-                    error: error.message || error
-                };
-            });
+                .then(() => {
+                    console.log(`Updated batch ${mismatch.batch_id}: ${mismatch.old_item} → ${mismatch.new_item}`);
+                    return {
+                        success: true,
+                        batch_id: mismatch.batch_id,
+                        old_item: mismatch.old_item,
+                        new_item: mismatch.new_item
+                    };
+                })
+                .catch(error => {
+                    console.error(`Error updating batch ${mismatch.batch_id}:`, error);
+                    return {
+                        success: false,
+                        batch_id: mismatch.batch_id,
+                        error: error.message || error
+                    };
+                });
         });
 
         Promise.all(update_promises)
