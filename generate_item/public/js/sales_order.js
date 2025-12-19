@@ -178,7 +178,7 @@
                 fieldname: "po_line_no",
                 label: __("PO Line No"),
                 in_list_view: 1,
-                reqd: 1,
+                reqd: 0,
             },
             {
                 fieldtype: "Data",
@@ -191,7 +191,7 @@
                 fieldname: "line_remark",
                 label: __("Line Remark"),
                 in_list_view: 1,
-                reqd: 1,
+                reqd: 0,
             },
             {
                 fieldtype: "Small Text",
@@ -312,13 +312,13 @@
                         (row) => !(row.po_line_no && row.line_remark)
                     );
 
-                    if (missing_required) {
-                        frappe.msgprint(
-                            __("Please fill PO Line No and Line Remark for all items before updating.")
-                        );
-                        reject(__("Missing mandatory child fields"));
-                        return;
-                    }
+                    // if (missing_required) {
+                    //     frappe.msgprint(
+                    //         __("Please fill PO Line No and Line Remark for all items before updating.")
+                    //     );
+                    //     reject(__("Missing mandatory child fields"));
+                    //     return;
+                    // }
 
                     // Find deleted items by comparing source_data with trans_items
                     const deleted_items = source_data.filter((original_item) => {
