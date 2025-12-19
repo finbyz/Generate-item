@@ -212,7 +212,7 @@ doc_events = {
     "Delivery Note": {
         "after_insert": "generate_item.utils.delivery_note.after_insert",
         "validate": "generate_item.utils.delivery_note.validate",
-        "before_save":"generate_item.utils.delivery_note.before_save"
+        # "before_save":"generate_item.utils.delivery_note.before_save"
     },
     "Purchase Invoice": {
         "validate": "generate_item.utils.purchase_invoice.validate",
