@@ -512,3 +512,26 @@ def get_valid_batches(doctype, txt, searchfield, start, page_len, filters):
         "start": start,
         "page_len": page_len
     })
+def validate_bom_batch_reference(self,method):
+        for row in self.items:
+            if not row.bom_no:
+                continue
+
+            custom_batch_no = frappe.db.get_value(
+                "BOM",
+                row.bom_no,
+                "custom_batch_no"
+            )
+
+            if custom_batch_no:
+                frappe.throw(
+                    f"""
+                    <b>Row {row.idx} (Row Name: {row.name})</b><br>
+                    Batch No reference <b>{custom_batch_no}</b> is already set
+                    in BOM <b>{row.bom_no}</b> for item
+                    <b>{row.item_code}</b>.<br><br>
+                    Please use a BOM without batch reference
+                    or remove it first.
+                    """,
+                    title="Invalid BOM Reference"
+                )
