@@ -72,6 +72,7 @@ def before_insert(doc, method=None):
 
 def before_validate(doc, method=None):
     set_branch_details(doc, method)
+    validate_bom_batch_reference(doc, method)
     # Populate BOM-level drawing/spec fields from Item if missing on BOM
     try:
         if getattr(doc, "item", None):
