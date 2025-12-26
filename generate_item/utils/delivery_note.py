@@ -1,6 +1,7 @@
 # Copyright (c) 2025, Finbyz and contributors
 # For license information, please see license.txt
 
+# from erpnext.selling.doctype.sales_order.sales_order import get_company_address
 import frappe
 from frappe import _
 import json
@@ -431,6 +432,7 @@ def make_delivery_note_for_so(source_name, target_doc=None, kwargs=None):
 				"rate": "rate",
 				"name": "so_detail",
 				"parent": "against_sales_order",
+				"component_of": "component_of",
 			},
 			"condition": lambda d: condition(d) and select_item(d),
 			"postprocess": update_item,
@@ -463,6 +465,7 @@ def make_delivery_note_for_so(source_name, target_doc=None, kwargs=None):
 								"rate": "rate",
 								"name": "so_detail",
 								"parent": "against_sales_order",
+								"component_of": "component_of",
 							},
 							"postprocess": update_dn_item,
 						}
@@ -734,6 +737,7 @@ def validate(doc, method):
     fetch_po_line_no_from_sales_order(doc)
     validate_duplicate_delivery_note(doc, method)
     validate_so_line_shipping_address(doc)
+    validate_free_items(doc)
 
 def validate_duplicate_delivery_note(doc, method):
     """
@@ -875,3 +879,57 @@ def validate_so_line_shipping_address(doc):
                     dn_shipping_address or "Not Selected"
                 )
             )
+
+def validate_free_items(doc):
+    """
+    Ensure that if SO has free items (component_of),
+    those free items must be present in Delivery Note.
+    """
+
+    # Collect all linked Sales Orders from DN items
+    so_names = set(
+        d.against_sales_order
+        for d in doc.items
+        if d.against_sales_order
+    )
+
+    if not so_names:
+        return
+
+    # DN item codes for quick lookup
+    dn_item_codes = {d.item_code for d in doc.items}
+
+    missing_items = []
+
+    for so_name in so_names:
+        so = frappe.get_doc("Sales Order", so_name)
+
+        # Find free items in SO
+        free_items = [
+            so_item
+            for so_item in so.items
+            if so_item.is_free_item and so_item.component_of
+        ]
+
+        for free_item in free_items:
+            # If free item not present in DN
+            if free_item.item_code not in dn_item_codes:
+                missing_items.append({
+                    "free_item": free_item.item_code,
+                    "parent_item": free_item.component_of,
+                    "so": so_name
+                })
+
+    if missing_items:
+        message = "<b>Missing Free Items in Delivery Note</b><br><br>"
+        for m in missing_items:
+            message += (
+                f"• Free Item <b>{m['free_item']}</b> "
+                f"linked with <b>{m['parent_item']}</b> "
+                f"in Sales Order <b>{m['so']}</b><br>"
+            )
+
+        frappe.throw(_(message), title=_("Free Item Validation Failed"))
+
+
+
