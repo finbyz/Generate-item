@@ -1,7 +1,9 @@
+
+
 // Copyright (c) 2025, Finbyz and contributors
 // For license information, please see license.txt
 
-frappe.query_reports["Sales Order Register Planning"] = {
+frappe.query_reports["Sales Order Register Marketing"] = {
 	"filters": [
 		{
 			"fieldname": "from_date",
@@ -81,8 +83,6 @@ frappe.query_reports["Sales Order Register Planning"] = {
 			],
 			on_change: () => frappe.query_report.refresh()
 		}
-		
 	]
-}
-
+};
 

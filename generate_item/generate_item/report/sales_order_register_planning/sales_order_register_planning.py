@@ -67,7 +67,7 @@ def get_columns():
 			"width": 120
 		},
 		{
-			"label": _("Approved On"),
+			"label": _("Approved Date"),
 			"fieldname": "approved_on",
 			"fieldtype": "Date",
 			"width": 100
@@ -405,8 +405,8 @@ def get_data(filters):
 		"po_date as customer_po_date",
 		"custom_liquidate_damage",
 		"status as order_status",
-		"modified as approved_on",
-		"modified_by as approved_by",
+		# "modified as approved_on",
+		# "modified_by as approved_by",
 		"currency as order_currency",
 		"conversion_rate as exchange_rate",
 		"payment_terms_template as payment_term",
@@ -421,6 +421,8 @@ def get_data(filters):
 	sales_orders = frappe.get_all("Sales Order", filters=so_conditions, fields=so_fields)
 
 	for so in sales_orders:
+		approval_details = get_approval_details(so.sales_order)
+
 		# Compute freight charges from Sales Taxes and Charges for this Sales Order
 		freight_charges = 0
 		freight_row = frappe.db.sql(
@@ -444,7 +446,8 @@ def get_data(filters):
 		if filters.get("batch_no"):
 			so_conditions_for_items["custom_batch_no"] = filters.batch_no
 		item_fields = [
-			"idx as item_id",
+			"idx as item_idx",
+			"parent",
 			"idx as order_line_index",
 			"item_code",
 			"item_name",
@@ -462,9 +465,10 @@ def get_data(filters):
 			"infor_ref",
 			"custom_infor_ref",
 		]
-		items = frappe.get_all("Sales Order Item", filters=so_conditions_for_items, fields=item_fields)
+		items = frappe.get_all("Sales Order Item", filters=so_conditions_for_items, fields=item_fields, order_by="parent asc, idx asc")
 
 		for item in items:
+			item_id = f"{item.parent}-{item.item_idx}"
 			item_gen = get_item_generator_attributes(item.item_code)
 			type_of_product = item_gen.get("attribute_1_value") or ""
 			valve_type = item_gen.get("attribute_2_value") or ""
@@ -526,15 +530,18 @@ def get_data(filters):
 				so.customer_po_date,
 				so.custom_liquidate_damage,
 				so.order_status,
-				so.approved_on,
-				so.approved_by or "",
+				# so.approved_on,
+				# so.approved_by or "",
+				approval_details.get("approved_on"),
+				approval_details.get("approved_by") or "",
 				so.custom_payment_terms or "",
 				so.custom_mode_of_dispatch or "",
 				so.custom_freight_charges or "",
 				so.custom_price_basis or "",
 				so.order_currency,
 				so.exchange_rate,
-				item.item_id,
+				# item.item_id,
+				item_id,   
 				item.order_line_index,
 				item.batch_number or "",
 				item.item_code,
@@ -603,10 +610,16 @@ def get_so_conditions(filters):
 		conditions["customer"] = filters.customer
 	if filters.get("branch"):
 		conditions["branch"] = filters.branch
-	if filters.get("status"):
-		conditions["status"] = filters.status
 	if filters.get("sales_order"):
 		conditions["name"] = filters.sales_order
+	# if filters.get("status"):
+	# 	conditions["status"] = filters.status
+
+	# Exclude Closed & Completed
+	conditions["status"] = ["not in", ["Closed", "Completed"]]
+	if filters.get("status"):
+		conditions["status"] = ["in", filters.status]
+	
 	
 	return conditions
 
@@ -623,3 +636,26 @@ def get_item_generator_attributes(item_code):
 		as_dict=True,
 	)
 	return item_gen or {}
+
+
+def get_approval_details(sales_order):
+	approval = frappe.db.sql(
+		"""
+		SELECT
+			username AS approved_by,
+			modification_time AS approved_on
+		FROM `tabState Change Items`
+		WHERE parent = %s
+		  AND parenttype = 'Sales Order'
+		  AND workflow_state = 'Approved'
+		ORDER BY modification_time DESC
+		LIMIT 1
+		""",
+		sales_order,
+		as_dict=True,
+	)
+
+	if approval:
+		return approval[0]
+
+	return {"approved_by": "", "approved_on": None}

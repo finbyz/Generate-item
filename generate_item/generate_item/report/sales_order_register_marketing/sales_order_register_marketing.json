@@ -1,0 +1,66 @@
+{
+ "add_total_row": 1,
+ "add_translate_data": 0,
+ "columns": [],
+ "creation": "2025-12-30 13:26:48.883213",
+ "disabled": 0,
+ "docstatus": 0,
+ "doctype": "Report",
+ "filters": [],
+ "idx": 0,
+ "is_standard": "Yes",
+ "letter_head": "Steel Strong",
+ "letterhead": null,
+ "modified": "2025-12-30 13:26:48.883213",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Sales Order Register Marketing",
+ "owner": "Administrator",
+ "prepared_report": 0,
+ "ref_doctype": "Sales Order",
+ "reference_report": "",
+ "report_name": "Sales Order Register Marketing",
+ "report_type": "Script Report",
+ "roles": [
+  {
+   "role": "Sales Manager"
+  },
+  {
+   "role": "Accounts User"
+  },
+  {
+   "role": "Stock User"
+  },
+  {
+   "role": "Sales User"
+  },
+  {
+   "role": "SO Approval"
+  },
+  {
+   "role": "Sales Master Manager"
+  },
+  {
+   "role": "Manufacturing User"
+  },
+  {
+   "role": "Design User"
+  },
+  {
+   "role": "Design Manager"
+  },
+  {
+   "role": "SO Checking"
+  },
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "Delivery User"
+  },
+  {
+   "role": "Purchase User"
+  }
+ ],
+ "timeout": 0
+}
