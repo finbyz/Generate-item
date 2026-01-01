@@ -102,9 +102,9 @@ naming_series: function (frm) {
         if (!frm.doc.naming_series) return;
 
         const series_branch_map = {
-            "PPOS.YY.####": "Sanand",
-            "PPOR.YY.####": "Rabale",
-            "PPON.YY.####": "Nandikoor"
+            "PPOS.fiscal.####": "Sanand",
+            "PPOR.fiscal.####": "Rabale",
+            "PPON.fiscal.####": "Nandikoor"
         };
 
         let branch = series_branch_map[frm.doc.naming_series];
@@ -118,9 +118,9 @@ naming_series: function (frm) {
         if (!frm.doc.branch) return;
 
         const branch_series_map = {
-            "Sanand": "PPOS.YY.####",
-            "Rabale": "PPOR.YY.####",
-            "Nandikoor": "PPON.YY.####"
+            "Sanand": "PPOS.fiscal.####",
+            "Rabale": "PPOR.fiscal.####",
+            "Nandikoor": "PPON.fiscal.####"
         };
 
         let naming_series = branch_series_map[frm.doc.branch];

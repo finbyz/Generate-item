@@ -385,7 +385,7 @@ class ProductionPlan(_ProductionPlan):
         
         # Get naming series mapping
         series_mapping = self._get_naming_series_mapping()
-        work_order_naming_series = series_mapping.get('work_order_fg', 'WOFS.YY.####')
+        work_order_naming_series = series_mapping.get('work_order_fg', 'WOFS.fiscal.####')
         
         frappe.log_error(
             "Work Order Naming Series - Finished Goods",
@@ -1018,7 +1018,7 @@ class ProductionPlan(_ProductionPlan):
             # This function exclusively handles sub-assembly rows, so always use the
             # sub-assembly naming series. Relying on production_plan_item presence
             # was causing false negatives and finished-good series to be used.
-            work_order_naming_series = series_mapping.get('work_order_subassembly', 'WOAS.YY.####')
+            work_order_naming_series = series_mapping.get('work_order_subassembly', 'WOAS.fiscal.####')
             frappe.log_error(
                 "Work Order Naming Series - Sub Assembly",
                 f"Setting naming_series={work_order_naming_series} for sub-assembly item {getattr(row, 'production_item', 'Unknown')}"
@@ -1565,11 +1565,11 @@ class ProductionPlan(_ProductionPlan):
                 
                 # Determine the appropriate naming series based on material request type
                 if material_request_type == "Purchase":
-                    naming_series = series_mapping.get('material_request_purchase', 'PMRS.YY.####')
+                    naming_series = series_mapping.get('material_request_purchase', 'MMRS.fiscal.####')
                 elif material_request_type == "Material Transfer":
-                    naming_series = series_mapping.get('material_request_transfer', 'PTRS.YY.####')
+                    naming_series = series_mapping.get('material_request_transfer', 'MTRS.fiscal.####')
                 else:
-                    naming_series = series_mapping.get('material_request_purchase', 'PMRS.YY.####')
+                    naming_series = series_mapping.get('material_request_purchase', 'MMRS.fiscal.####')
                 
                 # Resolve branch from Production Plan
                 branch_value = getattr(self, 'branch', None)
@@ -1850,22 +1850,22 @@ class ProductionPlan(_ProductionPlan):
             # Define naming series mappings
             series_mapping = {
                 'PPOS': {
-                    'material_request_purchase': 'PMRS.YY.####',
-                    'material_request_transfer': 'PTRS.YY.####',
-                    'work_order_fg': 'WOFS.YY.####',
-                    'work_order_subassembly': 'WOAS.YY.####'
+                    'material_request_purchase': 'PMRS.fiscal.####',
+                    'material_request_transfer': 'MTRS.fiscal.####',
+                    'work_order_fg': 'WOFS.fiscal.####',
+                    'work_order_subassembly': 'WOAS.fiscal.####'
                 },
                 'PPOR': {
-                    'material_request_purchase': 'PMRR.YY.####',
-                    'material_request_transfer': 'PTRR.YY.####',
-                    'work_order_fg': 'WOFR.YY.####',
-                    'work_order_subassembly': 'WOAR.YY.####'
+                    'material_request_purchase': 'PMRR.fiscal.####',
+                    'material_request_transfer': 'MTRR.fiscal.####',
+                    'work_order_fg': 'WOFR.fiscal.####',
+                    'work_order_subassembly': 'WOAR.fiscal.####'
                 },
                 'PPON': {
-                    'material_request_purchase': 'PMRN.YY.####',
-                    'material_request_transfer': 'PTRN.YY.####',
-                    'work_order_fg': 'WOFN.YY.####',
-                    'work_order_subassembly': 'WOAN.YY.####'
+                    'material_request_purchase': 'PMRN.fiscal.####',
+                    'material_request_transfer': 'MTRN.fiscal.####',
+                    'work_order_fg': 'WOFN.fiscal.####',
+                    'work_order_subassembly': 'WOAN.fiscal.####'
                 }
             }
             
@@ -1883,10 +1883,10 @@ class ProductionPlan(_ProductionPlan):
             )
             # Return default mapping
             return {
-                'material_request_purchase': 'PMRS.YY.####',
-                'material_request_transfer': 'PTRS.YY.####',
-                'work_order_fg': 'WOFS.YY.####',
-                'work_order_subassembly': 'WOAS.YY.####'
+                'material_request_purchase': 'PMRS.fiscal.####',
+                'material_request_transfer': 'MTRS.fiscal.####',
+                'work_order_fg': 'WOFS.fiscal.####',
+                'work_order_subassembly': 'WOAS.fiscal.####'
             }
 
     def _get_existing_material_request_qty(self, sales_order, item_code, custom_batch_no):
