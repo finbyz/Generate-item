@@ -30,6 +30,10 @@ class CustomNotification(Notification):
         recipients = self._filter_by_permission(doc, recipients)
         cc = self._filter_by_permission(doc, cc)
         bcc = self._filter_by_permission(doc, bcc)
+        frappe.log_error(
+    message=f"Recipients after merge & permission filter:\n{recipients}",
+    title="Notification Recipient Debug"
+)
 
         return (
             self._sanitize_email_list(recipients),
