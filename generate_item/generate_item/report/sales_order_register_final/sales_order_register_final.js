@@ -8,7 +8,6 @@ frappe.query_reports["Sales Order Register Final"] = {
 			"label": __("From Date"),
 			"fieldtype": "Date",
 			"default": frappe.datetime.add_days(frappe.datetime.get_today(), -7),
-			"reqd": 1,
 			"width": "100",
 			"on_change": () => frappe.query_report.refresh()
 		},
@@ -17,7 +16,6 @@ frappe.query_reports["Sales Order Register Final"] = {
 			"label": __("To Date"),
 			"fieldtype": "Date",
 			"default": frappe.datetime.get_today(),
-			"reqd": 1,
 			"width": "100",
 			"on_change": () => frappe.query_report.refresh()
 		},		
@@ -59,16 +57,29 @@ frappe.query_reports["Sales Order Register Final"] = {
 			"fieldtype": "Select",
 			"options": ["","Sanand", "Rabale","Nandikoor"],
 			"width": "100",
-			"reqd": 1,
 			"on_change": () => frappe.query_report.refresh()
 		},
+		// {
+		// 	"fieldname": "status",
+		// 	"label": __("Order Status"),
+		// 	"fieldtype": "Select",
+		// 	"options": ["", "To Deliver and Bill", "To Deliver", "To Bill", "Closed", "Cancelled"],
+		// 	"width": "150",
+		// 	"on_change": () => frappe.query_report.refresh()
+		// }
 		{
-			"fieldname": "status",
-			"label": __("Order Status"),
-			"fieldtype": "Select",
-			"options": ["", "To Deliver and Bill", "To Deliver", "To Bill", "Closed", "Cancelled"],
-			"width": "150",
-			"on_change": () => frappe.query_report.refresh()
+			fieldname: "status",
+			label: __("Order Status"),
+			fieldtype: "MultiSelectList",
+			options: [
+				"To Deliver and Bill",
+				"To Deliver",
+				"To Bill",
+				"Closed",
+				"Cancelled",
+				"Completed"
+			],
+			on_change: () => frappe.query_report.refresh()
 		}
 	]
 };

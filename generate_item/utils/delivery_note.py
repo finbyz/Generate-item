@@ -79,13 +79,13 @@ def before_save(doc,method):
 
     for idx, row in enumerate(doc.items, start=1):
         # Skip if row shipping_address is empty
-        if not row.shipping_address:
+        if not row.custom_shipping_address:
             continue
 
         # Compare row shipping vs DN shipping
-        if row.shipping_address != dn_shipping:
+        if row.custom_shipping_address != dn_shipping:
             frappe.throw(
-                f"Row #{idx}: The shipping address '{row.shipping_address}' "
+                f"Row #{idx}: The shipping address '{row.custom_shipping_address}' "
                 f"does not match the Delivery Note shipping address '{dn_shipping}'."
             )
             
@@ -332,249 +332,256 @@ def get_dispatchable_sales_orders_list(customer=None, company=None, project=None
 
 @frappe.whitelist()
 def make_delivery_note_for_so(source_name, target_doc=None, kwargs=None):
-	from erpnext.stock.doctype.packed_item.packed_item import make_packing_list
-	from erpnext.stock.doctype.stock_reservation_entry.stock_reservation_entry import (
-		get_sre_details_for_voucher,
-		get_sre_reserved_qty_details_for_voucher,
-		get_ssb_bundle_for_voucher,
-	)
+    
+    from erpnext.stock.doctype.packed_item.packed_item import make_packing_list
+    from erpnext.stock.doctype.stock_reservation_entry.stock_reservation_entry import (
+        get_sre_details_for_voucher,
+        get_sre_reserved_qty_details_for_voucher,
+        get_ssb_bundle_for_voucher,
+    )
 
-	if not kwargs:
-		kwargs = {
-			"for_reserved_stock": frappe.flags.args and frappe.flags.args.for_reserved_stock,
-			"skip_item_mapping": frappe.flags.args and frappe.flags.args.skip_item_mapping,
-		}
+    if not kwargs:
+        kwargs = {
+            "for_reserved_stock": frappe.flags.args and frappe.flags.args.for_reserved_stock,
+            "skip_item_mapping": frappe.flags.args and frappe.flags.args.skip_item_mapping,
+        }
 
-	kwargs = frappe._dict(kwargs)
+    kwargs = frappe._dict(kwargs)
 
-	sre_details = {}
-	if kwargs.for_reserved_stock:
-		sre_details = get_sre_reserved_qty_details_for_voucher("Sales Order", source_name)
+    sre_details = {}
+    if kwargs.for_reserved_stock:
+        sre_details = get_sre_reserved_qty_details_for_voucher("Sales Order", source_name)
 
-	mapper = {
-		"Sales Order": {"doctype": "Delivery Note", "validation": {"docstatus": ["=", 1]}},
-		"Sales Taxes and Charges": {"doctype": "Sales Taxes and Charges", "reset_value": True},
-		"Sales Team": {"doctype": "Sales Team", "add_if_empty": True},
-	}
+    mapper = {
+        "Sales Order": {"doctype": "Delivery Note", "validation": {"docstatus": ["=", 1]}},
+        "Sales Taxes and Charges": {"doctype": "Sales Taxes and Charges", "reset_value": True},
+        "Sales Team": {"doctype": "Sales Team", "add_if_empty": True},
+    }
 
-	# 0 qty is accepted, as the qty is uncertain for some items
-	has_unit_price_items = frappe.db.get_value("Sales Order", source_name, "has_unit_price_items")
+    # 0 qty is accepted, as the qty is uncertain for some items
+    has_unit_price_items = frappe.db.get_value("Sales Order", source_name, "has_unit_price_items")
 
-	def is_unit_price_row(source):
-		return has_unit_price_items and source.qty == 0
+    def is_unit_price_row(source):
+        return has_unit_price_items and source.qty == 0
 
-	def select_item(d):
-		filtered_items = kwargs.get("filtered_children", [])
-		child_filter = d.name in filtered_items if filtered_items else True
-		return child_filter
+    def select_item(d):
+        filtered_items = kwargs.get("filtered_children", [])
+        child_filter = d.name in filtered_items if filtered_items else True
+        return child_filter
 
-	def set_missing_values(source, target):
-		if kwargs.get("ignore_pricing_rule"):
-			# Skip pricing rule when the dn is creating from the pick list
-			target.ignore_pricing_rule = 1
+    def set_missing_values(source, target):
+        if kwargs.get("ignore_pricing_rule"):
+            # Skip pricing rule when the dn is creating from the pick list
+            target.ignore_pricing_rule = 1
 
-		target.run_method("set_missing_values")
-		target.run_method("set_po_nos")
-		target.run_method("calculate_taxes_and_totals")
-		target.run_method("set_use_serial_batch_fields")
+        target.run_method("set_missing_values")
+        target.run_method("set_po_nos")
+        target.run_method("calculate_taxes_and_totals")
+        target.run_method("set_use_serial_batch_fields")
 
-		if source.company_address:
-			target.update({"company_address": source.company_address})
-		else:
-			# set company address
-			target.update(get_company_address(target.company))
+        if source.company_address:
+            target.update({"company_address": source.company_address})
+        else:
+            # set company address
+            target.update(get_company_address(target.company))
 
-		if target.company_address:
-			target.update(get_fetch_values("Delivery Note", "company_address", target.company_address))
+        if target.company_address:
+            target.update(get_fetch_values("Delivery Note", "company_address", target.company_address))
 
-		# if invoked in bulk creation, validations are ignored and thus this method is nerver invoked
-		if frappe.flags.bulk_transaction:
-			# set target items names to ensure proper linking with packed_items
-			target.set_new_name()
+        # if invoked in bulk creation, validations are ignored and thus this method is nerver invoked
+        if frappe.flags.bulk_transaction:
+            # set target items names to ensure proper linking with packed_items
+            target.set_new_name()
 
-		make_packing_list(target)
+        make_packing_list(target)
 
-	def condition(doc):
-		if doc.name in sre_details:
-			del sre_details[doc.name]
-			return False
+    def condition(doc):
+        if doc.name in sre_details:
+            del sre_details[doc.name]
+            return False
 
-		# make_mapped_doc sets js `args` into `frappe.flags.args`
-		if frappe.flags.args and frappe.flags.args.delivery_dates:
-			if cstr(doc.delivery_date) not in frappe.flags.args.delivery_dates:
-				return False
+        # make_mapped_doc sets js `args` into `frappe.flags.args`
+        if frappe.flags.args and frappe.flags.args.delivery_dates:
+            if cstr(doc.delivery_date) not in frappe.flags.args.delivery_dates:
+                return False
 
-		return (
-			(abs(doc.delivered_qty) < abs(doc.qty)) or is_unit_price_row(doc)
-		) and doc.delivered_by_supplier != 1
+        return (
+            (abs(doc.delivered_qty) < abs(doc.qty)) or is_unit_price_row(doc)
+        ) and doc.delivered_by_supplier != 1
 
-	def update_item(source, target, source_parent):
-		target.base_amount = (flt(source.qty) - flt(source.delivered_qty)) * flt(source.base_rate)
-		target.amount = (flt(source.qty) - flt(source.delivered_qty)) * flt(source.rate)
-		target.qty = (
-			flt(source.qty) if is_unit_price_row(source) else flt(source.qty) - flt(source.delivered_qty)
-		)
+    def update_item(source, target, source_parent):
+        target.base_amount = (flt(source.qty) - flt(source.delivered_qty)) * flt(source.base_rate)
+        target.amount = (flt(source.qty) - flt(source.delivered_qty)) * flt(source.rate)
+        target.qty = (
+            flt(source.qty) if is_unit_price_row(source) else flt(source.qty) - flt(source.delivered_qty)
+        )
 
-		item = get_item_defaults(target.item_code, source_parent.company)
-		item_group = get_item_group_defaults(target.item_code, source_parent.company)
+        item = get_item_defaults(target.item_code, source_parent.company)
+        item_group = get_item_group_defaults(target.item_code, source_parent.company)
 
-		if item:
-			target.cost_center = (
-				frappe.db.get_value("Project", source_parent.project, "cost_center")
-				or item.get("buying_cost_center")
-				or item_group.get("buying_cost_center")
-			)
+        if item:
+            target.cost_center = (
+                frappe.db.get_value("Project", source_parent.project, "cost_center")
+                or item.get("buying_cost_center")
+                or item_group.get("buying_cost_center")
+            )
 
-	if not kwargs.skip_item_mapping:
-		mapper["Sales Order Item"] = {
-			"doctype": "Delivery Note Item",
-			"field_map": {
-				"rate": "rate",
-				"name": "so_detail",
-				"parent": "against_sales_order",
-				"component_of": "component_of",
-			},
-			"condition": lambda d: condition(d) and select_item(d),
-			"postprocess": update_item,
-		}
+    if not kwargs.skip_item_mapping:
+        mapper["Sales Order Item"] = {
+            "doctype": "Delivery Note Item",
+            "field_map": {
+                "rate": "rate",
+                "name": "so_detail",
+                "parent": "against_sales_order",
+                "component_of": "component_of",
+                "custom_shipping_address":"shipping_address"
+            },
+            "condition": lambda d: condition(d) and select_item(d),
+            "postprocess": update_item,
+        }
 
-	so = frappe.get_doc("Sales Order", source_name)
-	target_doc = get_mapped_doc("Sales Order", so.name, mapper, target_doc)
+    so = frappe.get_doc("Sales Order", source_name)
+    target_doc = get_mapped_doc("Sales Order", so.name, mapper, target_doc)
 
-	if not kwargs.skip_item_mapping and kwargs.for_reserved_stock:
-		sre_list = get_sre_details_for_voucher("Sales Order", source_name)
+    if not kwargs.skip_item_mapping and kwargs.for_reserved_stock:
+        sre_list = get_sre_details_for_voucher("Sales Order", source_name)
 
-		if sre_list:
+        if sre_list:
 
-			def update_dn_item(source, target, source_parent):
-				update_item(source, target, so)
+            def update_dn_item(source, target, source_parent):
+                update_item(source, target, so)
 
-			so_items = {d.name: d for d in so.items if d.stock_reserved_qty}
+            so_items = {d.name: d for d in so.items if d.stock_reserved_qty}
 
-			for sre in sre_list:
-				if not condition(so_items[sre.voucher_detail_no]):
-					continue
+            for sre in sre_list:
+                if not condition(so_items[sre.voucher_detail_no]):
+                    continue
 
-				dn_item = get_mapped_doc(
-					"Sales Order Item",
-					sre.voucher_detail_no,
-					{
-						"Sales Order Item": {
-							"doctype": "Delivery Note Item",
-							"field_map": {
-								"rate": "rate",
-								"name": "so_detail",
-								"parent": "against_sales_order",
-								"component_of": "component_of",
-							},
-							"postprocess": update_dn_item,
-						}
-					},
-					ignore_permissions=True,
-				)
+                dn_item = get_mapped_doc(
+                    "Sales Order Item",
+                    sre.voucher_detail_no,
+                    {
+                        "Sales Order Item": {
+                            "doctype": "Delivery Note Item",
+                            "field_map": {
+                                "rate": "rate",
+                                "name": "so_detail",
+                                "parent": "against_sales_order",
+                                "component_of": "component_of",
+                                "custom_shipping_address":"shipping_address"
+                            },
+                            "postprocess": update_dn_item,
+                        }
+                    },
+                    ignore_permissions=True,
+                )
 
-				dn_item.qty = flt(sre.reserved_qty) / flt(dn_item.get("conversion_factor", 1))
+                dn_item.qty = flt(sre.reserved_qty) / flt(dn_item.get("conversion_factor", 1))
 
-				if sre.reservation_based_on == "Serial and Batch" and (sre.has_serial_no or sre.has_batch_no):
-					dn_item.serial_and_batch_bundle = get_ssb_bundle_for_voucher(sre)
+                if sre.reservation_based_on == "Serial and Batch" and (sre.has_serial_no or sre.has_batch_no):
+                    dn_item.serial_and_batch_bundle = get_ssb_bundle_for_voucher(sre)
 
-				target_doc.append("items", dn_item)
-			else:
-				# Correct rows index.
-				for idx, item in enumerate(target_doc.items):
-					item.idx = idx + 1
+                target_doc.append("items", dn_item)
+            else:
+                # Correct rows index.
+                for idx, item in enumerate(target_doc.items):
+                    item.idx = idx + 1
 
-	# Should be called after mapping items.
-	set_missing_values(so, target_doc)
+    # Should be called after mapping items.
+    set_missing_values(so, target_doc)
 
-	return target_doc
+    return target_doc
 
 @frappe.whitelist()
 def make_delivery_note(source_name, target_doc=None, kwargs=None):
-	"""Create Delivery Note from Sales Order while ensuring remaining qty excludes Draft DNs.
+    """Create Delivery Note from Sales Order while ensuring remaining qty excludes Draft DNs.
 
-	This wraps the core method and then adjusts mapped quantities by subtracting
-	any quantities already present in Draft Delivery Notes for the same Sales Order Item.
-	"""
-	from erpnext.selling.doctype.sales_order.sales_order import (
-		make_delivery_note as core_make_delivery_note,
-	)
+    This wraps the core method and then adjusts mapped quantities by subtracting
+    any quantities already present in Draft Delivery Notes for the same Sales Order Item.
+    """
+    from erpnext.selling.doctype.sales_order.sales_order import (
+        make_delivery_note as core_make_delivery_note,
+    )
+    
 
-	# Handle kwargs parameter - it might be a JSON string
-	print(f"DEBUG: make_delivery_note called with kwargs type: {type(kwargs)}, value: {kwargs}")
-	
-	if isinstance(kwargs, str):
-		try:
-			import json
-			kwargs = json.loads(kwargs)
-			print(f"DEBUG: Parsed kwargs from string: {kwargs}")
-		except Exception as e:
-			print(f"DEBUG: Failed to parse kwargs: {e}")
-			kwargs = {}
-	elif not isinstance(kwargs, dict):
-		print(f"DEBUG: kwargs is not dict, converting to empty dict")
-		kwargs = {}
-	
-	print(f"DEBUG: Final kwargs: {kwargs}")
+    # Handle kwargs parameter - it might be a JSON string
+    print(f"DEBUG: make_delivery_note called with kwargs type: {type(kwargs)}, value: {kwargs}")
 
-	# Create the Delivery Note using core logic first
-	dn = core_make_delivery_note(source_name=source_name, target_doc=target_doc, kwargs=kwargs)
+    if isinstance(kwargs, str):
+        try:
+            import json
+            kwargs = json.loads(kwargs)
+            print(f"DEBUG: Parsed kwargs from string: {kwargs}")
+        except Exception as e:
+            print(f"DEBUG: Failed to parse kwargs: {e}")
+            kwargs = {}
+    elif not isinstance(kwargs, dict):
+        print(f"DEBUG: kwargs is not dict, converting to empty dict")
+        kwargs = {}
 
-	# Adjust quantities to consider Draft DNs as consumed
-	items_to_keep = []
-	for item in dn.items or []:
-		so_item_name = getattr(item, "so_detail", None)
-		if not so_item_name:
-			items_to_keep.append(item)
-			continue
+    print(f"DEBUG: Final kwargs: {kwargs}")
 
-		# Fetch source SO Item values
-		so_item = frappe.db.get_value(
-			"Sales Order Item",
-			so_item_name,
-			["qty", "delivered_qty", "conversion_factor"],
-			as_dict=True,
-		)
-		if not so_item:
-			items_to_keep.append(item)
-			continue
+    # Create the Delivery Note using core logic first
+    dn = core_make_delivery_note(source_name=source_name, target_doc=target_doc, kwargs=kwargs)
+    
 
-		so_qty = frappe.utils.flt(so_item.qty)
-		delivered_qty = frappe.utils.flt(so_item.delivered_qty)
-		so_cf = frappe.utils.flt(so_item.conversion_factor) or 1.0
 
-		# Base remaining in stock units from Submitted DNs
-		base_remaining_stock_qty = max((so_qty - delivered_qty), 0) * so_cf
 
-		# Subtract quantities already present in Draft Delivery Notes for this SO Item
-		draft_dn_stock_qty = frappe.db.sql(
-			"""
-			SELECT COALESCE(SUM(dni.stock_qty), 0)
-			FROM `tabDelivery Note Item` dni
-			INNER JOIN `tabDelivery Note` dn ON dni.parent = dn.name
-			WHERE dn.docstatus = 0
-			  AND dni.so_detail = %s
-			""",
-			(so_item_name,),
-		)[0][0]
+    # Adjust quantities to consider Draft DNs as consumed
+    items_to_keep = []
+    for item in dn.items or []:
+        so_item_name = getattr(item, "so_detail", None)
+        if not so_item_name:
+            items_to_keep.append(item)
+            continue
 
-		remaining_stock_qty = max(base_remaining_stock_qty - frappe.utils.flt(draft_dn_stock_qty), 0)
+        # Fetch source SO Item values
+        so_item = frappe.db.get_value(
+            "Sales Order Item",
+            so_item_name,
+            ["qty", "delivered_qty", "conversion_factor"],
+            as_dict=True,
+        )
+        if not so_item:
+            items_to_keep.append(item)
+            continue
 
-		# Use target item's conversion factor to set displayed qty
-		item_cf = frappe.utils.flt(getattr(item, "conversion_factor", None)) or 1.0
-		new_qty = remaining_stock_qty / item_cf if item_cf else 0
-		item.qty = new_qty
-		item.stock_qty = remaining_stock_qty
+        so_qty = frappe.utils.flt(so_item.qty)
+        delivered_qty = frappe.utils.flt(so_item.delivered_qty)
+        so_cf = frappe.utils.flt(so_item.conversion_factor) or 1.0
 
-		# Keep only rows with positive qty
-		if new_qty and new_qty > 0:
-			items_to_keep.append(item)
+        # Base remaining in stock units from Submitted DNs
+        base_remaining_stock_qty = max((so_qty - delivered_qty), 0) * so_cf
 
-	# Replace items with filtered list to avoid zero-qty rows
-	if dn.items is not None:
-		dn.items = items_to_keep
+        # Subtract quantities already present in Draft Delivery Notes for this SO Item
+        draft_dn_stock_qty = frappe.db.sql(
+            """
+            SELECT COALESCE(SUM(dni.stock_qty), 0)
+            FROM `tabDelivery Note Item` dni
+            INNER JOIN `tabDelivery Note` dn ON dni.parent = dn.name
+            WHERE dn.docstatus = 0
+                AND dni.so_detail = %s
+            """,
+            (so_item_name,),
+        )[0][0]
 
-	return dn
+        remaining_stock_qty = max(base_remaining_stock_qty - frappe.utils.flt(draft_dn_stock_qty), 0)
+
+        # Use target item's conversion factor to set displayed qty
+        item_cf = frappe.utils.flt(getattr(item, "conversion_factor", None)) or 1.0
+        new_qty = remaining_stock_qty / item_cf if item_cf else 0
+        item.qty = new_qty
+        item.stock_qty = remaining_stock_qty
+
+        # Keep only rows with positive qty
+        if new_qty and new_qty > 0:
+            items_to_keep.append(item)
+
+    # Replace items with filtered list to avoid zero-qty rows
+    if dn.items is not None:
+        dn.items = items_to_keep
+
+    return dn
 
 
 
@@ -736,7 +743,7 @@ def validate(doc, method):
     """Validate Delivery Note"""
     fetch_po_line_no_from_sales_order(doc)
     validate_duplicate_delivery_note(doc, method)
-    validate_so_line_shipping_address(doc)
+    # validate_so_line_shipping_address(doc)
     validate_free_items(doc)
 
 def validate_duplicate_delivery_note(doc, method):
@@ -832,53 +839,7 @@ def fetch_po_line_no_from_sales_order(doc, method=None):
         frappe.log_error('DN Fetch PO Line No', f'Error populating po_line_no on DN {getattr(doc, "name", "Unsaved")}: {str(e)}')
 
 
-def validate_so_line_shipping_address(doc):
-    """
-  
-    Each DN item must belong to SO Item
-    having same shipping address as DN header
-    """
 
-    for dn_item in doc.items:
-        dn_shipping_address = dn_item.shipping_address
-
-        # Must come from Sales Order
-        if not dn_item.so_detail:
-            continue
-
-        so_item = frappe.db.get_value(
-            "Sales Order Item",
-            dn_item.so_detail,
-            ["item_code", "custom_shipping_address"],
-            as_dict=True
-        )
-
-        if not so_item:
-            continue
-
-        # Extra safety: item code match
-        if so_item.item_code != dn_item.item_code:
-            continue
-
-        if (
-            so_item.custom_shipping_address
-            and so_item.custom_shipping_address != dn_shipping_address
-        ):
-            frappe.throw(
-                  _(
-                     "Shipping Address mismatch at Row #{0}<br><br>"
-                    "<b>Item Code:</b> {1}<br><br>"
-                    "<b>Sales Order Shipping Address:</b> {2}<br>"
-                    "<b>Delivery Note Shipping Address:</b> {3}<br><br>"
-                    "Please ensure that the Delivery Note shipping address "
-                    "matches the shipping address selected for this item in the Sales Order."
-                ).format(
-                    dn_item.idx,
-                    dn_item.item_code,
-                    so_item.custom_shipping_address,
-                    dn_shipping_address or "Not Selected"
-                )
-            )
 
 def validate_free_items(doc):
     """

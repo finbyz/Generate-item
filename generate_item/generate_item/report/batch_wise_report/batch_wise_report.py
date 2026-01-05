@@ -29,7 +29,10 @@ def get_columns():
 
 
 def get_conditions(filters):
-	conditions = ["so.docstatus = 1"]
+	conditions = [
+		"so.docstatus = 1",
+		"IFNULL(soi.delivered_qty, 0) < IFNULL(soi.qty, 0)"
+		]
 	values = {}
 
 	if filters.get("sales_order"):
@@ -135,7 +138,7 @@ def get_data(filters):
 			) AS production_plan_status,
 			so.po_no,
 			soi.qty AS so_qty
-		FROM `tabSales Order` so
+		FROM `tabSales Order` so 
 		JOIN `tabSales Order Item` soi ON soi.parent = so.name
 		WHERE {conditions_sql}
 		ORDER BY so.transaction_date DESC, so.name DESC, soi.idx ASC

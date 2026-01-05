@@ -384,3 +384,15 @@ def get_last_purchase_history(item_codes):
             seen.add(row.item_code)
 
     return result
+
+
+
+@frappe.whitelist()
+def get_po_naming_series():
+    meta = frappe.get_meta("Purchase Order")
+    field = meta.get_field("naming_series")
+
+    if not field or not field.options:
+        return []
+
+    return [opt for opt in field.options.split("\n") if opt]

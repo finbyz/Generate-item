@@ -41,6 +41,24 @@ def get_columns():
         {"label": _("Pending Qty"), "fieldname": "pending_qty", "fieldtype": "Float", "width": 100},
         {"label": _("Unit Rate"), "fieldname": "unit_rate", "fieldtype": "Currency", "width": 100},
         {"label": _("Item Basic Amount INR"), "fieldname": "item_basic_amount_inr", "fieldtype": "Currency", "width": 120},
+        {
+			"label": _("Item ID"),
+			"fieldname": "item_id",
+			"fieldtype": "Data",
+			"width": 100
+		},
+        {
+			"label": _("Order Line Index"),
+			"fieldname": "order_line_index",
+			"fieldtype": "Int",
+			"width": 80
+		},
+         {
+			"label": _("Additional Charges"),
+			"fieldname": "additional_charges",
+			"fieldtype": "Currency",
+			"width": 120
+		},
 
         # ---------------------------------------------------------
         #  NEW COLUMNS INSERTED HERE (AS REQUESTED)
@@ -98,6 +116,7 @@ def get_columns():
         {"label": _("QUALITY Special Requirement (NDE)"), "fieldname": "quality_special_requirement_nde", "fieldtype": "Data", "width": 150},
         {"label": _("Service"), "fieldname": "service", "fieldtype": "Data", "width": 100},
         {"label": _("Inspection"), "fieldname": "inspection", "fieldtype": "Data", "width": 100},
+       
     ]
     return columns
 
@@ -172,6 +191,8 @@ def get_data(filters):
 
         # Fetch ALL required item fields properly from SO Item child table
         item_fields = [
+            "idx as item_idx",
+			"parent",
             "idx as order_line_index",
             "item_code",
             "item_name",
@@ -189,12 +210,13 @@ def get_data(filters):
             "custom_shipping_address"
         ]
 
-        items = frappe.get_all("Sales Order Item", filters=so_item_filters, fields=item_fields)
+        items = frappe.get_all("Sales Order Item", filters=so_item_filters, fields=item_fields,order_by="parent asc, idx asc")
 
         # Shipping Customer (order level)
         shipping_customer_order = get_address_link_name(so.shipping_address_name)
 
         for item in items:
+            item_id = f"{item.parent}-{item.item_idx}"
             item_gen = get_item_generator_attributes(item.item_code)
 
             # Shipping Customer (item level)
@@ -217,7 +239,33 @@ def get_data(filters):
                 delivered_date = ""
 
             # Invoice No.
-            invoice_no = get_invoice_no(so.sales_order)
+            # invoice_no = get_invoice_no(so.sales_order)
+            actual_charges = 0
+            actual_tax_row = frappe.db.sql(
+                """
+                SELECT SUM(tax_amount) AS actual_total
+                FROM `tabSales Taxes and Charges`
+                WHERE parent = %s
+                AND parenttype = 'Sales Order'
+                AND docstatus = 1
+                AND charge_type = 'Actual'
+                """,
+                so.sales_order,
+                as_dict=True,
+            )
+
+            if actual_tax_row and actual_tax_row[0].actual_total:
+                actual_charges = actual_tax_row[0].actual_total or 0
+
+            additional_charges = actual_charges
+
+            calculated_grand_total = (
+                (so.grand_total or 0)
+                - (item.order_amount_inr or 0)
+                + (additional_charges or 0) 
+                + (so.total_taxes_and_charges or 0)
+            )
+
 
             # Build row
             row = [
@@ -247,6 +295,10 @@ def get_data(filters):
                 (item.order_qty or 0) - (item.delivered_qty or 0),
                 item.unit_rate or 0,
                 item.item_basic_amount_inr or 0,
+                item_id,
+                item.order_line_index,
+                additional_charges,
+				calculated_grand_total,
 
                 # -------------------------
                 # FIXED COLUMNS BELOW ⬇⬇⬇
@@ -338,9 +390,23 @@ def get_address_full_display(address_name):
 # SALES INVOICE LOOKUP
 # ---------------------------------------------------------
 
+# def get_invoice_no(sales_order):
+#     inv = frappe.get_all("Sales Invoice Item", filters={"sales_order": sales_order}, fields=["parent"], limit=1)
+#     return inv[0].parent if inv else ""
+
 def get_invoice_no(sales_order):
-    inv = frappe.get_all("Sales Invoice Item", filters={"sales_order": sales_order}, fields=["parent"], limit=1)
-    return inv[0].parent if inv else ""
+    invoices = frappe.get_all(
+        "Sales Invoice Item",
+        filters={"sales_order": sales_order},
+        fields=["parent"]
+    )
+
+    if not invoices:
+        return ""
+
+    invoice_set = sorted({d.parent for d in invoices})
+    return ", ".join(invoice_set)
+
 
 # ---------------------------------------------------------
 # OTHERS
@@ -360,10 +426,14 @@ def get_so_conditions(filters):
         conditions["customer"] = filters.customer
     if filters.get("branch"):
         conditions["branch"] = filters.branch
-    if filters.get("status"):
-        conditions["status"] = filters.status
     if filters.get("sales_order"):
         conditions["name"] = filters.sales_order
+    # if filters.get("status"):
+    #     conditions["status"] = filters.status
+    # Exclude Closed & Completed
+    conditions["status"] = ["not in", ["Closed", "Completed"]]
+    if filters.get("status"):
+        conditions["status"] = ["in", filters.status]
 
     return conditions
 

@@ -515,9 +515,20 @@ frappe.ui.form.on("Delivery Note", {
                                         "qty",
                                         "delivered_qty",
                                         "custom_batch_no",
+                                        "custom_shipping_address"
                                         // "description"
                                     ],
+                                    child_map: {
+                                        "Sales Order Item": {
+                                            // source_field_name_on_so_item: target_field_name_on_dn_item
+                                            "custom_shipping_address": "shipping_address"
+                                        }
+                                    }
                                 });
+                                frappe.after_ajax(() => {
+                                    update_shipping_address_from_so_items(frm, dispatchable_so_list);
+                                });
+                                console.log(dispatchable_so_list)
                             } else {
                                 frappe.msgprint(__("No dispatchable Sales Orders found for this customer."));
                             }
@@ -538,6 +549,68 @@ frappe.ui.form.on("Delivery Note", {
     },
 
 });
+function handle_dispatchable_so(frm) {
+    if (!frm.doc.customer) {
+        frappe.throw({
+            title: __("Mandatory"),
+            message: __("Please select a Customer first."),
+        });
+        return;
+    }
+
+    frappe.call({
+        method: "generate_item.utils.delivery_note.get_dispatchable_sales_orders_list",
+        args: {
+            customer: frm.doc.customer,
+            company: frm.doc.company,
+            warehouse: frm.doc.set_warehouse ||
+                (frm.doc.items?.length ? frm.doc.items[0].warehouse : undefined)
+        },
+        callback(r) {
+            if (!r.message?.length) {
+                frappe.msgprint(__("No dispatchable Sales Orders found for this customer."));
+                return;
+            }
+
+            const dispatchable_so_list = r.message.map(so => so.name);
+
+            erpnext.utils.map_current_doc({
+                method: "erpnext.selling.doctype.sales_order.sales_order.make_delivery_note",
+                args: { for_reserved_stock: 1 },
+                source_doctype: "Sales Order",
+                target: frm,
+                setters: { customer: frm.doc.customer },
+                get_query_filters: {
+                    name: ["in", dispatchable_so_list],
+                    docstatus: 1,
+                    status: ["not in", ["Closed", "On Hold"]],
+                    per_delivered: ["<", 99.99],
+                    company: frm.doc.company,
+                },
+                allow_child_item_selection: true,
+                child_fieldname: "items",
+                child_columns: [
+                    "item_code",
+                    "item_name",
+                    "qty",
+                    "delivered_qty",
+                    "custom_batch_no",
+                    "custom_shipping_address"
+                ],
+                child_map: {
+                    "Sales Order Item": {
+                        "custom_shipping_address": "shipping_address"
+                    }
+                }
+            });
+
+            // 🔑 Runs after mapping completes
+            // frappe.after_ajax(() => {
+            //     update_shipping_address_from_so_items(frm, dispatchable_so_list);
+            // });
+        }
+    });
+}
 
 function fetch_and_update_taxes(frm) {
     if (frm.__fetching_remaining_taxes) return;

@@ -1,30 +1,6 @@
 
 
-const PO_SERIES_OPTIONS = [
-    "SD.YY.#####",
-    "SI.YY.#####",
-    "SC.YY.#####",
-    "SJ.YY.#####",
-    "SS.YY.#####",
-    "SR.YY.#####",
-    "SA.YY.#####",
-
-    "RD.YY.#####",
-    "RI.YY.#####",
-    "RC.YY.#####",
-    "RJ.YY.#####",
-    "RS.YY.#####",
-    "RR.YY.#####",
-    "RA.YY.#####",
-
-    "ND.YY.#####",
-    "NI.YY.#####",
-    "NC.YY.#####",
-    "NJ.YY.#####",
-    "NS.YY.#####",
-    "NR.YY.#####",
-    "NA.YY.#####"
-];
+let PO_SERIES_OPTIONS = [];
 frappe.query_reports["Requested Items To Be Ordered"] = {
 
     get_datatable_options(options) {
@@ -115,6 +91,17 @@ frappe.query_reports["Requested Items To Be Ordered"] = {
         
     ],
     onload: function (report) {
+
+         frappe.call({
+        method: "generate_item.generate_item.report.requested_items_to_be_ordered.requested_items_to_be_ordered.get_po_naming_series",
+        callback: function (r) {
+            // console.log("series-------",r)
+            if (r.message) {
+                
+                PO_SERIES_OPTIONS = r.message;
+            }
+        }
+    });
         report.page.add_inner_button(
             __("Past Purchase History"),
             function () {
