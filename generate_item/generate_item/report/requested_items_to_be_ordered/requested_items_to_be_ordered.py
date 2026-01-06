@@ -9,6 +9,7 @@ from frappe import _
 import frappe
 from frappe.utils import flt, getdate, nowdate
 
+
 def execute(filters=None):
     filters = filters or {}
     columns = get_columns()
@@ -130,7 +131,12 @@ def get_data(filters):
 			mri.supplier as party_type,
 			mri.custom_drawing_no,
 			mri.custom_drawing_rev_no,
-			mri.name as material_request_item
+			mri.name as material_request_item,
+			  
+			mri.custom_pattern_drawing_no,
+			mri.custom_pattern_drawing_rev_no,
+			mri.custom_purchase_specification_no,
+			mri.custom_purchase_specification_rev_no
 
 		FROM `tabMaterial Request` mr
 		INNER JOIN `tabMaterial Request Item` mri
@@ -285,8 +291,12 @@ def create_purchase_order_by_supplier(grouped_items, company, po_series=None, br
 
 			# Branch: from filter if provided, else from first item
 			purchase_order.branch = branch or items[0].get("branch")
-			purchase_order.transaction_date = items[0].get("transaction_date") 
-			purchase_order.schedule_date = items[0].get("schedule_date") 
+			# purchase_order.transaction_date = items[0].get("transaction_date") 
+
+
+			purchase_order.transaction_date = nowdate()
+			purchase_order.schedule_date = nowdate()
+			# purchase_order.schedule_date = items[0].get("schedule_date") 
 
 			
 			
@@ -308,6 +318,14 @@ def create_purchase_order_by_supplier(grouped_items, company, po_series=None, br
 				# IMPORTANT LINKS
 				"material_request": item.get("name"),
 				"material_request_item": item.get("material_request_item"),
+				# ✅ CUSTOM FIELD MAPPING (THIS WAS MISSING)
+				"custom_batch_no": item.get("custom_batch_no"),
+				"custom_drawing_no": item.get("custom_drawing_no"),
+				"custom_drawing_rev_no": item.get("custom_drawing_rev_no"),
+				"custom_pattern_drawing_no": item.get("custom_pattern_drawing_no"),
+				"custom_pattern_drawing_rev_no": item.get("custom_pattern_drawing_rev_no"),
+				"custom_purchase_specification_no": item.get("custom_purchase_specification_no"),
+				"custom_purchase_specification_rev_no": item.get("custom_purchase_specification_rev_no"),
 })
 
 			
