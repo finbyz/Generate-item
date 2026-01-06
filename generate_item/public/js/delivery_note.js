@@ -525,9 +525,9 @@ frappe.ui.form.on("Delivery Note", {
                                         }
                                     }
                                 });
-                                frappe.after_ajax(() => {
-                                    update_shipping_address_from_so_items(frm, dispatchable_so_list);
-                                });
+                                // frappe.after_ajax(() => {
+                                //     update_shipping_address_from_so_items(frm, dispatchable_so_list);
+                                // });
                                 console.log(dispatchable_so_list)
                             } else {
                                 frappe.msgprint(__("No dispatchable Sales Orders found for this customer."));
