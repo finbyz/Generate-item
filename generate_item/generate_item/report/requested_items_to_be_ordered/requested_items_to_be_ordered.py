@@ -295,8 +295,8 @@ def create_purchase_order_by_supplier(grouped_items, company, po_series=None, br
 
 
 			purchase_order.transaction_date = nowdate()
-			purchase_order.schedule_date = nowdate()
-			# purchase_order.schedule_date = items[0].get("schedule_date") 
+			# purchase_order.schedule_date = nowdate()
+			purchase_order.schedule_date = items[0].get("schedule_date") 
 
 			
 			
