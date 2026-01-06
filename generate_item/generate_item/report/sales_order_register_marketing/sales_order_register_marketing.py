@@ -59,6 +59,13 @@ def get_columns():
 			"fieldtype": "Currency",
 			"width": 120
 		},
+         {
+            "label": _("Calculated Grand Total"),
+            "fieldname": "calculated_grand_total",
+            "fieldtype": "Currency",
+            "width": 120
+        },
+
 
         # ---------------------------------------------------------
         #  NEW COLUMNS INSERTED HERE (AS REQUESTED)
@@ -191,6 +198,7 @@ def get_data(filters):
 
         # Fetch ALL required item fields properly from SO Item child table
         item_fields = [
+            "name as item_id",
             "idx as item_idx",
 			"parent",
             "idx as order_line_index",
@@ -217,7 +225,7 @@ def get_data(filters):
 
         for item in items:
             approval_details = get_approval_details(so.sales_order)
-            item_id = f"{item.parent}-{item.item_idx}"
+            # item_id = f"{item.parent}-{item.item_idx}"
             item_gen = get_item_generator_attributes(item.item_code)
 
             # Shipping Customer (item level)
@@ -298,7 +306,7 @@ def get_data(filters):
                 (item.order_qty or 0) - (item.delivered_qty or 0),
                 item.unit_rate or 0,
                 item.item_basic_amount_inr or 0,
-                item_id,
+                item.item_id,
                 item.order_line_index,
                 additional_charges,
 				calculated_grand_total,
