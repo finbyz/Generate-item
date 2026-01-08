@@ -21,22 +21,31 @@ def get_columns():
     return [
         {"label": "Material Request", "fieldname": "name", "fieldtype": "Link", "options": "Material Request", "width": 160},
 		{"label": "Batch No Ref", "fieldname": "custom_batch_no", "fieldtype": "Link", "options": "Batch", "width": 160},
+        {"label": "MR Type", "fieldname": "material_request_type", "width": 120},
+        {"label": "Status", "fieldname": "status", "width": 120},
         {"label": "Posting Date", "fieldname": "transaction_date", "fieldtype": "Date", "width": 100},
         {"label": "Required By", "fieldname": "schedule_date", "fieldtype": "Date", "width": 100},
-        {"label": "MR Type", "fieldname": "material_request_type", "width": 120},
-		{"label": "Supplier", "fieldname": "party_type","fieldtype": "Link", "options": "Supplier", "width": 120},
-		{"label": "Created By", "fieldname": "created_by", "fieldtype": "Link", "options": "User", "width": 140},
-        {"label": "Status", "fieldname": "status", "width": 120},
+        {"label": "Item ID", "fieldname": "item_id", "width": 220},
+		
         {"label": "Item Code", "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 140},
         {"label": "Item Name", "fieldname": "item_name", "width": 220},
 		{"label": "Description", "fieldname": "description", "width": 220},
-		{"label": "Drawing Number", "fieldname": "custom_drawing_no", "width": 220},
-		{"label": "Drawing Rev No", "fieldname": "custom_drawing_rev_no", "width": 220},
         {"label": "Requested Qty", "fieldname": "qty", "fieldtype": "Float", "width": 120},
         {"label": "Ordered Qty", "fieldname": "ordered_qty", "fieldtype": "Float", "width": 120},
         {"label": "Draft Ordered Qty", "fieldname": "draft_ordered_qty", "fieldtype": "Float", "width": 120},
         {"label": "Pending Qty", "fieldname": "pending_qty", "fieldtype": "Float", "width": 120},
-		{"label": "Last PO No", "fieldname": "last_po_no", "fieldtype": "Link", "options": "Purchase Order", "width": 150},
+		{"label": "Drawing Number", "fieldname": "custom_drawing_no", "width": 220},
+		{"label": "Drawing Rev No", "fieldname": "custom_drawing_rev_no", "width": 220},
+		{"label": "Created By", "fieldname": "created_by", "fieldtype": "Link", "options": "User", "width": 140},
+  
+		{"label": "Pattern Drawing No", "fieldname": "custom_pattern_drawing_no", "width": 220},
+		{"label": "Pattern Drawing Rev No", "fieldname": "custom_pattern_drawing_rev_no", "width": 220},
+		{"label": "Purchase Specification No", "fieldname": "custom_purchase_specification_no", "width": 220},
+		{"label": "Purchase Specification Rev No", "fieldname": "custom_purchase_specification_rev_no", "width": 220},
+  
+
+		
+  		{"label": "Last PO No", "fieldname": "last_po_no", "fieldtype": "Link", "options": "Purchase Order", "width": 150},
 		{"label": "Last PO Date", "fieldname": "last_po_date", "fieldtype": "Date", "width": 110},
 		{"label": "Last PO Supplier", "fieldname": "last_po_supplier", "fieldtype": "Link", "options": "Supplier", "width": 150},
 		{"label": "Last PO Qty", "fieldname": "last_po_qty", "fieldtype": "Float", "width": 110},
@@ -128,11 +137,11 @@ def get_data(filters):
 			mri.qty,
 			IFNULL(mri.ordered_qty, 0) AS ordered_qty,
 			mri.warehouse,
-			mri.supplier as party_type,
+			
 			mri.custom_drawing_no,
 			mri.custom_drawing_rev_no,
 			mri.name as material_request_item,
-			  
+			mri.name as item_id,
 			mri.custom_pattern_drawing_no,
 			mri.custom_pattern_drawing_rev_no,
 			mri.custom_purchase_specification_no,
@@ -195,7 +204,7 @@ def get_data(filters):
 			"""
 			SELECT
 				material_request_item,
-				SUM(qty) as draft_ordered_qty
+				SUM(stock_qty) as draft_ordered_qty
 			FROM `tabPurchase Order Item`
 			WHERE
 				docstatus = 0
