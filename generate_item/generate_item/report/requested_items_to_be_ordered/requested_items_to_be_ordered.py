@@ -300,12 +300,12 @@ def create_purchase_order_by_supplier(grouped_items, company, po_series=None, br
 
 			# Branch: from filter if provided, else from first item
 			purchase_order.branch = branch or items[0].get("branch")
-			# purchase_order.transaction_date = items[0].get("transaction_date") 
+			
 
 
 			purchase_order.transaction_date = nowdate()
-			# purchase_order.schedule_date = nowdate()
-			purchase_order.schedule_date = items[0].get("schedule_date") 
+			
+			purchase_order.schedule_date = nowdate()
 
 			
 			
@@ -323,7 +323,7 @@ def create_purchase_order_by_supplier(grouped_items, company, po_series=None, br
 				"rate": item.get("rate") or 1,  #  IMPORTANT
 				"warehouse": item.get("warehouse"),
 				"branch":item.get("branch"),
-				"schedule_date": item.get("schedule_date") ,
+				"schedule_date": nowdate(),
 				# IMPORTANT LINKS
 				"material_request": item.get("name"),
 				"material_request_item": item.get("material_request_item"),

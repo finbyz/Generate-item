@@ -1,6 +1,6 @@
 
 
-let PO_SERIES_OPTIONS = [];
+// let PO_SERIES_OPTIONS = [];
 frappe.query_reports["Requested Items To Be Ordered"] = {
 
     get_datatable_options(options) {
