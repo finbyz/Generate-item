@@ -1,7 +1,5 @@
-// Copyright (c) 2026, Finbyz and contributors
+// Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors and contributors
 // For license information, please see license.txt
-
-
 
 frappe.query_reports["Stock Balance With Location"] = {
 	filters: [
@@ -9,43 +7,47 @@ frappe.query_reports["Stock Balance With Location"] = {
 			fieldname: "company",
 			label: __("Company"),
 			fieldtype: "Link",
+			width: "80",
 			options: "Company",
-			default: frappe.defaults.get_user_default("Company"),
-			reqd: 1,
+			default: frappe.defaults.get_default("company"),
 		},
 		{
 			fieldname: "from_date",
 			label: __("From Date"),
 			fieldtype: "Date",
-			default: frappe.datetime.add_months(frappe.datetime.get_today(), -1),
+			width: "80",
 			reqd: 1,
+			default: frappe.datetime.add_months(frappe.datetime.get_today(), -1),
 		},
 		{
 			fieldname: "to_date",
 			label: __("To Date"),
 			fieldtype: "Date",
-			default: frappe.datetime.get_today(),
+			width: "80",
 			reqd: 1,
+			default: frappe.datetime.get_today(),
 		},
 		{
-			fieldname: "warehouse",
-			label: __("Warehouses"),
-			fieldtype: "MultiSelectList",
-			options: "Warehouse",
-			get_data: function (txt) {
-				const company = frappe.query_report.get_filter_value("company");
-
-				return frappe.db.get_link_options("Warehouse", txt, {
-					company: company,
-				});
-			},
+			fieldname: "item_group",
+			label: __("Item Group"),
+			fieldtype: "Link",
+			width: "80",
+			options: "Item Group",
 		},
 		{
 			fieldname: "item_code",
 			label: __("Items"),
 			fieldtype: "MultiSelectList",
+			width: "80",
 			options: "Item",
 			get_data: async function (txt) {
+				let item_group = frappe.query_report.get_filter_value("item_group");
+
+				let filters = {
+					...(item_group && { item_group }),
+					is_stock_item: 1,
+				};
+
 				let { message: data } = await frappe.call({
 					method: "erpnext.controllers.queries.item_query",
 					args: {
@@ -54,10 +56,11 @@ frappe.query_reports["Stock Balance With Location"] = {
 						searchfield: "name",
 						start: 0,
 						page_len: 10,
-						filters: {},
+						filters: filters,
 						as_dict: 1,
 					},
 				});
+
 				data = data.map(({ name, ...rest }) => {
 					return {
 						value: name,
@@ -69,47 +72,29 @@ frappe.query_reports["Stock Balance With Location"] = {
 			},
 		},
 		{
-			fieldname: "item_group",
-			label: __("Item Group"),
-			fieldtype: "Link",
-			options: "Item Group",
-		},
-		{
-			fieldname: "batch_no",
-			label: __("Batch No"),
-			fieldtype: "Link",
-			options: "Batch",
-			on_change() {
-				const batch_no = frappe.query_report.get_filter_value("batch_no");
-				if (batch_no) {
-					frappe.query_report.set_filter_value("segregate_serial_batch_bundle", 1);
-				} else {
-					frappe.query_report.set_filter_value("segregate_serial_batch_bundle", 0);
-				}
+			fieldname: "warehouse",
+			label: __("Warehouses"),
+			fieldtype: "MultiSelectList",
+			width: "80",
+			options: "Warehouse",
+			get_data: (txt) => {
+				let warehouse_type = frappe.query_report.get_filter_value("warehouse_type");
+				let company = frappe.query_report.get_filter_value("company");
+
+				let filters = {
+					...(warehouse_type && { warehouse_type }),
+					...(company && { company }),
+				};
+
+				return frappe.db.get_link_options("Warehouse", txt, filters);
 			},
 		},
 		{
-			fieldname: "brand",
-			label: __("Brand"),
+			fieldname: "warehouse_type",
+			label: __("Warehouse Type"),
 			fieldtype: "Link",
-			options: "Brand",
-		},
-		{
-			fieldname: "voucher_no",
-			label: __("Voucher #"),
-			fieldtype: "Data",
-		},
-		{
-			fieldname: "project",
-			label: __("Project"),
-			fieldtype: "Link",
-			options: "Project",
-		},
-		{
-			fieldname: "include_uom",
-			label: __("Include UOM"),
-			fieldtype: "Link",
-			options: "UOM",
+			width: "80",
+			options: "Warehouse Type",
 		},
 		{
 			fieldname: "valuation_field_type",
@@ -120,15 +105,45 @@ frappe.query_reports["Stock Balance With Location"] = {
 			default: "Currency",
 		},
 		{
-			fieldname: "segregate_serial_batch_bundle",
-			label: __("Segregate Serial / Batch Bundle"),
+			fieldname: "include_uom",
+			label: __("Include UOM"),
+			fieldtype: "Link",
+			options: "UOM",
+		},
+		{
+			fieldname: "show_variant_attributes",
+			label: __("Show Variant Attributes"),
+			fieldtype: "Check",
+		},
+		{
+			fieldname: "show_stock_ageing_data",
+			label: __("Show Stock Ageing Data"),
+			fieldtype: "Check",
+		},
+		{
+			fieldname: "ignore_closing_balance",
+			label: __("Ignore Closing Balance"),
+			fieldtype: "Check",
+			default: 0,
+		},
+		{
+			fieldname: "include_zero_stock_items",
+			label: __("Include Zero Stock Items"),
+			fieldtype: "Check",
+			default: 0,
+		},
+		{
+			fieldname: "show_dimension_wise_stock",
+			label: __("Show Dimension Wise Stock"),
 			fieldtype: "Check",
 			default: 0,
 		},
 	],
+
 	formatter: function (value, row, column, data, default_formatter) {
 		value = default_formatter(value, row, column, data);
-		if (column.fieldname == "out_qty" && data && data.out_qty < 0) {
+
+		if (column.fieldname == "out_qty" && data && data.out_qty > 0) {
 			value = "<span style='color:red'>" + value + "</span>";
 		} else if (column.fieldname == "in_qty" && data && data.in_qty > 0) {
 			value = "<span style='color:green'>" + value + "</span>";
@@ -138,4 +153,4 @@ frappe.query_reports["Stock Balance With Location"] = {
 	},
 };
 
-erpnext.utils.add_inventory_dimensions("Stock Ledger", 10);
+erpnext.utils.add_inventory_dimensions("Stock Balance", 8);
