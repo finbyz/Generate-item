@@ -19,6 +19,7 @@ def execute(filters=None):
 def get_columns():
     return [
         {"label": "Purchase Order", "fieldname": "name", "fieldtype": "Link", "options": "Purchase Order", "width": 160},
+         {"label": "PO Line NO.", "fieldname": "po_line_no", "width": 220},
         {"label": "Batch No Ref", "fieldname": "custom_batch_no", "fieldtype": "Link", "options": "Batch", "width": 160},
         {"label": "Supplier", "fieldname": "supplier", "fieldtype": "Link", "options": "Supplier", "width": 180},
         
@@ -70,6 +71,16 @@ def get_data(filters):
     if filters.get("supplier"):
         conditions.append("po.supplier = %(supplier)s")
         values["supplier"] = filters["supplier"]
+    if filters.get("item_code"):
+        conditions.append("poi.item_code = %(item_code)s")
+        values["item_code"] = filters["item_code"]
+    if filters.get("purchase_no"):
+        conditions.append("po.name = %(purchase_no)s")
+        values["purchase_no"] = filters["purchase_no"]
+
+    if filters.get("branch"):
+        conditions.append("po.branch = %(branch)s")
+        values["branch"] = filters["branch"]
 
     # filter by created by (multi or single)
     created_by = filters.get("created_by")
@@ -91,9 +102,6 @@ def get_data(filters):
         conditions.append("po.transaction_date <= %(to_date)s")
         values["to_date"] = filters["to_date"]
 
-    if filters.get("status"):
-        conditions.append("po.status = %(status)s")
-        values["status"] = filters["status"]
 
     where_clause = " AND ".join(conditions)
     if where_clause:
@@ -123,7 +131,7 @@ def get_data(filters):
             poi.warehouse,
             poi.uom,
             poi.schedule_date AS item_schedule_date,
-
+            poi.po_line_no,
             poi.material_request,
             poi.material_request_item,
             poi.name as item_id,

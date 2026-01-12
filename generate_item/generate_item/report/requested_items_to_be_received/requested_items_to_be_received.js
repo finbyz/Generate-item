@@ -43,20 +43,7 @@ frappe.query_reports["Requested Items To Be Received"] = {
                 });
             },
         },
-        {
-            fieldname: "status",
-            label: __("Status"),
-            fieldtype: "Select",
-            options: "\nDraft\nOn Hold\nCompleted\nTo Receive and Bill\nTo Receive\nTo Bill\nDelivered\nClosed",
-			
-
-
-            on_change: function () {
-                frappe.query_report.refresh().then(() => {
-                    unchecked_all_checkbox();
-                });
-            },
-        },
+        
         {
             fieldname: "created_by",
             label: __("Created By"),
@@ -71,25 +58,55 @@ frappe.query_reports["Requested Items To Be Received"] = {
             },
         },
         {
-			fieldname: "drawing_no",
-			label: __("Drawing Number"),
-			fieldtype: "Data",
-			on_change: function () {
-				frappe.query_report.refresh().then(() => {
-					unchecked_all_checkbox();
-				});
-			},
-		},
-        {
-            fieldname: "drawing_rev_no",
-            label: __("Drawing Rev No"),
-            fieldtype: "Data",
+            fieldname: "supplier",
+            label: __("Supplier"),
+            fieldtype: "Link",
+            options: "Supplier",
+           
             on_change: function () {
                 frappe.query_report.refresh().then(() => {
                     unchecked_all_checkbox();
                 });
             },
         },
+        {
+            fieldname: "item_code",
+            label: __("Item"),
+            fieldtype: "Link",
+            options: "Item",
+           
+            on_change: function () {
+                frappe.query_report.refresh().then(() => {
+                    unchecked_all_checkbox();
+                });
+            },
+        },
+        {
+            fieldname: "purchase_no",
+            label: __("Purchase Order"),
+            fieldtype: "Link",
+            options: "Purchase Order",
+           
+            on_change: function () {
+                frappe.query_report.refresh().then(() => {
+                    unchecked_all_checkbox();
+                });
+            },
+        },
+        {
+            fieldname: "branch",
+            label: __("Branch"),
+            fieldtype: "Link",
+            options: "Branch",
+           
+            on_change: function () {
+                frappe.query_report.refresh().then(() => {
+                    unchecked_all_checkbox();
+                });
+            },
+        },
+        
+       
       
         
         
@@ -289,7 +306,7 @@ function create_purchase_receipt_by_supplier() {
                     {
                         fieldname: "po_series",
                         fieldtype: "Select",
-                        label: __("PO Series"),
+                        label: __("PR Series"),
                         options: PO_SERIES_OPTIONS.join("\n"),
                         reqd: 1
                     },
