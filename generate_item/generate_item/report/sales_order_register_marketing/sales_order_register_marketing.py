@@ -189,7 +189,7 @@ def get_data(filters):
         sales_person_2 = sales_team[1].sales_person if len(sales_team) > 1 else ""
 
         # Item filters
-        so_item_filters = {"parent": so.sales_order, "docstatus": 1}
+        so_item_filters = {"parent": so.sales_order}
 
         if filters.get("item_code"):
             so_item_filters["item_code"] = filters.item_code
@@ -424,7 +424,10 @@ def get_invoice_no(sales_order):
 # ---------------------------------------------------------
 
 def get_so_conditions(filters):
-    conditions = {"docstatus": 1}
+    conditions = {
+        "docstatus": ["in", [0, 1]]  
+    }
+    
 
     if filters.get("from_date") and filters.get("to_date"):
         conditions["transaction_date"] = ["between", [filters.from_date, filters.to_date]]
@@ -439,12 +442,16 @@ def get_so_conditions(filters):
         conditions["branch"] = filters.branch
     if filters.get("sales_order"):
         conditions["name"] = filters.sales_order
-    # if filters.get("status"):
-    #     conditions["status"] = filters.status
+ 
     # Exclude Closed & Completed
-    conditions["status"] = ["not in", ["Closed", "Completed"]]
+    # conditions["status"] = ["not in", ["Closed", "Completed"]]
+    # if filters.get("status"):
+    #     conditions["status"] = ["in", filters.status]
+     
     if filters.get("status"):
         conditions["status"] = ["in", filters.status]
+    else:
+        conditions["status"] = ["not in", ["Closed", "Completed"]]
 
     return conditions
 

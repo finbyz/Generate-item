@@ -440,7 +440,7 @@ def get_data(filters):
 		if freight_row and freight_row[0].freight_total:
 			freight_charges = freight_row[0].freight_total or 0
 
-		so_conditions_for_items = {"parent": so.sales_order, "docstatus": 1}
+		so_conditions_for_items = {"parent": so.sales_order}
 		if filters.get("item_code"):
 			so_conditions_for_items["item_code"] = filters.item_code
 		if filters.get("batch_no"):
@@ -592,8 +592,11 @@ def get_data(filters):
 	return data
 
 def get_so_conditions(filters):
-	# Base condition: only submitted Sales Orders
-	conditions = {"docstatus": 1}
+	conditions = {
+		"docstatus": ["in", [0, 1]]  # Draft + Submitted
+	}
+
+
 
 	# Date range handling
 	from_date = filters.get("from_date")
@@ -612,15 +615,22 @@ def get_so_conditions(filters):
 		conditions["branch"] = filters.branch
 	if filters.get("sales_order"):
 		conditions["name"] = filters.sales_order
-	# if filters.get("status"):
-	# 	conditions["status"] = filters.status
+
+
+
 
 	# Exclude Closed & Completed
-	conditions["status"] = ["not in", ["Closed", "Completed"]]
+	# conditions["status"] = ["not in", ["Closed", "Completed"]]
+	# if filters.get("status"):
+	# 	conditions["status"] = ["in", filters.status]
+	#  status logic (important)
 	if filters.get("status"):
 		conditions["status"] = ["in", filters.status]
-	
-	
+	else:
+		conditions["status"] = ["not in", ["Closed", "Completed"]]
+
+
+
 	return conditions
 
 
