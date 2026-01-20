@@ -124,4 +124,4 @@ def validate(doc, method):
         )
         if subcon_order.purchase_order:
             row.subcontracting_order_po_no = subcon_order.purchase_order
-    frappe.msgprint("purchase order is updated...")
+    
