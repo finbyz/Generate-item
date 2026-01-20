@@ -197,3 +197,124 @@ def get_mapped_subcontracting_receipt(source_name, target_doc=None):
 
     return target_doc
 
+def get_item_details(items):
+	item = frappe.qb.DocType("Item")
+	item_list = (
+		frappe.qb.from_(item)
+		.select(item.item_code, item.item_name, item.description, item.allow_alternative_item)
+		.where(item.name.isin(items))
+		.run(as_dict=True)
+	)
+
+	item_details = {}
+	for item in item_list:
+		item_details[item.item_code] = item
+
+	return item_details
+
+
+@frappe.whitelist()
+def custom_make_rm_stock_entry(
+	subcontract_order, rm_items=None, order_doctype="Subcontracting Order", target_doc=None
+):
+    if subcontract_order:
+        subcontract_order = frappe.get_doc(order_doctype, subcontract_order)
+
+        if not rm_items:
+            if not subcontract_order.supplied_items:
+                frappe.throw(_("No item available for transfer."))
+
+            rm_items = subcontract_order.supplied_items
+
+        fg_item_code_list = list(
+            set(item.get("main_item_code") or item.get("item_code") for item in rm_items)
+        )
+
+        if fg_item_code_list:
+            rm_item_code_list = tuple(set(item.get("rm_item_code") for item in rm_items))
+            item_wh = get_item_details(rm_item_code_list)
+
+            field_no_map, rm_detail_field = "purchase_order", "sco_rm_detail"
+            if order_doctype == "Purchase Order":
+                field_no_map, rm_detail_field = "subcontracting_order", "po_detail"
+
+            if target_doc and target_doc.get("items"):
+                target_doc.items = []
+
+            stock_entry = get_mapped_doc(
+                order_doctype,
+                subcontract_order.name,
+                {
+                    order_doctype: {
+                        "doctype": "Stock Entry",
+                        "field_map": {
+                            "supplier": "supplier",
+                            "supplier_name": "supplier_name",
+                            "supplier_address": "supplier_address",
+                            "to_warehouse": "supplier_warehouse",
+                        },
+                        "field_no_map": [field_no_map],
+                        "validation": {
+                            "docstatus": ["=", 1],
+                        },
+                    },
+                },
+                target_doc,
+                ignore_child_tables=True,
+            )
+            # EXPLICIT PARENT → PARENT MAPPING
+            stock_entry.purchase_order = subcontract_order.purchase_order
+
+            stock_entry.purpose = "Send to Subcontractor"
+
+            if order_doctype == "Purchase Order":
+                stock_entry.purchase_order = subcontract_order.name
+            else:
+                stock_entry.subcontracting_order = subcontract_order.name
+
+            stock_entry.set_stock_entry_type()
+
+            for fg_item_code in fg_item_code_list:
+                for rm_item in rm_items:
+                    if (
+                        rm_item.get("main_item_code") == fg_item_code
+                        or rm_item.get("item_code") == fg_item_code
+                    ):
+                        rm_item_code = rm_item.get("rm_item_code")
+                        items_dict = {
+                            rm_item_code: {
+                                rm_detail_field: rm_item.get("name"),
+                                "item_name": rm_item.get("item_name")
+                                or item_wh.get(rm_item_code, {}).get("item_name", ""),
+                                "description": item_wh.get(rm_item_code, {}).get("description", ""),
+                                "qty": rm_item.get("qty")
+                                or max(rm_item.get("required_qty") - rm_item.get("total_supplied_qty"), 0),
+                                "from_warehouse": rm_item.get("warehouse")
+                                or rm_item.get("reserve_warehouse"),
+                                "to_warehouse": subcontract_order.supplier_warehouse,
+                                "stock_uom": rm_item.get("stock_uom"),
+                                "serial_and_batch_bundle": rm_item.get("serial_and_batch_bundle"),
+                                "main_item_code": fg_item_code,
+                                "allow_alternative_item": item_wh.get(rm_item_code, {}).get(
+                                    "allow_alternative_item"
+                                ),
+                                "use_serial_batch_fields": rm_item.get("use_serial_batch_fields"),
+                                "serial_no": rm_item.get("serial_no")
+                                if rm_item.get("use_serial_batch_fields")
+                                else None,
+                                "batch_no": rm_item.get("batch_no")
+                                if rm_item.get("use_serial_batch_fields")
+                                else None,
+                            }
+                        }
+
+                        stock_entry.add_to_stock_entry_detail(items_dict)
+
+            if target_doc:
+                return stock_entry
+            else:
+                return stock_entry.as_dict()
+        else:
+            frappe.throw(_("No Items selected for transfer."))
+
+
