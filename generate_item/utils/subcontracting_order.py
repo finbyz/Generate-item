@@ -60,7 +60,7 @@ def before_validate(doc, method):
                 "custom_batch_no": row.custom_batch_no,
                 "is_active": 1,
                 "docstatus": 1,
-                "item":row.item_codegit a
+                "item":row.item_code
             },
             "name"
         )
