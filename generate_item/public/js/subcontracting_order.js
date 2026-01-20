@@ -1,12 +1,14 @@
 frappe.ui.form.on('Subcontracting Order Item', {
-    item_code: function(frm, cdt, cdn) {
-        let row = locals[cdt][cdn];
+    // item_code: function(frm, cdt, cdn) {
+    //     let row = locals[cdt][cdn];
 
-        // If batch already exists in parent, push it into the row
-        if (frm.doc.custom_batch_no && row.item_code) {
-            frappe.model.set_value(row.doctype, row.name, 'custom_batch_no', frm.doc.custom_batch_no);
-        }
-    },
+    //     // If batch already exists in parent, push it into the row
+    //     if (frm.doc.custom_batch_no && row.item_code) {
+    //         frappe.model.set_value(row.doctype, row.name, 'custom_batch_no', frm.doc.custom_batch_no);
+    //     }
+    // },
+   
+
     bom_no: function(frm, cdt, cdn) {
         let row = locals[cdt][cdn];
         

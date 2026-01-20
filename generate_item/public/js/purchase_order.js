@@ -1,4 +1,6 @@
+
 frappe.ui.form.on('Purchase Order', {
+	
 	onload: function(frm) {
 		// Handle case when purchase order is loaded with production plan already set (backend creation)
 		if (frm.doc.production_plan && !frm.doc.custom_batch_no) {
@@ -27,6 +29,7 @@ frappe.ui.form.on('Purchase Order', {
 					// If r.message is null/undefined (no contact found), the field remains cleared from step 1.
 				});
 			}
+			
 		}, 1000);
 	},
 
@@ -64,6 +67,25 @@ frappe.ui.form.on('Purchase Order', {
 		// 	}
 		// }
 		// Check if items exist and iterate properly
+
+		
+		frm.set_query("custom_batch_no", "items", function (doc, cdt, cdn) {
+			let row = locals[cdt][cdn];
+		
+			// Allow batch only if subcontracted PO
+			if (!doc.is_subcontracted || !row.fg_item) {
+				return {};
+			}
+		
+			return {
+				filters: {
+					item: row.fg_item
+				}
+			};
+		});
+		
+		
+
 		if (frm.doc.docstatus == 1)
 		{
 			if (frm.doc.items && frm.doc.items.length > 0) {
@@ -204,3 +226,5 @@ function update_date_field_readonly(frm) {
         frm.set_df_property('schedule_date', 'read_only', 1);
     }
 }
+
+

@@ -1,5 +1,8 @@
 import frappe
-
+from frappe import _, msgprint
+from frappe.desk.notifications import clear_doctype_notifications
+from frappe.model.mapper import get_mapped_doc
+from frappe.utils import cint, cstr, flt, get_link_to_form
 
 def before_insert(doc, method):
     """Set custom_batch_no for subcontracting order and its items from purchase order"""
@@ -43,6 +46,29 @@ def before_insert(doc, method):
 
 
 
+def before_validate(doc, method):
+    if not doc.items:
+        return
+
+    for row in doc.items:
+        if not row.custom_batch_no or not row.item_code:
+            continue
+
+        bom_name = frappe.db.get_value(
+            "BOM",
+            {
+                "custom_batch_no": row.custom_batch_no,
+                "is_active": 1,
+                "docstatus": 1
+            },
+            "name"
+        )
+
+        if bom_name:
+            row.bom = bom_name
+
+
+
 
 def validate(doc, method):
     """Set production_plan in Subcontracting Order Items from Purchase Order or Material Request"""
@@ -70,6 +96,8 @@ def validate(doc, method):
             )
             if mr_item:
                 so_item.production_plan = mr_item
+
+        
 
 
 
@@ -118,3 +146,54 @@ def before_submit(doc, method):
             batch_no = frappe.get_value("BOM", supplied_item.bom_reference, "custom_batch_no")
             if batch_no:
                 supplied_item.custom_batch_no = batch_no
+
+
+
+@frappe.whitelist()
+def custom_make_subcontracting_receipt(source_name, target_doc=None):
+	return get_mapped_subcontracting_receipt(source_name, target_doc)
+
+
+def get_mapped_subcontracting_receipt(source_name, target_doc=None):
+   
+    def update_item(source, target, source_parent):
+
+        target.purchase_order = source_parent.purchase_order
+        # frappe.log_error("source name",source_parent.purchase_order,)
+        target.purchase_order_item = source.purchase_order_item
+        target.qty = flt(source.qty) - flt(source.received_qty)
+        target.amount = (flt(source.qty) - flt(source.received_qty)) * flt(source.rate)
+        
+   
+    target_doc = get_mapped_doc(
+        "Subcontracting Order",
+        source_name,
+        {
+            "Subcontracting Order": {
+                "doctype": "Subcontracting Receipt",
+                "field_map": {
+                    "supplier_warehouse": "supplier_warehouse",
+                    "set_warehouse": "set_warehouse",
+                },
+                "validation": {
+                    "docstatus": ["=", 1],
+                },
+            },
+            "Subcontracting Order Item": {
+                "doctype": "Subcontracting Receipt Item",
+                "field_map": {
+                    "name": "subcontracting_order_item",
+                    "parent": "subcontracting_order",
+                    "bom": "bom",
+                    "custom_batch_no":"custom_batch_no",
+                   
+                },
+                "postprocess": update_item,
+                "condition": lambda doc: abs(doc.received_qty) < abs(doc.qty),
+            },
+        },
+        target_doc,
+    )
+
+    return target_doc
+

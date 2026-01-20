@@ -106,3 +106,22 @@ def before_save(doc, method):
 def after_save(doc, method):
     # Persist child values in case mapped doc was already saved
     _populate_supplied_custom_fields(doc, persist_children=True)
+
+
+def validate(doc, method):
+    
+    if not doc.items:
+        return
+
+    for row in doc.items:
+        if not row.subcontracting_order:
+            continue
+
+        # Fetch Subcontracting Order
+        subcon_order = frappe.get_doc(
+            "Subcontracting Order",
+            row.subcontracting_order
+        )
+        if subcon_order.purchase_order:
+            row.subcontracting_order_po_no = subcon_order.purchase_order
+    frappe.msgprint("purchase order is updated...")

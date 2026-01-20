@@ -190,6 +190,7 @@ doc_events = {
     },
     "Subcontracting Order": {
         "before_insert": "generate_item.utils.subcontracting_order.before_insert",
+        "before_validate":"generate_item.utils.subcontracting_order.before_validate",
         "validate": "generate_item.utils.subcontracting_order.validate",
         "before_save": "generate_item.utils.subcontracting_order.before_save",
         "after_save": "generate_item.utils.subcontracting_order.after_save"
@@ -233,7 +234,8 @@ doc_events = {
     },
     "Subcontracting Receipt": {
         "before_save": "generate_item.utils.subcontracting_receipt.before_save",
-        "after_save": "generate_item.utils.subcontracting_receipt.after_save"
+        "after_save": "generate_item.utils.subcontracting_receipt.after_save",
+        "validate":"generate_item.utils.subcontracting_receipt.validate"
     },
     "Customer":{
         "validate":"generate_item.utils.customer.validate"
@@ -289,7 +291,8 @@ override_whitelisted_methods = {
     "erpnext.manufacturing.doctype.production_plan.production_plan.get_items_for_material_requests": "generate_item.overrides.production_plan.get_items_for_material_requests_patched",
     "erpnext.controllers.accounts_controller.update_child_qty_rate": "generate_item.overrides.accounts_controller.update_child_qty_rate",
     "erpnext.controllers.stock_controller.make_quality_inspections": "generate_item.utils.purchase_receipt.make_quality_inspections",
-    # "erpnext.buying.doctype.purchase_order.purchase_order.make_subcontracting_order":"generate_item.utils.purchase_order.custom_make_subcontracting_order"
+    "erpnext.buying.doctype.purchase_order.purchase_order.make_subcontracting_order":"generate_item.utils.purchase_order.custom_make_subcontracting_order",
+    "erpnext.subcontracting.doctype.subcontracting_order.subcontracting_order.make_subcontracting_receipt":"generate_item.utils.subcontracting_order.custom_make_subcontracting_receipt"
 }
 #
 # each overriding function accepts a `data` argument;
