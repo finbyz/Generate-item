@@ -1,0 +1,146 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "OMR-.YYYY.-.MM.-.####",
+ "creation": "2025-12-29 11:29:19.838856",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "type",
+  "sales_order",
+  "bom",
+  "date",
+  "get_item",
+  "column_break_oear",
+  "sales_order_date",
+  "customer_name",
+  "emails",
+  "section_break_10xk",
+  "items",
+  "get_link_documents",
+  "link_documents",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "depends_on": "eval:doc.type == \"Sales Order\"",
+   "fieldname": "sales_order",
+   "fieldtype": "Dynamic Link",
+   "in_list_view": 1,
+   "label": "Sales Order No",
+   "options": "type"
+  },
+  {
+   "fieldname": "get_item",
+   "fieldtype": "Button",
+   "label": "Get Item"
+  },
+  {
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "Order Modification Request Detail"
+  },
+  {
+   "fieldname": "link_documents",
+   "fieldtype": "Table",
+   "label": "Link Documents",
+   "options": "Link Document"
+  },
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Date"
+  },
+  {
+   "fieldname": "column_break_oear",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "sales_order.transaction_date",
+   "fieldname": "sales_order_date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Sales Order Date",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "sales_order.customer",
+   "fieldname": "customer_name",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Customer Name",
+   "options": "Customer",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_10xk",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Order Modification Request",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "get_link_documents",
+   "fieldtype": "Button",
+   "label": "Get Link Documents"
+  },
+  {
+   "fieldname": "emails",
+   "fieldtype": "Data",
+   "label": "Emails",
+   "options": "Email"
+  },
+  {
+   "fieldname": "type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Type",
+   "options": "\nSales Order\nBOM"
+  },
+  {
+   "depends_on": "eval:doc.type == \"BOM\"",
+   "fieldname": "bom",
+   "fieldtype": "Dynamic Link",
+   "in_list_view": 1,
+   "label": "Bom No",
+   "options": "type"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-01-16 11:31:55.911663",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Order Modification Request",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

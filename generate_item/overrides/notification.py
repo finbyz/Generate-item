@@ -384,6 +384,14 @@ class CustomNotification(Notification):
         )
 
         recipients, cc, bcc = super().get_list_of_recipients(doc, context)
+        # MISSING PART (ADD THIS)
+        if doc.get("emails"):
+            doc_emails = [
+                e.strip()
+                for e in doc.emails.split(",")
+                if e.strip()
+            ]
+            recipients = list(set((recipients or []) + doc_emails))
         self._debug(
             "base_recipients",
             recipients=recipients,
@@ -398,6 +406,26 @@ class CustomNotification(Notification):
             merged = set(recipients or [])
             merged.update(editor_emails or [])
             recipients = list(merged)
+
+        # ------------------------------------------------
+        # ADDITIONAL EMAILS FROM DATA FIELD
+        # ------------------------------------------------
+        raw_emails = doc.get("emails")  # <-- fieldname MUST be exact
+        self._debug("raw_data_field_emails", raw=raw_emails)
+
+        if raw_emails:
+            extra_emails = []
+            for e in raw_emails.split(","):
+                e = e.strip()
+                if validate_email_address(e, throw=False):
+                    extra_emails.append(e)
+
+            self._debug("parsed_data_field_emails", parsed=extra_emails)
+
+            merged = set(recipients or [])
+            merged.update(extra_emails)
+            recipients = list(merged)
+
 
         recipients = self._filter_by_permission(doc, recipients)
         cc = self._filter_by_permission(doc, cc)

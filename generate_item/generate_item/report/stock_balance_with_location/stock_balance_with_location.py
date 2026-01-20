@@ -75,6 +75,23 @@ class StockBalanceReport:
 		self.add_additional_uom_columns()
 
 		return self.columns, self.data
+		
+	def get_item_descriptions(self):
+		items = list({d.item_code for d in self.data if d.get("item_code")})
+
+		if not items:
+			return {}
+
+		return {
+			d["name"]: d.get("description", "")
+			for d in frappe.get_all(
+				"Item",
+				filters={"name": ("in", items)},
+				fields=["name", "description"],
+			)
+		}
+
+
 
 	def prepare_opening_data_from_closing_balance(self) -> None:
 		self.opening_data = frappe._dict({})
@@ -159,6 +176,10 @@ class StockBalanceReport:
 				continue
 
 			self.data.append(report_data)
+			item_descriptions = self.get_item_descriptions()
+
+			for row in self.data:
+				row["description"] = item_descriptions.get(row.item_code, "")
 
 	def get_item_warehouse_map(self):
 		item_warehouse_map = {}
@@ -250,6 +271,7 @@ class StockBalanceReport:
 				"currency": self.company_currency,
 				"stock_uom": entry.stock_uom,
 				"item_name": entry.item_name,
+
 				"opening_qty": opening_data.get("bal_qty") or 0.0,
 				"opening_val": opening_data.get("bal_val") or 0.0,
 				"opening_fifo_queue": opening_data.get("fifo_queue") or [],
@@ -404,6 +426,7 @@ class StockBalanceReport:
 				"width": 100,
 			},
 			{"label": _("Item Name"), "fieldname": "item_name", "width": 150},
+			{"label": _("Description"), "fieldname": "description", "width": 150},
 			{
 				"label": _("Item Group"),
 				"fieldname": "item_group",

@@ -201,7 +201,7 @@ doc_events = {
     "Sales Invoice": {
         "after_insert": "generate_item.utils.sales_invoice.after_insert",
         "validate": "generate_item.utils.sales_invoice.validate",
-        # "before_save": "generate_item.utils.sales_invoice.before_save"
+        "before_save": "generate_item.utils.sales_invoice.before_save"
     },
     "Production Plan":{
         "before_save": "generate_item.utils.production_plan.before_save"
@@ -229,6 +229,7 @@ doc_events = {
         "validate": "generate_item.utils.bom_creator.validate"
     },
     "Quality Inspection": {
+        "on_submit":"generate_item.utils.quality_inspection.on_submit",
         "before_save": "generate_item.utils.quality_inspection.before_save"
     },
     "Subcontracting Receipt": {
@@ -288,6 +289,8 @@ override_whitelisted_methods = {
     # Ensure Production Plan Get Items for MR returns BOM and drawing
     "erpnext.manufacturing.doctype.production_plan.production_plan.get_items_for_material_requests": "generate_item.overrides.production_plan.get_items_for_material_requests_patched",
     "erpnext.controllers.accounts_controller.update_child_qty_rate": "generate_item.overrides.accounts_controller.update_child_qty_rate",
+    "erpnext.controllers.stock_controller.make_quality_inspections": "generate_item.utils.purchase_receipt.make_quality_inspections",
+    "erpnext.buying.doctype.purchase_order.purchase_order.make_subcontracting_order":"generate_item.utils.purchase_order.custom_make_subcontracting_order"
 }
 #
 # each overriding function accepts a `data` argument;

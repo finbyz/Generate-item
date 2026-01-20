@@ -1,4 +1,9 @@
 import frappe
+import json
+from erpnext.controllers.stock_controller import make_quality_inspections as original_make_qis
+from frappe.utils import flt
+
+
 @frappe.whitelist()
 def make_purchase_receipt(source_name, target_doc=None, args=None):
 	"""Create Purchase Receipt from Purchase Order while mapping custom_batch_no → batch_no.
@@ -166,3 +171,39 @@ def validate_duplicate_po(doc, method):
                 ),
                 title=("Duplicate Draft Purchase Receipt Detected")
             )
+
+
+@frappe.whitelist()
+def make_quality_inspections(doctype, docname, items):
+
+	if isinstance(items, str):
+		items = json.loads(items)
+
+	inspection_names = original_make_qis(doctype, docname, items)
+
+	qi_map = {
+		frappe.get_value("Quality Inspection", qi, "child_row_reference"): qi
+		for qi in inspection_names
+	}
+
+	for item in items:
+		ref = item.get("child_row_reference")
+		if not ref:
+			continue
+
+		qi_name = qi_map.get(ref)
+		if not qi_name:
+			continue
+
+		qty = flt(item.get("qty"))
+
+		frappe.db.set_value(
+			"Quality Inspection",
+			qi_name,
+			{
+				"received_qty": qty,
+				"sample_size": qty
+			}
+		)
+
+	return inspection_names

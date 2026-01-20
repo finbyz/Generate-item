@@ -1,10 +1,33 @@
+from posix import read
 import frappe
 @frappe.whitelist()
 def get_reference_name(reference_name, reference_type):
     ref_data = frappe.get_value(reference_type, reference_name, "branch")
     return ref_data
 
+def on_submit(doc,method):
+    if not doc.rejected_qty:
+        return
+    reference_doc = frappe.get_doc("Purchase Receipt",doc.reference_name)
+    if not reference_doc:
+        return
+    if reference_doc.branch == "Nandikoor":
+        reference_doc.rejected_warehouse = "Nandikoor Stores - SVIPL"
+    elif reference_doc.branch == "Sanand":
+        reference_doc.rejected_warehouse = "Sanand Stores - SVIPL"
+    elif reference_doc.branch == "Rabale":
+        reference_doc.rejected_warehouse = "Rabale Stores - SVIPL"
+        
+    for item in reference_doc.items:
+        if item.item_code == doc.item_code:
+            item.qty -= doc.rejected_qty
+            item.rejected_qty = doc.rejected_qty
+        
 
+
+    
+    reference_doc.save()
+    
 
 def before_save(doc, method):
     if doc.branch or not (doc.reference_type and doc.reference_name):

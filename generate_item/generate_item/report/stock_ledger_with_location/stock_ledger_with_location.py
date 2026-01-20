@@ -222,6 +222,7 @@ def get_columns(filters):
 			"width": 100,
 		},
 		{"label": _("Item Name"), "fieldname": "item_name", "width": 100},
+		{"label": _("Description"), "fieldname": "description", "width": 200},
 		{
 			"label": _("Stock UOM"),
 			"fieldname": "stock_uom",
@@ -292,7 +293,7 @@ def get_columns(filters):
 				"options": "Brand",
 				"width": 100,
 			},
-			{"label": _("Description"), "fieldname": "description", "width": 200},
+			
 			{
 				"label": _("Incoming Rate"),
 				"fieldname": "incoming_rate",
