@@ -290,7 +290,7 @@ override_whitelisted_methods = {
     "erpnext.manufacturing.doctype.production_plan.production_plan.get_items_for_material_requests": "generate_item.overrides.production_plan.get_items_for_material_requests_patched",
     "erpnext.controllers.accounts_controller.update_child_qty_rate": "generate_item.overrides.accounts_controller.update_child_qty_rate",
     "erpnext.controllers.stock_controller.make_quality_inspections": "generate_item.utils.purchase_receipt.make_quality_inspections",
-    "erpnext.buying.doctype.purchase_order.purchase_order.make_subcontracting_order":"generate_item.utils.purchase_order.custom_make_subcontracting_order"
+    # "erpnext.buying.doctype.purchase_order.purchase_order.make_subcontracting_order":"generate_item.utils.purchase_order.custom_make_subcontracting_order"
 }
 #
 # each overriding function accepts a `data` argument;
