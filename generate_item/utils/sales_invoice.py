@@ -97,6 +97,40 @@ def get_remaining_taxes_for_draft(sales_orders, current_invoice_name=None):
     return remaining_taxes
 
 
+# def before_save(doc, method):
+#     items_to_remove = set()
+#     component_info = {}
+
+#     for row in doc.items:
+#         if row.component_of:
+#             items_to_remove.add(row.component_of)
+
+#     for row in doc.items:
+#         if row.item_code in items_to_remove:
+#             info = f"{row.item_code} - {row.description or ''}"
+#             component_info[row.item_code] = info.strip()
+
+#     for row in doc.items:
+#         if row.component_of:
+#             info = component_info.get(row.component_of)
+#             if info:
+#                 if row.remarks:
+#                     row.remarks += f"\n{info}"
+#                 else:
+#                     row.remarks = info
+
+#     rows_to_keep = []
+#     for row in doc.items:
+#         if row.item_code in items_to_remove:
+#             continue
+#         rows_to_keep.append(row)
+
+#     doc.items = rows_to_keep
+
+#     for i, row in enumerate(doc.items, start=1):
+#         row.idx = i
+
+
 def after_insert(doc, method=None):
     """
     Called automatically after Sales Invoice is inserted
@@ -229,6 +263,7 @@ def validate(doc, method=None):
     Optional: Validate before save to show warning if taxes exceed Sales Order
     This prevents over-billing
     """
+    remove_free_items(doc)
     fetch_po_line_no_from_sales_order(doc)
     validate_duplicate_si(doc, method)
     sales_orders = list(set([item.sales_order for item in doc.items if item.sales_order]))
@@ -412,6 +447,23 @@ def validate_duplicate_si(doc, method):
             error_msg += "<br><br>"
         
         frappe.throw(_(error_msg))
+
+def remove_free_items(doc):
+	"""
+	Remove free items from Sales Invoice during validate
+	"""
+	if not doc.items:
+		return
+
+	items_to_keep = []
+
+	for row in doc.items:
+		# keep only non-free items
+		if not row.is_free_item:
+			items_to_keep.append(row)
+
+	# reset child table safely
+	doc.set("items", items_to_keep)
 
 
 

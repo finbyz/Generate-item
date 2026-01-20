@@ -201,7 +201,6 @@ doc_events = {
     "Sales Invoice": {
         "after_insert": "generate_item.utils.sales_invoice.after_insert",
         "validate": "generate_item.utils.sales_invoice.validate",
-        "before_save": "generate_item.utils.sales_invoice.before_save"
     },
     "Production Plan":{
         "before_save": "generate_item.utils.production_plan.before_save"
