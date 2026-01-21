@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+
+	<style>
+	 p {
+	   font-family: sans-serif;
+	   font-weight: 700;
+	   color: #282828;
+	}
+	#customers {
+	 border-collapse: collapse;
+	 width: 100%;
+	 background: #dee4e8;
+	 font-family: sans-serif;
+	}
+
+	#customers td, #customers th {
+	 border: 1px solid #ddd;
+	  padding: 12px;
+	vertical-align: middle!important;
+	}
+
+	#customers tr:nth-child(even){background-color: #fff;}
+
+
+	#customers th {
+	 padding-top: 10!important;
+	 padding-bottom: 10!important;
+	 text-align: left;
+	 background-color: #01085f!important;
+	 color: white;
+	}
+	body:last-child .print-format td img {
+    /* width: 62% !important; */
+    height: 55px!important;
+    max-width: 160px;
+}
+	</style>
+	<title></title>
+</head>
+<body>
+	
+	<p>Vendor Item List For {%= filters.supplier %}</p>
+	<p>Total Items Found: {{ data.length }}</p>
+	<table id="customers" width=100%>
+		<tbody>
+			<tr>
+				<th>No</th>
+				<th>Picture</th>
+				<th>Item</th>
+				<th>Vendor</th>
+				<th>Description</th>
+				<th>In Stock</th>
+				<th>Case</th>
+				<th>Master case</th>
+				<!-- <th>Unit price</th>
+				<th>Case price</th> -->
+				<th>Buying Unit Price</th>
+				<th>Buying Case Price</th>
+				<th>Selling Unit Price</th>
+				<th>Selling Case Price</th>
+			</tr>
+			{% for(var i=0, l=data.length; i<l; i++) { %}
+			<tr>
+				<td width="20px">{{i+1}}</td>
+				<td width="80px">{{data[i].image}}</td>
+				<td width="50px">{{data[i].item}}</td>
+				<td width="130px">{{data[i].supplier}}</td>
+				<td width="150px">{{data[i].description}}</td>
+				<td width="70px">{{data[i].in_stock}}</td>
+				<td width="70px">{{data[i].case_qty}}</td>
+				<td width="50px">{{data[i].master_case}}</td>
+				<!-- <td width="50px">${{data[i].unit_price}}</td>
+				<td width="50px">${{data[i].case_price}}</td> -->
+				<td width="60px">${{data[i].buying_unit_price}}</td>
+				<td width="50px">${{data[i].buying_case_price}}</td>
+				<td width="50px">${{data[i].selling_unit_price}}</td>
+				<td width="50px">${{data[i].selling_case_price}}</td>
+			</tr>
+			{% } %}
+			
+		</tbody>
+	</table>
+</body>
+</html>

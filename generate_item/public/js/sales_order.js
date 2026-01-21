@@ -539,6 +539,22 @@ frappe.ui.form.on('Sales Order', {
                 make_batch(frm);
             }, __('Create'));
         }
+        if (!frm.is_new() ) {
+            frm.add_custom_button(__('CRM Notes'), function () {
+                frappe.call({
+                    method: "generate_item.utils.sales_order.create_crm_note_from_sales_order",
+                    args: {
+                        sales_order: frm.doc.name
+                    },
+                    callback: function (r) {
+                        if (r.message) {
+                            frappe.msgprint(__('CRM Notes created in Draft'));
+                        }
+                    }
+                });  
+            }, __('Create'));
+        }
+        // && frm.doc.docstatus ===1
 
         frm.set_query("company_address", () => {
             return {
