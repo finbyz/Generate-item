@@ -1,7 +1,7 @@
 {
  "actions": [],
  "allow_rename": 1,
- "autoname": "naming_series:",
+ "autoname": "field:order_number",
  "creation": "2026-01-19 13:33:43.593219",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -17,7 +17,9 @@
   "customer",
   "customers_purchase_order",
   "customers_purchase_order_date",
-  "order_amount"
+  "order_amount",
+  "section_break_xdbv",
+  "crm_notes"
  ],
  "fields": [
   {
@@ -48,7 +50,8 @@
    "in_list_view": 1,
    "label": "Order Number",
    "options": "Sales Order",
-   "reqd": 1
+   "reqd": 1,
+   "unique": 1
   },
   {
    "fieldname": "order_date",
@@ -93,17 +96,26 @@
    "fieldname": "customers_purchase_order_date",
    "fieldtype": "Date",
    "label": "Customer's Purchase Order Date"
+  },
+  {
+   "fieldname": "section_break_xdbv",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "crm_notes",
+   "fieldtype": "Text Editor",
+   "label": "CRM Notes"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-01-19 18:54:10.751440",
+ "modified": "2026-01-21 17:25:08.956893",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "CRM Notes",
- "naming_rule": "By \"Naming Series\" field",
+ "naming_rule": "By fieldname",
  "owner": "Administrator",
  "permissions": [
   {

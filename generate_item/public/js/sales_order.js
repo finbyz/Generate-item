@@ -540,7 +540,7 @@ frappe.ui.form.on('Sales Order', {
             }, __('Create'));
         }
         if (!frm.is_new() ) {
-            frm.add_custom_button(__('CRM Notes'), function () {
+            frm.add_custom_button(__('Add To CRM'), function () {
                 frappe.call({
                     method: "generate_item.utils.sales_order.create_crm_note_from_sales_order",
                     args: {
@@ -548,7 +548,11 @@ frappe.ui.form.on('Sales Order', {
                     },
                     callback: function (r) {
                         if (r.message) {
-                            frappe.msgprint(__('CRM Notes created in Draft'));
+                           frappe.msgprint({
+                                title: __('CRM Initiated'),
+                                message: __('CRM Note Created: <a href="/app/crm-notes/{0}">{0}</a>', [r.message]),
+                                indicator: 'green'
+                            });
                         }
                     }
                 });  

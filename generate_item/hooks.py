@@ -239,6 +239,9 @@ doc_events = {
     },
     "Customer":{
         "validate":"generate_item.utils.customer.validate"
+    },
+    "Supplier":{
+        "validate":"generate_item.utils.customer.supplier_validate"
     }
    
 }
