@@ -97,6 +97,9 @@ function fetch_items_dynamic(frm) {
                     row.qty = item.qty;
                     row.batch_no = item.custom_batch_no || null;
                     row.po_line_no = item.po_line_no;
+               
+
+
                 });
             }
 
@@ -107,7 +110,12 @@ function fetch_items_dynamic(frm) {
                     row.item = item.item_code;
                     row.qty = item.qty;
                     row.batch_no = item.custom_batch_no || null;
-                   
+                    row.drawing_no = item.custom_drawing_no;
+                    row.drawing_rev_no = item.custom_drawing_rev_no;
+                    row.pattern_drawing_no = item.custom_pattern_drawing_no;
+                    row.pattern_drawing_rev_no = item.custom_pattern_drawing_rev_no;
+                    row.purchase_specification_no = item.custom_purchase_specification_no;
+                    row.purchase_specification_rev_no = item.custom_purchase_specification_rev_no;
                 });
             }
 

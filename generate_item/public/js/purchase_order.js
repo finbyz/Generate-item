@@ -69,22 +69,30 @@ frappe.ui.form.on('Purchase Order', {
 		// Check if items exist and iterate properly
 
 		
+		
+		
+		
 		frm.set_query("custom_batch_no", "items", function (doc, cdt, cdn) {
 			let row = locals[cdt][cdn];
-		
-			// Allow batch only if subcontracted PO
-			if (!doc.is_subcontracted || !row.fg_item) {
-				return {};
+			
+			// Safety checks
+			if (!doc.is_subcontracted || !doc.branch || !row.fg_item) {
+				return {
+					filters: {
+						name: ["=", ""]  
+					}
+				};
 			}
-		
+			
 			return {
+				query: "generate_item.utils.purchase_order.get_valid_batches",
 				filters: {
-					item: row.fg_item
+					branch: doc.branch,
+					item: row.fg_item,
+					is_active: 1
 				}
 			};
 		});
-		
-		
 
 		if (frm.doc.docstatus == 1)
 		{

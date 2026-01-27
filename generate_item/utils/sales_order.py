@@ -328,3 +328,32 @@ def create_crm_note_from_sales_order(sales_order):
 
     return crm_note.name
 
+
+
+
+def before_validate(doc, method=None):
+    validate_free_items_component(doc)
+
+
+def validate_free_items_component(doc):
+    # Collect all item_codes in the Sales Order
+    item_codes = {item.item_code for item in doc.items}
+
+    for item in doc.items:
+        if item.is_free_item:
+            # component_of must be set
+            if not item.component_of:
+                frappe.throw(
+                    f"Row {item.idx}: Free item <b>{item.item_code}</b> must be linked to a main item."
+                )
+
+            # component_of item must exist in same Sales Order
+            if item.component_of not in item_codes:
+                frappe.throw(
+                    f"""
+                    Row {item.idx}: Main item <b>{item.component_of}</b>
+                    for free item <b>{item.item_code}</b> is not present
+                    in the Sales Order items table.
+                    """
+                )
+

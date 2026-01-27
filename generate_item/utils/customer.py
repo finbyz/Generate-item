@@ -25,7 +25,7 @@ def supplier_validate(self, method=None):
     if not self.gstin:
         return
 
-    # Find any customer with same GSTIN except current
+    # Find any Supplier with same GSTIN except current
     existing = frappe.db.exists(
         "Supplier",
         {

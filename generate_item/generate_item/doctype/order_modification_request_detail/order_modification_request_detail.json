@@ -7,11 +7,26 @@
  "engine": "InnoDB",
  "field_order": [
   "item",
+  "po_line_no",
+  "batch_no",
   "column_break_1eqv",
   "qty",
   "rev_qty",
-  "batch_no",
-  "po_line_no"
+  "drg_and_pur_spec_section",
+  "drawing_no",
+  "rev_drawing_no",
+  "drawing_rev_no",
+  "rev_drawing_rev_no",
+  "column_break_98rx",
+  "pattern_drawing_no",
+  "pattern_drawing_rev_no",
+  "rev_pattern_drawing_no",
+  "rev_pattern_drawing_rev_no",
+  "column_break_yvwv",
+  "purchase_specification_rev_no",
+  "rev_purchase_specification_rev_no",
+  "purchase_specification_no",
+  "rev_purchase_specification_no"
  ],
  "fields": [
   {
@@ -51,13 +66,92 @@
    "fieldtype": "Float",
    "in_list_view": 1,
    "label": "Rev Qty"
+  },
+  {
+   "fieldname": "drg_and_pur_spec_section",
+   "fieldtype": "Section Break",
+   "label": "DRG and PUR Spec"
+  },
+  {
+   "fieldname": "drawing_no",
+   "fieldtype": "Data",
+   "label": "Drawing No ",
+   "read_only": 1
+  },
+  {
+   "fieldname": "drawing_rev_no",
+   "fieldtype": "Data",
+   "label": "Drawing Rev No ",
+   "read_only": 1
+  },
+  {
+   "fieldname": "pattern_drawing_no",
+   "fieldtype": "Data",
+   "label": "Pattern Drawing No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "pattern_drawing_rev_no",
+   "fieldtype": "Data",
+   "label": "Pattern Drawing Rev No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "purchase_specification_no",
+   "fieldtype": "Data",
+   "label": "Purchase Specification No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "purchase_specification_rev_no",
+   "fieldtype": "Data",
+   "label": "Purchase Specification Rev No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_drawing_no",
+   "fieldtype": "Data",
+   "label": "Rev Drawing No "
+  },
+  {
+   "fieldname": "rev_drawing_rev_no",
+   "fieldtype": "Data",
+   "label": "Rev Drawing Rev No "
+  },
+  {
+   "fieldname": "rev_pattern_drawing_no",
+   "fieldtype": "Data",
+   "label": "Rev Pattern Drawing No"
+  },
+  {
+   "fieldname": "rev_pattern_drawing_rev_no",
+   "fieldtype": "Data",
+   "label": "Rev Pattern Drawing Rev No"
+  },
+  {
+   "fieldname": "rev_purchase_specification_no",
+   "fieldtype": "Data",
+   "label": "Rev Purchase Specification No"
+  },
+  {
+   "fieldname": "rev_purchase_specification_rev_no",
+   "fieldtype": "Data",
+   "label": "Rev Purchase Specification Rev No"
+  },
+  {
+   "fieldname": "column_break_98rx",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_yvwv",
+   "fieldtype": "Column Break"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-01-19 13:41:35.326212",
+ "modified": "2026-01-22 15:01:07.394526",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request Detail",

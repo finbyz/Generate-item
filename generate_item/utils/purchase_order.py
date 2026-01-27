@@ -553,3 +553,46 @@ def custom_make_subcontracting_order(source_name, target_doc=None, save=False, s
 	else:
 		frappe.throw(_("This PO has been fully subcontracted."))
 
+
+
+
+@frappe.whitelist()
+def get_valid_batches(doctype, txt, searchfield, start, page_len, filters):
+    """
+    Get valid batch numbers from BOM based on branch and finished item
+    """
+    branch = filters.get("branch")
+    item = filters.get("item")
+    is_active = filters.get("is_active", 1)
+    
+    if not branch or not item:
+        return []
+    
+    # Fetch BOMs matching the criteria
+    boms = frappe.get_all(
+        "BOM",
+        filters={
+            "branch": branch,
+            "item": item,
+            "is_active": is_active,
+            "custom_batch_no": ["!=", ""]
+        },
+        fields=["custom_batch_no"],
+        limit_page_length=page_len or 1000
+    )
+    
+    # Extract unique batch numbers
+    batch_list = list(set([bom.custom_batch_no for bom in boms if bom.custom_batch_no]))
+    
+    if not batch_list:
+        return []
+    
+    # Return batches that exist in Batch doctype and match the extracted batch numbers
+    return frappe.get_all(
+        "Batch",
+        filters={
+            "name": ["in", batch_list]
+        },
+        fields=["name"],
+        as_list=1
+    )

@@ -19,41 +19,104 @@ class OrderModificationRequest(Document):
 		if self.type == "BOM" and self.bom:
 			self.update_bom_items_using_db_set()
 
+	
+
 	def update_bom_items_using_db_set(self):
+		if not self.bom:
+			return
+
+		# 1️⃣ Collect OMR item codes
+		omr_items = {row.item for row in self.items if row.item}
+
+		# Get the current maximum index for new items
+		current_max_idx = frappe.db.get_value("BOM Item", {"parent": self.bom}, "max(idx)") or 0
+
+		# 2️⃣ Update or Insert items
 		for row in self.items:
-			#  revised items
-			if row.rev_qty and row.rev_qty > 0:
+			# Construct update_data only with fields that have values
+			update_data = {}
+			
+			# Always include qty if it's part of the revision
+			if row.rev_qty:
+				update_data["qty"] = row.rev_qty
+				
+			# Use if-blocks for the custom fields to prevent overwriting with None/Empty
+			if row.rev_drawing_no:
+				update_data["custom_drawing_no"] = row.rev_drawing_no
+			if row.rev_drawing_rev_no:
+				update_data["custom_drawing_rev_no"] = row.rev_drawing_rev_no
+			if row.rev_pattern_drawing_no:
+				update_data["custom_pattern_drawing_no"] = row.rev_pattern_drawing_no
+			if row.rev_pattern_drawing_rev_no:
+				update_data["custom_pattern_drawing_rev_no"] = row.rev_pattern_drawing_rev_no
+			if row.rev_purchase_specification_no:
+				update_data["custom_purchase_specification_no"] = row.rev_purchase_specification_no
+			if row.rev_purchase_specification_rev_no:
+				update_data["custom_purchase_specification_rev_no"] = row.rev_purchase_specification_rev_no
+			# Check if item exists in BOM
+			bom_item_name = frappe.db.get_value(
+				"BOM Item",
+				{"parent": self.bom, "parenttype": "BOM", "item_code": row.item},
+				"name"
+			)
 
-				# find matching BOM Item row
-				bom_item_name = frappe.db.get_value(
-					"BOM Item",
-					{
-						"parent": self.bom,
-						"parenttype": "BOM",
-						"item_code": row.item
-					},
-					"name"
-				)
+			
+			
 
-				if bom_item_name:
-					# directly updates DB
-					frappe.db.set_value(
-						"BOM Item",
-						bom_item_name,
-						"qty",
-						row.rev_qty,
-						update_modified=True
-					)
+			if bom_item_name:
+				# Update existing record in submitted BOM
+				frappe.db.set_value("BOM Item", bom_item_name, update_data, update_modified=True)
+			
+			elif frappe.utils.flt(row.rev_qty) > 0:
+				# Insert new record at the end
+				current_max_idx += 1
+				
+				# Combine basic info with the revision data
+				new_item_dict = {
+					"doctype": "BOM Item",
+					"parent": self.bom,
+					"parenttype": "BOM",
+					"parentfield": "items",
+					"item_code": row.item,
+					"idx": current_max_idx
+				}
+				new_item_dict.update(update_data)
+				
+				new_bom_item = frappe.get_doc(new_item_dict)
+				new_bom_item.db_insert()
+
+		# 3️⃣ Delete BOM items not present in OMR
+		bom_items = frappe.db.get_all(
+			"BOM Item",
+			filters={"parent": self.bom, "parenttype": "BOM"},
+			fields=["name", "item_code"]
+		)
+
+		for bom_row in bom_items:
+			if bom_row.item_code not in omr_items:
+				frappe.db.delete("BOM Item", bom_row.name)
+
+		# 4️⃣ Finalize
+		# Recalculate cost for the submitted BOM and update the header
+		bom_doc = frappe.get_doc("BOM", self.bom)
+		bom_doc.calculate_cost()
+		bom_doc.db_update()
+
+		frappe.db.commit()
 
 
-		
+
 	def validate_qty_and_rev_qty(self):
 		for row in self.items:
-			if row.qty == 0 and row.rev_qty == 0:
+			qty = frappe.utils.flt(row.qty)
+			rev_qty = frappe.utils.flt(row.rev_qty)
+
+			if qty == 0 and rev_qty == 0:
 				frappe.throw(
 					f"Row {row.idx}: Rev Qty cannot be 0 when Qty is 0",
 					title="Invalid Quantity"
 				)
+
 
 	def validate_sales_order(self):
 		if not self.sales_order:

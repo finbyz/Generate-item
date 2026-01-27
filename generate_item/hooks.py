@@ -160,7 +160,7 @@ override_doctype_class = {
     "Production Plan": "generate_item.overrides.production_plan.ProductionPlan",
     "Work Order": "generate_item.overrides.customWorkorder.WorkOrder",
     "Sales Order": "generate_item.overrides.custom_sales_order.CustomSalesOrder",
-    "Notification": "generate_item.overrides.notification.CustomNotification",
+
     # "Purchase Receipt": "generate_item.overrides.purchase_receipt.PurchaseReceipt",
 }
 
@@ -188,6 +188,10 @@ doc_events = {
         "before_save": "generate_item.utils.sales_order.before_save",
         "validate": "generate_item.utils.sales_order.validate"
     },
+        #     "before_save": "generate_item.utils.sales_order.before_save",
+        # "validate": "generate_item.utils.sales_order.validate",
+        # "before_validate":"generate_item.utils.sales_order.before_validate",
+        # "on_update":"generate_item.generate_item.doctype.workflow_email_send.workflow_email_send.send_email_on_workflow_change" 
     "Subcontracting Order": {
         "before_insert": "generate_item.utils.subcontracting_order.before_insert",
         "before_validate":"generate_item.utils.subcontracting_order.before_validate",
