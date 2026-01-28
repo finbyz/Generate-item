@@ -559,63 +559,89 @@ function populate_bom_fields(frm, row) {
 }
 
 frappe.ui.form.on('Material Request', {
+    
+        setup(frm) {
+            frm.set_query('custom_batch_no', 'items', function (doc, cdt, cdn) {
+                if (!doc.branch) {
+                    return {};
+                }
+    
+                return {
+                    filters: {
+                        branch: doc.branch
+                    }
+                };
+            });
+        },
+    
     before_save(frm) {
         mr_propagate_parent_fields_to_children(frm);
     },
     branch(frm) {
-        frm.trigger("set_linked_batch_query");
-    },
-    linked_batch: function(frm) {
-        const batch_value = frm.doc.linked_batch || '';
-        const rows = frm.doc.items || [];
-    
-        // Step 1: Update custom_batch_no for all items
-        rows.forEach(row => {
-            frappe.model.set_value(row.doctype, row.name, 'custom_batch_no', batch_value);
-        });
-    
-        // Step 2: For each item, find matching BOM and set fields
-        const promises = rows.map(row => {
-            return new Promise((resolve) => {
-                if (!row.sales_order || !row.item_code) {
-                    resolve();
-                    return;
+        // frm.trigger("set_linked_batch_query");
+        frm.set_query('custom_batch_no', 'items', function (doc, cdt, cdn) {
+            if (!doc.branch) {
+                return {};
+            }
+
+            return {
+                filters: {
+                    branch: doc.branch
                 }
-    
-                console.log('Fetching BOM data:', row.sales_order, row.item_code, batch_value);
-    
-                frappe.call({
-                    method: "generate_item.utils.material_request.get_bom_name",
-                    args: {
-                        sales_order: row.sales_order,
-                        linked_batch: batch_value,
-                        item_code: row.item_code
-                    },
-                    callback: function(r) {
-                        if (r.message && Object.keys(r.message).length > 0) {
-                            let bom_item = r.message;
-                            console.log('BOM Item data received:', bom_item);
-    
-                            frappe.model.set_value(row.doctype, row.name, {
-                                "bom_no": bom_item || "",
-                            });
-                        } else {
-                            console.log('No BOM data found for item:', row.item_code);
-                        }
-                        resolve();
-                    }
-                });
-            });
-        });
-    
-        // Wait for all calls to complete then refresh
-        Promise.all(promises).then(() => {
-            frm.refresh_field('items');
+            };
         });
     },
+    // linked_batch: function(frm) {
+    //     const batch_value = frm.doc.linked_batch || '';
+    //     const rows = frm.doc.items || [];
+    
+    //     // Step 1: Update custom_batch_no for all items
+    //     rows.forEach(row => {
+    //         frappe.model.set_value(row.doctype, row.name, 'custom_batch_no', batch_value);
+    //     });
+    
+    //     // Step 2: For each item, find matching BOM and set fields
+    //     const promises = rows.map(row => {
+    //         return new Promise((resolve) => {
+    //             if (!row.sales_order || !row.item_code) {
+    //                 resolve();
+    //                 return;
+    //             }
+    
+    //             console.log('Fetching BOM data:', row.sales_order, row.item_code, batch_value);
+    
+    //             frappe.call({
+    //                 method: "generate_item.utils.material_request.get_bom_name",
+    //                 args: {
+    //                     sales_order: row.sales_order,
+    //                     linked_batch: batch_value,
+    //                     item_code: row.item_code
+    //                 },
+    //                 callback: function(r) {
+    //                     if (r.message && Object.keys(r.message).length > 0) {
+    //                         let bom_item = r.message;
+    //                         console.log('BOM Item data received:', bom_item);
+    
+    //                         frappe.model.set_value(row.doctype, row.name, {
+    //                             "bom_no": bom_item || "",
+    //                         });
+    //                     } else {
+    //                         console.log('No BOM data found for item:', row.item_code);
+    //                     }
+    //                     resolve();
+    //                 }
+    //             });
+    //         });
+    //     });
+    
+    //     // Wait for all calls to complete then refresh
+    //     Promise.all(promises).then(() => {
+    //         frm.refresh_field('items');
+    //     });
+    // },
     
     refresh(frm) {
-        frm.trigger("set_linked_batch_query");
+        // frm.trigger("set_linked_batch_query");
         // Add custom button for BOM
         if (frm.doc.docstatus == 0) {
             frm.add_custom_button(
@@ -625,28 +651,28 @@ frappe.ui.form.on('Material Request', {
             );
         }
     },
-    set_linked_batch_query(frm) {
-        // If no branch selected, show nothing
-        if (!frm.doc.branch) {
-            frm.set_query("linked_batch", () => {
-                return { filters: { name: ["in", []] } };
-            });
-            frm.set_value("linked_batch", "");
-            return;
-        }
+    // set_linked_batch_query(frm) {
+    //     // If no branch selected, show nothing
+    //     if (!frm.doc.branch) {
+    //         frm.set_query("linked_batch", () => {
+    //             return { filters: { name: ["in", []] } };
+    //         });
+    //         frm.set_value("linked_batch", "");
+    //         return;
+    //     }
 
-        // Use set_query for Link fields
-        frm.set_query("linked_batch", () => {
-            return {
-                query: "generate_item.api.material_request.get_batches_linked_to_partly_delivered_sales_orders",
-                filters: {
-                    branch: frm.doc.branch
-                    // If later you want to filter by item_code also, you can add it here
-                    // item_code: frm.doc.item_code
-                }
-            };
-        });
-    },
+    //     // Use set_query for Link fields
+    //     frm.set_query("linked_batch", () => {
+    //         return {
+    //             query: "generate_item.api.material_request.get_batches_linked_to_partly_delivered_sales_orders",
+    //             filters: {
+    //                 branch: frm.doc.branch
+    //                 // If later you want to filter by item_code also, you can add it here
+    //                 // item_code: frm.doc.item_code
+    //             }
+    //         };
+    //     });
+    // },
     
     custom_drawing_no: mr_propagate_parent_fields_to_children,
     custom_pattern_drawing_no: mr_propagate_parent_fields_to_children,
@@ -819,7 +845,7 @@ frappe.ui.form.on('Material Request', {
                             frappe.throw(__("BOM does not contain any stock item"));
                         } else {
                             if (values.batch_reference) {
-                                frm.set_value("linked_batch", values.batch_reference);
+                                // frm.set_value("linked_batch", values.batch_reference);
                             }
                             erpnext.utils.remove_empty_first_row(frm, "items");
                             
@@ -866,7 +892,7 @@ frappe.ui.form.on('Material Request', {
             },
         });
         d.set_value("branch", frm.doc.branch || "");
-        d.set_value("batch_reference", frm.doc.linked_batch || "");
+        // d.set_value("batch_reference", frm.doc.linked_batch || "");
 
         d.show();
     },
