@@ -304,7 +304,7 @@ function create_purchase_receipt_by_supplier() {
             frappe.prompt(
                 [
                     {
-                        fieldname: "po_series",
+                        fieldname: "pr_series",
                         fieldtype: "Select",
                         label: __("PR Series"),
                         options: PO_SERIES_OPTIONS.join("\n"),
@@ -321,7 +321,7 @@ function create_purchase_receipt_by_supplier() {
                 function (values) {
                     call_create_po(
                         grouped_by_supplier,
-                        values.po_series,
+                        values.pr_series,
                         values.branch
                     );
                 }
@@ -329,20 +329,21 @@ function create_purchase_receipt_by_supplier() {
         }
     );
 
-    function call_create_po(grouped_by_supplier, po_series, branch) {
+    function call_create_po(grouped_by_supplier, pr_series, branch) {
 
         frappe.call({
             method: "generate_item.generate_item.report.requested_items_to_be_received.requested_items_to_be_received.create_purchase_receipt_by_supplier",
             args: {
-                grouped_items: grouped_by_supplier,
-                company: frappe.query_report.get_filter_value("company"),
-                po_series: po_series,
-                branch: branch
+                "grouped_items": grouped_by_supplier,
+                "company": frappe.query_report.get_filter_value("company"),
+                "pr_series": pr_series,
+                "branch": branch
             },
             freeze: true,
             freeze_message: __("Creating Purchase Receipt..."),
             callback: function (r) {
                 if (r.message) {
+                    console.log("res----------naming series",r.message)
                     let message = __("Purchase Receipt created successfully:") + "<br><br>";
 
                     r.message.forEach(pr => {
