@@ -466,6 +466,9 @@ frappe.ui.form.on("Delivery Note", {
         if( frm.doc.docstatus === 0){
 
             check_insufficient_items(frm);
+            remove_non_stock_items_and_adjust_qty(frm);
+            
+           
         }
         if (
             !frm.doc.is_return &&
@@ -828,24 +831,6 @@ function apply_permissions(frm) {
 // }
 
 
-// function check_insufficient_items(frm) {
-//     frm.remove_custom_button('Remove Insufficient Items');
-   
-//     if (!frm.doc.items || frm.doc.items.length === 0) {
-//         return;
-//     }
-   
-//     const has_insufficient_items = frm.doc.items.some(item => {
-//         return item.actual_qty < item.qty;
-//     });
-   
-//     if (has_insufficient_items) {
-//         frm.add_custom_button(__('Remove Insufficient Items'), function() {
-//             remove_insufficient_items(frm);
-//         }).addClass('btn-danger');
-//     }
-// }
-
 function check_insufficient_items(frm) {
     frm.remove_custom_button('Remove Insufficient Items');
    
@@ -853,173 +838,43 @@ function check_insufficient_items(frm) {
         return;
     }
    
-    // Check for insufficient stock OR invalid batches
-    const has_issues = frm.doc.items.some(item => {
-        return item.actual_qty < item.qty; // Batch validation will happen on button click
+    const has_insufficient_items = frm.doc.items.some(item => {
+        return item.actual_qty < item.qty;
     });
    
-    if (has_issues) {
+    if (has_insufficient_items) {
         frm.add_custom_button(__('Remove Insufficient Items'), function() {
             remove_insufficient_items(frm);
         }).addClass('btn-danger');
     }
 }
 
-// function remove_insufficient_items(frm) {
-//     let removed_items = [];
-//     let valid_items = [];
-   
-//     frm.doc.items.forEach(item => {
-//         if (item.actual_qty < item.qty) {
-//             removed_items.push({
-//                 item_code: item.item_code,
-//                 item_name: item.item_name,
-//                 qty: item.qty,
-//                 actual_qty: item.actual_qty,
-//                 shortage: item.qty - item.actual_qty,
-//                 warehouse: item.warehouse
-//             });
-//         } else {
-//             valid_items.push(item);
-//         }
-//     });
-   
-//     if (removed_items.length > 0) {
-//         show_removal_confirmation(frm, removed_items, valid_items);
-//     }
-// }
+
 
 function remove_insufficient_items(frm) {
     let removed_items = [];
     let valid_items = [];
-    let invalid_batch_items = [];
-    
-    // First, collect all items and check batches
-    let items_to_check = [];
+   
     frm.doc.items.forEach(item => {
-        items_to_check.push({
-            item: item,
-            needs_batch_check: (item.batch_no || item.custom_batch_no) && item.item_code
-        });
-    });
-    
-    // Check batches for all items
-    let pending_checks = 0;
-    let batch_check_results = {};
-    
-    items_to_check.forEach((check_item, index) => {
-        if (check_item.needs_batch_check) {
-            pending_checks += 2; // batch_no + custom_batch_no
-            
-            // Check batch_no
-            if (check_item.item.batch_no) {
-                frappe.call({
-                    method: 'frappe.client.get_list',
-                    args: {
-                        doctype: 'Batch',
-                        filters: {
-                            name: check_item.item.batch_no,
-                            item: check_item.item.item_code,
-                            disabled: 0
-                        },
-                        fields: ['name'],
-                        limit_page_length: 1
-                    },
-                    async: false,
-                    callback: function(r) {
-                        batch_check_results[index] = batch_check_results[index] || {};
-                        batch_check_results[index].batch_no_valid = (r.message && r.message.length > 0);
-                        pending_checks--;
-                    }
-                });
-            } else {
-                pending_checks--;
-            }
-            
-            // Check custom_batch_no
-            if (check_item.item.custom_batch_no) {
-                frappe.call({
-                    method: 'frappe.client.get_list',
-                    args: {
-                        doctype: 'Batch',
-                        filters: {
-                            name: check_item.item.custom_batch_no,
-                            item: check_item.item.item_code,
-                            disabled: 0
-                        },
-                        fields: ['name'],
-                        limit_page_length: 1
-                    },
-                    async: false,
-                    callback: function(r) {
-                        batch_check_results[index] = batch_check_results[index] || {};
-                        batch_check_results[index].custom_batch_no_valid = (r.message && r.message.length > 0);
-                        pending_checks--;
-                    }
-                });
-            } else {
-                pending_checks--;
-            }
-        }
-    });
-    
-    // Wait for all checks to complete, then process results
-    setTimeout(() => {
-        items_to_check.forEach((check_item, index) => {
-            let item = check_item.item;
-            let batch_results = batch_check_results[index] || {};
-            
-            // Check if batch_no is invalid
-            let has_invalid_batch_no = item.batch_no && batch_results.batch_no_valid === false;
-            
-            // Check if custom_batch_no is invalid
-            let has_invalid_custom_batch = item.custom_batch_no && batch_results.custom_batch_no_valid === false;
-            
-            // Check insufficient stock
-            let has_insufficient_stock = item.actual_qty < item.qty;
-            
-            if (has_invalid_batch_no || has_invalid_custom_batch || has_insufficient_stock) {
-                let removal_reasons = [];
-                
-                if (has_insufficient_stock) {
-                    removal_reasons.push(`Insufficient Stock (Actual: ${item.actual_qty}, Required: ${item.qty})`);
-                }
-                
-                if (has_invalid_batch_no) {
-                    removal_reasons.push(`Invalid Batch No: ${item.batch_no}`);
-                }
-                
-                if (has_invalid_custom_batch) {
-                    removal_reasons.push(`Invalid Custom Batch: ${item.custom_batch_no}`);
-                }
-                
-                removed_items.push({
-                    item_code: item.item_code,
-                    item_name: item.item_name,
-                    qty: item.qty,
-                    actual_qty: item.actual_qty,
-                    shortage: item.qty - item.actual_qty,
-                    warehouse: item.warehouse,
-                    batch_no: item.batch_no || '',
-                    custom_batch_no: item.custom_batch_no || '',
-                    reasons: removal_reasons
-                });
-            } else {
-                valid_items.push(item);
-            }
-        });
-        
-        if (removed_items.length > 0) {
-            show_removal_confirmation(frm, removed_items, valid_items);
-        } else {
-            frappe.msgprint({
-                title: __('No Issues Found'),
-                message: __('All items have sufficient stock and valid batches.'),
-                indicator: 'green'
+        if (item.actual_qty < item.qty) {
+            removed_items.push({
+                item_code: item.item_code,
+                item_name: item.item_name,
+                qty: item.qty,
+                actual_qty: item.actual_qty,
+                shortage: item.qty - item.actual_qty,
+                warehouse: item.warehouse
             });
+        } else {
+            valid_items.push(item);
         }
-    }, 500); // Small delay to ensure all async calls complete
+    });
+   
+    if (removed_items.length > 0) {
+        show_removal_confirmation(frm, removed_items, valid_items);
+    }
 }
+
 
 function show_removal_confirmation(frm, removed_items, valid_items) {
     let msg = `<p>${__('The following items have insufficient stock and will be removed:')}</p><ul>`;
@@ -1034,5 +889,182 @@ function show_removal_confirmation(frm, removed_items, valid_items) {
         frm.dirty(); 
         check_insufficient_items(frm); 
         frappe.msgprint(__('Insufficient items removed successfully.'));
+    });
+}
+
+function remove_non_stock_items_and_adjust_qty(frm) {
+    if (!frm.doc.items || frm.doc.items.length === 0) {
+        frappe.msgprint({
+            title: __('No Items'),
+            message: __('No items found in Delivery Note.'),
+            indicator: 'orange'
+        });
+        return;
+    }
+
+    frappe.call({
+        method: "generate_item.utils.delivery_note.get_stock_items_and_batch_qty",
+        args: {
+            items: frm.doc.items.map(item => ({
+                item_code: item.item_code,
+                warehouse: item.warehouse,
+                batch_no: item.batch_no || item.custom_batch_no || null,
+                qty: item.qty,
+                name: item.name,
+                item_name: item.item_name
+            })),
+            posting_date: frm.doc.posting_date,
+            posting_time: frm.doc.posting_time
+        },
+        freeze: true,
+        freeze_message: __('Checking stock items and batch quantities...'),
+        callback: function(r) {
+            if (r.message && !r.exc) {
+                const result = r.message;
+                let removed_items = [];
+                let updated_items = [];
+                let items_to_keep = [];
+
+                frm.doc.items.forEach(item => {
+                    const item_result = result.items_data[item.name];
+                    
+                    if (!item_result) {
+                        // Item not found in result, keep as is
+                        items_to_keep.push(item);
+                        return;
+                    }
+
+                    // Remove non-stock items
+                    if (!item_result.is_stock_item) {
+                        removed_items.push({
+                            item_code: item.item_code,
+                            item_name: item.item_name,
+                            qty: item.qty,
+                            reason: __('Non-stock item')
+                        });
+                        return;
+                    }
+
+                    // For stock items, adjust quantity based on batch-wise stock
+                    let adjusted_qty = item.qty;
+                    let qty_adjusted = false;
+                    let adjustment_reason = '';
+
+                    if (item_result.batch_no && item_result.available_qty !== null) {
+                        if (item_result.available_qty < item.qty) {
+                            adjusted_qty = item_result.available_qty;
+                            qty_adjusted = true;
+                            adjustment_reason = __(`Batch {0} has only {1} available (requested: {2})`, 
+                                [item_result.batch_no, item_result.available_qty, item.qty]);
+                        }
+                    } else if (!item_result.batch_no && item_result.available_qty !== null) {
+                        // Item without batch - check general stock
+                        if (item_result.available_qty < item.qty) {
+                            adjusted_qty = item_result.available_qty;
+                            qty_adjusted = true;
+                            adjustment_reason = __(`Warehouse has only {0} available (requested: {1})`, 
+                                [item_result.available_qty, item.qty]);
+                        }
+                    }
+
+                    if (qty_adjusted && adjusted_qty <= 0) {
+                        // Remove item if adjusted quantity is zero or negative
+                        removed_items.push({
+                            item_code: item.item_code,
+                            item_name: item.item_name,
+                            qty: item.qty,
+                            reason: adjustment_reason || __('No stock available')
+                        });
+                    } else {
+                        // Update item quantity if adjusted
+                        if (qty_adjusted) {
+                            frappe.model.set_value(item.doctype, item.name, 'qty', adjusted_qty);
+                            updated_items.push({
+                                item_code: item.item_code,
+                                item_name: item.item_name,
+                                old_qty: item.qty,
+                                new_qty: adjusted_qty,
+                                reason: adjustment_reason
+                            });
+                        }
+                        items_to_keep.push(item);
+                    }
+                });
+
+                // Show confirmation dialog
+                let msg = '';
+                if (removed_items.length > 0 || updated_items.length > 0) {
+                    msg += '<p><b>' + __('The following changes will be made:') + '</b></p>';
+                    
+                    if (removed_items.length > 0) {
+                        msg += '<p><b>' + __('Items to be removed (Non-stock or zero stock):') + '</b></p><ul>';
+                        removed_items.forEach(item => {
+                            msg += `<li>${item.item_name} (${item.item_code}) - Qty: ${item.qty} - ${item.reason}</li>`;
+                        });
+                        msg += '</ul>';
+                    }
+
+                    if (updated_items.length > 0) {
+                        msg += '<p><b>' + __('Items with adjusted quantities:') + '</b></p><ul>';
+                        updated_items.forEach(item => {
+                            msg += `<li>${item.item_name} (${item.item_code}) - Qty: ${item.old_qty} → ${item.new_qty} - ${item.reason}</li>`;
+                        });
+                        msg += '</ul>';
+                    }
+
+                    msg += '<p>' + __('Do you want to continue?') + '</p>';
+
+                    frappe.confirm(msg, function() {
+                        // Update quantities first
+                        items_to_update.forEach(update_info => {
+                            frappe.model.set_value(
+                                update_info.item.doctype,
+                                update_info.item.name,
+                                'qty',
+                                update_info.new_qty
+                            );
+                        });
+                        
+                        // Remove non-stock items
+                        frm.doc.items = items_to_keep;
+                        frm.refresh_field('items');
+                        
+                        // Trigger recalculation
+                        if (items_to_update.length > 0) {
+                            frm.trigger('calculate_taxes_and_totals');
+                        }
+                        
+                        frm.dirty();
+                        
+                        let success_msg = '';
+                        if (removed_items.length > 0) {
+                            success_msg += __('Removed {0} non-stock item(s). ', [removed_items.length]);
+                        }
+                        if (updated_items.length > 0) {
+                            success_msg += __('Adjusted quantities for {0} item(s).', [updated_items.length]);
+                        }
+                        if (success_msg) {
+                            frappe.show_alert({
+                                message: success_msg,
+                                indicator: 'green'
+                            }, 5);
+                        }
+                    });
+                } else {
+                    frappe.msgprint({
+                        title: __('No Changes Needed'),
+                        message: __('All items are stock items with sufficient batch-wise stock.'),
+                        indicator: 'green'
+                    });
+                }
+            }
+        },
+        error: function(err) {
+            frappe.msgprint({
+                title: __('Error'),
+                message: __('Unable to check stock items. Please try again.'),
+                indicator: 'red'
+            });
+        }
     });
 }

@@ -893,4 +893,99 @@ def validate_free_items(doc):
         frappe.throw(_(message), title=_("Free Item Validation Failed"))
 
 
+@frappe.whitelist()
+def get_stock_items_and_batch_qty(items, posting_date=None, posting_time=None):
+    """
+    Check if items are stock items and get batch-wise stock quantities.
+    
+    Args:
+        items: List of dicts with item_code, warehouse, batch_no, qty, name, item_name
+        posting_date: Optional posting date for stock calculation
+        posting_time: Optional posting time for stock calculation
+    
+    Returns:
+        dict with items_data containing is_stock_item, batch_no, available_qty for each item
+    """
+    from erpnext.stock.doctype.batch.batch import get_batch_qty
+    
+    if isinstance(items, str):
+        items = frappe.parse_json(items)
+    
+    if not items:
+        return {"items_data": {}}
+    
+    # Get all unique item codes
+    item_codes = list(set([item.get('item_code') for item in items if item.get('item_code')]))
+    
+    # Fetch is_stock_item for all items in one query
+    item_stock_map = {}
+    if item_codes:
+        item_data = frappe.db.sql("""
+            SELECT name, is_stock_item
+            FROM `tabItem`
+            WHERE name IN %s
+        """, (item_codes,), as_dict=True)
+        
+        item_stock_map = {row.name: row.is_stock_item for row in item_data}
+    
+    items_data = {}
+    
+    for item in items:
+        item_code = item.get('item_code')
+        warehouse = item.get('warehouse')
+        batch_no = item.get('batch_no')
+        item_name = item.get('name')  # DN item name (can be temporary name for new rows)
+        
+        if not item_code:
+            continue
+        
+        # Use a unique key - if item_name doesn't exist, create one based on index
+        if not item_name:
+            item_name = f"item_{len(items_data)}"
+        
+        is_stock_item = item_stock_map.get(item_code, 0)
+        available_qty = None
+        batch_no_used = None
+        
+        # Only check stock for stock items with warehouse
+        if is_stock_item and warehouse:
+            batch_no_used = batch_no
+            
+            try:
+                if batch_no:
+                    # Get batch-wise stock quantity
+                    available_qty = get_batch_qty(
+                        batch_no=batch_no,
+                        warehouse=warehouse,
+                        item_code=item_code,
+                        posting_date=posting_date,
+                        posting_time=posting_time
+                    )
+                    # get_batch_qty returns a float when batch_no and warehouse are provided
+                    if available_qty is None:
+                        available_qty = 0
+                    available_qty = flt(available_qty)
+                else:
+                    # Get general stock quantity from Bin
+                    available_qty = flt(frappe.db.get_value(
+                        "Bin",
+                        {"item_code": item_code, "warehouse": warehouse},
+                        "actual_qty"
+                    ) or 0)
+            except Exception as e:
+                frappe.log_error(
+                    f"Error getting stock for item {item_code}, batch {batch_no}, warehouse {warehouse}: {str(e)}",
+                    "get_stock_items_and_batch_qty"
+                )
+                available_qty = 0
+        
+        items_data[item_name] = {
+            "is_stock_item": is_stock_item,
+            "batch_no": batch_no_used,
+            "available_qty": available_qty
+        }
+    
+    return {"items_data": items_data}
+
+
 
