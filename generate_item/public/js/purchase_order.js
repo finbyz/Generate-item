@@ -1,4 +1,26 @@
 
+
+function set_supplier_warehouse(frm) {
+    if (!frm.doc.branch || !frm.doc.supplier) return;
+
+    frappe.db.get_list("Warehouse", {
+        filters: [
+            ["Warehouse", "branch", "=", frm.doc.branch],
+            ["Warehouse", "is_group", "=", 0],
+            ["Warehouse", "name", "like", `%${frm.doc.supplier}%`]
+        ],
+        fields: ["name"],
+        order_by: "name asc",
+        limit: 1
+    }).then(r => {
+        if (r.length) {
+            frm.set_value("supplier_warehouse", r[0].name);
+        }
+    });
+}
+
+
+
 frappe.ui.form.on('Purchase Order', {
 	
 	onload: function(frm) {
@@ -18,7 +40,7 @@ frappe.ui.form.on('Purchase Order', {
 		setTimeout(() => {
 			console.log("Timer Works");
 			if (frm.doc.supplier_address) {
-				frappe.get_value("Contact", {
+				frappe.db.get_value("Contact", {
 					address: frm.doc.supplier_address
 				}, "name").then(r => {
 					if (r.message) {
@@ -31,6 +53,12 @@ frappe.ui.form.on('Purchase Order', {
 			}
 			
 		}, 1000);
+		set_supplier_warehouse(frm)
+
+	},
+	branch:function(frm){
+		set_supplier_warehouse(frm)
+
 	},
 
 	schedule_date: function(frm) {

@@ -126,15 +126,61 @@ def get_data(filters):
 
 def update_received_amount(data):
 	pr_data = get_received_amount_data(data)
+	
+
 
 	for row in data:
 		row.received_qty_amount = flt(pr_data.get(row.name))
 
 
+# def get_received_amount_data(data):
+# 	pr = frappe.qb.DocType("Purchase Receipt")
+# 	pr_item = frappe.qb.DocType("Purchase Receipt Item")
+
+# 	po_items = [row.name for row in data]
+
+# 	if not po_items:
+# 		return frappe._dict()
+
+# 	query = (
+# 		frappe.qb.from_(pr)
+# 		.inner_join(pr_item)
+# 		.on(pr_item.parent == pr.name)
+# 		.select(
+# 			pr_item.purchase_order_item,
+# 			Sum(pr_item.base_amount).as_("received_qty_amount"),
+# 		)
+# 		.where((pr.docstatus == 1) & (pr_item.purchase_order_item.isin(po_items)))
+# 		.groupby(pr_item.purchase_order_item)
+# 	)
+
+# 	data = query.run()
+
+# 	if not data:
+# 		return frappe._dict()
+
+# 	return frappe._dict(data)
+
+def update_received_amount(data):
+	pr_data = get_received_amount_data(data)
+
+	for row in data:
+		received_stock_qty = flt(pr_data.get(row.name, {}).get("received_stock_qty"))
+		row.received_stock_qty = received_stock_qty
+
+		# ✅ Point 2: Pending Qty in Stock UOM
+		row.pending_stock_qty = flt(row.stock_qty) - received_stock_qty
+
+		# Existing amount logic
+		row.received_qty_amount = flt(
+			pr_data.get(row.name, {}).get("received_qty_amount")
+		)
+
 def get_received_amount_data(data):
 	pr = frappe.qb.DocType("Purchase Receipt")
 	pr_item = frappe.qb.DocType("Purchase Receipt Item")
 
+	# PO Item names
 	po_items = [row.name for row in data]
 
 	if not po_items:
@@ -146,18 +192,36 @@ def get_received_amount_data(data):
 		.on(pr_item.parent == pr.name)
 		.select(
 			pr_item.purchase_order_item,
+
+			# Amount received (already correct)
 			Sum(pr_item.base_amount).as_("received_qty_amount"),
+
+			# ✅ Point 1: Accepted qty in Stock UOM
+			Sum(pr_item.stock_qty).as_("received_stock_qty"),
 		)
-		.where((pr.docstatus == 1) & (pr_item.purchase_order_item.isin(po_items)))
+		.where(
+			(pr.docstatus == 1) &
+			(pr_item.purchase_order_item.isin(po_items))
+		)
 		.groupby(pr_item.purchase_order_item)
 	)
 
-	data = query.run()
+	result = query.run(as_dict=True)
 
-	if not data:
+	if not result:
 		return frappe._dict()
 
-	return frappe._dict(data)
+	# Build map: {po_item_name: values}
+	out = frappe._dict()
+
+	for row in result:
+		out[row.purchase_order_item] = {
+			"received_qty_amount": flt(row.received_qty_amount),
+			"received_stock_qty": flt(row.received_stock_qty),
+		}
+
+	return out
+
 
 
 def prepare_data(data, filters):
@@ -312,7 +376,7 @@ def get_columns(filters):
 			},
 			{
 				"label": _("Received In Stock UOM"),
-				"fieldname": "received_qty",
+				"fieldname": "received_stock_qty",
 				"fieldtype": "Float",
 				"width": 120,
 				"convertible": "qty",
@@ -327,7 +391,7 @@ def get_columns(filters):
 			},
 			{
 				"label": _("Pending In Stock UOM"),
-				"fieldname": "pending_qty",
+				"fieldname": "pending_stock_qty",
 				"fieldtype": "Float",
 				"width": 80,
 				"convertible": "qty",

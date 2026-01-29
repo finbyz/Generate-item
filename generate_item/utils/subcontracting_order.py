@@ -264,7 +264,7 @@ def custom_make_rm_stock_entry(
                 ignore_child_tables=True,
             )
             # EXPLICIT PARENT → PARENT MAPPING
-            stock_entry.purchase_order = subcontract_order.purchase_order
+            stock_entry.po_number = subcontract_order.purchase_order
 
             stock_entry.purpose = "Send to Subcontractor"
 
