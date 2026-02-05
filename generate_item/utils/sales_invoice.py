@@ -450,19 +450,55 @@ def validate_duplicate_si(doc, method):
 
 def remove_free_items(doc):
 	"""
-	Remove free items from Sales Invoice during validate
+	Remove free items from Sales Invoice during validate.
+	Before removing, add remarks about free issue items to their associated parent items.
 	"""
 	if not doc.items:
 		return
 
-	items_to_keep = []
-
+	# Step 1: Collect free item info grouped by parent item (component_of)
+	free_items_by_parent = {}
 	for row in doc.items:
-		# keep only non-free items
+		if row.is_free_item and row.component_of:
+			parent_item = row.component_of
+			if parent_item not in free_items_by_parent:
+				free_items_by_parent[parent_item] = []
+			
+			# Collect free item details
+			free_items_by_parent[parent_item].append({
+				"item_code": row.item_code,
+				"qty": row.qty,
+				"uom": row.uom or "",
+				"description": row.description or row.item_name or ""
+			})
+
+	# Step 2: Add remarks to parent items about their linked free issue items
+	for row in doc.items:
+		if not row.is_free_item and row.item_code in free_items_by_parent:
+			free_items = free_items_by_parent[row.item_code]
+			
+			# Build the remark text for free issue items
+			remark_lines = ["Free Issue Items:"]
+			for fi in free_items:
+				remark_lines.append(
+					f"  • {fi['item_code']} - Qty: {fi['qty']} {fi['uom']}"
+				)
+			
+			free_item_remark = "\n".join(remark_lines)
+			
+			# Append to existing remarks or set new
+			if row.remarks:
+				row.remarks = f"{row.remarks}\n{free_item_remark}"
+			else:
+				row.remarks = free_item_remark
+
+	# Step 3: Keep only non-free items
+	items_to_keep = []
+	for row in doc.items:
 		if not row.is_free_item:
 			items_to_keep.append(row)
 
-	# reset child table safely
+	# Reset child table safely
 	doc.set("items", items_to_keep)
 
 
