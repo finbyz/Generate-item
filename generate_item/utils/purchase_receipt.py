@@ -207,3 +207,22 @@ def make_quality_inspections(doctype, docname, items):
 		)
 
 	return inspection_names
+
+
+def update_received_qty_stock_uom(doc, method):
+	for item in doc.items:
+		if not item.purchase_order or not item.purchase_order_item:
+			continue
+
+			
+
+		po_item = frappe.get_doc("Purchase Order Item", item.purchase_order_item)
+		if item.received_stock_qty :
+			po_item.db_set(
+				"received_qty_in_stock_uom",
+				item.received_stock_qty,
+				update_modified=False
+			)
+
+
+

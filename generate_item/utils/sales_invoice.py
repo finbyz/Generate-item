@@ -31,7 +31,7 @@ def set_remaining_actual_taxes(invoice_name):
 @frappe.whitelist()
 def get_remaining_taxes_for_draft(sales_orders, current_invoice_name=None):
     """
-    Calculate remaining taxes for DRAFT/UNSAVED documents
+    Calculate remaining taxes for DRAFT/UNSAVED documents (from Sales Order)
     Returns a dictionary of account_head: remaining_amount
     """
     if isinstance(sales_orders, str):
@@ -140,19 +140,143 @@ def after_insert(doc, method=None):
 
 def _calculate_and_set_remaining_taxes(doc):
     """
-    Internal function to calculate and set remaining actual taxes from Sales Order
-    after deducting taxes from existing Sales Invoices
+    Internal function to calculate and set remaining actual taxes.
+    Priority: 
+    1. If invoice is created from Delivery Note, fetch taxes from DN and check SI billed against DN.
+    2. Otherwise, fetch taxes from Sales Order and check SI billed against SO.
     """
-    # Get all unique sales orders from items
-    sales_orders = list(set([item.sales_order for item in doc.items if item.sales_order]))
+    # Check if invoice is created from Delivery Note(s)
+    delivery_notes = list(set([item.delivery_note for item in doc.items if item.delivery_note]))
     
-    if not sales_orders:
-        return
-    
-    # Track if any changes were made
+    # If has Delivery Notes, prioritize fetching taxes from DN
+    if delivery_notes:
+        _calculate_remaining_taxes_from_dn(doc, delivery_notes)
+    else:
+        # Fallback: fetch from Sales Order
+        sales_orders = list(set([item.sales_order for item in doc.items if item.sales_order]))
+        if sales_orders:
+            _calculate_remaining_taxes_from_so(doc, sales_orders)
+
+
+def _calculate_remaining_taxes_from_dn(doc, delivery_notes):
+    """
+    Calculate and set remaining actual taxes from Delivery Note(s).
+    This is used when Sales Invoice is created from Delivery Note.
+    """
     taxes_updated = False
     
-    # Process each sales order
+    for dn_name in delivery_notes:
+        # Get Delivery Note taxes with charge_type = "Actual"
+        dn_doc = frappe.get_doc("Delivery Note", dn_name)
+        dn_actual_taxes = {}
+        
+        for tax in dn_doc.taxes:
+            if tax.charge_type == "Actual":
+                key = tax.account_head
+                if key not in dn_actual_taxes:
+                    dn_actual_taxes[key] = {
+                        'total_amount': 0,
+                        'account_head': tax.account_head,
+                        'description': tax.description,
+                        'cost_center': tax.cost_center,
+                        'branch': tax.get('branch'),
+                        'po_line_no': tax.get('po_line_no'),
+                        'idx': tax.idx
+                    }
+                dn_actual_taxes[key]['total_amount'] += tax.tax_amount or 0
+        
+        if not dn_actual_taxes:
+            continue
+        
+        # Get all existing Sales Invoices for this Delivery Note (excluding current and cancelled)
+        existing_invoices = frappe.get_all(
+            "Sales Invoice Item",
+            filters={
+                "delivery_note": dn_name,
+                "docstatus": ["!=", 2],  # Exclude cancelled
+                "parent": ["!=", doc.name]  # Exclude current invoice
+            },
+            fields=["parent"],
+            distinct=True
+        )
+        
+        # Calculate total billed actual taxes from existing invoices
+        billed_taxes = {}
+        for inv in existing_invoices:
+            si_doc = frappe.get_doc("Sales Invoice", inv.parent)
+            for tax in si_doc.taxes:
+                if tax.charge_type == "Actual":
+                    key = tax.account_head
+                    if key not in billed_taxes:
+                        billed_taxes[key] = 0
+                    billed_taxes[key] += tax.tax_amount or 0
+        
+        # Calculate remaining taxes and update current invoice
+        for account_head, dn_tax_data in dn_actual_taxes.items():
+            billed_amount = billed_taxes.get(account_head, 0)
+            remaining_amount = dn_tax_data['total_amount'] - billed_amount
+            
+            # Ensure remaining amount is not negative
+            remaining_amount = max(remaining_amount, 0)
+            
+            # Find matching tax row in current invoice and update
+            for tax in doc.taxes:
+                if tax.charge_type == "Actual" and tax.account_head == account_head:
+                    old_amount = tax.tax_amount or 0
+                    
+                    if old_amount != remaining_amount:
+                        # Update to remaining amount
+                        tax.tax_amount = remaining_amount
+                        tax.base_tax_amount = remaining_amount
+                        tax.tax_amount_after_discount_amount = remaining_amount
+                        tax.base_tax_amount_after_discount_amount = remaining_amount
+                        
+                        taxes_updated = True
+                        
+                        if remaining_amount > 0:
+                            frappe.msgprint(
+                                _("Tax '{0}' updated to remaining amount: {1}<br>"
+                                  "<small>Delivery Note Total: {2} | Already Billed: {3}</small>").format(
+                                    account_head,
+                                    frappe.format_value(remaining_amount, {'fieldtype': 'Currency'}),
+                                    frappe.format_value(dn_tax_data['total_amount'], {'fieldtype': 'Currency'}),
+                                    frappe.format_value(billed_amount, {'fieldtype': 'Currency'})
+                                ),
+                                alert=True,
+                                indicator='blue'
+                            )
+                        else:
+                            frappe.msgprint(
+                                _("Tax '{0}' set to 0 (Full amount already billed from Delivery Note {1})").format(
+                                    account_head, dn_name
+                                ),
+                                alert=True,
+                                indicator='orange'
+                            )
+                    break
+        
+        # Recalculate totals if taxes were updated
+        if taxes_updated:
+            doc.calculate_taxes_and_totals()
+            
+            # Update database if document is already saved
+            if doc.name and not doc.get("__islocal"):
+                doc.db_update()
+            
+            frappe.msgprint(
+                _("Actual taxes adjusted based on Delivery Note {0}").format(dn_name),
+                alert=True,
+                indicator='green'
+            )
+
+
+def _calculate_remaining_taxes_from_so(doc, sales_orders):
+    """
+    Calculate and set remaining actual taxes from Sales Order(s).
+    This is used when Sales Invoice is created directly from Sales Order (not via DN).
+    """
+    taxes_updated = False
+    
     for so_name in sales_orders:
         # Get Sales Order taxes with charge_type = "Actual"
         so_doc = frappe.get_doc("Sales Order", so_name)
@@ -260,14 +384,95 @@ def _calculate_and_set_remaining_taxes(doc):
 
 def validate(doc, method=None):
     """
-    Optional: Validate before save to show warning if taxes exceed Sales Order
-    This prevents over-billing
+    Optional: Validate before save to show warning if taxes exceed source document.
+    Priority: Check taxes against DN if created from DN, otherwise check against SO.
+    This prevents over-billing.
     """
     remove_free_items(doc)
     fetch_po_line_no_from_sales_order(doc)
     validate_duplicate_si(doc, method)
-    sales_orders = list(set([item.sales_order for item in doc.items if item.sales_order]))
     
+    # Check if invoice is created from Delivery Note(s)
+    delivery_notes = list(set([item.delivery_note for item in doc.items if item.delivery_note]))
+    
+    if delivery_notes:
+        _validate_taxes_from_dn(doc, delivery_notes)
+    else:
+        # Fallback: validate against Sales Order
+        sales_orders = list(set([item.sales_order for item in doc.items if item.sales_order]))
+        if sales_orders:
+            _validate_taxes_from_so(doc, sales_orders)
+
+
+def _validate_taxes_from_dn(doc, delivery_notes):
+    """Validate taxes don't exceed Delivery Note amounts."""
+    for dn_name in delivery_notes:
+        dn_doc = frappe.get_doc("Delivery Note", dn_name)
+        dn_actual_taxes = {}
+        
+        for tax in dn_doc.taxes:
+            if tax.charge_type == "Actual":
+                key = tax.account_head
+                if key not in dn_actual_taxes:
+                    dn_actual_taxes[key] = 0
+                dn_actual_taxes[key] += tax.tax_amount or 0
+        
+        if not dn_actual_taxes:
+            continue
+        
+        # Get existing invoices total
+        existing_invoices = frappe.get_all(
+            "Sales Invoice Item",
+            filters={
+                "delivery_note": dn_name,
+                "docstatus": ["!=", 2],
+                "parent": ["!=", doc.name]
+            },
+            fields=["parent"],
+            distinct=True
+        )
+        
+        billed_taxes = {}
+        for inv in existing_invoices:
+            si_doc = frappe.get_doc("Sales Invoice", inv.parent)
+            for tax in si_doc.taxes:
+                if tax.charge_type == "Actual":
+                    key = tax.account_head
+                    if key not in billed_taxes:
+                        billed_taxes[key] = 0
+                    billed_taxes[key] += tax.tax_amount or 0
+        
+        # Check current invoice taxes
+        for tax in doc.taxes:
+            if tax.charge_type == "Actual":
+                account_head = tax.account_head
+                dn_total = dn_actual_taxes.get(account_head, 0)
+                billed = billed_taxes.get(account_head, 0)
+                current = tax.tax_amount or 0
+                
+                if (billed + current) > dn_total:
+                    frappe.throw(
+                        _("Row #{0}: Tax '{1}' amount {2} exceeds remaining amount.<br><br>"
+                          "<b>Delivery Note {3}:</b><br>"
+                          "• Total: {4}<br>"
+                          "• Already Billed: {5}<br>"
+                          "• Remaining: {6}<br>"
+                          "• Current Invoice: {7}").format(
+                            tax.idx,
+                            account_head,
+                            frappe.format_value(current, {'fieldtype': 'Currency'}),
+                            dn_name,
+                            frappe.format_value(dn_total, {'fieldtype': 'Currency'}),
+                            frappe.format_value(billed, {'fieldtype': 'Currency'}),
+                            frappe.format_value(dn_total - billed, {'fieldtype': 'Currency'}),
+                            frappe.format_value(current, {'fieldtype': 'Currency'})
+                        ),
+                        title=_("Tax Amount Exceeded")
+                    )
+
+
+def _validate_taxes_from_so(doc, sales_orders):
+    """Validate taxes don't exceed Sales Order amounts."""
     for so_name in sales_orders:
         so_doc = frappe.get_doc("Sales Order", so_name)
         so_actual_taxes = {}

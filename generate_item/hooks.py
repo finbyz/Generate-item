@@ -180,6 +180,9 @@ doc_events = {
     "Purchase Receipt": {
         "before_save": "generate_item.utils.purchase_receipt.before_save",
         "validate": "generate_item.utils.purchase_receipt.validate",
+        "on_submit": "generate_item.utils.purchase_receipt.update_received_qty_stock_uom",
+        "on_cancel": "generate_item.utils.purchase_receipt.update_received_qty_stock_uom"
+ 
     },  
     "Stock Entry": {
         "before_insert": "generate_item.utils.stock_entry.before_insert"
