@@ -142,8 +142,8 @@ def before_save(doc, method):
                 item.custom_batch_no = batch_no
      # NEW: Set main_description from Item master based on main_item_code
     for supplied_item in doc.supplied_items:
-        if supplied_item.main_item_code and not supplied_item.main_description:
-            description = frappe.get_value("Item", supplied_item.main_item_code, "description")
+        if supplied_item.rm_item_code and not supplied_item.main_description:
+            description = frappe.get_value("Item", supplied_item.rm_item_code, "description")
             if description:
                 supplied_item.main_description = description
     
