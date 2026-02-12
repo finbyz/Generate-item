@@ -454,7 +454,7 @@ def get_data(filters):
 			"description as item_description",
 			"item_group",
 			"qty as order_qty",
-			"delivered_qty",
+			# "delivered_qty",
 			"rate as unit_rate",
 			"base_amount as item_basic_amount_inr",
 			"amount as order_amount_inr",
@@ -520,6 +520,8 @@ def get_data(filters):
 				+ (so.total_taxes_and_charges or 0)
 			)
 
+			delivered_qty = get_delivered_qty_from_invoice(so.sales_order, item.item_code)
+
 			row = [
 				so.sales_order,
 				so.branch or "",
@@ -553,8 +555,8 @@ def get_data(filters):
 				item.line_status or "",
 				item.infor_ref or item.custom_infor_ref or "",
 				item.order_qty,
-				item.delivered_qty or 0,
-				(item.order_qty or 0) - (item.delivered_qty or 0),
+				delivered_qty or 0,
+				(item.order_qty or 0) - (delivered_qty or 0),
 				so.order_currency,
 				so.exchange_rate,
 				item.unit_rate or 0,
@@ -590,6 +592,29 @@ def get_data(filters):
 			data.append(row)
 
 	return data
+
+
+def get_delivered_qty_from_invoice(sales_order, item_code):
+    """
+    Fetch the total delivered quantity for a specific item from Sales Invoice Items
+    linked to the given sales order.
+    """
+    result = frappe.db.sql(
+        """
+        SELECT SUM(delivered_qty) as total_delivered_qty
+        FROM `tabSales Invoice Item`
+        WHERE sales_order = %s
+          AND item_code = %s
+          AND docstatus IN (0, 1)
+        """,
+        (sales_order, item_code),
+        as_dict=True
+    )
+    
+    if result and result[0].total_delivered_qty:
+        return result[0].total_delivered_qty
+    
+    return 0
 
 def get_so_conditions(filters):
 	conditions = {

@@ -114,67 +114,6 @@ frappe.pages['sales-performance-da'].on_page_load = function (wrapper) {
             .value-card.collected { border-left: 4px solid #7B1FA2; }
             .value-card.warning { border-left: 4px solid #F44336; background: linear-gradient(135deg, #FFF3E0, #FFECB3); }
             
-            .bom-section {
-                background: var(--card-bg);
-                border-radius: 12px;
-                padding: 20px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-                border: 1px solid var(--border-color);
-                margin-bottom: 20px;
-            }
-            .bom-section h4 {
-                margin: 0 0 15px 0;
-                font-size: 16px;
-                font-weight: 600;
-                color: var(--heading-color);
-            }
-            .bom-summary {
-                display: flex;
-                gap: 20px;
-                margin-bottom: 15px;
-            }
-            .bom-summary .stat {
-                background: #FFF3E0;
-                padding: 12px 20px;
-                border-radius: 8px;
-                border-left: 4px solid #F44336;
-            }
-            .bom-summary .stat .num {
-                font-size: 20px;
-                font-weight: 700;
-                color: #E65100;
-            }
-            .bom-summary .stat .lbl {
-                font-size: 11px;
-                color: #BF360C;
-                text-transform: uppercase;
-            }
-            .bom-table {
-                width: 100%;
-                border-collapse: collapse;
-                font-size: 13px;
-            }
-            .bom-table th {
-                text-align: left;
-                padding: 10px 12px;
-                background: var(--control-bg);
-                border-bottom: 2px solid var(--border-color);
-                font-weight: 600;
-                color: var(--text-muted);
-                text-transform: uppercase;
-                font-size: 11px;
-            }
-            .bom-table td {
-                padding: 10px 12px;
-                border-bottom: 1px solid var(--border-color);
-            }
-            .bom-table tr:hover {
-                background: var(--control-bg);
-            }
-            .bom-table a {
-                color: var(--primary);
-                font-weight: 500;
-            }
             .chart-subtitle {
                 margin: -10px 0 10px 0;
                 font-size: 12px;
@@ -197,9 +136,9 @@ frappe.pages['sales-performance-da'].on_page_load = function (wrapper) {
                     </div>
                 </div>
                 <div class="chart-card">
-                    <h3>⏱️ Orders by Delay</h3>
+                    <h3>⏱️ Order Approval Delay</h3>
                     <div class="chart-wrapper">
-                        <canvas id="ordersDelayChart"></canvas>
+                        <canvas id="orderApprovalDelayChart"></canvas>
                     </div>
                 </div>
             </div>
@@ -247,18 +186,16 @@ frappe.pages['sales-performance-da'].on_page_load = function (wrapper) {
                 <div class="value-cards-row" id="collection-cards"></div>
             </div>
             
-            <div class="bom-section" id="bom-section">
-                <h4>⚠️ BOM Release Pending > 2 Weeks</h4>
-                <div id="bom-content"></div>
+            <div class="chart-card" id="bom-section">
+                <h3>⚠️ BOM Release Pending Delay</h3>
+                <div class="chart-wrapper">
+                    <canvas id="bomPendingChart"></canvas>
+                </div>
             </div>
         </div>
     `).appendTo(page.body);
 
-    let statusChart = null;
-    let delayChart = null;
-    let deliveryOtdChart = null;
-    let orderEntryOtdChart = null;
-    let orderApprovalOtdChart = null;
+    const charts = {};
 
     function load_data() {
         frappe.call({
@@ -284,11 +221,11 @@ frappe.pages['sales-performance-da'].on_page_load = function (wrapper) {
         }
 
         render_orders_status_chart(data.orders_status);
-        render_orders_delay_chart(data.orders_delay);
+        render_order_approval_delay_chart(data.order_approval_delay);
         render_booking_cards(data.order_booking);
         render_invoicing_cards(data.invoicing);
         render_collection_cards(data.outstanding_collection);
-        render_bom_pending(data.bom_pending);
+        render_bom_pending_chart(data.bom_pending);
         
         // OTD Pie Charts
         render_delivery_otd_chart(data.delivery_otd);
@@ -310,9 +247,9 @@ frappe.pages['sales-performance-da'].on_page_load = function (wrapper) {
             'Booked': '#2196F3'
         };
 
-        if (statusChart) statusChart.destroy();
+        if (charts.statusChart) charts.statusChart.destroy();
 
-        statusChart = new Chart(ctx, {
+        charts.statusChart = new Chart(ctx, {
             type: 'doughnut',
             data: {
                 labels: labels.map(l => `${l} (${data[l]?.count || 0})`),
@@ -348,47 +285,71 @@ frappe.pages['sales-performance-da'].on_page_load = function (wrapper) {
         });
     }
 
-    function render_orders_delay_chart(data) {
-        const ctx = document.getElementById('ordersDelayChart').getContext('2d');
-        
+    function render_order_approval_delay_chart(data) {
+        const ctx = document.getElementById('orderApprovalDelayChart').getContext('2d');
+        render_distribution_bar_chart(ctx, data, 'orderApprovalDelayChart', '#1565C0');
+    }
+
+    function render_bom_pending_chart(data) {
+        const ctx = document.getElementById('bomPendingChart').getContext('2d');
+        render_distribution_bar_chart(ctx, data, 'bomPendingChart', '#EF6C00');
+    }
+
+    function render_distribution_bar_chart(ctx, data, chartKey, color) {
+        if (!data) return;
+
         const labels = Object.keys(data);
         const values = labels.map(k => data[k]?.value || 0);
-        
-        const colors = {
-            'Delayed': '#F44336',
-            'Not Delayed': '#4CAF50'
-        };
+        const counts = labels.map(k => data[k]?.count || 0);
 
-        if (delayChart) delayChart.destroy();
+        if (charts[chartKey] && typeof charts[chartKey].destroy === 'function') {
+            charts[chartKey].destroy();
+        }
 
-        delayChart = new Chart(ctx, {
-            type: 'doughnut',
+        charts[chartKey] = new Chart(ctx, {
+            type: 'bar',
             data: {
-                labels: labels.map(l => `${l} (${data[l]?.count || 0})`),
+                labels: labels,
                 datasets: [{
+                    label: 'Value (Lakhs)',
                     data: values,
-                    backgroundColor: labels.map(l => colors[l] || '#607D8B'),
-                    borderWidth: 2,
-                    borderColor: '#fff'
+                    backgroundColor: color,
+                    borderRadius: 6,
+                    borderWidth: 0
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: 'bottom',
-                        labels: {
-                            padding: 15,
-                            usePointStyle: true,
-                            font: { size: 11 }
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Amount (₹ Lakh)',
+                            font: { size: 10 }
                         }
                     },
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Delay (Days)',
+                            font: { size: 10 }
+                        }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
                     tooltip: {
                         callbacks: {
                             label: function(context) {
-                                const value = context.raw || 0;
-                                return `₹ ${value.toFixed(2)} Lakh`;
+                                const idx = context.dataIndex;
+                                const val = context.raw || 0;
+                                const count = counts[idx];
+                                return [
+                                    `Value: ₹ ${val.toFixed(2)} Lakh`,
+                                    `Count: ${count} Orders`
+                                ];
                             }
                         }
                     }
@@ -445,56 +406,7 @@ frappe.pages['sales-performance-da'].on_page_load = function (wrapper) {
         $('#collection-cards').html(html);
     }
 
-    function render_bom_pending(data) {
-        if (!data || !data.total) {
-            $('#bom-content').html('<p class="text-muted">No pending BOM releases</p>');
-            return;
-        }
-
-        const total = data.total;
-        const batches = data.batches || [];
-
-        let tableRows = '';
-        if (batches.length > 0) {
-            tableRows = batches.map(b => `
-                <tr>
-                    <td><strong>${b.batch}</strong></td>
-                    <td><a href="/app/sales-order/${b.sales_order}">${b.sales_order}</a></td>
-                    <td>${b.count}</td>
-                    <td>₹ ${b.value.toFixed(2)} LAKH</td>
-                </tr>
-            `).join('');
-        }
-
-        const html = `
-            <div class="bom-summary">
-                <div class="stat">
-                    <div class="num">${total.count}</div>
-                    <div class="lbl">Items Pending</div>
-                </div>
-                <div class="stat">
-                    <div class="num">₹ ${total.value.toFixed(2)} LAKH</div>
-                    <div class="lbl">Total Value</div>
-                </div>
-            </div>
-            ${batches.length > 0 ? `
-                <table class="bom-table">
-                    <thead>
-                        <tr>
-                            <th>Batch</th>
-                            <th>Sales Order</th>
-                            <th>Items</th>
-                            <th>Value</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        ${tableRows}
-                    </tbody>
-                </table>
-            ` : '<p class="text-muted">No batch-wise data available</p>'}
-        `;
-        $('#bom-content').html(html);
-    }
+    // BOM pending table function removed as it is replaced by chart
 
     // OTD Pie Chart Render Functions
     function render_delivery_otd_chart(data) {
@@ -508,9 +420,9 @@ frappe.pages['sales-performance-da'].on_page_load = function (wrapper) {
             'Delayed': '#F44336'
         };
 
-        if (deliveryOtdChart) deliveryOtdChart.destroy();
+        if (charts.deliveryOtdChart) charts.deliveryOtdChart.destroy();
 
-        deliveryOtdChart = new Chart(ctx, {
+        charts.deliveryOtdChart = new Chart(ctx, {
             type: 'pie',
             data: {
                 labels: labels.map(l => `${l} (${data[l]?.count || 0})`),
@@ -557,9 +469,9 @@ frappe.pages['sales-performance-da'].on_page_load = function (wrapper) {
             'Delayed': '#FF9800'
         };
 
-        if (orderEntryOtdChart) orderEntryOtdChart.destroy();
+        if (charts.orderEntryOtdChart) charts.orderEntryOtdChart.destroy();
 
-        orderEntryOtdChart = new Chart(ctx, {
+        charts.orderEntryOtdChart = new Chart(ctx, {
             type: 'pie',
             data: {
                 labels: labels.map(l => `${l} (${data[l]?.count || 0})`),
@@ -606,9 +518,9 @@ frappe.pages['sales-performance-da'].on_page_load = function (wrapper) {
             'Delayed': '#9C27B0'
         };
 
-        if (orderApprovalOtdChart) orderApprovalOtdChart.destroy();
+        if (charts.orderApprovalOtdChart) charts.orderApprovalOtdChart.destroy();
 
-        orderApprovalOtdChart = new Chart(ctx, {
+        charts.orderApprovalOtdChart = new Chart(ctx, {
             type: 'pie',
             data: {
                 labels: labels.map(l => `${l} (${data[l]?.count || 0})`),

@@ -9,7 +9,7 @@ def get_dashboard_data(from_date, to_date, branch=None):
     data = {}
 
     data["orders_status"] = get_orders_status(from_date, to_date, branch)
-    data["orders_delay"] = get_orders_delay(from_date, to_date, branch)
+    data["order_approval_delay"] = get_order_approval_delay(branch)
     data["order_booking"] = get_order_booking_value(branch)
     data["invoicing"] = get_invoicing_value(branch)
     data["outstanding_collection"] = get_outstanding_vs_collection(branch)
@@ -92,14 +92,15 @@ def get_orders_status(from_date, to_date, branch):
 # Delay in Booking: transaction_date - po_date > 3 days
 # Delay in Approval: docstatus=1 and (submission took > 3 days)
 # --------------------------------------------------
-def get_orders_delay(from_date, to_date, branch):
+# --------------------------------------------------
+# 2. Order Approval Delay (Bucketed)
+# Sales Orders with docstatus = 0 and pending approval
+# --------------------------------------------------
+def get_order_approval_delay(branch):
     conditions = [
-        "so.docstatus < 2",
-        "so.status NOT IN ('Closed', 'Cancelled')"
+        "so.docstatus = 0",
+        "so.workflow_state IN ('Approval Pending', 'Checking Pending')"
     ]
-
-    if from_date and to_date:
-        conditions.append("so.transaction_date BETWEEN %(from_date)s AND %(to_date)s")
 
     if branch:
         conditions.append("so.branch = %(branch)s")
@@ -110,49 +111,49 @@ def get_orders_delay(from_date, to_date, branch):
         SELECT
             so.name,
             so.transaction_date,
-            so.po_date,
-            so.docstatus,
-            so.workflow_state,
-            so.grand_total,
-            so.creation,
-            so.modified
+            so.grand_total
         FROM `tabSales Order` so
         WHERE {where}
-    """, {
-        "from_date": from_date,
-        "to_date": to_date,
-        "branch": branch
-    }, as_dict=True)
+    """, {"branch": branch}, as_dict=True)
 
-    delayed = {"count": 0, "value": 0}
-    not_delayed = {"count": 0, "value": 0}
+    return get_delay_buckets(rows, "transaction_date")
 
-    for r in rows:
-        is_delayed = False
 
-        # Delay in Booking: SO creation date - Customer PO date > 3 days
-        if r.po_date:
-            delay_booking = (getdate(r.transaction_date) - getdate(r.po_date)).days
-            if delay_booking > 3:
-                is_delayed = True
-
-        # Delay in Approval: For submitted orders, check if approval took > 3 days
-        if r.docstatus == 1 and not is_delayed:
-            delay_approval = (getdate(r.modified) - getdate(r.creation)).days
-            if delay_approval > 3:
-                is_delayed = True
-
-        if is_delayed:
-            delayed["count"] += 1
-            delayed["value"] += flt(r.grand_total)
-        else:
-            not_delayed["count"] += 1
-            not_delayed["value"] += flt(r.grand_total)
-
-    return {
-        "Delayed": to_lakh(delayed),
-        "Not Delayed": to_lakh(not_delayed)
+def get_delay_buckets(rows, date_field):
+    buckets = {
+        "0-7": {"count": 0, "value": 0},
+        "8-15": {"count": 0, "value": 0},
+        "16-30": {"count": 0, "value": 0},
+        "31-45": {"count": 0, "value": 0},
+        "46-60": {"count": 0, "value": 0},
+        ">60": {"count": 0, "value": 0}
     }
+    today_date = getdate(today())
+    
+    for r in rows:
+        # Some rows might use 'amount' instead of 'grand_total' (like SO items)
+        val = flt(r.get('grand_total') or r.get('amount') or 0)
+        dt = r.get(date_field)
+        if not dt: continue
+        
+        delay = (today_date - getdate(dt)).days
+        if delay < 0: delay = 0 # Future dates treated as 0 delay
+        
+        if delay <= 7: key = "0-7"
+        elif delay <= 15: key = "8-15"
+        elif delay <= 30: key = "16-30"
+        elif delay <= 45: key = "31-45"
+        elif delay <= 60: key = "46-60"
+        else: key = ">60"
+        
+        buckets[key]["count"] += 1
+        buckets[key]["value"] += val
+    
+    # Format value to Lakhs
+    for key in buckets:
+        buckets[key]["value"] = round(buckets[key]["value"] / 100000, 2)
+        
+    return buckets
 
 
 # --------------------------------------------------
@@ -273,8 +274,7 @@ def get_outstanding_vs_collection(branch):
 def get_bom_release_pending(branch):
     conditions = [
         "so.docstatus = 1",
-        "so.status NOT IN ('Closed', 'Cancelled')",
-        "DATE(so.creation) <= DATE_SUB(CURDATE(), INTERVAL 14 DAY)"
+        "so.status NOT IN ('Closed', 'Cancelled')"
     ]
 
     if branch:
@@ -286,17 +286,9 @@ def get_bom_release_pending(branch):
     rows = frappe.db.sql(f"""
         SELECT
             so.name AS sales_order,
-            so.grand_total,
             so.creation,
-            soi.custom_batch_no,
             soi.item_code,
-            soi.amount,
-            soi.bom_no,
-            CASE
-                WHEN soi.bom_no IS NULL OR soi.bom_no = '' THEN 'No BOM'
-                WHEN bom.docstatus != 1 THEN 'BOM Not Submitted'
-                ELSE 'BOM Ready'
-            END as bom_status
+            soi.amount
         FROM `tabSales Order` so
         INNER JOIN `tabSales Order Item` soi ON soi.parent = so.name
         LEFT JOIN `tabBOM` bom ON bom.name = soi.bom_no
@@ -304,44 +296,7 @@ def get_bom_release_pending(branch):
         AND (soi.bom_no IS NULL OR soi.bom_no = '' OR bom.docstatus != 1)
     """, {"branch": branch}, as_dict=True)
 
-    # Aggregate by batch
-    batch_summary = {}
-    total_count = 0
-    total_value = 0
-
-    for r in rows:
-        batch = r.custom_batch_no or "No Batch"
-        if batch not in batch_summary:
-            batch_summary[batch] = {
-                "sales_order": r.sales_order,
-                "count": 0,
-                "value": 0,
-                "items": []
-            }
-        batch_summary[batch]["count"] += 1
-        batch_summary[batch]["value"] += flt(r.amount)
-        batch_summary[batch]["items"].append({
-            "item_code": r.item_code,
-            "bom_status": r.bom_status
-        })
-        total_count += 1
-        total_value += flt(r.amount)
-
-    return {
-        "total": {
-            "count": total_count,
-            "value": round(total_value / 100000, 2)
-        },
-        "batches": [
-            {
-                "batch": batch,
-                "sales_order": data["sales_order"],
-                "count": data["count"],
-                "value": round(data["value"] / 100000, 2)
-            }
-            for batch, data in batch_summary.items()
-        ][:20]  # Limit to 20 batches
-    }
+    return get_delay_buckets(rows, "creation")
 
 
 # --------------------------------------------------

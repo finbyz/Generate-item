@@ -371,6 +371,12 @@ fixtures = [
         "filters": [
             ["module", "in", ["Generate Item"]]
         ]
+    },
+    {
+        "dt": "Property Setter",
+        "filters": [
+            ["module", "in", ["Generate Item"]]
+        ]
     }
     
 ]

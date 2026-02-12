@@ -207,7 +207,7 @@ def get_data(filters):
             "description as item_description",
             "item_group",
             "qty as order_qty",
-            "delivered_qty",
+            # "delivered_qty",
             "rate as unit_rate",
             "base_amount as item_basic_amount_inr",
             "custom_batch_no as batch_number",
@@ -238,6 +238,7 @@ def get_data(filters):
             gst_item = frappe.db.get_value("Address", item.custom_shipping_address, "gstin") if item.custom_shipping_address else ""
 
             invoice_no = get_invoice_no(so.sales_order)
+            delivered_qty = get_delivered_qty_from_invoice(so.sales_order, item.item_code)
 
             if invoice_no:
                 # Delivered Qty & Delivery Date
@@ -302,8 +303,8 @@ def get_data(filters):
                 item.item_description,
                 item.item_group,
                 item.order_qty,
-                item.delivered_qty or 0,
-                (item.order_qty or 0) - (item.delivered_qty or 0),
+                delivered_qty or 0,
+                (item.order_qty or 0) - (delivered_qty or 0),
                 item.unit_rate or 0,
                 item.item_basic_amount_inr or 0,
                 item.item_id,
@@ -418,7 +419,27 @@ def get_invoice_no(sales_order):
     invoice_set = sorted({d.parent for d in invoices})
     return ", ".join(invoice_set)
 
-
+def get_delivered_qty_from_invoice(sales_order, item_code):
+    """
+    Fetch the total delivered quantity for a specific item from Sales Invoice Items
+    linked to the given sales order.
+    """
+    result = frappe.db.sql(
+        """
+        SELECT SUM(delivered_qty) as total_delivered_qty
+        FROM `tabSales Invoice Item`
+        WHERE sales_order = %s
+          AND item_code = %s
+          AND docstatus IN (0, 1)
+        """,
+        (sales_order, item_code),
+        as_dict=True
+    )
+    
+    if result and result[0].total_delivered_qty:
+        return result[0].total_delivered_qty
+    
+    return 0
 # ---------------------------------------------------------
 # OTHERS
 # ---------------------------------------------------------
