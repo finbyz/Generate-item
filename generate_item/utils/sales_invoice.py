@@ -702,7 +702,7 @@ def remove_free_items(doc):
 		remark_lines = []
 		for fi in free_items:
 			remark_lines.append(
-				f"Item :{fi['item_code']} Qty : {fi['qty']} {fi['uom']}"
+				f"Item :{fi['item_name']} Qty : {fi['qty']} {fi['uom']}"
 			)
 
 		free_item_text = "\n".join(remark_lines)
