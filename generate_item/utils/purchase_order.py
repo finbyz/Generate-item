@@ -559,7 +559,7 @@ def custom_make_subcontracting_order(source_name, target_doc=None, save=False, s
 @frappe.whitelist()
 def get_valid_batches(doctype, txt, searchfield, start, page_len, filters):
     """
-    Get valid batch numbers from BOM based on branch and finished item
+    Get valid batch numbers from BOM based on branch and finishe item
     """
     branch = filters.get("branch")
     item = filters.get("item")

@@ -1,6 +1,8 @@
 import frappe
 from generate_item.utils.bom_naming import get_custom_bom_name, get_available_bom_name
 
+from frappe import _
+
 def on_trash(doc, method):
     doc.sales_order = ""
     doc.custom_batch_no = ""
@@ -9,6 +11,32 @@ def on_trash(doc, method):
         frappe.db.set_value("Sales Order Item", row.name, "bom_no", "")
     
 
+
+def validate_bom_creation(doc, method=None):
+    # If no Sales Order linked, skip validation
+    if not doc.sales_order:
+        return
+
+    # Fetch Sales Order Items with line_status = "Hold"
+    hold_items = frappe.get_all(
+        "Sales Order Item",
+        filters={
+            "parent": doc.sales_order,
+            "line_status": "Hold",
+        },
+        fields=["item_code", "idx"]
+    )
+
+    # If any hold line found, block BOM creation
+    if hold_items:
+        hold_item_list = ", ".join(
+            [f"Row {d.idx} ({d.item_code})" for d in hold_items]
+        )
+
+        frappe.throw(
+            _("Cannot create BOM because the following Sales Order lines are on Hold: {0}")
+            .format(hold_item_list)
+        )
 
 def before_insert(doc, method=None):
     """Set custom BOM name before document is inserted"""
@@ -73,6 +101,7 @@ def before_insert(doc, method=None):
 def before_validate(doc, method=None):
     set_branch_details(doc, method)
     validate_bom_batch_reference(doc, method)
+    validate_bom_creation(doc, method)
     # Populate BOM-level drawing/spec fields from Item if missing on BOM
     try:
         if getattr(doc, "item", None):
