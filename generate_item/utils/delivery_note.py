@@ -6,6 +6,7 @@ import frappe
 from frappe import _
 import json
 from frappe.utils import flt
+from erpnext.stock.doctype.batch.batch import get_batch_qty
 
 @frappe.whitelist()
 def get_custom_batches_for_dn_items(items_data):
@@ -745,6 +746,8 @@ def validate(doc, method):
     validate_duplicate_delivery_note(doc, method)
     # validate_so_line_shipping_address(doc)
     validate_free_items(doc)
+    validate_batch_from_custom_field(doc,method)
+    validate_dn_line_status(doc,method)
 
 def validate_duplicate_delivery_note(doc, method):
     """
@@ -988,4 +991,91 @@ def get_stock_items_and_batch_qty(items, posting_date=None, posting_time=None):
     return {"items_data": items_data}
 
 
+def validate_batch_from_custom_field(doc, method):
+    for item in doc.items:
+        # Check both custom_batch_no and batch_no
+        batch_to_validate = item.batch_no or item.custom_batch_no
+        
+        if not batch_to_validate:
+            continue  # Skip if no batch
+            
+       
+        
+        # 1️⃣ Check Batch Exists
+        batch_doc = frappe.db.get_value(
+            "Batch",
+            batch_to_validate,
+            ["name", "item", "disabled"],
+            as_dict=True
+        )
 
+        if not batch_doc:
+            frappe.throw(
+                _("Row {0}: Batch {1} does not exist.")
+                .format(item.idx, batch_to_validate)
+            )
+
+        # 2️⃣ Check Item Match (Filter 1: Item Code)
+        if batch_doc.item != item.item_code:
+            frappe.throw(
+                _("Row {0}: Batch {1} does not belong to Item {2}. Cannot use this batch.")
+                .format(item.idx, batch_to_validate, item.item_code)
+            )
+
+        # 3️⃣ Check Disabled
+        if batch_doc.disabled:
+            frappe.throw(
+                _("Row {0}: Batch {1} is disabled and cannot be used.")
+                .format(item.idx, batch_to_validate)
+            )
+
+        # 4️⃣ CRITICAL: Check Stock Availability (Filter 2: Warehouse + Posting Date)
+        # This is what enforces the dropdown filter logic
+        batch_qty = get_batch_qty(
+            batch_no=batch_to_validate,
+            warehouse=item.warehouse,
+            posting_date=doc.posting_date,
+            posting_time=doc.posting_time
+        )
+
+        # If batch_qty is 0 or negative, batch is NOT in dropdown
+        if batch_qty <= 0:
+            frappe.throw(
+                _("Row {0}: Batch {1} is not available in Warehouse {2} on {3}. "
+                  "This batch is not allowed for this transaction.")
+                .format(
+                    item.idx, 
+                    batch_to_validate, 
+                    item.warehouse,
+                    frappe.format(doc.posting_date, {'fieldtype': 'Date'})
+                )
+            )
+
+        # 5️⃣ Check Sufficient Quantity
+        if batch_qty < item.qty:
+            frappe.throw(
+                _("Row {0}: Batch {1} has insufficient stock. "
+                  "Available: {2}, Required: {3}")
+                .format(item.idx, batch_to_validate, batch_qty, item.qty)
+            )
+
+
+def validate_dn_line_status(doc, method=None):
+    for item in doc.items:
+        # If item not linked with Sales Order Item, skip
+        if not item.so_detail:
+            continue
+
+        # Fetch line_status from Sales Order Item
+        line_status = frappe.db.get_value(
+            "Sales Order Item",
+            item.so_detail,
+            "line_status"
+        )
+
+        # If line_status has any value, block
+        if line_status:
+            frappe.throw(
+                f"Row {item.idx}: Item {item.item_code} cannot be delivered "
+                f"because Sales Order line has status '{line_status}'."
+            )

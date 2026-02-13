@@ -17,25 +17,26 @@ def validate_bom_creation(doc, method=None):
     if not doc.sales_order:
         return
 
-    # Fetch Sales Order Items with line_status = "Hold"
-    hold_items = frappe.get_all(
+    # Fetch Sales Order Items where line_status is NOT empty
+    blocked_items = frappe.get_all(
         "Sales Order Item",
         filters={
             "parent": doc.sales_order,
-            "line_status": "Hold",
+            "line_status": ["is", "set"]   
         },
-        fields=["item_code", "idx"]
+        fields=["item_code", "idx", "line_status"]
     )
 
-    # If any hold line found, block BOM creation
-    if hold_items:
-        hold_item_list = ", ".join(
-            [f"Row {d.idx} ({d.item_code})" for d in hold_items]
+    # If any line has line_status filled, block BOM creation
+    if blocked_items:
+        blocked_item_list = ", ".join(
+            [f"Row {d.idx} ({d.item_code}) - Status: {d.line_status}" 
+             for d in blocked_items]
         )
 
         frappe.throw(
-            _("Cannot create BOM because the following Sales Order lines are on Hold: {0}")
-            .format(hold_item_list)
+            _("Cannot create BOM because the following Sales Order lines have a status set: {0}")
+            .format(blocked_item_list)
         )
 
 def before_insert(doc, method=None):
