@@ -66,6 +66,13 @@ frappe.query_reports["Request to Receipt"] = {
 			
 		},
 		{
+			"fieldname": "supplier",
+			"label": __("Supplier"),
+			"fieldtype": "Link",
+			"options": "Supplier"  
+			
+		},
+		{
 			fieldname: "group_by_mr",
 			label: __("Group by Material Request"),
 			fieldtype: "Check",

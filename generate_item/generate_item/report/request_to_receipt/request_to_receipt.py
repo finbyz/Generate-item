@@ -118,14 +118,14 @@ def get_data(filters):
 	)
 
 
-	query = get_conditions(filters, query, mr, mr_item)  # add conditional conditions
+	query = get_conditions(filters, query, mr, mr_item,po)  # add conditional conditions
 
 	query = query.groupby(mr.name, mr_item.item_code).orderby(mr.transaction_date, mr.schedule_date)
 	data = query.run(as_dict=True)
 	return data
 
 
-def get_conditions(filters, query, mr, mr_item):
+def get_conditions(filters, query, mr, mr_item,po):
 	if filters.get("from_date") and filters.get("to_date"):
 		query = query.where(
 			(mr.transaction_date >= filters.get("from_date"))
@@ -143,6 +143,9 @@ def get_conditions(filters, query, mr, mr_item):
 	# ADDED: Branch filter condition
 	if filters.get("branch"):
 		query = query.where(mr_item.branch == filters.get("branch"))
+
+	if filters.get("supplier"):
+		query = query.where(po.supplier == filters.get("supplier"))
 
 	return query
 

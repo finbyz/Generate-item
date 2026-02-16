@@ -424,15 +424,31 @@
 
 frappe.ui.form.on('Sales Order', {
     refresh: function (frm) {
-        frm.fields_dict["items"].grid.get_field("component_of").get_query = function (doc, cdt, cdn) {
-            // Get all item_code values in the current Sales Order
+        
+
+            frm.fields_dict["items"].grid.get_field("component_of").get_query = function (doc, cdt, cdn) {
+    
+            let current_row = locals[cdt][cdn];
+
+            // Get item_codes where:
+            // 1. item_code exists
+            // 2. not the current row item
+            // 3. amount > 0
             const item_codes = (doc.items || [])
-                .map(row => row.item_code)
-                .filter(code => code && code !== locals[cdt][cdn].item_code); // exclude self
+                .filter(row => 
+                    row.item_code &&
+                    row.item_code !== current_row.item_code &&
+                    flt(row.amount) > 0
+                )
+                .map(row => row.item_code);
+
             return {
-                filters: [["name", "in", item_codes]]
+                filters: [
+                    ["name", "in", item_codes]
+                ]
             };
         };
+
         if (!frm.doc.__islocal) {
             frm.add_custom_button(__('BOM'), function () {
                 let so_items = frm.doc.items || [];
