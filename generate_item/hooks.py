@@ -189,7 +189,8 @@ doc_events = {
     },
     "Sales Order": {
         "before_save": "generate_item.utils.sales_order.before_save",
-        "validate": "generate_item.utils.sales_order.validate"
+        "validate": "generate_item.utils.sales_order.validate",
+        "before_validate":"generate_item.utils.sales_order.before_validate",
     },
         #     "before_save": "generate_item.utils.sales_order.before_save",
         # "validate": "generate_item.utils.sales_order.validate",

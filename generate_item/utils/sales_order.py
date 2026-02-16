@@ -4,6 +4,8 @@ import frappe
 from frappe.utils import nowdate
 from frappe import _
 
+
+
 @frappe.whitelist()
 def create_item_generator_doc(item_code: str | None = None, is_create_with_sales_order: int = 1):
     """Create an Item Generator and return the generated Item code.
@@ -335,25 +337,94 @@ def before_validate(doc, method=None):
     validate_free_items_component(doc)
 
 
-def validate_free_items_component(doc):
-    # Collect all item_codes in the Sales Order
-    item_codes = {item.item_code for item in doc.items}
+
+def validate_free_items_component(doc, method=None):
+
+    if not doc.items:
+        return
+
+    # =========================================
+    # STEP 1️⃣ Detect Removal / Change FIRST
+    # =========================================
+    if not doc.is_new():
+
+        old_doc = doc.get_doc_before_save()
+        if old_doc:
+
+            old_items = {d.name: d for d in old_doc.items}
+            new_row_names = {d.name for d in doc.items}
+
+            #  Detect removal of valued item
+            for old_row_name, old_item in old_items.items():
+
+                if old_row_name not in new_row_names and not old_item.is_free_item:
+
+                    linked_free = [
+                        d.item_code for d in old_doc.items
+                        if d.is_free_item and d.component_of == old_item.item_code
+                    ]
+
+                    if linked_free:
+                        frappe.throw(
+                            _("Cannot remove valued item <b>{0}</b> because it has linked free items: {1}")
+                            .format(old_item.item_code, ", ".join(linked_free))
+                        )
+
+            
+            # Detect valued item_code change
+            for item in doc.items:
+
+                if item.name in old_items:
+
+                    old_item = old_items[item.name]
+
+                    if (
+                        not old_item.is_free_item
+                        and old_item.item_code != item.item_code
+                    ):
+
+                        # Find linked free items
+                        for free_item in doc.items:
+                            if (
+                                free_item.is_free_item
+                                and free_item.component_of == old_item.item_code
+                            ):
+                                #  Auto update to new item code
+                                free_item.component_of = item.item_code
+
+                        frappe.msgprint(
+                            _("Valued item <b>{0}</b> was changed. Linked free items updated automatically.")
+                            .format(old_item.item_code),
+                            indicator="orange"
+                        )
+
+            
+
+    # =========================================
+    # STEP 2️⃣ Strict Free Item Validation
+    # =========================================
+    item_map = {d.item_code: d for d in doc.items if d.item_code}
 
     for item in doc.items:
+
         if item.is_free_item:
-            # component_of must be set
+
             if not item.component_of:
                 frappe.throw(
-                    f"Row {item.idx}: Free item <b>{item.item_code}</b> must be linked to a main item."
+                    _("Row {0}: Free item <b>{1}</b> must be linked to a valued item.")
+                    .format(item.idx, item.item_code)
                 )
 
-            # component_of item must exist in same Sales Order
-            if item.component_of not in item_codes:
+            parent_item = item_map.get(item.component_of)
+
+            if not parent_item:
                 frappe.throw(
-                    f"""
-                    Row {item.idx}: Main item <b>{item.component_of}</b>
-                    for free item <b>{item.item_code}</b> is not present
-                    in the Sales Order items table.
-                    """
+                    _("Row {0}: Linked valued item <b>{1}</b> not found in Sales Order.")
+                    .format(item.idx, item.component_of)
                 )
 
+            if parent_item.is_free_item:
+                frappe.throw(
+                    _("Row {0}: Free item <b>{1}</b> cannot be linked to another free item <b>{2}</b>.")
+                    .format(item.idx, item.item_code, parent_item.item_code)
+                )
