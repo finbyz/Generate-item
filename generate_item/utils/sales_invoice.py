@@ -677,6 +677,7 @@ def remove_free_items(doc):
 			free_items_by_parent.setdefault(row.component_of, []).append({
 				"item_code": row.item_code,
 				"qty": row.qty,
+                "item_name": row.item_name,
 				"uom": row.uom or ""
 			})
 
