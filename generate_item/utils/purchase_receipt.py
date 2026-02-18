@@ -223,6 +223,67 @@ def update_received_qty_stock_uom(doc, method):
 				item.received_stock_qty,
 				update_modified=False
 			)
+   
+		calculate_pending_qty(item)
+
+		# if item.pending_qty_in_stock_uom :
+			# po_item.db_set(
+			# 	"pending_qty_in_stock_uom",
+			# 	item.pending_qty_in_stock_uom,
+			# 	update_modified=False
+			# )
 
 
+def calculate_pending_qty(item):
+    if not item.purchase_order_item:
+        return
 
+    # Get Purchase Order Item stock_qty
+    po_item = frappe.db.get_value(
+        "Purchase Order Item",
+        item.purchase_order_item,
+        ["stock_qty"],
+        as_dict=True
+    )
+
+    if not po_item:
+        return
+
+    po_stock_qty = flt(po_item.stock_qty)
+
+    # Sum stock_qty from submitted Purchase Receipt Items
+    received_qty = frappe.db.sql("""
+        SELECT SUM(pri.stock_qty)
+        FROM `tabPurchase Receipt Item` pri
+        INNER JOIN `tabPurchase Receipt` pr
+            ON pr.name = pri.parent
+        WHERE
+            pri.purchase_order_item = %s
+            AND pr.docstatus = 1
+    """, (item.purchase_order_item,))[0][0] or 0
+
+    received_qty = flt(received_qty)
+
+    # Calculate pending quantity
+    pending_qty = po_stock_qty - received_qty
+    if pending_qty < 0:
+        pending_qty = 0
+
+    # Update the Purchase Order Item field
+    frappe.db.set_value(
+        "Purchase Order Item",
+        item.purchase_order_item,
+        "pending_qty_in_stock_uom",
+        pending_qty
+    )
+
+@frappe.whitelist()
+def get_pending_qty(po_item_name):
+    if not po_item_name:
+        return 0
+
+    return frappe.db.get_value(
+        "Purchase Order Item",
+        po_item_name,
+        "pending_qty_in_stock_uom"
+    )

@@ -1,7 +1,7 @@
-frappe.ui.form.on('Purchase Receipt Item', {  
-    custom_add_heat: function(frm, cdt, cdn) {
-        let row = locals[cdt][cdn];        
-        
+frappe.ui.form.on('Purchase Receipt Item', {
+    custom_add_heat: function (frm, cdt, cdn) {
+        let row = locals[cdt][cdn];
+
         if (row.custom_heat_no && row.custom_heat_no.trim() !== '') {
             add_heat_number_to_ref(frm, cdt, cdn, row.custom_heat_no.trim());
         } else {
@@ -13,7 +13,7 @@ frappe.ui.form.on('Purchase Receipt Item', {
 
 function add_heat_number_to_ref(frm, cdt, cdn, custom_heat_no) {
     let row = locals[cdt][cdn];
-    
+
     if (row.custom_heat_no_ref) {
         let existing_heat_numbers = row.custom_heat_no_ref.split('\n').map(num => num.trim()).filter(num => num !== '');
         if (!existing_heat_numbers.includes(custom_heat_no)) {
@@ -33,38 +33,38 @@ function add_heat_number_to_ref(frm, cdt, cdn, custom_heat_no) {
             indicator: 'green'
         });
     }
-    
+
     row.custom_heat_no = '';
-    
+
     // Refresh both fields to show the updated values
     frm.refresh_field('custom_heat_no_ref');
-    frm.refresh_field('custom_heat_no');    
+    frm.refresh_field('custom_heat_no');
     frm.refresh_field('items');
-    
+
     frm.dirty();
 }
 
 frappe.ui.form.on('Purchase Receipt', {
-    onload: function(frm) {
-        if (frm.is_new()  && frm.doc.docstatus === 0) {
+    onload: function (frm) {
+        if (frm.is_new() && frm.doc.docstatus === 0) {
             if (frm.doc.items) {
                 frm.doc.items.forEach(item => {
                     if (!item.po_qty && !item.po_line_no && item.purchase_order) {
                         frappe.call({
-                            method:"generate_item.utils.purchase_receipt.get_po_items",
+                            method: "generate_item.utils.purchase_receipt.get_po_items",
                             args: {
                                 purchase_order: item.purchase_order
                             },
-                            callback: function(r) {
+                            callback: function (r) {
                                 if (r.message) {
                                     let po_doc = r.message;
                                     console.log(po_doc)
-    
+
                                     for (let po_item of po_doc.items) {
                                         if (po_item.item_code === item.item_code && item.purchase_order_item == po_item.name) {
                                             frappe.model.set_value(item.doctype, item.name, 'po_line_no', po_item.idx);
                                             frappe.model.set_value(item.doctype, item.name, 'po_qty', po_item.qty);
-                                            break; 
+                                            break;
                                         }
                                     }
                                 }
@@ -75,15 +75,19 @@ frappe.ui.form.on('Purchase Receipt', {
             }
         }
     },
-    refresh: function(frm) {
-        
+    refresh: function (frm) {
+
+        if (frm.is_new()) {
+            update_stock_qty_from_po(frm);
+        }
+
         if (frm.doc.docstatus !== 0 || frm.doc.is_return) {
             return;
         }
-        
+
         try {
             frm.remove_custom_button(__('Purchase Order'), __('Get Items From'));
-        } catch (e) {}
+        } catch (e) { }
 
         // Add back with custom child_columns to show Description and idx
         frm.add_custom_button(__('Purchase Order'), function () {
@@ -109,8 +113,33 @@ frappe.ui.form.on('Purchase Receipt', {
                 },
                 allow_child_item_selection: true,
                 child_fieldname: 'items',
-                child_columns: ['po_line_no', 'item_code','item_name','qty', 'received_qty']
+                child_columns: ['po_line_no', 'item_code', 'item_name', 'qty', 'received_qty']
             });
         }, __('Get Items From'));
     }
 });
+
+function update_stock_qty_from_po(frm) {
+    if (!frm.doc.items || !frm.doc.items.length) return;
+
+    frm.doc.items.forEach(function (row) {
+        if (row.purchase_order_item) {
+            frappe.call({
+                method: "generate_item.utils.purchase_receipt.get_pending_qty", // adjust path
+                args: {
+                    po_item_name: row.purchase_order_item
+                },
+                callback: function (r) {
+                    if (r.message != null) {
+                        frappe.model.set_value(
+                            row.doctype,
+                            row.name,
+                            "stock_qty",
+                            r.message
+                        );
+                    }
+                }
+            });
+        }
+    });
+}
