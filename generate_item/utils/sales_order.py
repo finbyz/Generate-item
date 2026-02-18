@@ -403,6 +403,13 @@ def validate_free_items_component(doc, method=None):
     # =========================================
     # STEP 2️⃣ Strict Free Item Validation
     # =========================================
+
+    skip_validation_for = ["Free Issue Domestic", "Free Issue Export"]
+
+    #  Skip complete validation for specific order types
+    if doc.order_type in skip_validation_for:
+        return
+
     item_map = {d.item_code: d for d in doc.items if d.item_code}
 
     for item in doc.items:
@@ -413,7 +420,7 @@ def validate_free_items_component(doc, method=None):
                 frappe.throw(
                     _("Row {0}: Free item <b>{1}</b> must be linked to a valued item.")
                     .format(item.idx, item.item_code)
-                )
+            )
 
             parent_item = item_map.get(item.component_of)
 
