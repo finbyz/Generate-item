@@ -218,11 +218,12 @@ def update_received_qty_stock_uom(doc, method):
 
 		po_item = frappe.get_doc("Purchase Order Item", item.purchase_order_item)
 		if item.received_stock_qty :
-			po_item.db_set(
-				"received_qty_in_stock_uom",
-				item.received_stock_qty,
-				update_modified=False
-			)
+			update_po_item_received_stock_qty(item.purchase_order_item)
+			# po_item.db_set(
+			# 	"received_qty_in_stock_uom",
+			# 	item.received_stock_qty,
+			# 	update_modified=False
+			# )
    
 		calculate_pending_qty(item)
 
@@ -232,6 +233,34 @@ def update_received_qty_stock_uom(doc, method):
 			# 	item.pending_qty_in_stock_uom,
 			# 	update_modified=False
 			# )
+
+
+def update_po_item_received_stock_qty(purchase_order_item):
+    if not purchase_order_item:
+        return
+
+    # Get total received stock qty from Purchase Receipt Items
+    result = frappe.db.get_all(
+        "Purchase Receipt Item",
+        filters={
+            "purchase_order_item": purchase_order_item,
+            "docstatus": 1  # only submitted receipts
+        },
+        fields=["sum(stock_qty) as total_received"]
+    )
+
+    total_received = result[0].total_received or 0
+    # frappe.throw(str(total_received))
+
+    # Update Purchase Order Item
+    frappe.db.set_value(
+        "Purchase Order Item",
+        purchase_order_item,
+        "received_qty_in_stock_uom",
+        total_received,
+        update_modified=False
+    )
+
 
 
 def calculate_pending_qty(item):
