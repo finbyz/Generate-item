@@ -9,30 +9,30 @@ frappe.ui.form.on("Order Modification Request", {
             return {
                 filters: {
                     docstatus: 1,
-                   
+
                 }
             };
         });
-        
+
     },
-    
+
     get_item(frm) {
         if (!frm.doc.type) {
             frappe.msgprint("Please select Type first");
             return;
         }
-    
-        if (!frm.doc.sales_order && frm.doc.type == "Sales Order" ) {
+
+        if (!frm.doc.sales_order && frm.doc.type == "Sales Order") {
             frappe.msgprint(`Please select Sales Order first`);
             return;
         }
-    
+
         if (!frm.doc.bom && frm.doc.type == "BOM") {
             frappe.msgprint(`Please select BOM No first`);
             return;
         }
         frm.clear_table("items");
-    
+
         fetch_items_dynamic(frm);
     },
     get_link_documents(frm) {
@@ -41,10 +41,10 @@ frappe.ui.form.on("Order Modification Request", {
             frappe.msgprint("Please add items first");
             return;
         }
-    
+
         // Clear existing rows
         frm.clear_table("link_documents");
-    
+
         frappe.call({
             method: "generate_item.generate_item.doctype.order_modification_request.order_modification_request.get_linked_documents",
             freeze: true,
@@ -54,20 +54,20 @@ frappe.ui.form.on("Order Modification Request", {
             },
             callback: function (r) {
                 if (!r.message) return;
-    
+
                 r.message.forEach(row => {
                     let child = frm.add_child("link_documents");
                     child.ref_doctype = row.ref_doctype;
                     child.document_no = row.document_no;
                     child.line_item = row.line_item;
                 });
-    
+
                 frm.refresh_field("link_documents");
                 // frappe.msgprint("Link Documents fetched");
             }
         });
     }
-    
+
 });
 
 
@@ -89,16 +89,17 @@ function fetch_items_dynamic(frm) {
         callback(r) {
             if (!r.message) return;
 
+
             // Sales Order
             if (frm.doc.type === "Sales Order") {
                 (r.message.items || []).forEach(item => {
                     let row = frm.add_child("items");
+                    row.sales_order_item_name = item.name;
                     row.item = item.item_code;
                     row.qty = item.qty;
                     row.batch_no = item.custom_batch_no || null;
                     row.po_line_no = item.po_line_no;
-               
-
+                    row.rate = item.rate;
 
                 });
             }

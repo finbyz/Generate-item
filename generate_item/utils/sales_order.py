@@ -176,7 +176,7 @@ def update_sales_order_child_custom_fields(parent: str, items: list | str, child
     if not isinstance(items, (list, tuple)):
         return
 
-    allowed_fields = {"po_line_no", "tag_no", "line_remark", "description", "custom_shipping_address"}
+    allowed_fields = {"po_line_no", "tag_no", "line_remark", "description", "custom_shipping_address","line_status"}
 
     for row in items:
         if not isinstance(row, dict):

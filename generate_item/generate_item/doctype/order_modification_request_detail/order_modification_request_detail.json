@@ -9,9 +9,12 @@
   "item",
   "po_line_no",
   "batch_no",
+  "sales_order_item_name",
   "column_break_1eqv",
   "qty",
   "rev_qty",
+  "rate",
+  "rev_rate",
   "drg_and_pur_spec_section",
   "drawing_no",
   "rev_drawing_no",
@@ -145,13 +148,30 @@
   {
    "fieldname": "column_break_yvwv",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sales_order_item_name",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Sales Order Item Name"
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Float",
+   "label": "Rate",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_rate",
+   "fieldtype": "Float",
+   "label": "Rev Rate"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-01-22 15:01:07.394526",
+ "modified": "2026-02-19 10:24:33.484183",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request Detail",

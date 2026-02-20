@@ -12,7 +12,7 @@
         const child_meta = frappe.get_meta(`${frm.doc.doctype} Item`);
         const has_reserved_stock = opts.has_reserved_stock ? true : false;
         const table_fieldname = opts.child_docname || child_docname;
-        const custom_fields = ["po_line_no", "tag_no", "line_remark", "description", "custom_shipping_address", "item_name"];
+        const custom_fields = ["po_line_no", "tag_no", "line_remark", "description", "custom_shipping_address", "item_name","line_status"];
         const get_precision = (fieldname) => {
             const meta_fields = (child_meta && child_meta.fields) || [];
             const field = meta_fields.find((f) => f.fieldname === fieldname);
@@ -37,6 +37,7 @@
             custom_shipping_address: d.custom_shipping_address,
             custom_batch_no: d.custom_batch_no,
             batch_no: d.batch_no,
+            line_status: d.line_status || "", 
         }));
 
         const fields = [
@@ -212,6 +213,13 @@
                         ]
                     };
                 },
+            },
+            {
+                fieldtype: "Select",
+                fieldname: "line_status",
+                label: __("Line Status"),
+                in_list_view: 1,
+                options: "\nHold\nModified\nCanceled\nDelivered\nPartial Delivered",  
             },
         ];
 

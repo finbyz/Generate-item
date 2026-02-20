@@ -30,10 +30,49 @@ def get_columns():
         {"label": "Item Code", "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 140},
         {"label": "Item Name", "fieldname": "item_name", "width": 220},
         {"label": "Description", "fieldname": "description", "width": 250},
+        {
+        "label": _("Stock UOM"),
+        "fieldname": "stock_uom",
+        "fieldtype": "Data",
+        "width": 100,
+        },
+         {
+            "label": _("PO Qty Stock UOM"),
+            "fieldname": "po_qty_stock_uom",
+            "fieldtype": "Float",
+            "width": 150,
+        },
+        {
+            "label": _("Received Qty Stock UOM"),
+            "fieldname": "receipt_qty_stock_uom",
+            "fieldtype": "Float",
+            "width": 170,
+        },
+        {
+            "label": _("Pending Qty Stock UOM"),
+            "fieldname": "pending_qty_stock_uom",
+            "fieldtype": "Float",
+            "width": 170,
+        },
+        {
+            "label": _("UOM"),
+            "fieldname": "uom",
+            "fieldtype": "Data",
+            "width": 90,
+        },
         
-        {"label": "PO Qty", "fieldname": "po_qty", "fieldtype": "Float", "width": 110},
-        {"label": "Received Qty", "fieldname": "received_qty", "fieldtype": "Float", "width": 120},
-        {"label": "Pending Receipt Qty", "fieldname": "pending_qty", "fieldtype": "Float", "width": 140},
+        {"label": "PO UOM Qty", "fieldname": "po_qty", "fieldtype": "Float", "width": 110},
+        {"label": "Received UOM Qty", "fieldname": "received_qty", "fieldtype": "Float", "width": 120},
+        {"label": "Pending Receipt UOM Qty", "fieldname": "pending_qty", "fieldtype": "Float", "width": 140},
+
+        
+        {
+            "label": _("Draft PO Qty (Stock UOM)"),
+            "fieldname": "draft_po_qty_stock_uom",
+            "fieldtype": "Float",
+            "width": 170,
+        },
+
         
         {"label": "Drawing Number", "fieldname": "custom_drawing_no", "width": 220},
         {"label": "Drawing Rev No", "fieldname": "custom_drawing_rev_no", "width": 220},
@@ -127,9 +166,14 @@ def get_data(filters):
             poi.custom_drawing_rev_no,
             poi.qty AS po_qty,
             IFNULL(poi.received_qty, 0) AS received_qty,
+            poi.stock_qty AS po_qty_stock_uom,
+            IFNULL(poi.received_qty_in_stock_uom, 0) AS receipt_qty_stock_uom,
+            IFNULL(poi.pending_qty_in_stock_uom, 0) AS pending_qty_stock_uom,
+
             poi.rate,
             poi.warehouse,
             poi.uom,
+            poi.stock_uom,
             poi.schedule_date AS item_schedule_date,
             poi.po_line_no,
             poi.material_request,
@@ -151,10 +195,45 @@ def get_data(filters):
     """
 
     rows = frappe.db.sql(query, values, as_dict=True)
+    # Collect item codes from submitted PO rows
+    item_codes = list(set([row.item_code for row in rows]))
+
+    # Always define dictionary
+    draft_qty_map = {}
+
+    if item_codes:
+        draft_rows = frappe.db.sql("""
+            SELECT
+                poi.item_code,
+                SUM(poi.stock_qty) as draft_qty
+            FROM `tabPurchase Order` po
+            INNER JOIN `tabPurchase Order Item` poi
+                ON poi.parent = po.name
+            WHERE
+                po.docstatus = 0
+                AND po.company = %(company)s
+                AND poi.item_code IN %(item_codes)s
+            GROUP BY
+                poi.item_code
+        """, {
+            "company": filters.get("company"),
+            "item_codes": tuple(item_codes)
+        }, as_dict=True)
+
+        for d in draft_rows:
+            draft_qty_map[d.item_code] = flt(d.draft_qty)
+   
+
+
+
 
     data = []
     today = getdate(nowdate())
     for row in rows:
+
+        draft_qty_stock = draft_qty_map.get(row.item_code, 0)
+
+
         pending_qty = flt(row.po_qty) - flt(row.received_qty)
 
         if pending_qty <= 0:
@@ -164,6 +243,7 @@ def get_data(filters):
 
 
         row.update({
+            "draft_po_qty_stock_uom": draft_qty_stock,
             "pending_qty": pending_qty,
             "age": age,
 			"range_0_30": pending_qty if age <= 30 else 0,
