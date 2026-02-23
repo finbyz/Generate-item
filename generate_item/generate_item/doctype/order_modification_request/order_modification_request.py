@@ -7,6 +7,10 @@ from frappe.desk.form.linked_with import (
 )
 from frappe import _
 
+import frappe
+import re
+
+
 from frappe.utils import get_url_to_form
 
 class OrderModificationRequest(Document):
@@ -25,6 +29,7 @@ class OrderModificationRequest(Document):
    
 		if self.type == "Sales Order" and self.sales_order:
 			self.update_sales_order_values()
+			create_batches_for_omr(self)
 
 	def update_sales_order_items_using_db_set(self):
 		if not self.sales_order:
@@ -269,6 +274,7 @@ class OrderModificationRequest(Document):
 
 
 
+
 @frappe.whitelist()
 def get_linked_documents(items):
 	"""
@@ -349,4 +355,202 @@ def get_all_linked_documents(source_doctype, source_name):
 
 
 
+# ---------------------------------------------------------------------------
+# Batch-ID generator  (mirrors generate_batch_id_sequential in JS)
+# ---------------------------------------------------------------------------
+
+def generate_batch_id(so_name: str, index: int) -> str:
+    base_name = re.sub(r"-\d+$", "", so_name)         
+    item_number = str(index + 1).zfill(3)               
+    return f"{base_name}-{item_number}"
+
+
+# ---------------------------------------------------------------------------
+# Core batch-creation helper
+# ---------------------------------------------------------------------------
+
+def _delete_batch_if_exists(batch_id: str) -> None:
+    """Delete an existing Batch document that carries this batch_id, if any."""
+    existing = frappe.db.get_value(
+        "Batch",
+        {"batch_id": batch_id},
+        "name"
+    )
+    if existing:
+        try:
+            frappe.delete_doc("Batch", existing, force=True, ignore_permissions=True)
+            frappe.db.commit()
+        except Exception as e:
+            frappe.log_error(
+                title="OMR – could not delete existing batch",
+                message=f"batch_id={batch_id}  name={existing}\n{e}"
+            )
+
+
+def _create_batch(
+    item_code: str,
+    batch_id: str,
+    so_name: str,
+    manufacturing_date: str,
+    branch: str | None,
+    uom: str | None,
+    customer: str | None,
+) -> str:
+    """
+    Create a Batch document.
+    Returns the created document name.
+    Mirrors create_new_batch() in the JS.
+    """
+    batch_doc = frappe.get_doc({
+        "doctype": "Batch",
+        "item": item_code,
+        "batch_id": batch_id,
+        "branch": branch,
+        "stock_uom": uom,
+        "manufacturing_date": manufacturing_date,
+        "expiry_date": None,
+        "reference_doctype": "Sales Order",
+        "reference_name": so_name,
+        "customer": customer,
+    })
+    batch_doc.insert(ignore_permissions=True)
+    frappe.db.commit()
+    return batch_doc.name
+
+
+# ---------------------------------------------------------------------------
+# Main entry-point called from OrderModificationRequest.on_submit
+# ---------------------------------------------------------------------------
+
+def create_batches_for_omr(omr_doc) -> None:
+    """
+    For every OMR item row whose corresponding SO item does NOT yet have a
+    batch, generate a batch_id (same sequential logic as the SO client script),
+    create the Batch document, and write batch_no + custom_batch_no back onto
+    the SO item row.
+    """
+    if not omr_doc.sales_order:
+        return
+
+    so_doc = frappe.get_doc("Sales Order", omr_doc.sales_order)
+    manufacturing_date = so_doc.transaction_date or frappe.utils.today()
+
+    # Build a quick lookup: SO item name  →  SO item row (for updating later)
+    so_items_by_name = {row.name: row for row in so_doc.items}
+
+    created: list[dict] = []
+    skipped: list[str] = []
+    errors: list[dict] = []
+
+    for omr_row in omr_doc.items:
+        if not omr_row.item:
+            continue
+
+        # ── 1. Resolve the SO item row ──────────────────────────────────────
+        so_item_name = omr_row.sales_order_item_name  
+        if so_item_name:
+            so_item = so_items_by_name.get(so_item_name)
+        else:
+            
+            so_item = next(
+                (r for r in so_doc.items if r.item_code == omr_row.item and not r.custom_batch_no),
+                None
+            )
+            if so_item:
+                so_item_name = so_item.name
+
+        if not so_item_name:
+            skipped.append(omr_row.item)
+            continue
+
+        # ── 2. Skip if SO item already has a batch ──────────────────────────
+        existing_batch = frappe.db.get_value(
+            "Sales Order Item",
+            so_item_name,
+            "custom_batch_no"
+        )
+        if existing_batch:
+            skipped.append(f"{omr_row.item} (already has batch: {existing_batch})")
+            continue
+
+        # ── 3. Check item is batch-enabled ──────────────────────────────────
+        has_batch_no = frappe.db.get_value("Item", omr_row.item, "has_batch_no")
+        if not has_batch_no:
+            errors.append({"item": omr_row.item, "error": "Item is not batch-enabled"})
+            continue
+
+        # ── 4. Determine the index for batch_id generation ──────────────────
+        
+        so_item_idx = frappe.db.get_value("Sales Order Item", so_item_name, "idx") or omr_row.idx
+        index = int(so_item_idx) - 1   
+
+        # ── 5. Derive SO base name (strip amendment suffix, same as JS) ──────
+        
+        so_base_name = so_doc.amended_from if so_doc.amended_from else so_doc.name
+        batch_id = generate_batch_id(so_base_name, index)
+
+        # ── 6. Delete pre-existing batch with same batch_id (mirror JS) ─────
+        _delete_batch_if_exists(batch_id)
+
+        # ── 7. Create the Batch document ─────────────────────────────────────
+        try:
+            branch  = getattr(so_item, "branch", None) if so_item else None
+            uom     = getattr(so_item, "uom",    None) if so_item else None
+
+            batch_name = _create_batch(
+                item_code=omr_row.item,
+                batch_id=batch_id,
+                so_name=so_doc.name,
+                manufacturing_date=str(manufacturing_date),
+                branch=branch,
+                uom=uom,
+                customer=so_doc.customer,
+            )
+
+            created.append({
+                "item": omr_row.item,
+                "batch_id": batch_id,
+                "batch_doc": batch_name,
+                "so_item_name": so_item_name,
+            })
+
+        except Exception as e:
+            err_str = str(e)
+            if "Duplicate" in err_str or "DuplicateEntryError" in err_str:
+                err_str = "Duplicate batch ID – batch may already exist"
+            errors.append({"item": omr_row.item, "error": err_str})
+            frappe.log_error(
+                title="OMR – batch creation error",
+                message=f"item={omr_row.item}  batch_id={batch_id}\n{e}"
+            )
+
+    # ── 8. Write custom_batch_no back to SO item rows ───────────────────────
+ 
+    for entry in created:
+        so_item_name = entry["so_item_name"]
+        # Verify the item still belongs to this SO (same guard as the whitelisted fn)
+        if frappe.db.exists(
+            "Sales Order Item",
+            {"name": so_item_name, "parent": so_doc.name}
+        ):
+            frappe.db.set_value(
+                "Sales Order Item",
+                so_item_name,
+                {"custom_batch_no": entry["batch_id"]},
+                update_modified=False,
+            )
+
+    frappe.db.commit()
+
+    
+
+    if errors:
+        frappe.msgprint(
+            title=_("Batch Creation – Partial Errors"),
+            message=_(
+                "Batches were created for {0} item(s), but {1} item(s) had errors. "
+                "Check the Error Log for details."
+            ).format(len(created), len(errors)),
+            indicator="orange",
+        )
 
