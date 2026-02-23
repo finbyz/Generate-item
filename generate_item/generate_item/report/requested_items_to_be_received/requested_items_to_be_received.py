@@ -19,14 +19,14 @@ def execute(filters=None):
 def get_columns():
     return [
         {"label": "Purchase Order", "fieldname": "name", "fieldtype": "Link", "options": "Purchase Order", "width": 160},
-         {"label": "PO Line NO.", "fieldname": "po_line_no", "width": 220},
+         {"label": "PO Line NO.", "fieldname": "po_line_no", "width": 90},
         {"label": "Batch No Ref", "fieldname": "custom_batch_no", "fieldtype": "Link", "options": "Batch", "width": 160},
         {"label": "Supplier", "fieldname": "supplier", "fieldtype": "Link", "options": "Supplier", "width": 180},
         
-        {"label": "Posting Date", "fieldname": "transaction_date", "fieldtype": "Date", "width": 110},
-        {"label": "Schedule Date", "fieldname": "schedule_date", "fieldtype": "Date", "width": 110},
-        {"label": "Status", "fieldname": "status", "width": 120},
-        {"label": "Item ID", "fieldname": "item_id", "width": 220},
+        {"label": "Posting Date", "fieldname": "transaction_date", "fieldtype": "Date", "width": 130},
+        {"label": "Schedule Date", "fieldname": "schedule_date", "fieldtype": "Date", "width": 130},
+        {"label": "Status", "fieldname": "status", "width": 140},
+        {"label": "Item ID", "fieldname": "item_id", "width": 140},
         {"label": "Item Code", "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 140},
         {"label": "Item Name", "fieldname": "item_name", "width": 220},
         {"label": "Description", "fieldname": "description", "width": 250},
@@ -46,13 +46,20 @@ def get_columns():
             "label": _("Received Qty Stock UOM"),
             "fieldname": "receipt_qty_stock_uom",
             "fieldtype": "Float",
-            "width": 170,
+            "width": 150,
+        },
+        {
+            "label": "Draft Received Qty Stock UOM",
+            "fieldname": "draft_received_qty_in_stock_uom",
+            "fieldtype": "Float",
+            "width": 150,
+           
         },
         {
             "label": _("Pending Qty Stock UOM"),
             "fieldname": "pending_qty_stock_uom",
             "fieldtype": "Float",
-            "width": 170,
+            "width": 150,
         },
         {
             "label": _("UOM"),
@@ -61,16 +68,16 @@ def get_columns():
             "width": 90,
         },
         
-        {"label": "PO UOM Qty", "fieldname": "po_qty", "fieldtype": "Float", "width": 110},
-        {"label": "Received UOM Qty", "fieldname": "received_qty", "fieldtype": "Float", "width": 120},
-        {"label": "Pending Receipt UOM Qty", "fieldname": "pending_qty", "fieldtype": "Float", "width": 140},
+        {"label": "PO UOM Qty", "fieldname": "po_qty", "fieldtype": "Float", "width": 150},
+        {"label": "Received UOM Qty", "fieldname": "received_qty", "fieldtype": "Float", "width": 150},
+        {"label": "Pending Receipt UOM Qty", "fieldname": "pending_qty", "fieldtype": "Float", "width": 150},
 
         
         {
             "label": _("Draft PO Qty (Stock UOM)"),
             "fieldname": "draft_po_qty_stock_uom",
             "fieldtype": "Float",
-            "width": 170,
+            "width": 150,
         },
 
         
@@ -168,7 +175,7 @@ def get_data(filters):
             IFNULL(poi.received_qty, 0) AS received_qty,
             poi.stock_qty AS po_qty_stock_uom,
             IFNULL(poi.received_qty_in_stock_uom, 0) AS receipt_qty_stock_uom,
-            IFNULL(poi.pending_qty_in_stock_uom, 0) AS pending_qty_stock_uom,
+         
 
             poi.rate,
             poi.warehouse,
@@ -195,6 +202,35 @@ def get_data(filters):
     """
 
     rows = frappe.db.sql(query, values, as_dict=True)
+
+    # ---------------------------
+    # Draft Purchase Receipt Qty (Stock UOM)
+    # ---------------------------
+
+    po_item_ids = list(set([row.purchase_order_item for row in rows]))
+
+    draft_pr_qty_map = {}
+
+    if po_item_ids:
+        draft_pr_rows = frappe.db.sql("""
+            SELECT
+                pri.purchase_order_item,
+                SUM(IFNULL(pri.stock_qty, 0)) AS draft_received_qty
+            FROM `tabPurchase Receipt` pr
+            INNER JOIN `tabPurchase Receipt Item` pri
+                ON pri.parent = pr.name
+            WHERE
+                pr.docstatus = 0
+                AND pri.purchase_order_item IN %(po_item_ids)s
+            GROUP BY
+                pri.purchase_order_item
+        """, {
+            "po_item_ids": tuple(po_item_ids)
+        }, as_dict=True)
+
+        for d in draft_pr_rows:
+            draft_pr_qty_map[d.purchase_order_item] = flt(d.draft_received_qty)
+
     # Collect item codes from submitted PO rows
     item_codes = list(set([row.item_code for row in rows]))
 
@@ -232,18 +268,32 @@ def get_data(filters):
     for row in rows:
 
         draft_qty_stock = draft_qty_map.get(row.item_code, 0)
+        draft_received_qty = draft_pr_qty_map.get(row.purchase_order_item, 0)
+
+        # -------- STOCK UOM Pending Logic --------
+        po_qty_stock = flt(row.po_qty_stock_uom)
+        received_stock = flt(row.receipt_qty_stock_uom)
+        total_received_stock = received_stock + draft_received_qty
+
+        pending_qty_stock_uom = po_qty_stock - total_received_stock
+
+        #  Skip fully received rows
+        if pending_qty_stock_uom <= 0:
+            continue
 
 
         pending_qty = flt(row.po_qty) - flt(row.received_qty)
 
-        if pending_qty <= 0:
-            continue
+        # if pending_qty <= 0:
+        #     continue
         
         age = (today - getdate(row.item_schedule_date)).days if row.item_schedule_date else 0
 
 
         row.update({
             "draft_po_qty_stock_uom": draft_qty_stock,
+            "draft_received_qty_in_stock_uom": draft_received_qty,
+            "pending_qty_stock_uom": pending_qty_stock_uom,
             "pending_qty": pending_qty,
             "age": age,
 			"range_0_30": pending_qty if age <= 30 else 0,
