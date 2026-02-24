@@ -129,6 +129,14 @@ def get_data(filters):
         conditions.append("po.branch = %(branch)s")
         values["branch"] = filters["branch"]
 
+    # branch restriction from User Permissions
+    if filters.get("allowed_branches"):
+        branch_list = [b.strip() for b in filters["allowed_branches"].split(",") if b.strip()]
+        if branch_list:
+            conditions.append("po.branch IN %(allowed_branches)s")
+            values["allowed_branches"] = tuple(branch_list)
+
+
     # filter by created by (multi or single)
     created_by = filters.get("created_by")
     if created_by:

@@ -105,7 +105,12 @@ frappe.query_reports["Requested Items To Be Received"] = {
                 });
             },
         },
-        
+         {
+            fieldname: "allowed_branches",
+            label: __("Allowed Branches"),
+            fieldtype: "Data",  
+            hidden: 1          
+        },
        
       
         
@@ -113,6 +118,10 @@ frappe.query_reports["Requested Items To Be Received"] = {
         
     ],
     onload: function (report) {
+
+        fetch_and_set_branches(report,function(){
+            report.refresh();
+        })
 
          frappe.call({
         method: "generate_item.generate_item.report.requested_items_to_be_received.requested_items_to_be_received.get_pr_naming_series",
@@ -130,11 +139,43 @@ frappe.query_reports["Requested Items To Be Received"] = {
                 show_past_purchase_history();
             }
         );
+    },
+    before_refresh: function(report) {
+       
+        return new Promise((resolve) => {
+            fetch_and_set_branches(report, resolve);
+        });
     }
     
 };
 
 
+function fetch_and_set_branches(report, callback) {
+    frappe.call({
+        method: "frappe.client.get_list",
+        args: {
+            doctype: "User Permission",
+            filters: {
+                user: frappe.session.user,
+                allow: "Branch",
+
+            },
+            fields: ["for_value"],
+            limit: 100
+        },
+        callback: function(r) {
+            if (r.message && r.message.length > 0) {
+                let branches = r.message.map(d => d.for_value);
+                report.set_filter_value("allowed_branches", branches.join(","));
+            } else {
+                
+                report.set_filter_value("allowed_branches", "");
+            }
+            if (callback) callback();  
+        }
+    });
+
+}
 
 function show_purchase_history_dialog(data) {
     let html = `
