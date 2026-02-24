@@ -4,6 +4,7 @@
 from frappe import _
 import frappe
 from frappe.utils import flt, getdate, nowdate
+import math
 
 
 
@@ -347,14 +348,26 @@ def create_purchase_receipt_by_supplier(grouped_items, company, pr_series=None, 
             pr.set_posting_time = 1
 
             for item in items:
+                uom = item.get("uom")
+                stock_uom = item.get("stock_uom")
+
+                raw_qty = flt(item.get("pending_qty"))
+                raw_stock_qty = flt(item.get("pending_qty_stock_uom"))
+
+                # Round up if UOM is Nos
+                qty = math.ceil(raw_qty) if uom == "Nos" else raw_qty
+
+                # Round up if Stock UOM is Nos (THIS is what was causing 1.914 error)
+                stock_qty = math.ceil(raw_stock_qty) if stock_uom == "Nos" else raw_stock_qty
+                            
                 pr.append("items", {
                     "item_code": item.get("item_code"),
                     "item_name": item.get("item_name"),
                     "description": item.get("description"),
-                    "qty": item.get("pending_qty"),
-                    "stock_qty": item.get("pending_qty_stock_uom"),
-                    "uom": item.get("uom"),
-                    "stock_uom": item.get("stock_uom"),
+                    "qty": qty,
+                    "stock_qty":stock_qty,
+                    "uom": uom,
+                    "stock_uom": stock_uom,
                     "rate": item.get("rate"),
                     "warehouse": item.get("warehouse"),
 
@@ -384,7 +397,8 @@ def create_purchase_receipt_by_supplier(grouped_items, company, pr_series=None, 
                 "purchase_receipt": pr.name,
                 "supplier": supplier,
                 "items": len(items),
-                "status": "Success"
+                "status": "Success",
+                "item_data": items
             })
 
             frappe.db.commit()

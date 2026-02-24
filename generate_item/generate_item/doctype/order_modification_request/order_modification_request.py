@@ -30,6 +30,7 @@ class OrderModificationRequest(Document):
 		if self.type == "Sales Order" and self.sales_order:
 			self.update_sales_order_values()
 			create_batches_for_omr(self)
+			get_change(self)
 
 	def update_sales_order_items_using_db_set(self):
 		if not self.sales_order:
@@ -558,3 +559,120 @@ def create_batches_for_omr(omr_doc) -> None:
 		indicator="orange",
 		)
 
+
+def get_change(self):
+
+    mismatched_rows = get_mismatched_items(self)
+
+    if not mismatched_rows:
+        frappe.msgprint("No mismatched item codes found.")
+        return
+
+    updated = update_sales_order_items(self, mismatched_rows)
+
+    frappe.msgprint(
+        f"Updated {len(updated)} Sales Order Item(s): {', '.join(updated)}"
+    )
+
+def get_mismatched_items(self):
+    if not self.sales_order:
+        return []
+
+    # Fetch all Sales Order Items in one query
+    sales_order_items = frappe.get_all(
+        "Sales Order Item",
+        filters={"parent": self.sales_order},
+        fields=["name", "item_code"]
+    )
+
+    # Convert to dictionary for fast lookup
+    so_item_map = {d.name: d.item_code for d in sales_order_items}
+
+    mismatched_rows = []
+
+    for row in self.items:
+        if row.sales_order_item_name in so_item_map:
+            so_item_code = so_item_map[row.sales_order_item_name]
+
+            # Compare item_code
+            if so_item_code != row.item:
+                mismatched_rows.append({
+                    "row_name": row.name,
+                    "sales_order_item_name": row.sales_order_item_name
+                })
+
+    return mismatched_rows
+
+
+
+def update_sales_order_items(self, mismatched_rows):
+    """
+    Update item_code in Sales Order Item table
+    and update Batch item if custom_batch_no exists.
+    """
+
+    if not mismatched_rows:
+        return []
+
+    row_map = {row.name: row for row in self.items}
+
+    updated = []
+
+    for mismatch in mismatched_rows:
+        row = row_map.get(mismatch["row_name"])
+
+        if row:
+            # 1️⃣ Update Sales Order Item
+            frappe.db.sql("""
+                UPDATE `tabSales Order Item`
+                SET item_code = %s
+                WHERE name = %s
+            """, (row.item, row.sales_order_item_name))
+
+            updated.append(row.sales_order_item_name)
+
+            # 2️⃣ Get custom_batch_no from Sales Order Item
+            custom_batch_no = frappe.db.get_value(
+                "Sales Order Item",
+                row.sales_order_item_name,
+                "custom_batch_no"
+            )
+
+            # 3️⃣ Update Batch if exists
+            if custom_batch_no:
+                update_batch_item(custom_batch_no, row.item)
+
+    if updated:
+        frappe.db.commit()
+
+    return updated
+
+
+def update_batch_item(batch_name, new_item_code):
+    """
+    Update item field in Batch doctype
+    where batch name matches.
+    """
+
+    if not batch_name:
+        return False
+
+    # Optional safety check (recommended)
+    sle_exists = frappe.db.exists(
+        "Stock Ledger Entry",
+        {"batch_no": batch_name}
+    )
+
+    if sle_exists:
+        frappe.msgprint(
+            f"Batch {batch_name} has stock transactions. Skipped batch update."
+        )
+        return False
+
+    frappe.db.sql("""
+        UPDATE `tabBatch`
+        SET item = %s
+        WHERE name = %s
+    """, (new_item_code, batch_name))
+
+    return True
