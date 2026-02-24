@@ -22,6 +22,7 @@ def get_columns():
          {"label": "PO Line NO.", "fieldname": "po_line_no", "width": 90},
         {"label": "Batch No Ref", "fieldname": "custom_batch_no", "fieldtype": "Link", "options": "Batch", "width": 160},
         {"label": "Supplier", "fieldname": "supplier", "fieldtype": "Link", "options": "Supplier", "width": 180},
+        {"label": "Branch", "fieldname": "branch", "fieldtype": "Link", "options": "Branch", "width": 180},
         
         {"label": "Posting Date", "fieldname": "transaction_date", "fieldtype": "Date", "width": 130},
         {"label": "Schedule Date", "fieldname": "schedule_date", "fieldtype": "Date", "width": 130},
@@ -343,7 +344,9 @@ def create_purchase_receipt_by_supplier(grouped_items, company, pr_series=None, 
                     "item_name": item.get("item_name"),
                     "description": item.get("description"),
                     "qty": item.get("pending_qty"),
+                    "stock_qty": item.get("pending_qty_stock_uom"),
                     "uom": item.get("uom"),
+                    "stock_uom": item.get("stock_uom"),
                     "rate": item.get("rate"),
                     "warehouse": item.get("warehouse"),
 
