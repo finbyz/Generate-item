@@ -30,6 +30,7 @@ class OrderModificationRequest(Document):
 		if self.type == "Sales Order" and self.sales_order:
 			self.update_sales_order_values()
 			create_batches_for_omr(self)
+			create_history_records(self)
 			get_change(self)
 
 	def update_sales_order_items_using_db_set(self):
@@ -568,11 +569,18 @@ def get_change(self):
         frappe.msgprint("No mismatched item codes found.")
         return
 
-    updated = update_sales_order_items(self, mismatched_rows)
+    updated, updated_boms = update_sales_order_items(self, mismatched_rows)
 
+    created_requests = create_order_modification_requests(updated_boms)
+    
+    update_child_rows_with_omr(self, created_requests)
+
+    omr_list = [entry["new_omr"] for entry in created_requests]
+    
     frappe.msgprint(
-        f"Updated {len(updated)} Sales Order Item(s): {', '.join(updated)}"
-    )
+		f"Created {len(omr_list)} Order Modification Request(s): "
+		f"{', '.join(omr_list)}"
+	)
 
 def get_mismatched_items(self):
     if not self.sales_order:
@@ -617,6 +625,8 @@ def update_sales_order_items(self, mismatched_rows):
     row_map = {row.name: row for row in self.items}
 
     updated = []
+    
+    updated_boms =[]
 
     for mismatch in mismatched_rows:
         row = row_map.get(mismatch["row_name"])
@@ -644,11 +654,17 @@ def update_sales_order_items(self, mismatched_rows):
             # 3️⃣ Update Batch if exists
             if custom_batch_no:
                 update_batch_item(custom_batch_no, row.item)
+                bom_name = update_finish_item_bom(custom_batch_no, row.item)
+                if bom_name:
+                    updated_boms.append({
+                    "row_name": row.name,
+                    "bom": bom_name
+                })
 
-    if updated:
+    if updated or updated_boms:
         frappe.db.commit()
 
-    return updated
+    return updated, updated_boms
 
 
 def update_batch_item(batch_name, new_item_code):
@@ -682,3 +698,195 @@ def update_batch_item(batch_name, new_item_code):
     """, (new_item_code, item_name, batch_name))
 
     return True
+
+
+def update_finish_item_bom(custom_batch_no, new_item):
+    """
+    Update submitted BOM using direct SQL.
+    Returns updated BOM name.
+    """
+
+    if not custom_batch_no:
+        return None
+
+    # Get BOM name
+    bom_name = frappe.db.sql("""
+        SELECT name
+        FROM `tabBOM`
+        WHERE custom_batch_no = %s
+        LIMIT 1
+    """, (custom_batch_no,), as_dict=True)
+
+    if not bom_name:
+        return None
+
+    bom_name = bom_name[0]["name"]
+
+    # Update finished item directly
+    frappe.db.sql("""
+        UPDATE `tabBOM`
+        SET item = %s
+        WHERE name = %s
+    """, (new_item, bom_name))
+
+    frappe.db.commit()
+
+    return bom_name
+
+
+def create_order_modification_requests(updated_boms):
+
+    created_docs = []
+
+    for entry in updated_boms:
+
+        bom_name = entry["bom"]
+        row_name = entry["row_name"]
+
+        doc = frappe.new_doc("Order Modification Request")
+        doc.type = "BOM"
+        doc.bom = bom_name
+
+        doc.insert(ignore_permissions=True)
+
+        fetch_items_from_reference(doc)
+
+        doc.save(ignore_permissions=True)
+
+        frappe.db.commit()
+
+        created_docs.append({
+            "row": row_name,
+            "new_omr": doc.name
+        })
+
+    return created_docs
+
+
+def fetch_items_from_reference(doc):
+    """
+    Works like the JS get_item() function.
+    Fetches items from Sales Order or BOM
+    and fills child table 'items'.
+    """
+
+    if not doc.type:
+        return
+
+    # Determine reference document
+    if doc.type == "Sales Order":
+        ref_name = doc.sales_order
+    elif doc.type == "BOM":
+        ref_name = doc.bom
+    else:
+        return
+
+    if not ref_name:
+        return
+
+    # Get reference document
+    reference_doc = frappe.get_doc(doc.type, ref_name)
+
+    # Clear existing child table (optional but recommended)
+    doc.set("items", [])
+
+    # -------- SALES ORDER --------
+    if doc.type == "Sales Order":
+        for item in reference_doc.items:
+            row = doc.append("items", {})
+            row.sales_order_item_name = item.name
+            row.item = item.item_code
+            row.qty = item.qty
+            row.batch_no = item.custom_batch_no
+            row.po_line_no = item.po_line_no
+            row.rate = item.rate
+
+    # -------- BOM --------
+    elif doc.type == "BOM":
+        for item in reference_doc.items:
+            row = doc.append("items", {})
+            row.item = item.item_code
+            row.qty = item.qty
+            row.batch_no = item.custom_batch_no
+            row.drawing_no = item.custom_drawing_no
+            row.drawing_rev_no = item.custom_drawing_rev_no
+            row.pattern_drawing_no = item.custom_pattern_drawing_no
+            row.pattern_drawing_rev_no = item.custom_pattern_drawing_rev_no
+            row.purchase_specification_no = item.custom_purchase_specification_no
+            row.purchase_specification_rev_no = item.custom_purchase_specification_rev_no
+            
+            
+            
+def update_child_rows_with_omr(self, created_requests):
+    """
+    Update child table field `bom_update_request`
+    based on created OMR mapping.
+    """
+
+    if not created_requests:
+        return
+
+    row_map = {row.name: row for row in self.items}
+
+    for entry in created_requests:
+        row_name = entry.get("row")
+        new_omr = entry.get("new_omr")
+
+        child_row = row_map.get(row_name)
+
+        if child_row and new_omr:
+            child_row.bom_update_request = new_omr
+            
+            
+def create_history_records(self):
+    """
+    Compare items with original_record.
+    If changed:
+        - store new item in new_item
+        - store new qty in rev_qty
+        - store new rate in rev_rate
+    Keep only changed rows in original_record.
+    """
+
+    if not self.items or not self.original_record:
+        self.set("original_record", [])
+        return
+
+    # Map current items using stable key
+    current_map = {row.sales_order_item_name: row for row in self.items}
+
+    rows_to_keep = []
+
+    for old_row in self.original_record:
+
+        current_row = current_map.get(old_row.sales_order_item_name)
+        if not current_row:
+            continue
+
+        changed = False
+        old_data = old_row.as_dict()
+
+        # 1️⃣ Check Item Change
+        if old_row.item != current_row.item:
+            old_data["new_item"] = current_row.item
+            changed = True
+
+        # 2️⃣ Check Qty Change
+        if old_row.rev_qty != current_row.rev_qty:
+            old_data["rev_qty"] = current_row.rev_qty
+            changed = True
+
+        # 3️⃣ Check Rate Change
+        if old_row.rev_rate != current_row.rev_rate:
+            old_data["rev_rate"] = current_row.rev_rate
+            changed = True
+
+        if changed:
+            rows_to_keep.append(old_data)
+
+    # Clear table
+    self.set("original_record", [])
+
+    # Add only changed rows
+    for row in rows_to_keep:
+        self.append("original_record", row)

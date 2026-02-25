@@ -89,7 +89,6 @@ function fetch_items_dynamic(frm) {
         callback(r) {
             if (!r.message) return;
 
-
             // Sales Order
             if (frm.doc.type === "Sales Order") {
                 (r.message.items || []).forEach(item => {
@@ -100,6 +99,14 @@ function fetch_items_dynamic(frm) {
                     row.batch_no = item.custom_batch_no || null;
                     row.po_line_no = item.po_line_no;
                     row.rate = item.rate;
+
+                    let history_row = frm.add_child("original_record");
+                    history_row.sales_order_item_name = item.name;
+                    history_row.item = item.item_code;
+                    history_row.qty = item.qty;
+                    history_row.batch_no = item.custom_batch_no || null;
+                    history_row.po_line_no = item.po_line_no;
+                    history_row.rate = item.rate;
 
                 });
             }
@@ -117,10 +124,22 @@ function fetch_items_dynamic(frm) {
                     row.pattern_drawing_rev_no = item.custom_pattern_drawing_rev_no;
                     row.purchase_specification_no = item.custom_purchase_specification_no;
                     row.purchase_specification_rev_no = item.custom_purchase_specification_rev_no;
+
+                    let history_row = frm.add_child("original_record");
+                    history_row.item = item.item_code;
+                    history_row.qty = item.qty;
+                    history_row.batch_no = item.custom_batch_no || null;
+                    history_row.drawing_no = item.custom_drawing_no;
+                    history_row.drawing_rev_no = item.custom_drawing_rev_no;
+                    history_row.pattern_drawing_no = item.custom_pattern_drawing_no;
+                    history_row.pattern_drawing_rev_no = item.custom_pattern_drawing_rev_no;
+                    history_row.purchase_specification_no = item.custom_purchase_specification_no;
+                    history_row.purchase_specification_rev_no = item.custom_purchase_specification_rev_no;
                 });
             }
 
             frm.refresh_field("items");
+            frm.refresh_field("original_record");
             // frappe.msgprint(`Items fetched from ${frm.doc.type}`);
         }
     });

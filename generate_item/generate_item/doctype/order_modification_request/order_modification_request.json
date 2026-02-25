@@ -19,7 +19,9 @@
   "items",
   "get_link_documents",
   "link_documents",
-  "amended_from"
+  "amended_from",
+  "history_tab",
+  "original_record"
  ],
  "fields": [
   {
@@ -39,6 +41,7 @@
    "fieldname": "items",
    "fieldtype": "Table",
    "label": "Items",
+   "no_copy": 1,
    "options": "Order Modification Request Detail"
   },
   {
@@ -113,13 +116,26 @@
    "in_list_view": 1,
    "label": "Bom No",
    "options": "type"
+  },
+  {
+   "fieldname": "history_tab",
+   "fieldtype": "Tab Break",
+   "label": "History"
+  },
+  {
+   "fieldname": "original_record",
+   "fieldtype": "Table",
+   "label": "Original Record",
+   "no_copy": 1,
+   "options": "Order Modification Request Detail History",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-01-21 15:43:14.204346",
+ "modified": "2026-02-25 15:24:30.560170",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request",
