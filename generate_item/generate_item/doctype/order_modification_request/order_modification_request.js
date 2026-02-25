@@ -125,3 +125,26 @@ function fetch_items_dynamic(frm) {
         }
     });
 }
+
+
+frappe.ui.form.on('Order Modification Request Detail', {
+    item: function (frm, cdt, cdn) {
+        let row = locals[cdt][cdn];
+
+        if (!row.item) return;
+
+        frappe.db.get_value(
+            "Item Price",
+            {
+                item_code: row.item,
+                price_list: frm.doc.selling_price_list
+            },
+            "price_list_rate",
+            function (r) {
+                if (r && r.price_list_rate) {
+                    frappe.model.set_value(cdt, cdn, "rev_rate", r.price_list_rate);
+                }
+            }
+        );
+    }
+});
