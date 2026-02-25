@@ -622,12 +622,15 @@ def update_sales_order_items(self, mismatched_rows):
         row = row_map.get(mismatch["row_name"])
 
         if row:
+            item_name = frappe.db.get_value("Item", row.item, "item_name")
+            
             # 1️⃣ Update Sales Order Item
             frappe.db.sql("""
                 UPDATE `tabSales Order Item`
-                SET item_code = %s
+                SET item_code = %s,
+                    item_name = %s
                 WHERE name = %s
-            """, (row.item, row.sales_order_item_name))
+            """, (row.item,item_name, row.sales_order_item_name))
 
             updated.append(row.sales_order_item_name)
 
@@ -668,11 +671,14 @@ def update_batch_item(batch_name, new_item_code):
             f"Batch {batch_name} has stock transactions. Skipped batch update."
         )
         return False
+    
+    item_name = frappe.db.get_value("Item", new_item_code, "item_name")
 
     frappe.db.sql("""
         UPDATE `tabBatch`
-        SET item = %s
+        SET item = %s,
+            item_name = %s
         WHERE name = %s
-    """, (new_item_code, batch_name))
+    """, (new_item_code, item_name, batch_name))
 
     return True
