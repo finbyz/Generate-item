@@ -85,6 +85,8 @@ class CustomPurchaseReceipt(PurchaseReceipt):
         self.reset_default_field_value("set_warehouse", "items", "warehouse")
         self.reset_default_field_value("rejected_warehouse", "items", "rejected_warehouse")
         self.reset_default_field_value("set_from_warehouse", "items", "from_warehouse")
+        update_stock_uom_qty(self)
+        
 
     def on_submit(self):
         super().on_submit()
@@ -111,3 +113,39 @@ class CustomPurchaseReceipt(PurchaseReceipt):
         self.set_consumed_qty_in_subcontract_order()
         self.reserve_stock_for_sales_order()
         self.validate_uom_is_integer()
+        
+import frappe
+from frappe.utils import flt
+
+def update_stock_uom_qty(self):
+
+    for item in self.items:
+
+        if not item.purchase_order_item:
+            continue
+
+        # 1️⃣ Get total received stock_qty from Purchase Receipt Item
+        total_received = frappe.db.sql("""
+            SELECT SUM(stock_qty)
+            FROM `tabPurchase Receipt Item`
+            WHERE purchase_order_item = %s
+              AND docstatus < 2
+              AND parent != %s
+        """, (item.purchase_order_item, self.name))
+
+        total_received = flt(total_received[0][0]) if total_received and total_received[0][0] else 0
+
+        # 2️⃣ Get stock_qty from Purchase Order Item
+        po_stock_qty = frappe.db.get_value(
+            "Purchase Order Item",
+            item.purchase_order_item,
+            "stock_qty"
+        ) or 0
+
+        po_stock_qty = flt(po_stock_qty)
+
+        # 3️⃣ Calculate remaining qty
+        remaining_qty = po_stock_qty - total_received
+
+        # 4️⃣ Update current row stock_qty
+        item.db_set("stock_qty", remaining_qty)
