@@ -359,8 +359,6 @@ def create_purchase_receipt_by_supplier(grouped_items, company, pr_series=None, 
 
                 # Round up if Stock UOM is Nos (THIS is what was causing 1.914 error)
                 stock_qty = math.ceil(raw_stock_qty) if stock_uom == "Nos" else raw_stock_qty
-                
-                frappe.msgprint(f"Processing Item: {item.get('item_code')} - Raw Qty: {raw_qty}, Rounded Qty: {qty}, Raw Stock Qty: {raw_stock_qty}, Rounded Stock Qty: {stock_qty}")
                             
                 pr.append("items", {
                     "item_code": item.get("item_code"),

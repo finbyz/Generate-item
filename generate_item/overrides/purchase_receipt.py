@@ -1,4 +1,4 @@
-from erpnext.stock.doctype.purchase_receipt.purchase_receipt import PurchaseReceipt as _PurchaseReceipt
+from erpnext.stock.doctype.purchase_receipt.purchase_receipt import PurchaseReceipt
 import frappe
 from frappe import _, throw
 from frappe.utils import cint, flt, get_datetime, getdate, nowdate
@@ -60,10 +60,11 @@ from erpnext.stock.get_item_details import get_conversion_factor
 # 			)
 
 
-class PurchaseReceipt(_PurchaseReceipt):
+class CustomPurchaseReceipt(PurchaseReceipt):
     def validate(self):
+        # frappe.throw(_("Custom validation logic executed"), alert=True)  # Debug message
         self.validate_posting_time()
-        super().validate()
+        super(PurchaseReceipt, self).validate()
 
         if self._action != "submit":
             self.set_status()
