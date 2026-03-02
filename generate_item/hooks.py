@@ -161,7 +161,7 @@ override_doctype_class = {
     "Work Order": "generate_item.overrides.customWorkorder.WorkOrder",
     "Sales Order": "generate_item.overrides.custom_sales_order.CustomSalesOrder",
 
-    # "Purchase Receipt": "generate_item.overrides.purchase_receipt.PurchaseReceipt",
+    "Purchase Receipt": "generate_item.overrides.purchase_receipt.PurchaseReceipt",
 }
 
 # Document Events

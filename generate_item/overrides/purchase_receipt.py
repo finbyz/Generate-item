@@ -1,59 +1,112 @@
 from erpnext.stock.doctype.purchase_receipt.purchase_receipt import PurchaseReceipt as _PurchaseReceipt
 import frappe
-from frappe.utils import cint, flt
+from frappe import _, throw
+from frappe.utils import cint, flt, get_datetime, getdate, nowdate
 from erpnext.stock.get_item_details import get_conversion_factor
 
+# class PurchaseReceipt(_PurchaseReceipt):
+
+# 	def validate(self):
+# 		"""Allow UOM different from Purchase Order by auto-setting conversion_factor/stock_qty."""
+# 		super().validate()
+# 		for row in self.items or []:
+# 			try:
+# 				# Get conversion factor for selected UOM against the item's stock UOM
+# 				if row.uom and row.item_code:
+# 					cf_resp = get_conversion_factor(item_code=row.item_code, uom=row.uom)
+# 					cf = flt(cf_resp.get("conversion_factor")) if isinstance(cf_resp, dict) else flt(cf_resp)
+# 					if cf:
+# 						row.conversion_factor = cf
+# 						# Ensure stock_qty stays in sync
+# 						row.stock_qty = flt(row.qty) * cf
+# 			except Exception:
+# 				# Do not block save/submit just because conversion lookup failed
+# 				pass
+
+# 	def validate_with_previous_doc(self):
+# 		"""Run core previous doc validation but neutralize UOM equality by temporarily aligning UOMs."""
+# 		# Save original UOMs and replace with PO Item UOMs (if any) to bypass strict UOM compare
+# 		original_uoms = {}
+# 		try:
+# 			for row in self.items or []:
+# 				original_uoms[row.name] = row.uom
+# 				if getattr(row, "purchase_order_item", None):
+# 					po_uom = frappe.db.get_value("Purchase Order Item", row.purchase_order_item, "uom")
+# 					if po_uom:
+# 						row.uom = po_uom
+# 			# Call core validation which will now pass UOM equality
+# 			super().validate_with_previous_doc()
+# 		finally:
+# 			# Restore original UOMs
+# 			for row in self.items or []:
+# 				if row.name in original_uoms:
+# 					row.uom = original_uoms[row.name]
+
+# 	def validate_rate_with_reference_doc(self, args=None):
+# 		"""Override to skip strict rate equality with reference documents.
+
+# 		This avoids errors like 'Rate must be same as Purchase Order' when UOM differs
+# 		or negotiated rates change. All other validations remain intact.
+# 		"""
+# 		return
+
+# 		if (
+# 			cint(frappe.db.get_single_value("Buying Settings", "maintain_same_rate"))
+# 			and not self.is_return
+# 			and not self.is_internal_supplier
+# 		):
+# 			self.validate_rate_with_reference_doc(
+# 				[["Purchase Order", "purchase_order", "purchase_order_item"]]
+# 			)
+
+
 class PurchaseReceipt(_PurchaseReceipt):
+    def validate(self):
+        self.validate_posting_time()
+        super().validate()
 
-	def validate(self):
-		"""Allow UOM different from Purchase Order by auto-setting conversion_factor/stock_qty."""
-		super().validate()
-		for row in self.items or []:
-			try:
-				# Get conversion factor for selected UOM against the item's stock UOM
-				if row.uom and row.item_code:
-					cf_resp = get_conversion_factor(item_code=row.item_code, uom=row.uom)
-					cf = flt(cf_resp.get("conversion_factor")) if isinstance(cf_resp, dict) else flt(cf_resp)
-					if cf:
-						row.conversion_factor = cf
-						# Ensure stock_qty stays in sync
-						row.stock_qty = flt(row.qty) * cf
-			except Exception:
-				# Do not block save/submit just because conversion lookup failed
-				pass
+        if self._action != "submit":
+            self.set_status()
 
-	def validate_with_previous_doc(self):
-		"""Run core previous doc validation but neutralize UOM equality by temporarily aligning UOMs."""
-		# Save original UOMs and replace with PO Item UOMs (if any) to bypass strict UOM compare
-		original_uoms = {}
-		try:
-			for row in self.items or []:
-				original_uoms[row.name] = row.uom
-				if getattr(row, "purchase_order_item", None):
-					po_uom = frappe.db.get_value("Purchase Order Item", row.purchase_order_item, "uom")
-					if po_uom:
-						row.uom = po_uom
-			# Call core validation which will now pass UOM equality
-			super().validate_with_previous_doc()
-		finally:
-			# Restore original UOMs
-			for row in self.items or []:
-				if row.name in original_uoms:
-					row.uom = original_uoms[row.name]
+        self.po_required()
+        self.validate_items_quality_inspection()
+        self.validate_with_previous_doc()
+        # self.validate_uom_is_integer()
+        self.validate_cwip_accounts()
+        self.validate_provisional_expense_account()
 
-	def validate_rate_with_reference_doc(self, args=None):
-		"""Override to skip strict rate equality with reference documents.
+        self.check_on_hold_or_closed_status()
 
-		This avoids errors like 'Rate must be same as Purchase Order' when UOM differs
-		or negotiated rates change. All other validations remain intact.
-		"""
-		return
+        if getdate(self.posting_date) > getdate(nowdate()):
+            throw(_("Posting Date cannot be future date"))
 
-		if (
-			cint(frappe.db.get_single_value("Buying Settings", "maintain_same_rate"))
-			and not self.is_return
-			and not self.is_internal_supplier
-		):
-			self.validate_rate_with_reference_doc(
-				[["Purchase Order", "purchase_order", "purchase_order_item"]]
-			)
+        self.get_current_stock()
+        self.reset_default_field_value("set_warehouse", "items", "warehouse")
+        self.reset_default_field_value("rejected_warehouse", "items", "rejected_warehouse")
+        self.reset_default_field_value("set_from_warehouse", "items", "from_warehouse")
+
+    def on_submit(self):
+        super().on_submit()
+
+        # Check for Approving Authority
+        frappe.get_doc("Authorization Control").validate_approving_authority(
+            self.doctype, self.company, self.base_grand_total
+        )
+
+        self.update_prevdoc_status()
+        if flt(self.per_billed) < 100:
+            self.update_billing_status()
+        else:
+            self.db_set("status", "Completed")
+
+        self.make_bundle_for_sales_purchase_return()
+        self.make_bundle_using_old_serial_batch_fields()
+        # Updating stock ledger should always be called after updating prevdoc status,
+        # because updating ordered qty, reserved_qty_for_subcontract in bin
+        # depends upon updated ordered qty in PO
+        self.update_stock_ledger()
+        self.make_gl_entries()
+        self.repost_future_sle_and_gle()
+        self.set_consumed_qty_in_subcontract_order()
+        self.reserve_stock_for_sales_order()
+        self.validate_uom_is_integer()
