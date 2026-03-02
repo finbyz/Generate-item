@@ -208,7 +208,7 @@ def get_data(filters):
             po.docstatus = 1
             {where_clause}
         ORDER BY
-            po.transaction_date ASC, po.name
+            po.transaction_date ASC, po.name, poi.po_line_no ASC
     """
 
     rows = frappe.db.sql(query, values, as_dict=True)
