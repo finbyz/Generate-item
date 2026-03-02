@@ -146,6 +146,12 @@ def get_conditions(filters, query, mr, mr_item,po):
 
 	if filters.get("supplier"):
 		query = query.where(po.supplier == filters.get("supplier"))
+  
+	if filters.get("batch"):
+		query = query.where(mr_item.custom_batch_no == filters.get("batch"))
+  
+	if filters.get("po_no"):
+		query = query.where(po.name == filters.get("po_no"))
 
 	return query
 

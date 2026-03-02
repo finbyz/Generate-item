@@ -62,15 +62,29 @@ frappe.query_reports["Request to Receipt"] = {
 			"fieldname": "branch",
 			"label": __("Branch"),
 			"fieldtype": "Link",
-			"options": "Branch"  
-			
+			"options": "Branch"
+
 		},
 		{
 			"fieldname": "supplier",
 			"label": __("Supplier"),
 			"fieldtype": "Link",
-			"options": "Supplier"  
-			
+			"options": "Supplier"
+
+		},
+		{
+			"fieldname": "batch",
+			"label": __("Batch"),
+			"fieldtype": "Link",
+			"options": "Batch"
+
+		},
+		{
+			"fieldname": "po_no",
+			"label": __("Purchase Order"),
+			"fieldtype": "Link",
+			"options": "Purchase Order"
+
 		},
 		{
 			fieldname: "group_by_mr",

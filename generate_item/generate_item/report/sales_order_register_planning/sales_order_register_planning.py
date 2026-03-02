@@ -194,6 +194,12 @@ def get_columns():
 			"fieldtype": "Float",
 			"width": 100
 		},
+        {
+			"label": _("Invoiced Qty"),
+			"fieldname": "invoiced_qty",
+			"fieldtype": "Float",
+			"width": 100
+		},
 		{
 			"label": _("Pending Qty"),
 			"fieldname": "pending_qty",
@@ -446,6 +452,7 @@ def get_data(filters):
 		if filters.get("batch_no"):
 			so_conditions_for_items["custom_batch_no"] = filters.batch_no
 		item_fields = [
+			"name",
 			"idx as item_idx",
 			"parent",
 			"idx as order_line_index",
@@ -520,7 +527,9 @@ def get_data(filters):
 				+ (so.total_taxes_and_charges or 0)
 			)
 
-			delivered_qty = get_delivered_qty_from_invoice(so.sales_order, item.item_code)
+			delivered_qty = get_delivered_qty_from_delivery_note(item.name)
+
+			invoiced_qty = get_invoiced_qty_from_sales_invoice(item.name)
 
 			row = [
 				so.sales_order,
@@ -556,6 +565,7 @@ def get_data(filters):
 				item.infor_ref or item.custom_infor_ref or "",
 				item.order_qty,
 				delivered_qty or 0,
+				invoiced_qty or 0,
 				(item.order_qty or 0) - (delivered_qty or 0),
 				so.order_currency,
 				so.exchange_rate,
@@ -694,3 +704,43 @@ def get_approval_details(sales_order):
 		return approval[0]
 
 	return {"approved_by": "", "approved_on": None}
+
+
+
+
+import frappe
+from frappe.utils import flt
+
+def get_delivered_qty_from_delivery_note(so_detail):
+    delivered_qty = frappe.db.sql("""
+        SELECT 
+            SUM(dni.qty)
+        FROM 
+            `tabDelivery Note Item` dni
+        INNER JOIN 
+            `tabDelivery Note` dn 
+            ON dn.name = dni.parent
+        WHERE 
+            dni.so_detail = %s
+            AND dn.docstatus = 1
+    """, (so_detail,), as_list=1)
+
+    return flt(delivered_qty[0][0]) if delivered_qty and delivered_qty[0][0] else 0
+
+
+
+def get_invoiced_qty_from_sales_invoice (so_detail):
+    invoiced_qty = frappe.db.sql("""
+        SELECT 
+            SUM(sii.qty)
+        FROM 
+            `tabSales Invoice Item` sii
+        INNER JOIN 
+            `tabSales Invoice` si 
+            ON si.name = sii.parent
+        WHERE 
+            sii.so_detail = %s
+            AND si.docstatus = 1
+    """, (so_detail,), as_list=1)
+
+    return flt(invoiced_qty[0][0]) if invoiced_qty and invoiced_qty[0][0] else 0

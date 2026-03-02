@@ -38,6 +38,7 @@ def get_columns():
         {"label": _("Item Group"), "fieldname": "item_group", "fieldtype": "Data", "width": 100},
         {"label": _("Order Qty"), "fieldname": "order_qty", "fieldtype": "Float", "width": 80},
         {"label": _("Delivered Qty"), "fieldname": "delivered_qty", "fieldtype": "Float", "width": 100},
+        {"label": _("Invoiced Qty"), "fieldname": "invoiced_qty", "fieldtype": "Float", "width": 100},
         {"label": _("Pending Qty"), "fieldname": "pending_qty", "fieldtype": "Float", "width": 100},
         {"label": _("Unit Rate"), "fieldname": "unit_rate", "fieldtype": "Currency", "width": 100},
         {"label": _("Item Basic Amount INR"), "fieldname": "item_basic_amount_inr", "fieldtype": "Currency", "width": 120},
@@ -239,10 +240,11 @@ def get_data(filters):
 
             invoice_no = get_invoice_no(so.sales_order)
             delivered_qty = get_delivered_qty_from_invoice(so.sales_order, item.item_code)
+            invoiced_qty = get_invoiced_qty_from_sales_invoice(item.name)
 
             if invoice_no:
                 # Delivered Qty & Delivery Date
-                delivered_qty_actual = so.total_qty if so.order_status not in ["Draft", "Cancelled", "To Deliver and Bill"] else ""
+                delivered_qty_actual = get_delivered_qty_from_delivery_note(item.name)
                 delivered_date = so.delivery_date if so.order_status not in ["Draft", "Cancelled", "To Deliver and Bill"] else ""
             else:
                 delivered_qty_actual = ""
@@ -336,7 +338,8 @@ def get_data(filters):
                 so.total_taxes_and_charges or 0,
                 item.igst_amount or 0,
                 so.order_status or "",
-                delivered_qty_actual,
+                delivered_qty_actual or 0,
+                invoiced_qty or 0,
                 delivered_date,
                 invoice_no,
                 so.custom_repeat_order_ref or "",
@@ -505,3 +508,57 @@ def get_approval_details(sales_order):
 		return approval[0]
 
 	return {"approved_by": "", "approved_on": None}
+
+
+import frappe
+from frappe.utils import flt
+
+def get_delivered_qty_from_delivery_note(so_detail):
+    delivered_qty = frappe.db.sql("""
+        SELECT 
+            SUM(dni.qty)
+        FROM 
+            `tabDelivery Note Item` dni
+        INNER JOIN 
+            `tabDelivery Note` dn 
+            ON dn.name = dni.parent
+        WHERE 
+            dni.so_detail = %s
+            AND dn.docstatus = 1
+    """, (so_detail,), as_list=1)
+
+    return flt(delivered_qty[0][0]) if delivered_qty and delivered_qty[0][0] else 0
+
+
+
+def get_invoiced_qty_from_sales_invoice (so_detail):
+    delivered_qty = frappe.db.sql("""
+        SELECT 
+            SUM(dni.qty)
+        FROM 
+            `tabSales Invoice Item` sii
+        INNER JOIN 
+            `tabSales Invoice` si 
+            ON si.name = sii.parent
+        WHERE 
+            sii.so_detail = %s
+            AND si.docstatus = 1
+    """, (so_detail,), as_list=1)
+
+    return flt(delivered_qty[0][0]) if delivered_qty and delivered_qty[0][0] else 0
+
+def get_invoiced_qty_from_sales_invoice (so_detail):
+    invoiced_qty = frappe.db.sql("""
+        SELECT 
+            SUM(sii.qty)
+        FROM 
+            `tabSales Invoice Item` sii
+        INNER JOIN 
+            `tabSales Invoice` si 
+            ON si.name = sii.parent
+        WHERE 
+            sii.so_detail = %s
+            AND si.docstatus = 1
+    """, (so_detail,), as_list=1)
+
+    return flt(invoiced_qty[0][0]) if invoiced_qty and invoiced_qty[0][0] else 0
