@@ -4,25 +4,32 @@
 
 
 frappe.ui.form.on("Order Modification Request", {
+    refresh: function (frm) {
+        toggle_drg_section(frm);
+    },
+
+    type: function (frm) {
+        toggle_drg_section(frm);
+    },
     setup(frm) {
-        
+
         frm.set_query("sales_order", function () {
-        let filters = {
-            docstatus: 1,
-            status: ["in", ["To Deliver and Bill", "To Deliver"]],
-        };
-        if (frm.doc.branch) {
-            filters["branch"] = frm.doc.branch;
-        }
-        return { filters };
-    });
+            let filters = {
+                docstatus: 1,
+                status: ["in", ["To Deliver and Bill", "To Deliver"]],
+            };
+            if (frm.doc.branch) {
+                filters["branch"] = frm.doc.branch;
+            }
+            return { filters };
+        });
 
     },
     branch(frm) {
-    // Clear sales_order when branch changes so stale value doesn't stay
-    frm.set_value("sales_order", null);
-    frm.refresh_field("sales_order");
-},
+        // Clear sales_order when branch changes so stale value doesn't stay
+        frm.set_value("sales_order", null);
+        frm.refresh_field("sales_order");
+    },
 
     get_item(frm) {
         if (!frm.doc.type) {
@@ -108,6 +115,15 @@ function fetch_items_dynamic(frm) {
                     row.po_line_no = item.po_line_no;
                     row.rate = item.rate;
 
+                    // Additional required fields
+                    row.line_status = item.line_status || null;
+                    row.delivery_date = item.delivery_date || null;
+                    row.tag_no = item.tag_no || null;
+                    row.line_remark = item.line_remark || null;
+                    row.shipping_address = item.custom_shipping_address || null;
+                    row.is_free_item = item.is_free_item || 0;
+                    row.component_of = item.component_of || null;
+
                     let history_row = frm.add_child("original_record");
                     history_row.sales_order_item_name = item.name;
                     history_row.item = item.item_code;
@@ -115,6 +131,14 @@ function fetch_items_dynamic(frm) {
                     history_row.batch_no = item.custom_batch_no || null;
                     history_row.po_line_no = item.po_line_no;
                     history_row.rate = item.rate;
+
+                    history_row.line_status = item.line_status || null;
+                    history_row.delivery_date = item.delivery_date || null;
+                    history_row.tag_no = item.tag_no || null;
+                    history_row.line_remark = item.line_remark || null;
+                    history_row.shipping_address = item.custom_shipping_address || null;
+                    history_row.is_free_item = item.is_free_item || 0;
+                    history_row.component_of = item.component_of || null;
 
                 });
             }
@@ -175,3 +199,18 @@ frappe.ui.form.on('Order Modification Request Detail', {
         );
     }
 });
+
+
+function toggle_drg_section(frm) {
+    let hide_section = frm.doc.type === "Sales Order";
+
+    if (frm.fields_dict.items) {
+        frm.fields_dict.items.grid.update_docfield_property(
+            "drg_and_pur_spec_section",
+            "hidden",
+            hide_section ? 1 : 0
+        );
+    }
+
+    frm.refresh_field("items");
+}

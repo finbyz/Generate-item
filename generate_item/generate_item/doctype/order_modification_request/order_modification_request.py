@@ -2,368 +2,461 @@ import frappe, json
 from frappe.model.document import Document
 from erpnext.controllers.accounts_controller import update_child_qty_rate
 from frappe.desk.form.linked_with import (
-	get_linked_doctypes,
-	get_linked_docs,
+    get_linked_doctypes,
+    get_linked_docs,
 )
 from frappe import _
 
 import frappe
 import re
+from frappe.utils import today
 
 
 from frappe.utils import get_url_to_form
 
+
 class OrderModificationRequest(Document):
 
-	def validate(self):
-		self.validate_sales_order()
-		self.validate_qty_and_rev_qty()
-		
+    def validate(self):
+        self.validate_sales_order()
+        self.validate_qty_and_rev_qty()
 
-	def on_submit(self):
-		if self.type == "BOM" and self.bom:
-			self.update_bom_items_using_db_set()
+    def on_submit(self):
+        if self.type == "BOM" and self.bom:
+            self.update_bom_items_using_db_set()
 
-		# if self.type == "Sales Order" and self.sales_order:
-		# 	self.update_sales_order_items_using_db_set()
-   
-		if self.type == "Sales Order" and self.sales_order:
-			self.update_sales_order_values()
-			create_batches_for_omr(self)
-			create_history_records(self)
-			get_change(self)
+        # if self.type == "Sales Order" and self.sales_order:
+        # 	self.update_sales_order_items_using_db_set()
 
-	def update_sales_order_items_using_db_set(self):
-		if not self.sales_order:
-			return
+        if self.type == "Sales Order" and self.sales_order:
+            self.update_sales_order_values()
+            self.update_sales_order_revision()
+            create_batches_for_omr(self)
+            create_history_records(self)
+            get_change(self)
 
-		#  Collect OMR item codes and line numbers for tracking
-		omr_items = {(row.item, row.po_line_no) for row in self.items if row.item}
+    def update_sales_order_items_using_db_set(self):
+        if not self.sales_order:
+            return
 
-		# Get the current maximum index for new items
-		current_max_idx = frappe.db.get_value("Sales Order Item", {"parent": self.sales_order}, "max(idx)") or 0
+        #  Collect OMR item codes and line numbers for tracking
+        omr_items = {(row.item, row.po_line_no) for row in self.items if row.item}
 
-		#  Update or Insert items
-		for row in self.items:
-			# Construct update_data only with fields that have values
-			update_data = {}
-			
-			# Always include qty if it's part of the revision
-			if row.rev_qty:
-				update_data["qty"] = row.rev_qty
-				
-			
-			
-			# Check if item exists in Sales Order using both item_code and po_line_no
-			filters = {
-				"parent": self.sales_order, 
-				"parenttype": "Sales Order", 
-				"item_code": row.item
-			}
-			
-			# Add po_line_no to filters if it exists
-			if row.po_line_no:
-				filters["po_line_no"] = row.po_line_no
-			
-			so_item_name = frappe.db.get_value("Sales Order Item", filters, "name")
+        # Get the current maximum index for new items
+        current_max_idx = (
+            frappe.db.get_value(
+                "Sales Order Item", {"parent": self.sales_order}, "max(idx)"
+            )
+            or 0
+        )
 
-			if so_item_name:
-				# Update existing record in submitted Sales Order
-				frappe.db.set_value("Sales Order Item", so_item_name, update_data, update_modified=True)
-			
-			elif frappe.utils.flt(row.rev_qty) > 0:
-				# Insert new record at the end
-				current_max_idx += 1
-				
-				# Combine basic info with the revision data
-				new_item_dict = {
-					"doctype": "Sales Order Item",
-					"parent": self.sales_order,
-					"parenttype": "Sales Order",
-					"parentfield": "items",
-					"item_code": row.item,
-					"idx": current_max_idx
-				}
-				
-				# Add po_line_no if it exists
-				if row.po_line_no:
-					new_item_dict["po_line_no"] = row.po_line_no
-				
-				new_item_dict.update(update_data)
-				
-				new_so_item = frappe.get_doc(new_item_dict)
-				# new_so_item.db_insert()
-				new_so_item.save()	
+        #  Update or Insert items
+        for row in self.items:
+            # Construct update_data only with fields that have values
+            update_data = {}
 
-		#  Delete Sales Order items not present in OMR
-		so_items = frappe.db.get_all(
-			"Sales Order Item",
-			filters={"parent": self.sales_order, "parenttype": "Sales Order"},
-			fields=["name", "item_code", "po_line_no"]
-		)
+            # Always include qty if it's part of the revision
+            if row.rev_qty:
+                update_data["qty"] = row.rev_qty
 
-		for so_row in so_items:
-			# Check if the combination of item_code and po_line_no exists in OMR
-			if (so_row.item_code, so_row.get("po_line_no")) not in omr_items:
-				frappe.db.delete("Sales Order Item", so_row.name)
+            # Check if item exists in Sales Order using both item_code and po_line_no
+            filters = {
+                "parent": self.sales_order,
+                "parenttype": "Sales Order",
+                "item_code": row.item,
+            }
 
-		# Finalize
-		# Recalculate totals for the submitted Sales Order and update the header
-		so_doc = frappe.get_doc("Sales Order", self.sales_order)
-		so_doc.calculate_taxes_and_totals()
-		so_doc.save()	
-		# so_doc.db_update()
+            # Add po_line_no to filters if it exists
+            if row.po_line_no:
+                filters["po_line_no"] = row.po_line_no
 
-		
+            so_item_name = frappe.db.get_value("Sales Order Item", filters, "name")
 
-	
+            if so_item_name:
+                # Update existing record in submitted Sales Order
+                frappe.db.set_value(
+                    "Sales Order Item", so_item_name, update_data, update_modified=True
+                )
 
+            elif frappe.utils.flt(row.rev_qty) > 0:
+                # Insert new record at the end
+                current_max_idx += 1
 
-	def update_bom_items_using_db_set(self):
-		if not self.bom:
-			return
+                # Combine basic info with the revision data
+                new_item_dict = {
+                    "doctype": "Sales Order Item",
+                    "parent": self.sales_order,
+                    "parenttype": "Sales Order",
+                    "parentfield": "items",
+                    "item_code": row.item,
+                    "idx": current_max_idx,
+                }
 
-		#  Collect OMR item codes
-		omr_items = {row.item for row in self.items if row.item}
+                # Add po_line_no if it exists
+                if row.po_line_no:
+                    new_item_dict["po_line_no"] = row.po_line_no
 
-		# Get the current maximum index for new items
-		current_max_idx = frappe.db.get_value("BOM Item", {"parent": self.bom}, "max(idx)") or 0
+                new_item_dict.update(update_data)
 
-		#  Update or Insert items
-		for row in self.items:
-			# Construct update_data only with fields that have values
-			update_data = {}
-			
-			# Always include qty if it's part of the revision
-			if row.rev_qty:
-				update_data["qty"] = row.rev_qty
-				
-			# Use if-blocks for the custom fields to prevent overwriting with None/Empty
-			if row.rev_drawing_no:
-				update_data["custom_drawing_no"] = row.rev_drawing_no
-			if row.rev_drawing_rev_no:
-				update_data["custom_drawing_rev_no"] = row.rev_drawing_rev_no
-			if row.rev_pattern_drawing_no:
-				update_data["custom_pattern_drawing_no"] = row.rev_pattern_drawing_no
-			if row.rev_pattern_drawing_rev_no:
-				update_data["custom_pattern_drawing_rev_no"] = row.rev_pattern_drawing_rev_no
-			if row.rev_purchase_specification_no:
-				update_data["custom_purchase_specification_no"] = row.rev_purchase_specification_no
-			if row.rev_purchase_specification_rev_no:
-				update_data["custom_purchase_specification_rev_no"] = row.rev_purchase_specification_rev_no
-			# Check if item exists in BOM
-			bom_item_name = frappe.db.get_value(
-				"BOM Item",
-				{"parent": self.bom, "parenttype": "BOM", "item_code": row.item},
-				"name"
-			)
+                new_so_item = frappe.get_doc(new_item_dict)
+                # new_so_item.db_insert()
+                new_so_item.save()
 
-			
-			
+        #  Delete Sales Order items not present in OMR
+        so_items = frappe.db.get_all(
+            "Sales Order Item",
+            filters={"parent": self.sales_order, "parenttype": "Sales Order"},
+            fields=["name", "item_code", "po_line_no"],
+        )
 
-			if bom_item_name:
-				# Update existing record in submitted BOM
-				frappe.db.set_value("BOM Item", bom_item_name, update_data, update_modified=True)
-			
-			elif frappe.utils.flt(row.rev_qty) > 0:
-				# Insert new record at the end
-				current_max_idx += 1
-				
-				# Combine basic info with the revision data
-				new_item_dict = {
-					"doctype": "BOM Item",
-					"parent": self.bom,
-					"parenttype": "BOM",
-					"parentfield": "items",
-					"item_code": row.item,
-					"idx": current_max_idx
-				}
-				new_item_dict.update(update_data)
-				
-				new_bom_item = frappe.get_doc(new_item_dict)
-				new_bom_item.db_insert()
+        for so_row in so_items:
+            # Check if the combination of item_code and po_line_no exists in OMR
+            if (so_row.item_code, so_row.get("po_line_no")) not in omr_items:
+                frappe.db.delete("Sales Order Item", so_row.name)
 
-		#  Delete BOM items not present in OMR
-		bom_items = frappe.db.get_all(
-			"BOM Item",
-			filters={"parent": self.bom, "parenttype": "BOM"},
-			fields=["name", "item_code"]
-		)
+        # Finalize
+        # Recalculate totals for the submitted Sales Order and update the header
+        so_doc = frappe.get_doc("Sales Order", self.sales_order)
+        so_doc.calculate_taxes_and_totals()
+        so_doc.save()
+        # so_doc.db_update()
 
-		for bom_row in bom_items:
-			if bom_row.item_code not in omr_items:
-				frappe.db.delete("BOM Item", bom_row.name)
+    def update_bom_items_using_db_set(self):
+        if not self.bom:
+            return
 
-		#  Finalize
-		# Recalculate cost for the submitted BOM and update the header
-		bom_doc = frappe.get_doc("BOM", self.bom)
-		bom_doc.calculate_cost()
-		bom_doc.db_update()
+        #  Collect OMR item codes
+        omr_items = {row.item for row in self.items if row.item}
 
-		
+        # Get the current maximum index for new items
+        current_max_idx = (
+            frappe.db.get_value("BOM Item", {"parent": self.bom}, "max(idx)") or 0
+        )
 
+        #  Update or Insert items
+        for row in self.items:
+            # Construct update_data only with fields that have values
+            update_data = {}
 
+            # Always include qty if it's part of the revision
+            if row.rev_qty:
+                update_data["qty"] = row.rev_qty
 
-	def validate_qty_and_rev_qty(self):
-		for row in self.items:
-			qty = frappe.utils.flt(row.qty)
-			rev_qty = frappe.utils.flt(row.rev_qty)
+            # Use if-blocks for the custom fields to prevent overwriting with None/Empty
+            if row.rev_drawing_no:
+                update_data["custom_drawing_no"] = row.rev_drawing_no
+            if row.rev_drawing_rev_no:
+                update_data["custom_drawing_rev_no"] = row.rev_drawing_rev_no
+            if row.rev_pattern_drawing_no:
+                update_data["custom_pattern_drawing_no"] = row.rev_pattern_drawing_no
+            if row.rev_pattern_drawing_rev_no:
+                update_data["custom_pattern_drawing_rev_no"] = (
+                    row.rev_pattern_drawing_rev_no
+                )
+            if row.rev_purchase_specification_no:
+                update_data["custom_purchase_specification_no"] = (
+                    row.rev_purchase_specification_no
+                )
+            if row.rev_purchase_specification_rev_no:
+                update_data["custom_purchase_specification_rev_no"] = (
+                    row.rev_purchase_specification_rev_no
+                )
+            # Check if item exists in BOM
+            bom_item_name = frappe.db.get_value(
+                "BOM Item",
+                {"parent": self.bom, "parenttype": "BOM", "item_code": row.item},
+                "name",
+            )
 
-			if qty == 0 and rev_qty == 0:
-				frappe.throw(
-					f"Row {row.idx}: Rev Qty cannot be 0 when Qty is 0",
-					title="Invalid Quantity"
-				)
+            if bom_item_name:
+                # Update existing record in submitted BOM
+                frappe.db.set_value(
+                    "BOM Item", bom_item_name, update_data, update_modified=True
+                )
 
+            elif frappe.utils.flt(row.rev_qty) > 0:
+                # Insert new record at the end
+                current_max_idx += 1
 
-	def validate_sales_order(self):
-		if not self.sales_order:
-			return
+                # Combine basic info with the revision data
+                new_item_dict = {
+                    "doctype": "BOM Item",
+                    "parent": self.bom,
+                    "parenttype": "BOM",
+                    "parentfield": "items",
+                    "item_code": row.item,
+                    "idx": current_max_idx,
+                }
+                new_item_dict.update(update_data)
 
-		so = frappe.get_doc("Sales Order", self.sales_order)
+                new_bom_item = frappe.get_doc(new_item_dict)
+                new_bom_item.db_insert()
 
-		
-		
-		#  Check using status 
-		if so.status == "Cancelled":
-			frappe.throw(
-				_("Sales Order {0} is cancelled. You cannot use a cancelled Sales Order.")
-				.format(so.name)
-			)
-		# Completed Sales Order (business rule stop)
-		elif so.status == "Completed":
-			frappe.throw(
-				_("Sales Order {0} is already completed. You cannot proceed with a completed Sales Order.")
-				.format(so.name)
-			)
+        #  Delete BOM items not present in OMR
+        bom_items = frappe.db.get_all(
+            "BOM Item",
+            filters={"parent": self.bom, "parenttype": "BOM"},
+            fields=["name", "item_code"],
+        )
 
-	def update_sales_order_values(self):
-		so = frappe.get_doc("Sales Order", self.sales_order)
+        for bom_row in bom_items:
+            if bom_row.item_code not in omr_items:
+                frappe.db.delete("BOM Item", bom_row.name)
 
-		trans_items = []
+        #  Finalize
+        # Recalculate cost for the submitted BOM and update the header
+        bom_doc = frappe.get_doc("BOM", self.bom)
+        bom_doc.calculate_cost()
+        bom_doc.db_update()
 
-		for row in self.items:
-			qty = row.rev_qty if (row.rev_qty and row.rev_qty > 0) else row.qty
-			rate = row.rev_rate if (row.rev_rate and row.rev_rate > 0) else row.rate
+    def validate_qty_and_rev_qty(self):
+        for row in self.items:
+            qty = frappe.utils.flt(row.qty)
+            rev_qty = frappe.utils.flt(row.rev_qty)
 
-			# existing row → update
-			if row.sales_order_item_name:
-				trans_items.append({
-					"docname": row.sales_order_item_name,
-					"item_code": row.item,
-					"qty": qty,
-					"rate": rate,
-				})
-			else:
-				trans_items.append({
-					"__islocal": True,
-					"item_code": row.item,
-					"qty": qty,
-					"rate": rate,
-				})
+            if qty == 0 and rev_qty == 0:
+                frappe.throw(
+                    f"Row {row.idx}: Rev Qty cannot be 0 when Qty is 0",
+                    title="Invalid Quantity",
+                )
 
-		# save new rows
-		so.save(ignore_permissions=True)
+    def validate_sales_order(self):
+        if not self.sales_order:
+            return
 
-		# update existing rows
-		if trans_items:
-			update_child_qty_rate(
-				self.type,
-				json.dumps(trans_items),
-				self.sales_order,
-			)
+        so = frappe.get_doc("Sales Order", self.sales_order)
 
+        #  Check using status
+        if so.status == "Cancelled":
+            frappe.throw(
+                _(
+                    "Sales Order {0} is cancelled. You cannot use a cancelled Sales Order."
+                ).format(so.name)
+            )
+        # Completed Sales Order (business rule stop)
+        elif so.status == "Completed":
+            frappe.throw(
+                _(
+                    "Sales Order {0} is already completed. You cannot proceed with a completed Sales Order."
+                ).format(so.name)
+            )
 
+    def update_sales_order_revision(self):
+        # Safety check
+        if not self.sales_order:
+            return
 
+        # Get Sales Order
+        so = frappe.get_doc("Sales Order", self.sales_order)
 
+        # Update revision fields
+        if so:
+            so.latest_rev_no = self.name
+            so.rev_date = today()
+            so.save(ignore_permissions=True)
 
+    def update_sales_order_values(self):
+        
+		# ── Mapping: (revised_field, base_field, sales_order_field) 
+		# Each tuple tells us:
+		#   • revised_field  – the "rev_*" column on the OMR row (takes priority)
+		#   • base_field     – the original column on the OMR row (fallback for new items)
+		#   • so_field       – the column name on the Sales Order Item to update
+
+		# ── Mapping: (revised_field, base_field, sales_order_field) 
+        CUSTOM_FIELD_MAP = [
+        ("rev_line_status",      "line_status"),
+        ("rev_delivery_date",    "delivery_date"),
+        ("rev_tag_no",           "tag_no"),
+        ("rev_po_line_no",       "po_line_no"),
+        ("rev_line_remark",      "line_remark"),
+        ("rev_shipping_address", "custom_shipping_address"),
+        ("rev_is_free_item",     "is_free_item"),
+        ("rev_component_of",     "component_of"),
+    ]
+        
+
+        so = frappe.get_doc("Sales Order", self.sales_order)
+
+        # ── Step 1: Build the item list for qty / rate update 
+        trans_items = []
+        for row in self.items:
+            qty  = row.rev_qty  if (row.rev_qty  and row.rev_qty  > 0) else row.qty
+            rate = row.rev_rate if (row.rev_rate and row.rev_rate > 0) else row.rate
+
+            if row.sales_order_item_name:
+                trans_items.append({
+                    "docname":   row.sales_order_item_name,
+                    "item_code": row.item,
+                    "qty":       qty,
+                    "rate":      rate,
+                })
+            else:
+                trans_items.append({
+                    "__islocal": True,
+                    "item_code": row.item,
+                    "qty":       qty,
+                    "rate":      rate,
+                })
+
+        so.save(ignore_permissions=True)
+
+        if trans_items:
+            update_child_qty_rate(
+                self.type,
+                json.dumps(trans_items),
+                self.sales_order,
+            )
+
+        # ── Step 2: Update custom fields via direct SQL 
+        now  = frappe.utils.now()
+        user = frappe.session.user
+
+        for row in self.items:
+            so_item_name = self._find_so_item_name(row)
+            if not so_item_name:
+                continue
+
+            
+            update_fields = {}
+
+            for rev_field, so_field in CUSTOM_FIELD_MAP:
+                rev_value = getattr(row, rev_field, None)
+                if rev_value:
+                    update_fields[so_field] = rev_value
+                
+            if not update_fields:
+                continue
+
+            # ── Build dynamic SET clause 
+            set_clause = ", ".join([
+                f"`{so_field}` = %({so_field})s"
+                for so_field in update_fields
+            ])
+
+            frappe.db.sql(f"""
+                UPDATE `tabSales Order Item`
+                SET
+                    {set_clause},
+                    `modified`    = %(modified)s,
+                    `modified_by` = %(modified_by)s
+                WHERE
+                    `name`   = %(name)s
+                    AND `parent` = %(parent)s
+            """, {
+                **update_fields,
+                "name":        so_item_name,
+                "parent":      self.sales_order,
+                "modified":    now,
+                "modified_by": user,
+            })
+
+        frappe.db.commit()
+       
+    def _find_so_item_name(self, row):
+        
+        if row.sales_order_item_name:
+            return row.sales_order_item_name
+
+        filters = {
+            "parent":     self.sales_order,
+            "parenttype": "Sales Order",
+            "item_code":  row.item,
+        }
+        if row.po_line_no:
+            filters["po_line_no"] = row.po_line_no
+
+        so_item_name = frappe.db.get_value(
+            "Sales Order Item",
+            filters,
+            "name",
+            order_by="idx desc",
+        )
+
+        if not so_item_name:
+            frappe.log_error(
+                title="OMR – SO item not found for custom field update",
+                message=f"item={row.item}, po_line_no={row.po_line_no}, omr={self.name}",
+            )
+
+        return so_item_name
 @frappe.whitelist()
 def get_linked_documents(items):
-	"""
-	items → frm.doc.items (list of dicts)
-	"""
-	if isinstance(items, str):
-		items = frappe.parse_json(items)
+    """
+    items → frm.doc.items (list of dicts)
+    """
+    if isinstance(items, str):
+        items = frappe.parse_json(items)
 
-	EXCLUDED_DOCTYPES = {"Bin", "Order Modification Request"}
+    EXCLUDED_DOCTYPES = {"Bin", "Order Modification Request"}
 
-	result = []
+    result = []
 
-	for row in items:
-		if not row.get("item"):
-			continue
+    for row in items:
+        if not row.get("item"):
+            continue
 
-		linked_docs = get_all_linked_documents("Item", row.get("item"))
+        linked_docs = get_all_linked_documents("Item", row.get("item"))
 
-		for d in linked_docs:
-			#  Exclude unwanted doctypes
-			if d.get("ref_doctype") in EXCLUDED_DOCTYPES:
-				continue
+        for d in linked_docs:
+            #  Exclude unwanted doctypes
+            if d.get("ref_doctype") in EXCLUDED_DOCTYPES:
+                continue
 
-			result.append({
-				"ref_doctype": d.get("ref_doctype"),
-				"document_no": d.get("document_no"),
-				"line_item": row.get("idx"),
-			})
+            result.append(
+                {
+                    "ref_doctype": d.get("ref_doctype"),
+                    "document_no": d.get("document_no"),
+                    "line_item": row.get("idx"),
+                }
+            )
 
-	return result
-
-
-
-
+    return result
 
 
 def get_all_linked_documents(source_doctype, source_name):
-	"""
-	Wrapper around ERPNext core Linked-With logic.
-	Returns linked documents for a given document.
-	"""
+    """
+    Wrapper around ERPNext core Linked-With logic.
+    Returns linked documents for a given document.
+    """
 
-	
-	frappe.has_permission(source_doctype, doc=source_name, throw=True)
+    frappe.has_permission(source_doctype, doc=source_name, throw=True)
 
-	
-	linkinfo = get_linked_doctypes(source_doctype)
+    linkinfo = get_linked_doctypes(source_doctype)
 
-	if not linkinfo:
-		return []
+    if not linkinfo:
+        return []
 
-	
-	linked_docs = get_linked_docs(
-		doctype=source_doctype,
-		name=source_name,
-		linkinfo=linkinfo
-	)
+    linked_docs = get_linked_docs(
+        doctype=source_doctype, name=source_name, linkinfo=linkinfo
+    )
 
-	
-	result = []
+    result = []
 
-	for ref_doctype, docs in linked_docs.items():
-		for doc in docs:
-			# Ignore cancelled documents
-			if doc.get("docstatus") == 2:
-				continue
+    for ref_doctype, docs in linked_docs.items():
+        for doc in docs:
+            # Ignore cancelled documents
+            if doc.get("docstatus") == 2:
+                continue
 
-			result.append({
-				"ref_doctype": ref_doctype,
-				"document_no": doc.get("name"),
-				
-			})
+            result.append(
+                {
+                    "ref_doctype": ref_doctype,
+                    "document_no": doc.get("name"),
+                }
+            )
 
-	return result
-
-
-
-
+    return result
 
 
 # ---------------------------------------------------------------------------
 # Batch-ID generator  (mirrors generate_batch_id_sequential in JS)
 # ---------------------------------------------------------------------------
 
+
 def generate_batch_id(so_name: str, index: int) -> str:
-    base_name = re.sub(r"-\d+$", "", so_name)         
-    item_number = str(index + 1).zfill(3)               
+    base_name = re.sub(r"-\d+$", "", so_name)
+    item_number = str(index + 1).zfill(3)
     return f"{base_name}-{item_number}"
 
 
@@ -371,13 +464,10 @@ def generate_batch_id(so_name: str, index: int) -> str:
 # Core batch-creation helper
 # ---------------------------------------------------------------------------
 
+
 def _delete_batch_if_exists(batch_id: str) -> None:
     """Delete an existing Batch document that carries this batch_id, if any."""
-    existing = frappe.db.get_value(
-        "Batch",
-        {"batch_id": batch_id},
-        "name"
-    )
+    existing = frappe.db.get_value("Batch", {"batch_id": batch_id}, "name")
     if existing:
         try:
             frappe.delete_doc("Batch", existing, force=True, ignore_permissions=True)
@@ -385,7 +475,7 @@ def _delete_batch_if_exists(batch_id: str) -> None:
         except Exception as e:
             frappe.log_error(
                 title="OMR – could not delete existing batch",
-                message=f"batch_id={batch_id}  name={existing}\n{e}"
+                message=f"batch_id={batch_id}  name={existing}\n{e}",
             )
 
 
@@ -403,18 +493,20 @@ def _create_batch(
     Returns the created document name.
     Mirrors create_new_batch() in the JS.
     """
-    batch_doc = frappe.get_doc({
-        "doctype": "Batch",
-        "item": item_code,
-        "batch_id": batch_id,
-        "branch": branch,
-        "stock_uom": uom,
-        "manufacturing_date": manufacturing_date,
-        "expiry_date": None,
-        "reference_doctype": "Sales Order",
-        "reference_name": so_name,
-        "customer": customer,
-    })
+    batch_doc = frappe.get_doc(
+        {
+            "doctype": "Batch",
+            "item": item_code,
+            "batch_id": batch_id,
+            "branch": branch,
+            "stock_uom": uom,
+            "manufacturing_date": manufacturing_date,
+            "expiry_date": None,
+            "reference_doctype": "Sales Order",
+            "reference_name": so_name,
+            "customer": customer,
+        }
+    )
     batch_doc.insert(ignore_permissions=True)
     frappe.db.commit()
     return batch_doc.name
@@ -424,141 +516,146 @@ def _create_batch(
 # Main entry-point called from OrderModificationRequest.on_submit
 # ---------------------------------------------------------------------------
 
+
 def create_batches_for_omr(omr_doc) -> None:
-	"""
-	For every OMR item row whose corresponding SO item does NOT yet have a
-	batch, generate a batch_id (same sequential logic as the SO client script),
-	create the Batch document, and write batch_no + custom_batch_no back onto
-	the SO item row.
-	"""
-	if not omr_doc.sales_order:
-		return
+    """
+    For every OMR item row whose corresponding SO item does NOT yet have a
+    batch, generate a batch_id (same sequential logic as the SO client script),
+    create the Batch document, and write batch_no + custom_batch_no back onto
+    the SO item row.
+    """
+    if not omr_doc.sales_order:
+        return
 
-	so_doc = frappe.get_doc("Sales Order", omr_doc.sales_order)
-	manufacturing_date = so_doc.transaction_date or frappe.utils.today()
+    so_doc = frappe.get_doc("Sales Order", omr_doc.sales_order)
+    manufacturing_date = so_doc.transaction_date or frappe.utils.today()
 
-	# Build a quick lookup: SO item name  →  SO item row (for updating later)
-	so_items_by_name = {row.name: row for row in so_doc.items}
+    # Build a quick lookup: SO item name  →  SO item row (for updating later)
+    so_items_by_name = {row.name: row for row in so_doc.items}
 
-	created: list[dict] = []
-	skipped: list[str] = []
-	errors: list[dict] = []
+    created: list[dict] = []
+    skipped: list[str] = []
+    errors: list[dict] = []
 
-	for omr_row in omr_doc.items:
-		if not omr_row.item:
-			continue
+    for omr_row in omr_doc.items:
+        if not omr_row.item:
+            continue
 
-		# ── 1. Resolve the SO item row ──────────────────────────────────────
-		so_item_name = omr_row.sales_order_item_name  
-		if so_item_name:
-			so_item = so_items_by_name.get(so_item_name)
-		else:
-			
-			so_item = next(
-				(r for r in so_doc.items if r.item_code == omr_row.item and not r.custom_batch_no),
-				None
-			)
-			if so_item:
-				so_item_name = so_item.name
+        # ── 1. Resolve the SO item row ──────────────────────────────────────
+        so_item_name = omr_row.sales_order_item_name
+        if so_item_name:
+            so_item = so_items_by_name.get(so_item_name)
+        else:
 
-		if not so_item_name:
-			skipped.append(omr_row.item)
-			continue
+            so_item = next(
+                (
+                    r
+                    for r in so_doc.items
+                    if r.item_code == omr_row.item and not r.custom_batch_no
+                ),
+                None,
+            )
+            if so_item:
+                so_item_name = so_item.name
 
-		# ── 2. Skip if SO item already has a batch ──────────────────────────
-		existing_batch = frappe.db.get_value(
-			"Sales Order Item",
-			so_item_name,
-			"custom_batch_no"
-		)
-		if existing_batch:
-			skipped.append(f"{omr_row.item} (already has batch: {existing_batch})")
-			continue
+        if not so_item_name:
+            skipped.append(omr_row.item)
+            continue
 
-		# ── 3. Check item is batch-enabled ──────────────────────────────────
-		has_batch_no = frappe.db.get_value("Item", omr_row.item, "has_batch_no")
-		if not has_batch_no:
-			errors.append({"item": omr_row.item, "error": "Item is not batch-enabled"})
-			frappe.log_error(
-				title="OMR – Item not batch-enabled",
-				message=f"Item: {omr_row.item}\nReason: Item is not batch-enabled"
-			)
-			
-			continue
+        # ── 2. Skip if SO item already has a batch ──────────────────────────
+        existing_batch = frappe.db.get_value(
+            "Sales Order Item", so_item_name, "custom_batch_no"
+        )
+        if existing_batch:
+            skipped.append(f"{omr_row.item} (already has batch: {existing_batch})")
+            continue
 
-		# ── 4. Determine the index for batch_id generation ──────────────────
-		
-		so_item_idx = frappe.db.get_value("Sales Order Item", so_item_name, "idx") or omr_row.idx
-		index = int(so_item_idx) - 1   
+        # ── 3. Check item is batch-enabled ──────────────────────────────────
+        has_batch_no = frappe.db.get_value("Item", omr_row.item, "has_batch_no")
+        if not has_batch_no:
+            errors.append({"item": omr_row.item, "error": "Item is not batch-enabled"})
+            frappe.log_error(
+                title="OMR – Item not batch-enabled",
+                message=f"Item: {omr_row.item}\nReason: Item is not batch-enabled",
+            )
 
-		# ── 5. Derive SO base name (strip amendment suffix, same as JS) ──────
-		
-		so_base_name = so_doc.amended_from if so_doc.amended_from else so_doc.name
-		batch_id = generate_batch_id(so_base_name, index)
+            continue
 
-		# ── 6. Delete pre-existing batch with same batch_id (mirror JS) ─────
-		_delete_batch_if_exists(batch_id)
+        # ── 4. Determine the index for batch_id generation ──────────────────
 
-		# ── 7. Create the Batch document ─────────────────────────────────────
-		try:
-			branch  = getattr(so_item, "branch", None) if so_item else None
-			uom     = getattr(so_item, "uom",    None) if so_item else None
+        so_item_idx = (
+            frappe.db.get_value("Sales Order Item", so_item_name, "idx") or omr_row.idx
+        )
+        index = int(so_item_idx) - 1
 
-			batch_name = _create_batch(
-				item_code=omr_row.item,
-				batch_id=batch_id,
-				so_name=so_doc.name,
-				manufacturing_date=str(manufacturing_date),
-				branch=branch,
-				uom=uom,
-				customer=so_doc.customer,
-			)
+        # ── 5. Derive SO base name (strip amendment suffix, same as JS) ──────
 
-			created.append({
-				"item": omr_row.item,
-				"batch_id": batch_id,
-				"batch_doc": batch_name,
-				"so_item_name": so_item_name,
-			})
+        so_base_name = so_doc.amended_from if so_doc.amended_from else so_doc.name
+        batch_id = generate_batch_id(so_base_name, index)
 
-		except Exception as e:
-			err_str = str(e)
-			if "Duplicate" in err_str or "DuplicateEntryError" in err_str:
-				err_str = "Duplicate batch ID – batch may already exist"
-			errors.append({"item": omr_row.item, "error": err_str})
-			frappe.log_error(
-				title="OMR – batch creation error",
-				message=f"item={omr_row.item}  batch_id={batch_id}\n{e}"
-			)
+        # ── 6. Delete pre-existing batch with same batch_id (mirror JS) ─────
+        _delete_batch_if_exists(batch_id)
 
-	# ── 8. Write custom_batch_no back to SO item rows ───────────────────────
+        # ── 7. Create the Batch document ─────────────────────────────────────
+        try:
+            branch = getattr(so_item, "branch", None) if so_item else None
+            uom = getattr(so_item, "uom", None) if so_item else None
 
-	for entry in created:
-		so_item_name = entry["so_item_name"]
-		# Verify the item still belongs to this SO (same guard as the whitelisted fn)
-		if frappe.db.exists(
-			"Sales Order Item",
-			{"name": so_item_name, "parent": so_doc.name}
-		):
-			frappe.db.set_value(
-				"Sales Order Item",
-				so_item_name,
-				{"custom_batch_no": entry["batch_id"]},
-				update_modified=False,
-			)
+            batch_name = _create_batch(
+                item_code=omr_row.item,
+                batch_id=batch_id,
+                so_name=so_doc.name,
+                manufacturing_date=str(manufacturing_date),
+                branch=branch,
+                uom=uom,
+                customer=so_doc.customer,
+            )
 
-	frappe.db.commit()
+            created.append(
+                {
+                    "item": omr_row.item,
+                    "batch_id": batch_id,
+                    "batch_doc": batch_name,
+                    "so_item_name": so_item_name,
+                }
+            )
 
+        except Exception as e:
+            err_str = str(e)
+            if "Duplicate" in err_str or "DuplicateEntryError" in err_str:
+                err_str = "Duplicate batch ID – batch may already exist"
+            errors.append({"item": omr_row.item, "error": err_str})
+            frappe.log_error(
+                title="OMR – batch creation error",
+                message=f"item={omr_row.item}  batch_id={batch_id}\n{e}",
+            )
 
+    # ── 8. Write custom_batch_no back to SO item rows ───────────────────────
 
-	if errors:
-		frappe.msgprint(_(
-		"Batches were created for {0} item(s), but {1} item(s) had errors. "
-		"Check the Error Log for details."
-		).format(len(created), len(errors)),
-		title=_("Batch Creation – Partial Errors"),
-		indicator="orange",
-		)
+    for entry in created:
+        so_item_name = entry["so_item_name"]
+        # Verify the item still belongs to this SO (same guard as the whitelisted fn)
+        if frappe.db.exists(
+            "Sales Order Item", {"name": so_item_name, "parent": so_doc.name}
+        ):
+            frappe.db.set_value(
+                "Sales Order Item",
+                so_item_name,
+                {"custom_batch_no": entry["batch_id"]},
+                update_modified=False,
+            )
+
+    frappe.db.commit()
+
+    if errors:
+        frappe.msgprint(
+            _(
+                "Batches were created for {0} item(s), but {1} item(s) had errors. "
+                "Check the Error Log for details."
+            ).format(len(created), len(errors)),
+            title=_("Batch Creation – Partial Errors"),
+            indicator="orange",
+        )
 
 
 def get_change(self):
@@ -572,15 +669,16 @@ def get_change(self):
     updated, updated_boms = update_sales_order_items(self, mismatched_rows)
 
     created_requests = create_order_modification_requests(updated_boms)
-    
+
     update_child_rows_with_omr(self, created_requests)
 
     omr_list = [entry["new_omr"] for entry in created_requests]
-    
+
     frappe.msgprint(
-		f"Created {len(omr_list)} Order Modification Request(s): "
-		f"{', '.join(omr_list)}"
-	)
+        f"Created {len(omr_list)} Order Modification Request(s): "
+        f"{', '.join(omr_list)}"
+    )
+
 
 def get_mismatched_items(self):
     if not self.sales_order:
@@ -590,7 +688,7 @@ def get_mismatched_items(self):
     sales_order_items = frappe.get_all(
         "Sales Order Item",
         filters={"parent": self.sales_order},
-        fields=["name", "item_code"]
+        fields=["name", "item_code"],
     )
 
     # Convert to dictionary for fast lookup
@@ -604,13 +702,14 @@ def get_mismatched_items(self):
 
             # Compare item_code
             if so_item_code != row.item:
-                mismatched_rows.append({
-                    "row_name": row.name,
-                    "sales_order_item_name": row.sales_order_item_name
-                })
+                mismatched_rows.append(
+                    {
+                        "row_name": row.name,
+                        "sales_order_item_name": row.sales_order_item_name,
+                    }
+                )
 
     return mismatched_rows
-
 
 
 def update_sales_order_items(self, mismatched_rows):
@@ -625,30 +724,31 @@ def update_sales_order_items(self, mismatched_rows):
     row_map = {row.name: row for row in self.items}
 
     updated = []
-    
-    updated_boms =[]
+
+    updated_boms = []
 
     for mismatch in mismatched_rows:
         row = row_map.get(mismatch["row_name"])
 
         if row:
             item_name = frappe.db.get_value("Item", row.item, "item_name")
-            
+
             # 1️⃣ Update Sales Order Item
-            frappe.db.sql("""
+            frappe.db.sql(
+                """
                 UPDATE `tabSales Order Item`
                 SET item_code = %s,
                     item_name = %s
                 WHERE name = %s
-            """, (row.item,item_name, row.sales_order_item_name))
+            """,
+                (row.item, item_name, row.sales_order_item_name),
+            )
 
             updated.append(row.sales_order_item_name)
 
             # 2️⃣ Get custom_batch_no from Sales Order Item
             custom_batch_no = frappe.db.get_value(
-                "Sales Order Item",
-                row.sales_order_item_name,
-                "custom_batch_no"
+                "Sales Order Item", row.sales_order_item_name, "custom_batch_no"
             )
 
             # 3️⃣ Update Batch if exists
@@ -656,10 +756,7 @@ def update_sales_order_items(self, mismatched_rows):
                 update_batch_item(custom_batch_no, row.item)
                 bom_name = update_finish_item_bom(custom_batch_no, row.item)
                 if bom_name:
-                    updated_boms.append({
-                    "row_name": row.name,
-                    "bom": bom_name
-                })
+                    updated_boms.append({"row_name": row.name, "bom": bom_name})
 
     if updated or updated_boms:
         frappe.db.commit()
@@ -677,25 +774,25 @@ def update_batch_item(batch_name, new_item_code):
         return False
 
     # Optional safety check (recommended)
-    sle_exists = frappe.db.exists(
-        "Stock Ledger Entry",
-        {"batch_no": batch_name}
-    )
+    sle_exists = frappe.db.exists("Stock Ledger Entry", {"batch_no": batch_name})
 
     if sle_exists:
         frappe.msgprint(
             f"Batch {batch_name} has stock transactions. Skipped batch update."
         )
         return False
-    
+
     item_name = frappe.db.get_value("Item", new_item_code, "item_name")
 
-    frappe.db.sql("""
+    frappe.db.sql(
+        """
         UPDATE `tabBatch`
         SET item = %s,
             item_name = %s
         WHERE name = %s
-    """, (new_item_code, item_name, batch_name))
+    """,
+        (new_item_code, item_name, batch_name),
+    )
 
     return True
 
@@ -710,12 +807,16 @@ def update_finish_item_bom(custom_batch_no, new_item):
         return None
 
     # Get BOM name
-    bom_name = frappe.db.sql("""
+    bom_name = frappe.db.sql(
+        """
         SELECT name
         FROM `tabBOM`
         WHERE custom_batch_no = %s
         LIMIT 1
-    """, (custom_batch_no,), as_dict=True)
+    """,
+        (custom_batch_no,),
+        as_dict=True,
+    )
 
     if not bom_name:
         return None
@@ -723,11 +824,14 @@ def update_finish_item_bom(custom_batch_no, new_item):
     bom_name = bom_name[0]["name"]
 
     # Update finished item directly
-    frappe.db.sql("""
+    frappe.db.sql(
+        """
         UPDATE `tabBOM`
         SET item = %s
         WHERE name = %s
-    """, (new_item, bom_name))
+    """,
+        (new_item, bom_name),
+    )
 
     frappe.db.commit()
 
@@ -755,10 +859,7 @@ def create_order_modification_requests(updated_boms):
 
         frappe.db.commit()
 
-        created_docs.append({
-            "row": row_name,
-            "new_omr": doc.name
-        })
+        created_docs.append({"row": row_name, "new_omr": doc.name})
 
     return created_docs
 
@@ -813,10 +914,11 @@ def fetch_items_from_reference(doc):
             row.pattern_drawing_no = item.custom_pattern_drawing_no
             row.pattern_drawing_rev_no = item.custom_pattern_drawing_rev_no
             row.purchase_specification_no = item.custom_purchase_specification_no
-            row.purchase_specification_rev_no = item.custom_purchase_specification_rev_no
-            
-            
-            
+            row.purchase_specification_rev_no = (
+                item.custom_purchase_specification_rev_no
+            )
+
+
 def update_child_rows_with_omr(self, created_requests):
     """
     Update child table field `bom_update_request`
@@ -836,8 +938,8 @@ def update_child_rows_with_omr(self, created_requests):
 
         if child_row and new_omr:
             child_row.bom_update_request = new_omr
-            
-            
+
+
 def create_history_records(self):
     """
     Compare items with original_record.

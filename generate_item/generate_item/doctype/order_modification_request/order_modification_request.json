@@ -16,6 +16,7 @@
   "customer_name",
   "emails",
   "branch",
+  "reason_for_change",
   "section_break_10xk",
   "items",
   "get_link_documents",
@@ -128,8 +129,7 @@
    "fieldtype": "Table",
    "label": "Original Record",
    "no_copy": 1,
-   "options": "Order Modification Request Detail History",
-   "read_only": 1
+   "options": "Order Modification Request Detail History"
   },
   {
    "fieldname": "branch",
@@ -137,13 +137,18 @@
    "label": "Branch",
    "options": "Branch",
    "reqd": 1
+  },
+  {
+   "fieldname": "reason_for_change",
+   "fieldtype": "Small Text",
+   "label": "Reason For Change"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-03-04 11:38:06.639499",
+ "modified": "2026-03-04 18:14:36.384640",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request",

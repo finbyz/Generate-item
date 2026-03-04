@@ -7,12 +7,26 @@ from frappe.utils import flt, getdate, date_diff, nowdate, add_days
 from datetime import datetime
 import calendar
 
+# def execute(filters=None):
+#     columns = get_columns()
+#     data = get_data(filters)
+#     chart = get_chart_data(data, filters)
+#     summary = get_report_summary(data)
+    
+#     return columns, data, None, chart, summary
+
 def execute(filters=None):
     columns = get_columns()
-    data = get_data(filters)
+
+    base_data = get_base_data(filters)
+    allocation_map = get_allocation_data()
+    stock_map = get_stock_data()
+
+    data = build_final_data(base_data, allocation_map, stock_map)
+
     chart = get_chart_data(data, filters)
     summary = get_report_summary(data)
-    
+
     return columns, data, None, chart, summary
 
 def get_columns():
@@ -202,16 +216,24 @@ def get_columns():
         }
     ]
 
+from frappe.utils import nowdate, date_diff
+import frappe
+
+
 def get_data(filters):
     """Fetch production plan data with all related information"""
+
     if not filters.get("branch"):
         return []
+
     conditions = get_conditions(filters)
-    
+
     # Initialize age filter
-    if not filters.get("age"):
-        filters["age"] = 0
-        
+    filters["age"] = filters.get("age") or 0
+
+    # -----------------------------
+    # Main Query (UNCHANGED)
+    # -----------------------------
     data = frappe.db.sql(f"""
     SELECT DISTINCT
         -- Production Plan Info
@@ -234,32 +256,32 @@ def get_data(filters):
         wo.actual_end_date,
         wo.branch,
         
-        -- Item Details (from WO Item, MR Item, or PO Item)
+        -- Item Details
         COALESCE(woi.item_code, mri.item_code, poi.item_code) AS input_item_code,
         COALESCE(woi.description, mri.description, poi.description) AS input_item_description,
         COALESCE(woi.stock_uom, mri.stock_uom, poi.stock_uom) AS uom,
         
-        -- Drawing Numbers from BOM Item
+        -- Drawing Numbers
         COALESCE(woi.custom_drawing_no, mri.custom_drawing_no, poi.custom_drawing_no) AS custom_drawing_no,
         COALESCE(woi.custom_drawing_rev_no, mri.custom_drawing_rev_no, poi.custom_drawing_rev_no) AS custom_drawing_rev_no,
         
-        -- Per Valve Input Material Qty - Direct fetch from BOM
+        -- Per Valve Input Material Qty
         CASE 
             WHEN woi.item_code IS NOT NULL AND wo.qty > 0 THEN (woi.required_qty / wo.qty)
             ELSE 0
         END AS per_valve_input,
         
-        -- Total Required Qty = Per Valve Input Material Qty x FG to be Produce Qty
+        -- Total Required Qty
         CASE 
             WHEN woi.item_code IS NOT NULL AND wo.qty > 0 THEN 
                 (woi.required_qty / wo.qty) * wo.qty
             ELSE COALESCE(woi.required_qty, mri.qty, poi.qty, 0)
         END AS total_req_qty,
         
-        -- Issued Qty - Against Work Order Issue Qty Store to Production
+        -- Issued Qty
         COALESCE(woi.transferred_qty, 0) AS issued_qty,
         
-        -- Allocated Qty = PO Qty + Stock Transfer Qty
+        -- Allocated Qty
         (COALESCE(poi.qty, 0) + IFNULL((
             SELECT SUM(sed.qty)
             FROM `tabStock Entry Detail` sed
@@ -274,7 +296,7 @@ def get_data(filters):
         COALESCE(poi.qty, 0) AS po_qty,
         COALESCE(poi.received_qty, 0) AS po_received_qty,
         
-        -- Stock Transfer Qty from Production Plan (Material Transfer Stock Entries)
+        -- Stock Transfer Qty
         IFNULL((
             SELECT SUM(sed.qty)
             FROM `tabStock Entry Detail` sed
@@ -285,14 +307,14 @@ def get_data(filters):
             AND se.docstatus IN (0, 1)
         ), 0) AS stock_transfer_qty,
         
-        -- Individual quantities for reference
+        -- Individual quantities
         woi.required_qty AS wo_total_req_qty,
         woi.transferred_qty AS wo_issued_qty,
         mri.qty AS mr_qty,
         mri.ordered_qty AS mr_ordered_qty,
         mri.received_qty AS mr_received_qty,
         
-        -- On Hand Quantity (Store and RM Combined Qty)
+        -- On Hand Quantity
         IFNULL((
             SELECT SUM(bin.projected_qty)
             FROM `tabBin` bin
@@ -305,7 +327,7 @@ def get_data(filters):
             )
         ), 0) AS on_hand_qty,
         
-        -- Shortage Calculation = Total Req. Qty - Allocated Qty
+        -- Shortage Calculation
         GREATEST(
             0,
             CASE 
@@ -331,13 +353,12 @@ def get_data(filters):
         mr.status AS mr_status,
         mr.schedule_date AS mr_schedule_date,
         
-        -- Material Transfer Request (Material Request with type 'Material Transfer')
         CASE 
             WHEN mr.material_request_type = 'Material Transfer' THEN mr.name
             ELSE NULL
         END AS material_transferrequest_no,
         
-        -- Stock Entry Info (combined from both sources)
+        -- Stock Entry Info
         COALESCE(se.name, se_mr.name) AS material_transfer_no,
         COALESCE(se.posting_date, se_mr.posting_date) AS se_date,
         COALESCE(se.purpose, se_mr.purpose) AS se_purpose,
@@ -363,7 +384,7 @@ def get_data(filters):
             ELSE 'Production Plan Only'
         END AS source_type,
         
-        -- Unique identifier for duplicate detection
+        -- Unique identifier
         CONCAT(
             COALESCE(pp.name, ''),
             '|',
@@ -374,111 +395,96 @@ def get_data(filters):
             COALESCE(woi.name, mri.name, poi.name, '')
         ) AS unique_key
 
-    FROM
-        `tabProduction Plan` pp
-    
-    -- Link to Work Orders created from Production Plan
-    LEFT JOIN
-        `tabWork Order` wo ON wo.production_plan = pp.name 
-        AND wo.docstatus IN (0, 1)
-    
-    -- Link to Work Order Items
-    LEFT JOIN
-        `tabWork Order Item` woi ON woi.parent = wo.name
-    
-    -- Link to Material Requests via Material Request Item (production_plan field)
-    LEFT JOIN
-        `tabMaterial Request Item` mri ON mri.production_plan = pp.name
+    FROM `tabProduction Plan` pp
+    LEFT JOIN `tabWork Order` wo ON wo.production_plan = pp.name AND wo.docstatus IN (0, 1)
+    LEFT JOIN `tabWork Order Item` woi ON woi.parent = wo.name
+    LEFT JOIN `tabMaterial Request Item` mri ON mri.production_plan = pp.name
         AND mri.docstatus IN (0, 1)
         AND (woi.item_code IS NULL OR mri.item_code = woi.item_code)
-    
-    LEFT JOIN
-        `tabMaterial Request` mr ON mr.name = mri.parent
+    LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
         AND mr.material_request_type IN ('Purchase', 'Material Transfer')
         AND mr.docstatus IN (0, 1)
-    
-    -- Link to Stock Entries from Work Order
-    LEFT JOIN
-        `tabStock Entry` se ON se.work_order = wo.name 
+    LEFT JOIN `tabStock Entry` se ON se.work_order = wo.name
         AND se.purpose = 'Material Transfer for Manufacture'
         AND se.docstatus IN (0, 1)
-    
-    -- Link to Stock Entries from Material Request through Stock Entry Detail
-    LEFT JOIN
-        `tabStock Entry Detail` sed ON sed.material_request = mr.name
+    LEFT JOIN `tabStock Entry Detail` sed ON sed.material_request = mr.name
         AND sed.docstatus IN (0, 1)
         AND sed.item_code = mri.item_code
-    
-    LEFT JOIN
-        `tabStock Entry` se_mr ON se_mr.name = sed.parent
+    LEFT JOIN `tabStock Entry` se_mr ON se_mr.name = sed.parent
         AND se_mr.purpose IN ('Material Transfer', 'Material Issue')
         AND se_mr.docstatus IN (0, 1)
         AND se.name IS NULL
-    
-    -- Link to Purchase Orders via Material Request Item
-    LEFT JOIN
-        `tabPurchase Order Item` poi ON poi.material_request_item = mri.name
+    LEFT JOIN `tabPurchase Order Item` poi ON poi.material_request_item = mri.name
         AND poi.docstatus IN (0, 1)
-    
-    LEFT JOIN
-        `tabPurchase Order` po ON po.name = poi.parent
+    LEFT JOIN `tabPurchase Order` po ON po.name = poi.parent
         AND po.docstatus IN (0, 1)
-    
+
     WHERE
         pp.docstatus IN (0, 1)
         {conditions}
-    
+
     GROUP BY
         pp.name, wo.name, woi.item_code, mri.item_code, poi.item_code
-    
+
     ORDER BY
         pp.posting_date DESC, pp.name DESC, wo.planned_start_date ASC
-""", filters, as_dict=1)
-    
-    # Remove duplicates based on unique_key
-    seen_keys = set()
-    unique_data = []
-    
+    """, filters, as_dict=1)
+
+    # -----------------------------
+    # Remove duplicates
+    # -----------------------------
+    seen = set()
+    unique_rows = []
+
     for row in data:
-        unique_key = row.get("unique_key")
-        if unique_key and unique_key not in seen_keys:
-            seen_keys.add(unique_key)
-            unique_data.append(row)
-        elif not unique_key:
-            # Include rows without unique_key (shouldn't happen but safety check)
-            unique_data.append(row)
-    
-    data = unique_data
-    
-    # Calculate age and apply age filter
+        key = row.get("unique_key")
+        if not key or key not in seen:
+            if key:
+                seen.add(key)
+            unique_rows.append(row)
+
+    data = unique_rows
+
+    # -----------------------------
+    # Calculate age + entity ages
+    # -----------------------------
+    today = nowdate()
+    entity_ages = {}
+
     for row in data:
-        # Calculate age based on Work Order if exists, otherwise use Production Plan
-        start_date = None
+        work_order = row.get("work_order")
+        production_plan = row.get("production_plan_no")
         status = row.get("status") or row.get("pp_status")
-        
-        if row.get("work_order"):
+
+        if work_order:
             start_date = row.get("actual_start_date") or row.get("planned_start_date")
-        elif row.get("pp_date"):
-            start_date = row.get("pp_date")
-        
-        if start_date and status not in ["Completed", "Stopped", "Closed"]:
-            row["age"] = date_diff(nowdate(), start_date)
         else:
-            row["age"] = 0
-    
-    # Apply age filter at entity level (Work Order or Production Plan)
-    if filters.get("age", 0) > 0:
-        entity_ages = {}
-        for row in data:
-            # Use work_order as primary entity, fallback to production_plan_no
-            entity = row.get("work_order") or row.get("production_plan_no")
-            if entity not in entity_ages:
-                entity_ages[entity] = row.get("age", 0)
-            entity_ages[entity] = max(entity_ages[entity], row.get("age", 0))
-        
-        valid_entities = {entity for entity, age in entity_ages.items() if age >= filters["age"]}
-        data = [row for row in data if (row.get("work_order") or row.get("production_plan_no")) in valid_entities]
-    
+            start_date = row.get("pp_date")
+
+        if start_date and status not in ("Completed", "Stopped", "Closed"):
+            age = date_diff(today, start_date)
+        else:
+            age = 0
+
+        row["age"] = age
+
+        entity = work_order or production_plan
+        if entity:
+            entity_ages[entity] = max(entity_ages.get(entity, 0), age)
+
+    # -----------------------------
+    # Apply age filter
+    # -----------------------------
+    min_age = filters["age"]
+
+    if min_age > 0:
+        valid_entities = {e for e, age in entity_ages.items() if age >= min_age}
+
+        data = [
+            row for row in data
+            if (row.get("work_order") or row.get("production_plan_no")) in valid_entities
+        ]
+
     return data
 
 def get_conditions(filters):
@@ -689,3 +695,155 @@ def get_report_summary(data):
             "indicator": "orange"
         }
     ]
+    
+    
+def get_base_data(filters):
+
+    conditions = get_conditions(filters)
+
+    return frappe.db.sql(f"""
+        SELECT
+            pp.name AS production_plan_no,
+            pp.posting_date,
+
+            wo.name AS work_order,
+            wo.production_item AS fg_code,
+            wo.custom_batch_no,
+            wo.sales_order AS so_no,
+            wo.qty AS fg_to_be_produce_qty,
+            wo.status,
+            wo.branch,
+
+            woi.item_code,
+            woi.description AS input_item_description,
+            woi.stock_uom AS uom,
+
+            woi.required_qty,
+            woi.transferred_qty AS issued_qty,
+
+            mr.name AS material_request_no,
+            mr.transaction_date,
+
+            mri.name AS mr_item,
+            mri.qty AS mr_qty,
+
+            poi.parent AS po_no,
+            poi.qty AS po_qty,
+            poi.received_qty,
+            poi.schedule_date AS required_by,
+
+            po.supplier_name,
+
+            DATEDIFF(
+                CURDATE(),
+                COALESCE(wo.actual_start_date, wo.planned_start_date, pp.posting_date)
+            ) AS age
+
+        FROM `tabProduction Plan` pp
+
+        LEFT JOIN `tabWork Order` wo
+        ON wo.production_plan = pp.name
+        AND wo.docstatus < 2
+
+        LEFT JOIN `tabWork Order Item` woi
+        ON woi.parent = wo.name
+
+        LEFT JOIN `tabMaterial Request Item` mri
+        ON mri.production_plan = pp.name
+        AND mri.item_code = woi.item_code
+        AND mri.docstatus < 2
+
+        LEFT JOIN `tabMaterial Request` mr
+        ON mr.name = mri.parent
+        AND mr.docstatus < 2
+
+        LEFT JOIN `tabPurchase Order Item` poi
+        ON poi.material_request_item = mri.name
+        AND poi.docstatus < 2
+
+        LEFT JOIN `tabPurchase Order` po
+        ON po.name = poi.parent
+        AND po.docstatus < 2
+
+        WHERE pp.docstatus < 2
+        {conditions}
+
+        ORDER BY
+            pp.posting_date DESC,
+            wo.planned_start_date
+    """, filters, as_dict=True)
+    
+    
+def get_allocation_data():
+
+    data = frappe.db.sql("""
+        SELECT
+            sed.material_request,
+            sed.item_code,
+            SUM(sed.qty) AS transfer_qty
+
+        FROM `tabStock Entry Detail` sed
+        JOIN `tabStock Entry` se
+        ON se.name = sed.parent
+
+        WHERE
+            se.purpose = 'Material Transfer'
+            AND se.docstatus < 2
+
+        GROUP BY
+            sed.material_request,
+            sed.item_code
+    """, as_dict=True)
+
+    return {
+        (d.material_request, d.item_code): d.transfer_qty
+        for d in data
+    }
+    
+
+def get_stock_data():
+
+    data = frappe.db.sql("""
+        SELECT
+            bin.item_code,
+            SUM(bin.projected_qty) AS qty
+
+        FROM `tabBin` bin
+        JOIN `tabWarehouse` wh
+        ON wh.name = bin.warehouse
+
+        WHERE
+            wh.raw_material_warehouse = 1
+            OR wh.store_warehouse = 1
+
+        GROUP BY
+            bin.item_code
+    """, as_dict=True)
+
+    return {d.item_code: d.qty for d in data}
+
+def build_final_data(base_data, allocation_map, stock_map):
+
+    result = []
+
+    for row in base_data:
+
+        key = (row.material_request_no, row.item_code)
+
+        transfer_qty = allocation_map.get(key, 0)
+        stock_qty = stock_map.get(row.item_code, 0)
+
+        total_req = row.required_qty or row.mr_qty or row.po_qty or 0
+
+        allocated = (row.po_qty or 0) + transfer_qty
+        shortage = max(total_req - allocated, 0)
+
+        row["stock_transfer_qty"] = transfer_qty
+        row["allocated_qty"] = allocated
+        row["on_hand_qty"] = stock_qty
+        row["shortage_qty"] = shortage
+        row["total_req_qty"] = total_req
+
+        result.append(row)
+
+    return result
