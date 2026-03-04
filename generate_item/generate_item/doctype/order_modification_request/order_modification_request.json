@@ -15,6 +15,7 @@
   "sales_order_date",
   "customer_name",
   "emails",
+  "branch",
   "section_break_10xk",
   "items",
   "get_link_documents",
@@ -129,13 +130,20 @@
    "no_copy": 1,
    "options": "Order Modification Request Detail History",
    "read_only": 1
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "Branch",
+   "reqd": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-02-25 15:24:30.560170",
+ "modified": "2026-03-04 11:38:06.639499",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request",

@@ -14,11 +14,15 @@ def execute(filters=None):
 def get_columns():
 	return [
 		{"label": "Transaction Date", "fieldname": "transaction_date", "fieldtype": "Date", "width": 120},
+		{"label": "SO Approval Date", "fieldname": "so_approval_date", "fieldtype": "Date", "width": 160},
 		{"label": "Customer Name", "fieldname": "customer_name", "fieldtype": "Data", "width": 180},
+		{"label": "Repeat Order Ref.", "fieldname": "repeat_order_ref", "fieldtype": "Data", "width": 160},
+		{"label": "Tag No.", "fieldname": "tag_no", "fieldtype": "Data", "width": 120},
 		{"label": "BOM", "fieldname": "bom", "fieldtype": "Link", "options": "BOM", "width": 140},
+		{"label": "BOM Submitted On", "fieldname": "bom_submitted_on", "fieldtype": "Date", "width": 170},
 		{"label": "Item Code", "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 150},
 		{"label": "Item Description", "fieldname": "description", "fieldtype": "Data", "width": 250},
-		 {"label": "Batch No", "fieldname": "custom_batch_no", "fieldtype": "Data", "width": 140},
+		{"label": "Batch No", "fieldname": "custom_batch_no", "fieldtype": "Data", "width": 140},
 		{"label": "Sales Order", "fieldname": "sales_order", "fieldtype": "Link", "options": "Sales Order", "width": 150},
 		{"label": "Status", "fieldname": "bom_status", "fieldtype": "Data", "width": 110},
 		{"label": "Production Plan", "fieldname": "production_plan", "fieldtype": "Link", "options": "Production Plan", "width": 160},
@@ -82,6 +86,9 @@ def get_data(filters):
 	query = f"""
 		SELECT
 			so.transaction_date,
+			(SELECT MAX(modification_time) FROM `tabState Change Items` WHERE parent = so.name AND workflow_state = 'Approved') AS so_approval_date,
+			so.custom_repeat_order_ref AS repeat_order_ref,
+			soi.tag_no ,
 			so.customer_name,
 			(
 				SELECT b2.name
@@ -90,6 +97,38 @@ def get_data(filters):
 				ORDER BY b2.modified DESC
 				LIMIT 1
 			) AS bom,
+			# (
+			# 	SELECT b2.creation
+			# 	FROM `tabBOM` b2
+			# 	WHERE (b2.sales_order = so.name 
+			# 		AND b2.item = soi.item_code 
+			# 		AND b2.custom_batch_no = soi.custom_batch_no
+			# 		AND b2.docstatus = 1
+			# 	)
+			# 	ORDER BY b2.creation DESC
+			# 	LIMIT 1
+			# ) AS bom_submitted_on,
+			(
+				SELECT v.creation
+				FROM `tabVersion` v
+				WHERE v.ref_doctype = 'BOM'
+				AND v.docname = (
+					SELECT b2.name
+					FROM `tabBOM` b2
+				WHERE b2.sales_order = so.name
+					AND b2.item = soi.item_code
+					AND b2.custom_batch_no = soi.custom_batch_no
+					AND b2.docstatus = 1
+				ORDER BY b2.modified DESC
+				LIMIT 1
+			)
+			AND JSON_CONTAINS(
+          JSON_EXTRACT(v.data, '$.changed'),
+          JSON_ARRAY("docstatus", 0, 1)
+      )
+			ORDER BY v.creation DESC
+			LIMIT 1
+		) AS bom_submitted_on,
 			soi.item_code,
 			soi.description,
 			so.name AS sales_order,

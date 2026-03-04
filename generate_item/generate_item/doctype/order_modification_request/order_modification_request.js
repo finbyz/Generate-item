@@ -5,16 +5,24 @@
 
 frappe.ui.form.on("Order Modification Request", {
     setup(frm) {
+        
         frm.set_query("sales_order", function () {
-            return {
-                filters: {
-                    docstatus: 1,
-
-                }
-            };
-        });
+        let filters = {
+            docstatus: 1,
+            status: ["in", ["To Deliver and Bill", "To Deliver"]],
+        };
+        if (frm.doc.branch) {
+            filters["branch"] = frm.doc.branch;
+        }
+        return { filters };
+    });
 
     },
+    branch(frm) {
+    // Clear sales_order when branch changes so stale value doesn't stay
+    frm.set_value("sales_order", null);
+    frm.refresh_field("sales_order");
+},
 
     get_item(frm) {
         if (!frm.doc.type) {
