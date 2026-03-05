@@ -13,22 +13,27 @@ def execute(filters=None):
 
 def get_columns():
 	return [
-		{"label": "Transaction Date", "fieldname": "transaction_date", "fieldtype": "Date", "width": 120},
+		{"label": "Sales Order", "fieldname": "sales_order", "fieldtype": "Link", "options": "Sales Order", "width": 150},
+		{"label": "SO Date", "fieldname": "transaction_date", "fieldtype": "Date", "width": 120},
 		{"label": "SO Approval Date", "fieldname": "so_approval_date", "fieldtype": "Date", "width": 160},
 		{"label": "Customer Name", "fieldname": "customer_name", "fieldtype": "Data", "width": 180},
+		{"label": "Customer PO No", "fieldname": "po_no", "fieldtype": "Data", "width": 140},
 		{"label": "Repeat Order Ref.", "fieldname": "repeat_order_ref", "fieldtype": "Data", "width": 160},
-		{"label": "Tag No.", "fieldname": "tag_no", "fieldtype": "Data", "width": 120},
-		{"label": "BOM", "fieldname": "bom", "fieldtype": "Link", "options": "BOM", "width": 140},
-		{"label": "BOM Submitted On", "fieldname": "bom_submitted_on", "fieldtype": "Date", "width": 170},
+		{"label": "Batch No", "fieldname": "custom_batch_no", "fieldtype": "Data", "width": 140},
 		{"label": "Item Code", "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 150},
 		{"label": "Item Description", "fieldname": "description", "fieldtype": "Data", "width": 250},
-		{"label": "Batch No", "fieldname": "custom_batch_no", "fieldtype": "Data", "width": 140},
-		{"label": "Sales Order", "fieldname": "sales_order", "fieldtype": "Link", "options": "Sales Order", "width": 150},
-		{"label": "Status", "fieldname": "bom_status", "fieldtype": "Data", "width": 110},
+		{"label": "Tag No.", "fieldname": "tag_no", "fieldtype": "Data", "width": 120},
+		{"label": "SO Qty", "fieldname": "so_qty", "fieldtype": "Int", "width": 100},
+		
+
+		{"label": "BOM Number", "fieldname": "bom", "fieldtype": "Link", "options": "BOM", "width": 140},
+		{"label": "BOM Submitted On", "fieldname": "bom_submitted_on", "fieldtype": "Date", "width": 170},
+		
+		{"label": "BOM Status", "fieldname": "bom_status", "fieldtype": "Data", "width": 110},
 		{"label": "Production Plan", "fieldname": "production_plan", "fieldtype": "Link", "options": "Production Plan", "width": 160},
 		{"label": "Production Plan Status", "fieldname": "production_plan_status", "fieldtype": "Data", "width": 170},
-		{"label": "Customer PO No", "fieldname": "po_no", "fieldtype": "Data", "width": 140},
-		{"label": "Item Qty", "fieldname": "so_qty", "fieldtype": "Int", "width": 100},
+		
+		
 	]
 
 
@@ -97,19 +102,9 @@ def get_data(filters):
 				ORDER BY b2.modified DESC
 				LIMIT 1
 			) AS bom,
-			# (
-			# 	SELECT b2.creation
-			# 	FROM `tabBOM` b2
-			# 	WHERE (b2.sales_order = so.name 
-			# 		AND b2.item = soi.item_code 
-			# 		AND b2.custom_batch_no = soi.custom_batch_no
-			# 		AND b2.docstatus = 1
-			# 	)
-			# 	ORDER BY b2.creation DESC
-			# 	LIMIT 1
-			# ) AS bom_submitted_on,
+			
 			(
-				SELECT v.creation
+				SELECT v.modified
 				FROM `tabVersion` v
 				WHERE v.ref_doctype = 'BOM'
 				AND v.docname = (
@@ -126,7 +121,7 @@ def get_data(filters):
           JSON_EXTRACT(v.data, '$.changed'),
           JSON_ARRAY("docstatus", 0, 1)
       )
-			ORDER BY v.creation DESC
+			ORDER BY v.modified DESC
 			LIMIT 1
 		) AS bom_submitted_on,
 			soi.item_code,

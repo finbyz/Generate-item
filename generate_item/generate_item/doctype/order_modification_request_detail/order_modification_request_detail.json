@@ -73,6 +73,7 @@
   {
    "fieldname": "po_line_no",
    "fieldtype": "Data",
+   "hidden": 1,
    "label": "Po Line No",
    "read_only": 1
   },
@@ -193,6 +194,7 @@
   {
    "fieldname": "line_status",
    "fieldtype": "Select",
+   "hidden": 1,
    "in_list_view": 1,
    "label": "Line Status",
    "options": "\nHold\nModified\nDelivered\nCanceled\nPartial Delivered",
@@ -201,18 +203,21 @@
   {
    "fieldname": "delivery_date",
    "fieldtype": "Date",
+   "hidden": 1,
    "label": "Delivery Date",
    "read_only": 1
   },
   {
    "fieldname": "tag_no",
    "fieldtype": "Data",
+   "hidden": 1,
    "label": "Tag No",
    "read_only": 1
   },
   {
    "fieldname": "component_of",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "Component Of",
    "options": "Item",
    "read_only": 1
@@ -221,18 +226,21 @@
    "default": "0",
    "fieldname": "is_free_item",
    "fieldtype": "Check",
+   "hidden": 1,
    "label": "Is Free Item",
    "read_only": 1
   },
   {
    "fieldname": "line_remark",
    "fieldtype": "Small Text",
+   "hidden": 1,
    "label": "Line Remark",
    "read_only": 1
   },
   {
    "fieldname": "shipping_address",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "Shipping Address",
    "options": "Address",
    "read_only": 1
@@ -240,44 +248,52 @@
   {
    "fieldname": "rev_po_line_no",
    "fieldtype": "Data",
+   "hidden": 1,
    "label": "Rev Po Line No"
   },
   {
    "default": "0",
    "fieldname": "rev_is_free_item",
    "fieldtype": "Check",
+   "hidden": 1,
    "label": "Rev Is Free Item"
   },
   {
    "fieldname": "rev_component_of",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "Rev Component Of",
    "options": "Item"
   },
   {
    "fieldname": "rev_line_remark",
    "fieldtype": "Small Text",
+   "hidden": 1,
    "label": "Rev Line Remark"
   },
   {
    "fieldname": "rev_line_status",
    "fieldtype": "Select",
+   "hidden": 1,
    "label": "Rev Line Status",
    "options": "\nHold\nModified\nDelivered\nCanceled\nPartial Delivered"
   },
   {
    "fieldname": "rev_delivery_date",
    "fieldtype": "Date",
+   "hidden": 1,
    "label": "Rev Delivery Date"
   },
   {
    "fieldname": "rev_tag_no",
    "fieldtype": "Data",
+   "hidden": 1,
    "label": "Rev Tag No"
   },
   {
    "fieldname": "rev_shipping_address",
    "fieldtype": "Link",
+   "hidden": 1,
    "label": "Rev Shipping Address",
    "options": "Address"
   }
@@ -286,7 +302,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-03-04 14:29:45.222695",
+ "modified": "2026-03-05 11:16:12.631614",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request Detail",

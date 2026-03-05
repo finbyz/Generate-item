@@ -32,6 +32,7 @@ def get_columns():
         {"label": _("Mode Of Dispatch"), "fieldname": "mode_of_dispatch", "fieldtype": "Data", "width": 120},
         {"label": _("Freight Charges"), "fieldname": "custom_freight_charges", "fieldtype": "Data", "width": 100},
         {"label": _("Price Basis"), "fieldname": "price_basis", "fieldtype": "Data", "width": 100},
+        {"label": _("Batch No Ref"), "fieldname": "custom_batch_no", "fieldtype": "Link", "options": "Batch", "width": 100},
         {"label": _("Item Code"), "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 150},
         {"label": _("Item Name"), "fieldname": "item_name", "fieldtype": "Data", "width": 150},
         {"label": _("Item Description"), "fieldname": "item_description", "fieldtype": "Text", "width": 200},
@@ -92,9 +93,9 @@ def get_columns():
         {"label": _("Taxes (Line Item Level)"), "fieldname": "taxes_item", "fieldtype": "Currency", "width": 120},
         {"label": _("Delivery Status"), "fieldname": "delivery_status", "fieldtype": "Data", "width": 120},
         {"label": _("Delivered Qty (Actual)"), "fieldname": "delivered_qty_actual", "fieldtype": "Float", "width": 120},
-        {"label": _("Delivered Date"), "fieldname": "delivered_date", "fieldtype": "Date", "width": 120},
+        # {"label": _("Delivered Date"), "fieldname": "delivered_date", "fieldtype": "Date", "width": 120},
         {"label": _("Invoice No."), "fieldname": "invoice_no", "fieldtype": "Data", "width": 150},
-        {"label": _("Repeat Order Ref"), "fieldname": "repeat_order_ref", "fieldtype": "Data", "width": 150},
+        {"label": _("Repeat Order Ref"), "fieldname": "custom_repeat_order_ref", "fieldtype": "Data", "width": 150},
 
         # ---------------------------------------------------------
         #  EXISTING GENERATOR ATTRIBUTES
@@ -211,7 +212,7 @@ def get_data(filters):
             # "delivered_qty",
             "rate as unit_rate",
             "base_amount as item_basic_amount_inr",
-            "custom_batch_no as batch_number",
+            "custom_batch_no",
             "line_remark",        # ✔ Correct Item Remarks
             "igst_amount",
             "tag_no",             # ✔ Correct Tag No
@@ -245,7 +246,7 @@ def get_data(filters):
             if invoice_no:
                 # Delivered Qty & Delivery Date
                 delivered_qty_actual = get_delivered_qty_from_delivery_note(item.name)
-                delivered_date = so.delivery_date if so.order_status not in ["Draft", "Cancelled", "To Deliver and Bill"] else ""
+                # delivered_date = so.delivery_date if so.order_status not in ["Draft", "Cancelled", "To Deliver and Bill"] else ""
             else:
                 delivered_qty_actual = ""
                 delivered_date = ""
@@ -300,12 +301,14 @@ def get_data(filters):
                 so.custom_mode_of_dispatch or "",
                 so.custom_freight_charges or "",
                 so.custom_price_basis or "",
+                item.custom_batch_no or "",
                 item.item_code,
                 item.item_name,
                 item.item_description,
                 item.item_group,
                 item.order_qty,
                 delivered_qty or 0,
+                invoiced_qty or 0,
                 (item.order_qty or 0) - (delivered_qty or 0),
                 item.unit_rate or 0,
                 item.item_basic_amount_inr or 0,
@@ -339,8 +342,8 @@ def get_data(filters):
                 item.igst_amount or 0,
                 so.order_status or "",
                 delivered_qty_actual or 0,
-                invoiced_qty or 0,
-                delivered_date,
+                
+                # delivered_date,
                 invoice_no,
                 so.custom_repeat_order_ref or "",
 

@@ -95,7 +95,8 @@ frappe.query_reports["Sales Order Register Marketing"] = {
 				"To Bill",
 				"Closed",
 				"Cancelled",
-				"Completed"
+				"Completed",
+				"Draft"
 			],
 			on_change: () => frappe.query_report.refresh()
 		}

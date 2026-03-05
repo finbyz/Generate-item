@@ -6,6 +6,7 @@
 frappe.ui.form.on("Order Modification Request", {
     refresh: function (frm) {
         toggle_drg_section(frm);
+        hide_child_table_delete_buttons(frm);
     },
 
     type: function (frm) {
@@ -46,15 +47,39 @@ frappe.ui.form.on("Order Modification Request", {
             frappe.msgprint(`Please select BOM No first`);
             return;
         }
-        frm.clear_table("items");
+        if (frm.doc.type === "Sales Order") {
+            frm.clear_table("sales_order_item");
+        } else {
+            frm.clear_table("items");
+        }
+        frm.clear_table("original_record");
 
         fetch_items_dynamic(frm);
     },
     get_link_documents(frm) {
-        console.log("get_link_documents called..")
-        if (!frm.doc.items || !frm.doc.items.length) {
-            frappe.msgprint("Please add items first");
+        if (!frm.doc.type) {
+            frappe.msgprint("Please select Type first");
             return;
+        }
+
+        // SALES ORDER CASE
+        if (frm.doc.type === "Sales Order") {
+
+            if (!frm.doc.sales_order_item || !frm.doc.sales_order_item.length) {
+                frappe.msgprint("Please add Sales Order Items first");
+                return;
+            }
+
+        }
+
+        // BOM CASE
+        else if (frm.doc.type === "BOM") {
+
+            if (!frm.doc.items || !frm.doc.items.length) {
+                frappe.msgprint("Please add BOM Items first");
+                return;
+            }
+
         }
 
         // Clear existing rows
@@ -65,7 +90,7 @@ frappe.ui.form.on("Order Modification Request", {
             freeze: true,
             freeze_message: __("Fetching Linked Documents..."),
             args: {
-                items: frm.doc.items
+                items: (frm.doc.type === "Sales Order") ? frm.doc.sales_order_item : frm.doc.items
             },
             callback: function (r) {
                 if (!r.message) return;
@@ -84,6 +109,21 @@ frappe.ui.form.on("Order Modification Request", {
     }
 
 });
+
+
+function hide_child_table_delete_buttons(frm) {
+    
+    $(frm.fields_dict['sales_order_item'].grid.wrapper)
+        .find('.grid-delete-row, .btn-open-row')
+        .hide();
+    
+    $(frm.fields_dict['sales_order_item'].grid.wrapper)
+        .find('[data-action="delete_rows"]')
+        .hide();
+    
+    frm.fields_dict['sales_order_item'].grid.can_delete = false;
+    frm.fields_dict['sales_order_item'].grid.refresh();
+}
 
 
 function fetch_items_dynamic(frm) {
@@ -107,7 +147,7 @@ function fetch_items_dynamic(frm) {
             // Sales Order
             if (frm.doc.type === "Sales Order") {
                 (r.message.items || []).forEach(item => {
-                    let row = frm.add_child("items");
+                    let row = frm.add_child("sales_order_item");
                     row.sales_order_item_name = item.name;
                     row.item = item.item_code;
                     row.qty = item.qty;
@@ -141,6 +181,7 @@ function fetch_items_dynamic(frm) {
                     history_row.component_of = item.component_of || null;
 
                 });
+                  frm.refresh_field("sales_order_item");
             }
 
             // BOM
@@ -168,9 +209,10 @@ function fetch_items_dynamic(frm) {
                     history_row.purchase_specification_no = item.custom_purchase_specification_no;
                     history_row.purchase_specification_rev_no = item.custom_purchase_specification_rev_no;
                 });
+                frm.refresh_field("items");
             }
 
-            frm.refresh_field("items");
+            
             frm.refresh_field("original_record");
             // frappe.msgprint(`Items fetched from ${frm.doc.type}`);
         }

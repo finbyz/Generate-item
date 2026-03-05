@@ -19,6 +19,7 @@
   "reason_for_change",
   "section_break_10xk",
   "items",
+  "sales_order_item",
   "get_link_documents",
   "link_documents",
   "amended_from",
@@ -40,6 +41,7 @@
    "label": "Get Item"
   },
   {
+   "depends_on": "eval:parent.type!=\"Sales Order\"",
    "fieldname": "items",
    "fieldtype": "Table",
    "label": "Items",
@@ -142,13 +144,21 @@
    "fieldname": "reason_for_change",
    "fieldtype": "Small Text",
    "label": "Reason For Change"
+  },
+  {
+   "depends_on": "eval:parent.type==\"Sales Order\"",
+   "fieldname": "sales_order_item",
+   "fieldtype": "Table",
+   "label": "Items",
+   "no_copy": 1,
+   "options": "Sales Order Item For OMR"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-03-04 18:14:36.384640",
+ "modified": "2026-03-05 11:27:47.666220",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request",
