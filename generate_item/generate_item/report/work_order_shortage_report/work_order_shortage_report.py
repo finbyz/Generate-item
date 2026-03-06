@@ -714,15 +714,24 @@ def get_base_data(filters):
             wo.status,
             wo.branch,
 
-            woi.item_code,
+            woi.item_code AS input_item_code,
             woi.description AS input_item_description,
             woi.stock_uom AS uom,
+            
+            woi.custom_drawing_no,  
+            woi.custom_drawing_rev_no,
 
             woi.required_qty,
             woi.transferred_qty AS issued_qty,
 
             mr.name AS material_request_no,
             mr.transaction_date,
+            
+            mr.name AS material_request_no,
+            mr.transaction_date AS mr_date,
+            mr.material_request_type,
+            mr.status AS mr_status,
+            mr.schedule_date AS mr_schedule_date,
 
             mri.name AS mr_item,
             mri.qty AS mr_qty,
