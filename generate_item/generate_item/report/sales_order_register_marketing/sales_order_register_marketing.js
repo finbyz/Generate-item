@@ -20,7 +20,7 @@ frappe.query_reports["Sales Order Register Marketing"] = {
 			"default": frappe.datetime.get_today(),
 			"width": "100",
 			"on_change": () => frappe.query_report.refresh()
-		},		
+		},
 		// {
 		// 	"fieldname": "sales_order",
 		// 	"label": __("Sales Order"),
@@ -30,20 +30,20 @@ frappe.query_reports["Sales Order Register Marketing"] = {
 		// 	"on_change": () => frappe.query_report.refresh()
 		// },
 		{
-		"fieldname": "sales_order",
-		"label": __("Sales Order"),
-		"fieldtype": "Link",
-		"options": "Sales Order",
-		"width": "150",
-		"get_query": function() {
-			return {
-				filters: {
-					docstatus: ["!=", 2]   // Exclude Cancelled
-				}
-			};
+			"fieldname": "sales_order",
+			"label": __("Sales Order"),
+			"fieldtype": "Link",
+			"options": "Sales Order",
+			"width": "150",
+			"get_query": function () {
+				return {
+					filters: {
+						docstatus: ["!=", 2]   // Exclude Cancelled
+					}
+				};
+			},
+			"on_change": () => frappe.query_report.refresh()
 		},
-		"on_change": () => frappe.query_report.refresh()
-	},
 
 		{
 			"fieldname": "customer",
@@ -73,7 +73,7 @@ frappe.query_reports["Sales Order Register Marketing"] = {
 			"fieldname": "branch",
 			"label": __("Branch"),
 			"fieldtype": "Select",
-			"options": ["","Sanand", "Rabale","Nandikoor"],
+			"options": ["", "Sanand", "Rabale", "Nandikoor"],
 			"width": "100",
 			"on_change": () => frappe.query_report.refresh()
 		},
@@ -90,13 +90,13 @@ frappe.query_reports["Sales Order Register Marketing"] = {
 			label: __("Order Status"),
 			fieldtype: "MultiSelectList",
 			options: [
+				"Draft",
 				"To Deliver and Bill",
 				"To Deliver",
 				"To Bill",
 				"Closed",
 				"Cancelled",
-				"Completed",
-				"Draft"
+				"Completed"
 			],
 			on_change: () => frappe.query_report.refresh()
 		}

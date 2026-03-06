@@ -253,7 +253,7 @@ def get_dispatchable_sales_orders_list(customer=None, company=None, project=None
 
     # Step 1: Fetch candidate Sales Orders that meet criteria
     sales_orders = frappe.db.sql(f"""
-        SELECT so.name
+        SELECT so.name,so.set_warehouse
         FROM `tabSales Order` so
         WHERE {where_clause}
         ORDER BY so.modified DESC
@@ -301,10 +301,14 @@ def get_dispatchable_sales_orders_list(customer=None, company=None, project=None
         at_least_one_in_stock = False
         
         for item in items:
-            item_warehouse = warehouse or item.warehouse
+            
+            # item_warehouse = warehouse or item.warehouse
+            # if not item_warehouse:
+            #     all_items_in_stock = False
+            #     break
+            item_warehouse = so.set_warehouse or warehouse or item.warehouse
             if not item_warehouse:
-                all_items_in_stock = False
-                break
+                continue
 
             actual_qty = flt(frappe.db.get_value(
                 "Bin",
@@ -312,10 +316,22 @@ def get_dispatchable_sales_orders_list(customer=None, company=None, project=None
                 "actual_qty"
             ) or 0)
             
-            if actual_qty >= flt(item.qty):
+            # if actual_qty >= flt(item.qty):
+            #     at_least_one_in_stock = True
+            # else:
+            #     all_items_in_stock = False
+
+            # NEW
+            already_delivered_qty = flt(delivered_qty_map.get(item.name, 0))
+            remaining_qty = flt(item.qty) - already_delivered_qty
+
+            if remaining_qty <= 0:
+                continue
+
+            if actual_qty >= remaining_qty:   # same as JS: actual_qty >= qty
                 at_least_one_in_stock = True
-            else:
-                all_items_in_stock = False
+                break
+
 
             # if actual_qty < flt(item.qty):
             #     all_items_in_stock = False
