@@ -7,10 +7,12 @@ frappe.ui.form.on("Order Modification Request", {
     refresh: function (frm) {
         toggle_drg_section(frm);
         hide_child_table_delete_buttons(frm);
+        make_fields_mandatory_based_on_type(frm);
     },
 
     type: function (frm) {
         toggle_drg_section(frm);
+        make_fields_mandatory_based_on_type(frm);
     },
     setup(frm) {
 
@@ -112,15 +114,15 @@ frappe.ui.form.on("Order Modification Request", {
 
 
 function hide_child_table_delete_buttons(frm) {
-    
+
     $(frm.fields_dict['sales_order_item'].grid.wrapper)
         .find('.grid-delete-row, .btn-open-row')
         .hide();
-    
+
     $(frm.fields_dict['sales_order_item'].grid.wrapper)
         .find('[data-action="delete_rows"]')
         .hide();
-    
+
     frm.fields_dict['sales_order_item'].grid.can_delete = false;
     frm.fields_dict['sales_order_item'].grid.refresh();
 }
@@ -181,7 +183,7 @@ function fetch_items_dynamic(frm) {
                     history_row.component_of = item.component_of || null;
 
                 });
-                  frm.refresh_field("sales_order_item");
+                frm.refresh_field("sales_order_item");
             }
 
             // BOM
@@ -212,7 +214,7 @@ function fetch_items_dynamic(frm) {
                 frm.refresh_field("items");
             }
 
-            
+
             frm.refresh_field("original_record");
             // frappe.msgprint(`Items fetched from ${frm.doc.type}`);
         }
@@ -255,4 +257,24 @@ function toggle_drg_section(frm) {
     }
 
     frm.refresh_field("items");
+}
+
+function make_fields_mandatory_based_on_type(frm) {
+
+    if (frm.doc.type === "Sales Order") {
+
+        frm.set_df_property("sales_order", "reqd", 1);
+        frm.set_df_property("bom", "reqd", 0);
+
+    } else if (frm.doc.type === "BOM") {
+
+        frm.set_df_property("sales_order", "reqd", 0);
+        frm.set_df_property("bom", "reqd", 1);
+
+    } else {
+
+        frm.set_df_property("sales_order", "reqd", 0);
+        frm.set_df_property("bom", "reqd", 0);
+
+    }
 }

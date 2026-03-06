@@ -10,12 +10,21 @@ from frappe import _
 import frappe
 import re
 from frappe.utils import today
-
+from frappe.model.document import Document
+from frappe.model.naming import make_autoname
 
 from frappe.utils import get_url_to_form
 
 
 class OrderModificationRequest(Document):
+    
+    def autoname(self):
+
+        if self.type == "Sales Order":
+            self.name = make_autoname(f"{self.sales_order}-.##")
+
+        elif self.type == "BOM":
+            self.name = make_autoname(f"{self.bom}-.##")
 
     def validate(self):
         self.validate_sales_order()
