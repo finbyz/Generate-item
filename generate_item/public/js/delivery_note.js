@@ -839,6 +839,7 @@ function check_insufficient_items(frm) {
     if (!frm.doc.items || frm.doc.items.length === 0) {
         return;
     }
+    
    
     const has_insufficient_items = frm.doc.items.some(item => {
         return item.actual_qty < item.qty;
@@ -847,35 +848,69 @@ function check_insufficient_items(frm) {
     if (has_insufficient_items) {
         frm.add_custom_button(__('Remove Insufficient Items'), function() {
             remove_insufficient_items(frm);
-            remove_non_stock_items_and_adjust_qty(frm);
+            // remove_non_stock_items_and_adjust_qty(frm);
         }).addClass('btn-danger');
     }
 }
 
 
-
 function remove_insufficient_items(frm) {
-    let removed_items = [];
-    let valid_items = [];
+    if (!frm.doc.items || frm.doc.items.length === 0) return;
+
+    const item_rows = frm.doc.items.filter(item => item.item_code);
+    if (item_rows.length === 0) return;
+
    
-    frm.doc.items.forEach(item => {
-        if (item.actual_qty < item.qty) {
-            removed_items.push({
-                item_code: item.item_code,
-                item_name: item.item_name,
-                qty: item.qty,
-                actual_qty: item.actual_qty,
-                shortage: item.qty - item.actual_qty,
-                warehouse: item.warehouse
-            });
-        } else {
-            valid_items.push(item);
-        }
+
+    const checks = item_rows.map(item => {
+        return frappe.call({
+            method: 'erpnext.stock.doctype.batch.batch.get_batch_qty',
+            args: {
+                batch_no: null,
+                warehouse: item.warehouse,
+                item_code: item.item_code
+            }
+        }).then(r => {
+            const batches = r.message || [];
+            // console.log("all batches ------",batches)
+            const total_qty = (batches || []).reduce((sum, b) => sum + (flt(b.qty) || 0), 0);
+            const no_batch = !batches || batches.length === 0 || total_qty <= 0;
+
+            // Remove if actual_qty < qty OR no batch / batch qty = 0
+            const should_remove = flt(item.actual_qty) < flt(item.qty) || no_batch;
+
+            return { item, should_remove };
+        });
     });
-   
-    if (removed_items.length > 0) {
-        show_removal_confirmation(frm, removed_items, valid_items);
-    }
+
+    Promise.all(checks).then(results => {
+        
+
+        let removed_items = [];
+        let valid_items = [];
+
+        results.forEach(({ item, should_remove }) => {
+            if (should_remove) {
+                removed_items.push({
+                    item_code: item.item_code,
+                    item_name: item.item_name,
+                    qty: item.qty,
+                    actual_qty: item.actual_qty,
+                    shortage: item.qty - item.actual_qty,
+                    warehouse: item.warehouse
+                });
+            } else {
+                valid_items.push(item);
+            }
+        });
+
+        if (removed_items.length > 0) {
+            show_removal_confirmation(frm, removed_items, valid_items);
+        }
+    }).catch(err => {
+        
+        console.error('Batch fetch error:', err);
+    });
 }
 
 

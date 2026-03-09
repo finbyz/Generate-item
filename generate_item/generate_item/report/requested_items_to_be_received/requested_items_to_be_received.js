@@ -5,6 +5,13 @@
 let PO_SERIES_OPTIONS = [];
 frappe.query_reports["Requested Items To Be Received"] = {
 
+    datatable_options: {
+        dynamicRowHeight: true,
+        inlineFilters: true,
+        cellHeight: 33,
+        clusterize: true
+    },
+
     get_datatable_options(options) {
         options.checkboxColumn = true;
         return options;
@@ -43,7 +50,7 @@ frappe.query_reports["Requested Items To Be Received"] = {
                 });
             },
         },
-        
+
         {
             fieldname: "created_by",
             label: __("Created By"),
@@ -62,7 +69,7 @@ frappe.query_reports["Requested Items To Be Received"] = {
             label: __("Supplier"),
             fieldtype: "Link",
             options: "Supplier",
-           
+
             on_change: function () {
                 frappe.query_report.refresh().then(() => {
                     unchecked_all_checkbox();
@@ -74,7 +81,7 @@ frappe.query_reports["Requested Items To Be Received"] = {
             label: __("Item"),
             fieldtype: "Link",
             options: "Item",
-           
+
             on_change: function () {
                 frappe.query_report.refresh().then(() => {
                     unchecked_all_checkbox();
@@ -86,7 +93,7 @@ frappe.query_reports["Requested Items To Be Received"] = {
             label: __("Purchase Order"),
             fieldtype: "Link",
             options: "Purchase Order",
-           
+
             on_change: function () {
                 frappe.query_report.refresh().then(() => {
                     unchecked_all_checkbox();
@@ -98,41 +105,41 @@ frappe.query_reports["Requested Items To Be Received"] = {
             label: __("Branch"),
             fieldtype: "Link",
             options: "Branch",
-           
+            reqd: 1,
             on_change: function () {
                 frappe.query_report.refresh().then(() => {
                     unchecked_all_checkbox();
                 });
             },
         },
-         {
+        {
             fieldname: "allowed_branches",
             label: __("Allowed Branches"),
-            fieldtype: "Data",  
-            hidden: 1          
+            fieldtype: "Data",
+            hidden: 1
         },
-       
-      
-        
-        
-        
+
+
+
+
+
     ],
     onload: function (report) {
 
-        fetch_and_set_branches(report,function(){
+        fetch_and_set_branches(report, function () {
             report.refresh();
         })
 
-         frappe.call({
-        method: "generate_item.generate_item.report.requested_items_to_be_received.requested_items_to_be_received.get_pr_naming_series",
-        callback: function (r) {
-            // console.log("series-------",r)
-            if (r.message) {
-                
-                PO_SERIES_OPTIONS = r.message;
+        frappe.call({
+            method: "generate_item.generate_item.report.requested_items_to_be_received.requested_items_to_be_received.get_pr_naming_series",
+            callback: function (r) {
+                // console.log("series-------",r)
+                if (r.message) {
+
+                    PO_SERIES_OPTIONS = r.message;
+                }
             }
-        }
-    });
+        });
         report.page.add_inner_button(
             __("Past Purchase Receipt History"),
             function () {
@@ -140,13 +147,13 @@ frappe.query_reports["Requested Items To Be Received"] = {
             }
         );
     },
-    before_refresh: function(report) {
-       
+    before_refresh: function (report) {
+
         return new Promise((resolve) => {
             fetch_and_set_branches(report, resolve);
         });
     }
-    
+
 };
 
 
@@ -163,15 +170,15 @@ function fetch_and_set_branches(report, callback) {
             fields: ["for_value"],
             limit: 100
         },
-        callback: function(r) {
+        callback: function (r) {
             if (r.message && r.message.length > 0) {
                 let branches = r.message.map(d => d.for_value);
                 report.set_filter_value("allowed_branches", branches.join(","));
             } else {
-                
+
                 report.set_filter_value("allowed_branches", "");
             }
-            if (callback) callback();  
+            if (callback) callback();
         }
     });
 
@@ -265,7 +272,7 @@ var total_pending_qty = 0;
 /* Uncheck all rows */
 function unchecked_all_checkbox() {
     if (!frappe.query_report.data) return;
-    
+
     frappe.query_report.data.forEach((row, index) => {
         let node = `.dt-row.dt-row-${index}.vrow`;
         $(node).find("[type='checkbox']").prop("checked", false);
@@ -278,7 +285,7 @@ function unchecked_all_checkbox() {
 /* Checkbox change listener */
 function listner_to_checkbox() {
     if (!frappe.query_report.data) return;
-    
+
     frappe.query_report.data.forEach((row, index) => {
         if (row.name) {
             let node = `.dt-row.dt-row-${index}.vrow`;
@@ -292,7 +299,7 @@ function listner_to_checkbox() {
                 }
 
                 if (total_pending_qty < 0) total_pending_qty = 0;
-              
+
             });
         }
     });
@@ -384,7 +391,7 @@ function create_purchase_receipt_by_supplier() {
             freeze_message: __("Creating Purchase Receipt..."),
             callback: function (r) {
                 if (r.message) {
-                    console.log("res----------naming series",r.message)
+                    console.log("res----------naming series", r.message)
                     let message = __("Purchase Receipt created successfully:") + "<br><br>";
 
                     r.message.forEach(pr => {
@@ -418,7 +425,7 @@ function select_rows_with_supplier(checked) {
         let checkbox = $(node).find("[type='checkbox']");
 
         checkbox.prop("checked", false);
-        
+
     });
 }
 
@@ -457,8 +464,8 @@ $(function () {
             console.log(error);
         }
     }, 300);
-    
-    
+
+
     // Remove chart if not needed
     if (frappe.query_report.$chart) {
         frappe.query_report.$chart.remove();

@@ -762,7 +762,7 @@ def validate(doc, method):
     validate_duplicate_delivery_note(doc, method)
     # validate_so_line_shipping_address(doc)
     validate_free_items(doc)
-    validate_batch_from_custom_field(doc,method)
+    # validate_batch_from_custom_field(doc,method)
     validate_dn_line_status(doc,method)
 
 def validate_duplicate_delivery_note(doc, method):
