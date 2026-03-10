@@ -7,30 +7,14 @@
  "engine": "InnoDB",
  "field_order": [
   "item",
-  "po_line_no",
-  "rev_po_line_no",
-  "batch_no",
-  "sales_order_item_name",
-  "bom_update_request",
-  "line_status",
-  "rev_line_status",
-  "delivery_date",
-  "rev_delivery_date",
-  "tag_no",
-  "rev_tag_no",
-  "shipping_address",
-  "rev_shipping_address",
-  "line_remark",
-  "column_break_1eqv",
   "qty",
-  "rev_qty",
   "rate",
+  "batch_no",
+  "column_break_1eqv",
+  "rev_item",
+  "rev_qty",
   "rev_rate",
-  "is_free_item",
-  "rev_is_free_item",
-  "component_of",
-  "rev_component_of",
-  "rev_line_remark",
+  "bom_update_request",
   "drg_and_pur_spec_section",
   "drawing_no",
   "rev_drawing_no",
@@ -53,7 +37,8 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Item",
-   "options": "Item"
+   "options": "Item",
+   "read_only": 1
   },
   {
    "fieldname": "qty",
@@ -71,20 +56,12 @@
    "read_only": 1
   },
   {
-   "fieldname": "po_line_no",
-   "fieldtype": "Data",
-   "hidden": 1,
-   "label": "Po Line No",
-   "read_only": 1
-  },
-  {
    "fieldname": "column_break_1eqv",
    "fieldtype": "Column Break"
   },
   {
    "fieldname": "rev_qty",
    "fieldtype": "Float",
-   "in_list_view": 1,
    "label": "Rev Qty"
   },
   {
@@ -167,13 +144,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "sales_order_item_name",
-   "fieldtype": "Data",
-   "hidden": 1,
-   "label": "Sales Order Item Name",
-   "no_copy": 1
-  },
-  {
    "fieldname": "rate",
    "fieldtype": "Float",
    "label": "Rate",
@@ -192,117 +162,18 @@
    "read_only": 1
   },
   {
-   "fieldname": "line_status",
-   "fieldtype": "Select",
-   "hidden": 1,
+   "fieldname": "rev_item",
+   "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Line Status",
-   "options": "\nHold\nModified\nDelivered\nCanceled\nPartial Delivered",
-   "read_only": 1
-  },
-  {
-   "fieldname": "delivery_date",
-   "fieldtype": "Date",
-   "hidden": 1,
-   "label": "Delivery Date",
-   "read_only": 1
-  },
-  {
-   "fieldname": "tag_no",
-   "fieldtype": "Data",
-   "hidden": 1,
-   "label": "Tag No",
-   "read_only": 1
-  },
-  {
-   "fieldname": "component_of",
-   "fieldtype": "Link",
-   "hidden": 1,
-   "label": "Component Of",
-   "options": "Item",
-   "read_only": 1
-  },
-  {
-   "default": "0",
-   "fieldname": "is_free_item",
-   "fieldtype": "Check",
-   "hidden": 1,
-   "label": "Is Free Item",
-   "read_only": 1
-  },
-  {
-   "fieldname": "line_remark",
-   "fieldtype": "Small Text",
-   "hidden": 1,
-   "label": "Line Remark",
-   "read_only": 1
-  },
-  {
-   "fieldname": "shipping_address",
-   "fieldtype": "Link",
-   "hidden": 1,
-   "label": "Shipping Address",
-   "options": "Address",
-   "read_only": 1
-  },
-  {
-   "fieldname": "rev_po_line_no",
-   "fieldtype": "Data",
-   "hidden": 1,
-   "label": "Rev Po Line No"
-  },
-  {
-   "default": "0",
-   "fieldname": "rev_is_free_item",
-   "fieldtype": "Check",
-   "hidden": 1,
-   "label": "Rev Is Free Item"
-  },
-  {
-   "fieldname": "rev_component_of",
-   "fieldtype": "Link",
-   "hidden": 1,
-   "label": "Rev Component Of",
+   "label": "Rev Item",
    "options": "Item"
-  },
-  {
-   "fieldname": "rev_line_remark",
-   "fieldtype": "Small Text",
-   "hidden": 1,
-   "label": "Rev Line Remark"
-  },
-  {
-   "fieldname": "rev_line_status",
-   "fieldtype": "Select",
-   "hidden": 1,
-   "label": "Rev Line Status",
-   "options": "\nHold\nModified\nDelivered\nCanceled\nPartial Delivered"
-  },
-  {
-   "fieldname": "rev_delivery_date",
-   "fieldtype": "Date",
-   "hidden": 1,
-   "label": "Rev Delivery Date"
-  },
-  {
-   "fieldname": "rev_tag_no",
-   "fieldtype": "Data",
-   "hidden": 1,
-   "label": "Rev Tag No"
-  },
-  {
-   "fieldname": "rev_shipping_address",
-   "fieldtype": "Link",
-   "hidden": 1,
-   "label": "Rev Shipping Address",
-   "options": "Address"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-03-05 11:16:12.631614",
+ "modified": "2026-03-10 11:12:16.487473",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request Detail",

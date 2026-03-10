@@ -2,6 +2,7 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe.utils import getdate
 from frappe import _
 
 def execute(filters=None):
@@ -279,7 +280,10 @@ def get_data(filters):
                 + (so.total_taxes_and_charges or 0)
             )
 
-
+            so.order_date = getdate(so.order_date) if so.order_date else None
+            so.order_delivery_date = getdate(so.order_delivery_date) if so.order_delivery_date else None
+            so.customer_po_date = getdate(so.customer_po_date) if so.customer_po_date else None
+            so.custom_qtn_ref_date = getdate(so.custom_qtn_ref_date) if so.custom_qtn_ref_date else None
             # Build row
             row = [
                 so.sales_order,

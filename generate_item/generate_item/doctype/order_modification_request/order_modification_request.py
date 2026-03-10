@@ -773,7 +773,10 @@ def update_sales_order_items(self, mismatched_rows):
         row = row_map.get(mismatch["row_name"])
 
         if row:
-            item_name = frappe.db.get_value("Item", row.rev_item, "item_name")
+            # item_name = frappe.db.get_value("Item", row.rev_item, "item_name")
+            item_name, description = frappe.db.get_value(
+                "Item", row.rev_item, ["item_name", "description"]
+            )
 
             # 1️⃣ Update Sales Order Item
             frappe.db.sql(
@@ -781,12 +784,13 @@ def update_sales_order_items(self, mismatched_rows):
                 UPDATE `tabSales Order Item`
                 SET item_code = %s,
                     item_name = %s,
+                    description = %s,
                     modified = %s,
                     modified_by = %s
                 WHERE name = %s
                 AND parent = %s
             """,
-                (row.rev_item, item_name, frappe.utils.now(), frappe.session.user,
+                (row.rev_item, item_name,description, frappe.utils.now(), frappe.session.user,
                 row.sales_order_item_name, self.sales_order),
             )
 
