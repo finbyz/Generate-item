@@ -1,6 +1,8 @@
 # Copyright (c) 2025, Finbyz and contributors
 # For license information, please see license.txt
 
+from email.utils import formatdate
+
 import frappe
 from frappe.utils import getdate
 from frappe import _
@@ -18,7 +20,7 @@ def get_columns():
     columns = [
         {"label": _("Sales Order"), "fieldname": "sales_order", "fieldtype": "Link", "options": "Sales Order", "width": 150},
         {"label": _("Branch"), "fieldname": "branch", "fieldtype": "Data", "width": 100},
-        {"label": _("Order Date"), "fieldname": "order_date", "fieldtype": "Date", "width": 100},
+        {"label": _("Order Date"), "fieldname": "order_date", "fieldtype": "Date", "width": 120},
         {"label": _("Order Delivery Date"), "fieldname": "order_delivery_date", "fieldtype": "Date", "width": 120},
         {"label": _("Customer Name"), "fieldname": "customer_name", "fieldtype": "Data", "width": 150},
         {"label": _("Customer PO Number"), "fieldname": "customer_po_number", "fieldtype": "Data", "width": 120},
@@ -284,6 +286,10 @@ def get_data(filters):
             so.order_delivery_date = getdate(so.order_delivery_date) if so.order_delivery_date else None
             so.customer_po_date = getdate(so.customer_po_date) if so.customer_po_date else None
             so.custom_qtn_ref_date = getdate(so.custom_qtn_ref_date) if so.custom_qtn_ref_date else None
+            formatdate(so.order_date)
+            formatdate(so.order_delivery_date)
+            formatdate(so.customer_po_date)
+            formatdate(so.custom_qtn_ref_date)
             # Build row
             row = [
                 so.sales_order,
