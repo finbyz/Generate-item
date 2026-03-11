@@ -853,30 +853,40 @@ function check_insufficient_items(frm) {
     }
 }
 
-
 function remove_insufficient_items(frm) {
     if (!frm.doc.items || frm.doc.items.length === 0) return;
 
     const item_rows = frm.doc.items.filter(item => item.item_code);
     if (item_rows.length === 0) return;
 
-   
-
     const checks = item_rows.map(item => {
         return frappe.call({
             method: 'erpnext.stock.doctype.batch.batch.get_batch_qty',
             args: {
-                batch_no: null,
+                batch_no: item.custom_batch_no || null,
                 warehouse: item.warehouse,
                 item_code: item.item_code
             }
         }).then(r => {
-            const batches = r.message || [];
-            // console.log("all batches ------",batches)
-            const total_qty = (batches || []).reduce((sum, b) => sum + (flt(b.qty) || 0), 0);
-            const no_batch = !batches || batches.length === 0 || total_qty <= 0;
+            const raw = r.message;
+            console.log("all batches ------", raw);
 
-            // Remove if actual_qty < qty OR no batch / batch qty = 0
+            // Normalize: could be null, a number, an object, or an array
+            let batches = [];
+            if (Array.isArray(raw)) {
+                batches = raw;
+            } else if (raw !== null && raw !== undefined) {
+                // If it's a plain number (qty directly returned)
+                if (typeof raw === 'number') {
+                    batches = [{ qty: raw }];
+                } else if (typeof raw === 'object') {
+                    batches = [raw]; // wrap single object in array
+                }
+            }
+
+            const total_qty = batches.reduce((sum, b) => sum + (flt(b.qty) || 0), 0);
+            const no_batch = batches.length === 0 || total_qty <= 0;
+
             const should_remove = flt(item.actual_qty) < flt(item.qty) || no_batch;
 
             return { item, should_remove };
@@ -884,8 +894,6 @@ function remove_insufficient_items(frm) {
     });
 
     Promise.all(checks).then(results => {
-        
-
         let removed_items = [];
         let valid_items = [];
 
@@ -908,11 +916,9 @@ function remove_insufficient_items(frm) {
             show_removal_confirmation(frm, removed_items, valid_items);
         }
     }).catch(err => {
-        
         console.error('Batch fetch error:', err);
     });
 }
-
 
 function show_removal_confirmation(frm, removed_items, valid_items) {
     let msg = `<p>${__('The following items have insufficient stock and will be removed:')}</p><ul>`;

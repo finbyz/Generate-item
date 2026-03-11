@@ -1,11 +1,17 @@
 # Copyright (c) 2025, Finbyz and contributors
 # For license information, please see license.txt
 
-from email.utils import formatdate
+
 
 import frappe
+# from email.utils import formatdate
 from frappe.utils import getdate
+from datetime import date as date_type
 from frappe import _
+
+from frappe.utils import flt
+
+
 
 def execute(filters=None):
     columns = get_columns()
@@ -20,6 +26,13 @@ def get_columns():
     columns = [
         {"label": _("Sales Order"), "fieldname": "sales_order", "fieldtype": "Link", "options": "Sales Order", "width": 150},
         {"label": _("Branch"), "fieldname": "branch", "fieldtype": "Data", "width": 100},
+         {
+            "label": "Currency",
+            "fieldname": "currency",
+            "fieldtype": "Link",
+            "options": "Currency",
+            "width": 100
+        },
         {"label": _("Order Date"), "fieldname": "order_date", "fieldtype": "Date", "width": 120},
         {"label": _("Order Delivery Date"), "fieldname": "order_delivery_date", "fieldtype": "Date", "width": 120},
         {"label": _("Customer Name"), "fieldname": "customer_name", "fieldtype": "Data", "width": 150},
@@ -65,10 +78,16 @@ def get_columns():
 			"width": 120
 		},
          {
-            "label": _("Calculated Grand Total"),
+            "label": _("Item Grand Total"),
             "fieldname": "calculated_grand_total",
             "fieldtype": "Currency",
             "width": 120
+        },
+         {
+            "label": "Sales Order Total With Tax",
+            "fieldname": "grand_total",
+            "fieldtype": "Currency",
+            "width": 150
         },
 
 
@@ -81,7 +100,7 @@ def get_columns():
         {"label": _("Item Remarks"), "fieldname": "item_remarks", "fieldtype": "Data", "width": 200},
         {"label": _("Order Remarks (Terms & Conditions)"), "fieldname": "order_terms", "fieldtype": "Data", "width": 200},
         {"label": _("End User"), "fieldname": "end_user", "fieldtype": "Data", "width": 150},
-        {"label": _("Project"), "fieldname": "project", "fieldtype": "Data", "width": 150},
+        {"label": _("Project"), "fieldname": "custom_customer_project_name", "fieldtype": "Data", "width": 150},
         {"label": _("Qtn Ref. No."), "fieldname": "qtn_ref_no", "fieldtype": "Data", "width": 150},
         {"label": _("Qtn Ref Date"), "fieldname": "qtn_ref_date", "fieldtype": "Date", "width": 100},
         {"label": _("Billing Customer Name (Order Level)"), "fieldname": "billing_customer", "fieldtype": "Data", "width": 150},
@@ -90,12 +109,12 @@ def get_columns():
         {"label": _("Billing Address (Order Level)"), "fieldname": "billing_address", "fieldtype": "Data", "width": 200},
         {"label": _("Shipping Address (Order Level)"), "fieldname": "shipping_address_order", "fieldtype": "Data", "width": 200},
         {"label": _("Shipping Address (Item Level)"), "fieldname": "shipping_address_item", "fieldtype": "Data", "width": 250},
-        {"label": _("GST No (Order Level)"), "fieldname": "gst_order", "fieldtype": "Data", "width": 120},
-        {"label": _("GST No (Item Level)"), "fieldname": "gst_item", "fieldtype": "Data", "width": 120},
-        {"label": _("Taxes (Order Level)"), "fieldname": "taxes_order", "fieldtype": "Currency", "width": 120},
-        {"label": _("Taxes (Line Item Level)"), "fieldname": "taxes_item", "fieldtype": "Currency", "width": 120},
+        {"label": _("GST No (Order Level)"), "fieldname": "gst_order", "fieldtype": "Data", "width": 120,"hidden":1},
+        {"label": _("GST No (Item Level)"), "fieldname": "gst_item", "fieldtype": "Data", "width": 120,"hidden":1},
+        {"label": _("Taxes (Order Level)"), "fieldname": "taxes_order", "fieldtype": "Currency", "width": 120,"hidden":1},
+        {"label": _("Taxes (Line Item Level)"), "fieldname": "taxes_item", "fieldtype": "Currency", "width": 120,"hidden":1},
         {"label": _("Delivery Status"), "fieldname": "delivery_status", "fieldtype": "Data", "width": 120},
-        {"label": _("Delivered Qty (Actual)"), "fieldname": "delivered_qty_actual", "fieldtype": "Float", "width": 120},
+        {"label": _("Delivered Qty (Actual)"), "fieldname": "delivered_qty_actual", "fieldtype": "Float", "width": 120,"hidden":1},
         # {"label": _("Delivered Date"), "fieldname": "delivered_date", "fieldtype": "Date", "width": 120},
         {"label": _("Invoice No."), "fieldname": "invoice_no", "fieldtype": "Data", "width": 150},
         {"label": _("Repeat Order Ref"), "fieldname": "custom_repeat_order_ref", "fieldtype": "Data", "width": 150},
@@ -146,6 +165,7 @@ def get_data(filters):
     so_fields = [
         "name as sales_order",
         "branch",
+        "currency",
         "transaction_date as order_date",
         "delivery_date as order_delivery_date",
         "customer_name",
@@ -162,7 +182,6 @@ def get_data(filters):
         "custom_price_basis",
         "terms",
         "custom_end_user",
-        "project",
         "custom_qtn_ref_no",
         "custom_qtn_ref_date",
         "customer",
@@ -173,6 +192,8 @@ def get_data(filters):
         "total_taxes_and_charges",
         "delivery_status",
         "total_qty",
+        "grand_total",
+        "custom_customer_project_name",
         "delivery_date",
         "custom_repeat_order_ref"
     ]
@@ -225,8 +246,35 @@ def get_data(filters):
 
         items = frappe.get_all("Sales Order Item", filters=so_item_filters, fields=item_fields,order_by="parent asc, idx asc")
 
+        so.order_date = safe_date(so.order_date)
+        so.order_delivery_date = safe_date(so.order_delivery_date)
+        so.customer_po_date = safe_date(so.customer_po_date) 
+        so.custom_qtn_ref_date = safe_date(so.custom_qtn_ref_date)  
+
         # Shipping Customer (order level)
         shipping_customer_order = get_address_link_name(so.shipping_address_name)
+        actual_charges = 0
+        actual_tax_row = frappe.db.sql(
+            """
+            SELECT SUM(tax_amount) AS actual_total
+            FROM `tabSales Taxes and Charges`
+            WHERE parent = %s
+            AND parenttype = 'Sales Order'
+            AND docstatus = 1
+            AND charge_type = 'Actual'
+            """,
+            so.sales_order,
+            as_dict=True,
+        )
+
+        if actual_tax_row and actual_tax_row[0].actual_total:
+            actual_charges = actual_tax_row[0].actual_total or 0
+
+        #  Calculate per-item additional charges here
+        num_items = len(items)
+        additional_charges = actual_charges / num_items if num_items else 0 
+
+       
 
         for item in items:
             approval_details = get_approval_details(so.sales_order)
@@ -243,12 +291,13 @@ def get_data(filters):
             gst_item = frappe.db.get_value("Address", item.custom_shipping_address, "gstin") if item.custom_shipping_address else ""
 
             invoice_no = get_invoice_no(so.sales_order)
-            delivered_qty = get_delivered_qty_from_invoice(so.sales_order, item.item_code)
-            invoiced_qty = get_invoiced_qty_from_sales_invoice(item.name)
+            # delivered_qty = get_delivered_qty_from_invoice(so.sales_order, item.item_code)
+            delivered_qty = get_delivered_qty_from_delivery_note(item.item_id)
+            invoiced_qty = get_invoiced_qty_from_sales_invoice(item.item_id)
 
             if invoice_no:
                 # Delivered Qty & Delivery Date
-                delivered_qty_actual = get_delivered_qty_from_delivery_note(item.name)
+                delivered_qty_actual = get_delivered_qty_from_delivery_note(item.item_id)
                 # delivered_date = so.delivery_date if so.order_status not in ["Draft", "Cancelled", "To Deliver and Bill"] else ""
             else:
                 delivered_qty_actual = ""
@@ -256,49 +305,38 @@ def get_data(filters):
 
             # Invoice No.
             # invoice_no = get_invoice_no(so.sales_order)
-            actual_charges = 0
-            actual_tax_row = frappe.db.sql(
-                """
-                SELECT SUM(tax_amount) AS actual_total
-                FROM `tabSales Taxes and Charges`
-                WHERE parent = %s
-                AND parenttype = 'Sales Order'
-                AND docstatus = 1
-                AND charge_type = 'Actual'
-                """,
-                so.sales_order,
-                as_dict=True,
-            )
+            
 
-            if actual_tax_row and actual_tax_row[0].actual_total:
-                actual_charges = actual_tax_row[0].actual_total or 0
-
-            additional_charges = actual_charges
+            # calculated_grand_total = (
+            #     (so.grand_total or 0)
+            #     - (item.order_amount_inr or 0)
+            #     + (additional_charges or 0) 
+            #     + (so.total_taxes_and_charges or 0)
+            # )
 
             calculated_grand_total = (
-                (so.grand_total or 0)
-                - (item.order_amount_inr or 0)
-                + (additional_charges or 0) 
-                + (so.total_taxes_and_charges or 0)
+              
+                 (additional_charges or 0) 
+                + (item.item_basic_amount_inr or 0)
             )
-
-            so.order_date = getdate(so.order_date) if so.order_date else None
-            so.order_delivery_date = getdate(so.order_delivery_date) if so.order_delivery_date else None
-            so.customer_po_date = getdate(so.customer_po_date) if so.customer_po_date else None
-            so.custom_qtn_ref_date = getdate(so.custom_qtn_ref_date) if so.custom_qtn_ref_date else None
-            formatdate(so.order_date)
-            formatdate(so.order_delivery_date)
-            formatdate(so.customer_po_date)
-            formatdate(so.custom_qtn_ref_date)
+            # so.order_date = getdate(so.order_date) if so.order_date else None
+            # so.order_delivery_date = getdate(so.order_delivery_date) if so.order_delivery_date else None
+            # so.customer_po_date = getdate(so.customer_po_date) if so.customer_po_date else None
+            # so.custom_qtn_ref_date = getdate(so.custom_qtn_ref_date) if so.custom_qtn_ref_date else None
+            # formatdate(so.order_date)
+            # formatdate(so.order_delivery_date)
+            # formatdate(so.customer_po_date)
+            # formatdate(so.custom_qtn_ref_date)
             # Build row
             row = [
                 so.sales_order,
                 so.branch or "",
-                so.order_date,
-                so.order_delivery_date,
+                so.currency,
+                safe_date(so.order_date),
+                safe_date(so.order_delivery_date),
                 so.customer_name,
                 so.customer_po_number or "",
-                so.customer_po_date,
+                safe_date(so.customer_po_date),
                 so.custom_liquidate_damage,
                 so.order_status,
                 # so.approved_on,
@@ -326,6 +364,7 @@ def get_data(filters):
                 item.order_line_index,
                 additional_charges,
 				calculated_grand_total,
+                so.grand_total  ,
 
                 # -------------------------
                 # FIXED COLUMNS BELOW ⬇⬇⬇
@@ -337,9 +376,9 @@ def get_data(filters):
                 item.line_remark or "",        
                 so.terms or "",       
                 so.custom_end_user or "",
-                so.project or "",
+                so.custom_customer_project_name or "",
                 so.custom_qtn_ref_no or "",
-                so.custom_qtn_ref_date,
+                safe_date(so.custom_qtn_ref_date),
                 so.customer,
                 shipping_customer_order,
                 shipping_customer_item,
@@ -523,9 +562,6 @@ def get_approval_details(sales_order):
 	return {"approved_by": "", "approved_on": None}
 
 
-import frappe
-from frappe.utils import flt
-
 def get_delivered_qty_from_delivery_note(so_detail):
     delivered_qty = frappe.db.sql("""
         SELECT 
@@ -544,23 +580,23 @@ def get_delivered_qty_from_delivery_note(so_detail):
 
 
 
-def get_invoiced_qty_from_sales_invoice (so_detail):
-    delivered_qty = frappe.db.sql("""
-        SELECT 
-            SUM(dni.qty)
-        FROM 
-            `tabSales Invoice Item` sii
-        INNER JOIN 
-            `tabSales Invoice` si 
-            ON si.name = sii.parent
-        WHERE 
-            sii.so_detail = %s
-            AND si.docstatus = 1
-    """, (so_detail,), as_list=1)
+# def get_invoiced_qty_from_sales_invoice (so_detail):
+#     delivered_qty = frappe.db.sql("""
+#         SELECT 
+#             SUM(dni.qty)
+#         FROM 
+#             `tabSales Invoice Item` sii
+#         INNER JOIN 
+#             `tabSales Invoice` si 
+#             ON si.name = sii.parent
+#         WHERE 
+#             sii.so_detail = %s
+#             AND si.docstatus = 1
+#     """, (so_detail,), as_list=1)
 
-    return flt(delivered_qty[0][0]) if delivered_qty and delivered_qty[0][0] else 0
+#     return flt(delivered_qty[0][0]) if delivered_qty and delivered_qty[0][0] else 0
 
-def get_invoiced_qty_from_sales_invoice (so_detail):
+def get_invoiced_qty_from_sales_invoice(so_detail):
     invoiced_qty = frappe.db.sql("""
         SELECT 
             SUM(sii.qty)
@@ -575,3 +611,14 @@ def get_invoiced_qty_from_sales_invoice (so_detail):
     """, (so_detail,), as_list=1)
 
     return flt(invoiced_qty[0][0]) if invoiced_qty and invoiced_qty[0][0] else 0
+
+
+def safe_date(val):
+    if not val:
+        return None
+    if isinstance(val, date_type):
+        return val
+    try:
+        return getdate(str(val))
+    except Exception:
+        return None

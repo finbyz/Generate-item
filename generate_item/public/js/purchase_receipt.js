@@ -77,9 +77,9 @@ frappe.ui.form.on('Purchase Receipt', {
     },
     refresh: function (frm) {
 
-        if (frm.is_new()) {
-            update_stock_qty_from_po(frm);
-        }
+        // if (frm.is_new()) {
+        //     update_stock_qty_from_po(frm);
+        // }
 
         if (frm.doc.docstatus !== 0 || frm.doc.is_return) {
             return;

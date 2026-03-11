@@ -40,12 +40,12 @@ frappe.ui.form.on("Order Modification Request", {
             return;
         }
 
-        if (!frm.doc.sales_order && frm.doc.type == "Sales Order") {
+        if (frm.doc.type == "Sales Order" && !frm.doc.sales_order ) {
             frappe.msgprint(`Please select Sales Order first`);
             return;
         }
 
-        if (!frm.doc.bom && frm.doc.type == "BOM") {
+        if (frm.doc.type == "BOM" && !frm.doc.bom ) {
             frappe.msgprint(`Please select BOM No first`);
             return;
         }
@@ -129,6 +129,7 @@ function hide_child_table_delete_buttons(frm) {
 
 
 function fetch_items_dynamic(frm) {
+    let ref_name;
     if (frm.doc.type === "Sales Order") {
         ref_name = frm.doc.sales_order;
     }
@@ -190,8 +191,10 @@ function fetch_items_dynamic(frm) {
             if (frm.doc.type === "BOM") {
                 (r.message.items || []).forEach(item => {
                     let row = frm.add_child("items");
+                    row.bom_item_name = item.name ;
                     row.item = item.item_code;
                     row.qty = item.qty;
+                    row.rate = item.rate;
                     row.batch_no = item.custom_batch_no || null;
                     row.drawing_no = item.custom_drawing_no;
                     row.drawing_rev_no = item.custom_drawing_rev_no;
@@ -203,6 +206,7 @@ function fetch_items_dynamic(frm) {
                     let history_row = frm.add_child("original_record");
                     history_row.item = item.item_code;
                     history_row.qty = item.qty;
+                    history_row.rate = item.rate;
                     history_row.batch_no = item.custom_batch_no || null;
                     history_row.drawing_no = item.custom_drawing_no;
                     history_row.drawing_rev_no = item.custom_drawing_rev_no;

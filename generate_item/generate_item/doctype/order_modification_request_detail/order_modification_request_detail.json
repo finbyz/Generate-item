@@ -10,6 +10,7 @@
   "qty",
   "rate",
   "batch_no",
+  "bom_item_name",
   "column_break_1eqv",
   "rev_item",
   "rev_qty",
@@ -167,13 +168,20 @@
    "in_list_view": 1,
    "label": "Rev Item",
    "options": "Item"
+  },
+  {
+   "fieldname": "bom_item_name",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Bom Item Name",
+   "no_copy": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-03-10 11:12:16.487473",
+ "modified": "2026-03-10 13:49:03.665045",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request Detail",

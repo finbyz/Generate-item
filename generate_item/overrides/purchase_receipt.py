@@ -124,7 +124,10 @@ def update_stock_uom_qty(self):
 
         if not item.purchase_order_item:
             continue
-
+        
+        if item.stock_qty:
+            continue
+        
         # 1️⃣ Get total received stock_qty from Purchase Receipt Item
         total_received = frappe.db.sql("""
             SELECT SUM(stock_qty)
