@@ -6,84 +6,84 @@ from frappe.utils import flt
 
 @frappe.whitelist()
 def make_purchase_receipt(source_name, target_doc=None, args=None):
-	"""Create Purchase Receipt from Purchase Order while mapping custom_batch_no → batch_no.
+    """Create Purchase Receipt from Purchase Order while mapping custom_batch_no → batch_no.
 
-	This wraps the core method and then copies `custom_batch_no` from the source
-	Purchase Order Item into the `batch_no` field on the target Purchase Receipt Item.
-	"""
-	from erpnext.buying.doctype.purchase_order.purchase_order import (
-		make_purchase_receipt as core_make_purchase_receipt,
-	)
+    This wraps the core method and then copies `custom_batch_no` from the source
+    Purchase Order Item into the `batch_no` field on the target Purchase Receipt Item.
+    """
+    from erpnext.buying.doctype.purchase_order.purchase_order import (
+        make_purchase_receipt as core_make_purchase_receipt,
+    )
 
-	# Create the Purchase Receipt using core logic first
-	# Pass through args to maintain compatibility with mapper flows
-	pr = core_make_purchase_receipt(source_name=source_name, target_doc=target_doc, args=args)
+    # Create the Purchase Receipt using core logic first
+    # Pass through args to maintain compatibility with mapper flows
+    pr = core_make_purchase_receipt(source_name=source_name, target_doc=target_doc, args=args)
 
-	# Adjust quantities to consider Draft PRs as consumed, and map custom_batch_no
-	items_to_keep = []
-	for item in pr.items or []:
-		po_item_name = getattr(item, "purchase_order_item", None)
-		if not po_item_name:
-			items_to_keep.append(item)
-			continue
+    # Adjust quantities to consider Draft PRs as consumed, and map custom_batch_no
+    items_to_keep = []
+    for item in pr.items or []:
+        po_item_name = getattr(item, "purchase_order_item", None)
+        if not po_item_name:
+            items_to_keep.append(item)
+            continue
 
-		# Fetch source PO Item values needed for accurate remaining computation
-		po_item = frappe.db.get_value(
-			"Purchase Order Item",
-			po_item_name,
-			["qty", "received_qty", "conversion_factor", "custom_batch_no","stock_qty"],
-			as_dict=True,
-		)
+        # Fetch source PO Item values needed for accurate remaining computation
+        po_item = frappe.db.get_value(
+            "Purchase Order Item",
+            po_item_name,
+            ["qty", "received_qty", "conversion_factor", "custom_batch_no","stock_qty"],
+            as_dict=True,
+        )
 
-		# Default to current mapped qty if lookup fails for any reason
-		if not po_item:
-			items_to_keep.append(item)
-			continue
+        # Default to current mapped qty if lookup fails for any reason
+        if not po_item:
+            items_to_keep.append(item)
+            continue
 
-		po_qty = frappe.utils.flt(po_item.qty)
-		received_qty = frappe.utils.flt(po_item.received_qty)
-		po_cf = frappe.utils.flt(po_item.conversion_factor) or 1.0
+        po_qty = frappe.utils.flt(po_item.qty)
+        received_qty = frappe.utils.flt(po_item.received_qty)
+        po_cf = frappe.utils.flt(po_item.conversion_factor) or 1.0
 
-		# Base remaining in stock units from Submitted PRs
-		base_remaining_stock_qty = max((po_qty - received_qty), 0) * po_cf
+        # Base remaining in stock units from Submitted PRs
+        base_remaining_stock_qty = max((po_qty - received_qty), 0) * po_cf
 
-		# Add quantities already present in Draft PRs for the same PO Item (in stock units)
-		draft_pr_stock_qty = frappe.db.sql(
-			"""
-			SELECT COALESCE(SUM(pri.stock_qty), 0)
-			FROM `tabPurchase Receipt Item` pri
-			INNER JOIN `tabPurchase Receipt` pr ON pri.parent = pr.name
-			WHERE pr.docstatus = 0
-			  AND pri.purchase_order_item = %s
-			""",
-			(po_item_name,),
-		)[0][0]
+        # Add quantities already present in Draft PRs for the same PO Item (in stock units)
+        draft_pr_stock_qty = frappe.db.sql(
+            """
+            SELECT COALESCE(SUM(pri.stock_qty), 0)
+            FROM `tabPurchase Receipt Item` pri
+            INNER JOIN `tabPurchase Receipt` pr ON pri.parent = pr.name
+            WHERE pr.docstatus = 0
+              AND pri.purchase_order_item = %s
+            """,
+            (po_item_name,),
+        )[0][0]
 
-		remaining_stock_qty = max(base_remaining_stock_qty - frappe.utils.flt(draft_pr_stock_qty), 0)
+        remaining_stock_qty = max(base_remaining_stock_qty - frappe.utils.flt(draft_pr_stock_qty), 0)
 
-		# Use target item's conversion factor to set displayed qty
-		item_cf = frappe.utils.flt(getattr(item, "conversion_factor", None)) or 1.0
-		new_qty = remaining_stock_qty / item_cf if item_cf else 0
-		item.qty = new_qty
-		item.stock_qty = remaining_stock_qty
+        # Use target item's conversion factor to set displayed qty
+        item_cf = frappe.utils.flt(getattr(item, "conversion_factor", None)) or 1.0
+        new_qty = remaining_stock_qty / item_cf if item_cf else 0
+        item.qty = new_qty
+        item.stock_qty = remaining_stock_qty
 
         # 🔹 ADDED: map PO stock_qty → PR stock_uom_qty
-		if po_item.stock_qty:
-			item.qty_in_stock_uom = po_item.stock_qty
+        if po_item.stock_qty:
+            item.qty_in_stock_uom = po_item.stock_qty
 
-		# Map custom_batch_no from PO Item to PR Item.batch_no if empty
-		if po_item.custom_batch_no and not getattr(item, "batch_no", None):
-			item.batch_no = po_item.custom_batch_no
+        # Map custom_batch_no from PO Item to PR Item.batch_no if empty
+        if po_item.custom_batch_no and not getattr(item, "batch_no", None):
+            item.batch_no = po_item.custom_batch_no
 
-		# Keep only rows with positive qty
-		if new_qty and new_qty > 0:
-			items_to_keep.append(item)
+        # Keep only rows with positive qty
+        if new_qty and new_qty > 0:
+            items_to_keep.append(item)
 
-	# Replace items with filtered list to avoid zero-qty rows
-	if pr.items is not None:
-		pr.items = items_to_keep
+    # Replace items with filtered list to avoid zero-qty rows
+    if pr.items is not None:
+        pr.items = items_to_keep
 
-	return pr
+    return pr
 
 
 def before_save(doc, method):
@@ -128,8 +128,8 @@ def before_save(doc, method):
 
 @frappe.whitelist()
 def get_po_items(purchase_order):
-	po_doc = frappe.get_doc("Purchase Order", purchase_order)
-	return po_doc
+    po_doc = frappe.get_doc("Purchase Order", purchase_order)
+    return po_doc
 
 
 def validate(doc, method):
@@ -171,68 +171,81 @@ def validate_duplicate_po(doc, method):
                 ),
                 title=("Duplicate Draft Purchase Receipt Detected")
             )
-
-
 @frappe.whitelist()
 def make_quality_inspections(doctype, docname, items):
 
-	if isinstance(items, str):
-		items = json.loads(items)
+    if isinstance(items, str):
+        items = json.loads(items)
 
-	inspection_names = original_make_qis(doctype, docname, items)
+    inspection_names = original_make_qis(doctype, docname, items)
 
-	qi_map = {
-		frappe.get_value("Quality Inspection", qi, "child_row_reference"): qi
-		for qi in inspection_names
-	}
+    qi_map = {
+        frappe.db.get_value("Quality Inspection", qi, "child_row_reference"): qi
+        for qi in inspection_names
+    }
 
-	for item in items:
-		ref = item.get("child_row_reference")
-		if not ref:
-			continue
+    for item in items:
+        ref = item.get("child_row_reference")
+        if not ref:
+            continue
 
-		qi_name = qi_map.get(ref)
-		if not qi_name:
-			continue
+        qi_name = qi_map.get(ref)
+        if not qi_name:
+            continue
 
-		qty = flt(item.get("qty"))
+        # Fetch data from Purchase Receipt Item
+        row = frappe.db.get_value(
+            doctype + " Item",
+            ref,
+            ["qty", "uom", "stock_uom", "stock_qty"],
+            as_dict=True
+        )
 
-		frappe.db.set_value(
-			"Quality Inspection",
-			qi_name,
-			{
-				"received_qty": qty,
-				"sample_size": qty
-			}
-		)
+        qty = flt(row.qty)
+        uom = row.uom
+        stock_uom = row.stock_uom
+        received_qty_in_stock_uom = flt(row.stock_qty)
 
-	return inspection_names
+        frappe.db.set_value(
+            "Quality Inspection",
+            qi_name,
+            {
+                "received_qty": qty,
+                "sample_size": qty,
+                "uom": uom,
+                "stock_uom": stock_uom,
+                "received_qty_in_stock_uom": received_qty_in_stock_uom,
+                "sample_size_in_stock_uom": received_qty_in_stock_uom
+            }
+        )
+
+    return inspection_names
 
 
 def update_received_qty_stock_uom(doc, method):
-	for item in doc.items:
-		if not item.purchase_order or not item.purchase_order_item:
-			continue
+    for item in doc.items:
+        if not item.purchase_order or not item.purchase_order_item:
+            continue
 
-			
+            
 
-		po_item = frappe.get_doc("Purchase Order Item", item.purchase_order_item)
-		if item.received_stock_qty :
-			update_po_item_received_stock_qty(item.purchase_order_item)
-			# po_item.db_set(
-			# 	"received_qty_in_stock_uom",
-			# 	item.received_stock_qty,
-			# 	update_modified=False
-			# )
+        po_item = frappe.get_doc("Purchase Order Item", item.purchase_order_item)
+        if item.received_stock_qty :
+            update_po_item_received_stock_qty(item.purchase_order_item)
+            # po_item.db_set(
+            # 	"received_qty_in_stock_uom",
+            # 	item.received_stock_qty,
+            # 	update_modified=False
+            # )
    
-		calculate_pending_qty(item)
+        calculate_pending_qty(item)
 
-		# if item.pending_qty_in_stock_uom :
-			# po_item.db_set(
-			# 	"pending_qty_in_stock_uom",
-			# 	item.pending_qty_in_stock_uom,
-			# 	update_modified=False
-			# )
+        # if item.pending_qty_in_stock_uom :
+            # po_item.db_set(
+            # 	"pending_qty_in_stock_uom",
+            # 	item.pending_qty_in_stock_uom,
+            # 	update_modified=False
+            # )
 
 
 def update_po_item_received_stock_qty(purchase_order_item):
