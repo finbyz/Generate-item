@@ -1540,9 +1540,9 @@ class ProductionPlan(_ProductionPlan):
                 # """, (item.item_code,))[0][0])
 
                 item.quantity = max(0, plan_qty - total_existing_qty_by_batch)
-                # if item.quantity <= 0:
-                #     notifications.append(_(f"{item.item_code}: already requested {total_existing_qty_by_batch} for batch {custom_batch_no or '-'}; remaining is 0, skipping."))
-                #     continue
+                if item.quantity <= 0:
+                    notifications.append(_(f"{item.item_code}: already requested {total_existing_qty_by_batch} for batch {custom_batch_no or '-'}; remaining is 0, skipping."))
+                    continue
 
             # Get customer from Sales Order if available
             customer = ""
