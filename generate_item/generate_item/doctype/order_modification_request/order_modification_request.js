@@ -116,7 +116,7 @@ frappe.ui.form.on("Order Modification Request", {
 function hide_child_table_delete_buttons(frm) {
 
     $(frm.fields_dict['sales_order_item'].grid.wrapper)
-        .find('.grid-delete-row, .btn-open-row')
+        .find('.grid-delete-row')
         .hide();
 
     $(frm.fields_dict['sales_order_item'].grid.wrapper)

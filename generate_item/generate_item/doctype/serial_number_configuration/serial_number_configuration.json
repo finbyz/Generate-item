@@ -1,0 +1,55 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-03-13 17:17:55.321233",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "branch_and_counter_section",
+  "fy_year",
+  "branches"
+ ],
+ "fields": [
+  {
+   "fieldname": "branch_and_counter_section",
+   "fieldtype": "Section Break",
+   "label": "Branch and Counter"
+  },
+  {
+   "fieldname": "fy_year",
+   "fieldtype": "Data",
+   "label": "FY Year"
+  },
+  {
+   "fieldname": "branches",
+   "fieldtype": "Table",
+   "label": "Branches",
+   "options": "Serial Number Configuration Branches"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-03-13 17:24:49.652193",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Serial Number Configuration",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

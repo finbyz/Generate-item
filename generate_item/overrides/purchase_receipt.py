@@ -3,6 +3,8 @@ import frappe
 from frappe import _, throw
 from frappe.utils import cint, flt, get_datetime, getdate, nowdate
 from erpnext.stock.get_item_details import get_conversion_factor
+from frappe.utils import flt
+from erpnext.controllers.buying_controller import BuyingController
 
 # class PurchaseReceipt(_PurchaseReceipt):
 
@@ -87,7 +89,7 @@ class CustomPurchaseReceipt(PurchaseReceipt):
         self.reset_default_field_value("set_from_warehouse", "items", "from_warehouse")
         if self.is_new():
             update_stock_uom_qty(self)
-        
+        update_accepted_qty(self)
 
     def on_submit(self):
         super().on_submit()
@@ -115,8 +117,7 @@ class CustomPurchaseReceipt(PurchaseReceipt):
         self.reserve_stock_for_sales_order()
         self.validate_uom_is_integer()
         
-import frappe
-from frappe.utils import flt
+
 
 def update_stock_uom_qty(self):
 
@@ -153,3 +154,40 @@ def update_stock_uom_qty(self):
 
         # 4️⃣ Update current row stock_qty
         item.db_set("stock_qty", remaining_qty)
+        
+        
+        
+        
+def update_accepted_qty(self):
+    for item in self.items:
+        item.stock_qty = item.received_stock_qty - item.rejected_stock_qty
+
+class CustomBuyingController(BuyingController):
+    
+    def set_qty_as_per_stock_uom(self):
+        # frappe.log_error("custom called--")
+        if self.doctype == "Purchase Receipt":
+            return
+        allow_to_edit_stock_qty = frappe.db.get_single_value(
+            "Stock Settings", "allow_to_edit_stock_uom_qty_for_purchase"
+        )
+
+        for d in self.get("items"):
+            if d.meta.get_field("stock_qty"):
+                # Check if item code is present
+                # Conversion factor should not be mandatory for non itemized items
+                if not d.conversion_factor and d.item_code:
+                    frappe.throw(_("Row {0}: Conversion Factor is mandatory").format(d.idx))
+                d.stock_qty = flt(d.qty) * flt(d.conversion_factor)
+
+                if self.doctype == "Purchase Receipt" and d.meta.get_field("received_stock_qty"):
+                    # Set Received Qty in Stock UOM
+                    d.received_stock_qty = flt(d.received_qty) * flt(
+                        d.conversion_factor, d.precision("conversion_factor")
+                    )
+
+                if allow_to_edit_stock_qty:
+                    d.stock_qty = flt(d.stock_qty, d.precision("stock_qty"))
+                    if d.get("received_stock_qty") and d.meta.get_field("received_stock_qty"):
+                        d.received_stock_qty = flt(d.received_stock_qty, d.precision("received_stock_qty"))
+

@@ -8,7 +8,25 @@ frappe.ui.form.on('Purchase Receipt Item', {
             frappe.msgprint(__('Please enter a heat number before adding.'));
             frm.focus('custom_heat_no');
         }
+    },
+    rejected_stock_qty: function (frm, cdt, cdn) {
+        let row = locals[cdt][cdn];
+
+        let stock = row.stock_qty || 0;
+        let rejected = row.rejected_stock_qty || 0;
+
+        frappe.model.set_value(cdt, cdn, "received_stock_qty", stock + rejected);
+    },
+
+    stock_qty: function (frm, cdt, cdn) {
+        let row = locals[cdt][cdn];
+
+        let stock = row.stock_qty || 0;
+        let rejected = row.rejected_stock_qty || 0;
+
+        frappe.model.set_value(cdt, cdn, "received_stock_qty", stock + rejected);
     }
+
 });
 
 function add_heat_number_to_ref(frm, cdt, cdn, custom_heat_no) {
