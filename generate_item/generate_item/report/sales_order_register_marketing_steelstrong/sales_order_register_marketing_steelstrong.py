@@ -57,8 +57,8 @@ def get_columns():
         {"label": _("Delivered Qty"), "fieldname": "delivered_qty", "fieldtype": "Float", "width": 100},
         {"label": _("Invoiced Qty"), "fieldname": "invoiced_qty", "fieldtype": "Float", "width": 100},
         {"label": _("Pending Qty"), "fieldname": "pending_qty", "fieldtype": "Float", "width": 100},
-        {"label": _("Unit Rate"), "fieldname": "unit_rate", "fieldtype": "Currency", "width": 100},
-        {"label": _("Item Basic Amount INR"), "fieldname": "item_basic_amount_inr", "fieldtype": "Currency", "width": 120},
+        {"label": _("Unit Rate"), "fieldname": "unit_rate", "fieldtype": "Currency","options": "currency", "width": 100},
+        {"label": _("Item Basic Amount INR"), "fieldname": "item_basic_amount_inr","options": "currency", "fieldtype": "Currency", "width": 120},
         {
 			"label": _("Item ID"),
 			"fieldname": "item_id",
@@ -75,18 +75,21 @@ def get_columns():
 			"label": _("Additional Charges"),
 			"fieldname": "additional_charges",
 			"fieldtype": "Currency",
+            "options": "currency",
 			"width": 120
 		},
          {
             "label": _("Item Grand Total"),
             "fieldname": "calculated_grand_total",
             "fieldtype": "Currency",
+            "options": "currency",
             "width": 120
         },
          {
             "label": "Sales Order Total With Tax",
-            "fieldname": "grand_total",
+            "fieldname": "base_grand_total",
             "fieldtype": "Currency",
+            "options": "currency",
             "width": 150
         },
 
@@ -192,9 +195,11 @@ def get_data(filters):
         "total_taxes_and_charges",
         "delivery_status",
         "total_qty",
-        "grand_total",
+        "grand_total as grand_total_usd",
+        "base_grand_total",
         "custom_customer_project_name",
         "delivery_date",
+        "conversion_rate",
         "custom_repeat_order_ref"
     ]
 
@@ -234,8 +239,10 @@ def get_data(filters):
             "item_group",
             "qty as order_qty",
             # "delivered_qty",
-            "rate as unit_rate",
+            "rate as rate_usd",
+            "base_rate as unit_rate",
             "base_amount as item_basic_amount_inr",
+            "amount as amount_usd",
             "custom_batch_no",
             "line_remark",        # ✔ Correct Item Remarks
             "igst_amount",
@@ -256,18 +263,21 @@ def get_data(filters):
         actual_charges = 0
         actual_tax_row = frappe.db.sql(
             """
-            SELECT SUM(tax_amount) AS actual_total
+            SELECT SUM(base_tax_amount) AS actual_total,
+            SUM(tax_amount) AS actual_total_usd
             FROM `tabSales Taxes and Charges`
             WHERE parent = %s
             AND parenttype = 'Sales Order'
-            AND docstatus = 1
             AND charge_type = 'Actual'
             """,
             so.sales_order,
             as_dict=True,
         )
 
-        if actual_tax_row and actual_tax_row[0].actual_total:
+        if actual_tax_row and so.currency == "USD" and actual_tax_row[0].actual_total_usd:
+            actual_charges = actual_tax_row[0].actual_total_usd or 0
+
+        if actual_tax_row and so.currency == "INR" and actual_tax_row[0].actual_total:
             actual_charges = actual_tax_row[0].actual_total or 0
 
         #  Calculate per-item additional charges here
@@ -307,18 +317,18 @@ def get_data(filters):
             # invoice_no = get_invoice_no(so.sales_order)
             
 
-            # calculated_grand_total = (
-            #     (so.grand_total or 0)
-            #     - (item.order_amount_inr or 0)
-            #     + (additional_charges or 0) 
-            #     + (so.total_taxes_and_charges or 0)
-            # )
+            cur       = so.currency
+            conv_rate = so.conversion_rate or 1 
+            is_foreign = so.currency != "INR"
 
-            calculated_grand_total = (
-              
-                 (additional_charges or 0) 
-                + (item.item_basic_amount_inr or 0)
-            )
+            display_unit_rate         = item.rate_usd        if is_foreign else item.unit_rate
+            display_item_basic_amount = item.amount_usd      if is_foreign else item.item_basic_amount_inr
+            
+            display_calculated_total  = flt((display_item_basic_amount or 0) + (additional_charges or 0), 2)
+            display_grand_total       = so.grand_total_usd     if is_foreign else so.base_grand_total
+
+
+            
             # so.order_date = getdate(so.order_date) if so.order_date else None
             # so.order_delivery_date = getdate(so.order_delivery_date) if so.order_delivery_date else None
             # so.customer_po_date = getdate(so.customer_po_date) if so.customer_po_date else None
@@ -358,13 +368,13 @@ def get_data(filters):
                 delivered_qty or 0,
                 invoiced_qty or 0,
                 (item.order_qty or 0) - (delivered_qty or 0),
-                item.unit_rate or 0,
-                item.item_basic_amount_inr or 0,
+                display_unit_rate,
+                display_item_basic_amount,
                 item.item_id,
                 item.order_line_index,
                 additional_charges,
-				calculated_grand_total,
-                so.grand_total  ,
+				display_calculated_total,
+                display_grand_total  ,
 
                 # -------------------------
                 # FIXED COLUMNS BELOW ⬇⬇⬇
@@ -622,3 +632,5 @@ def safe_date(val):
         return getdate(str(val))
     except Exception:
         return None
+
+

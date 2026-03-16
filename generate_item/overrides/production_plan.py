@@ -1530,6 +1530,22 @@ class ProductionPlan(_ProductionPlan):
                         AND mr.docstatus != 2
                           AND (mri.custom_batch_no = %s OR mr.linked_batch = %s)
                     """, (item.item_code, custom_batch_no, custom_batch_no))[0][0])
+                    result = frappe.db.sql("""
+                        SELECT 
+                            COALESCE(SUM(ppmr.quantity), 0) AS total_qty
+                        FROM `tabMaterial Request Plan Item` ppmr
+                        INNER JOIN `tabProduction Plan Item` ppi
+                            ON ppmr.parent = ppi.parent
+                        WHERE 
+                            ppi.custom_batch_no = %(custom_batch_no)s
+                            AND ppmr.parent IN (
+                                SELECT name 
+                                FROM `tabProduction Plan`
+                                WHERE docstatus != 2
+                            )
+                    """, {"custom_batch_no": custom_batch_no}, as_dict=True)
+
+                    total_qty = flt(result[0].total_qty if result else 0)
                 # else:
                 #     total_existing_qty_by_batch = flt(frappe.db.sql("""
                 #     SELECT IFNULL(SUM(qty), 0)
@@ -1539,10 +1555,10 @@ class ProductionPlan(_ProductionPlan):
                 #       AND mr.docstatus != 2
                 # """, (item.item_code,))[0][0])
 
-                item.quantity = max(0, plan_qty - total_existing_qty_by_batch)
-                # if item.quantity <= 0:
-                #     notifications.append(_(f"{item.item_code}: already requested {total_existing_qty_by_batch} for batch {custom_batch_no or '-'}; remaining is 0, skipping."))
-                #     continue
+                item.quantity = max(0, total_qty - total_existing_qty_by_batch)
+                if item.quantity <= 0:
+                    notifications.append(_(f"{item.item_code}: already requested {total_existing_qty_by_batch} for batch {custom_batch_no or '-'}; remaining is 0, skipping."))
+                    continue
 
             # Get customer from Sales Order if available
             customer = ""
