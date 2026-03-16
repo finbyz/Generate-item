@@ -2,8 +2,19 @@
 # # For license information, please see license.txt
 
 
+
+
+
+
+from __future__ import unicode_literals
 from frappe.model.document import Document
 
+import frappe
+from frappe import _
+from frappe.utils import cint
+from frappe import enqueue
+import math
+import time
 
 class SerialNumber(Document):
 	pass
@@ -11,456 +22,420 @@ class SerialNumber(Document):
 
 
 
-# import frappe
-# from frappe import _
-# from frappe import enqueue
-# from frappe.utils import now_datetime, cint
-
-
-# COUNTER_MAX     = 9999
-# COUNTER_PADDING = 4
-# SERIES_SEQUENCE = ["A", "B", "C", "D"]
-
-
-# # ─────────────────────────────────────────────────────────────────────────────
-# #  HOOKS
-# # ─────────────────────────────────────────────────────────────────────────────
-
-# def generate_serial_numbers(doc, method):
-#     if doc.workflow_state != "Approved":
-#         return
-#     if not _get_valve_lines(doc):
-#         return
-#     enqueue(
-#         _generate_background,
-#         queue="default",
-#         timeout=6000,
-#         job_name=f"serial_number_generation_{doc.name}",
-#         so_name=doc.name,
-#     )
-
-
-# def reconcile_serial_numbers(doc, method):
-#     enqueue(
-#         _reconcile_background,
-#         queue="default",
-#         timeout=6000,
-#         job_name=f"serial_number_reconcile_{doc.name}",
-#         so_name=doc.name,
-#     )
-
-
-# # def cancel_all_serial_numbers(doc, method):
-# #     _cancel_all_for_so(doc.name, "Order cancelled")
-
-
-# def omr_on_submit(doc, method):
-#     enqueue(
-#         _omr_reconcile_background,
-#         queue="default",
-#         timeout=6000,
-#         job_name=f"serial_number_omr_{doc.name}",
-#         omr_name=doc.name,
-#     )
-
-
-# # ─────────────────────────────────────────────────────────────────────────────
-# #  BACKGROUND WORKERS
-# # ─────────────────────────────────────────────────────────────────────────────
-
-# def _generate_background(so_name):
-#     try:
-#         doc = frappe.get_doc("Sales Order", so_name)
-
-#         if not doc.branch:
-#             frappe.throw(_("Sales Order is missing Branch."))
-
-#         branch_code = doc.branch[0].upper()
-#         year_code   = str(doc.transaction_date.year)[-2:]
-
-#         for item in doc.items:
-#             if not _is_valve_item(item.item_code):
-#                 continue
-
-#             # Idempotency: skip if SNs already exist for this line
-#             if _get_active_sn_count(so_name, item.idx) > 0:
-#                 continue
-
-#             _bulk_allocate(item, doc, branch_code, year_code)
-
-#     except Exception:
-#         frappe.log_error(frappe.get_traceback(),
-#                          f"SN Generation Failed: {so_name}")
-#         raise
-
-
-# def _reconcile_background(so_name):
-#     try:
-#         doc = frappe.get_doc("Sales Order", so_name)
-
-#         if not doc.branch:
-#             return
-
-#         branch_code = doc.branch[0].upper()
-#         year_code   = str(doc.transaction_date.year)[-2:]
-#         _reconcile_so_lines(doc, branch_code, year_code, so_name)
-
-#     except Exception:
-#         frappe.log_error(frappe.get_traceback(),
-#                          f"SN Reconcile Failed: {so_name}")
-#         raise
-
-
-# def _omr_reconcile_background(omr_name):
-#     try:
-#         omr = frappe.get_doc("Order Modification Request", omr_name)
-#         so  = frappe.get_doc("Sales Order", omr.sales_order)
-
-#         if not so.branch:
-#             frappe.throw(_("Sales Order is missing Branch."))
-
-#         branch_code  = so.branch[0].upper()
-#         year_code    = str(so.transaction_date.year)[-2:]
-#         original_map = {
-#             row.sales_order_item_name: row
-#             for row in omr.original_record
-#         }
-
-#         for new_row in omr.sales_order_item:
-#             if not _is_valve_item(new_row.item):
-#                 continue
-
-#             orig_row     = original_map.get(new_row.sales_order_item_name)
-#             so_item_name = new_row.sales_order_item_name
-#             so_line_idx  = _get_so_line_idx(so_item_name)
-
-#             # ── Line cancelled ────────────────────────────────────────────
-#             effective_status = new_row.rev_line_status or new_row.line_status
-#             if effective_status == "Cancelled":
-#                 # _cancel_sns_for_line(so.name, so_line_idx,"Line cancelled via OMR")
-#                 continue
-
-#             # ── Item replaced ─────────────────────────────────────────────
-#             orig_item = orig_row.item if orig_row else None
-#             if orig_item and orig_item != new_row.item:
-#                 # _cancel_sns_for_line(
-#                 #     so.name, so_line_idx,
-#                 #     f"Item replaced via OMR: {orig_item} → {new_row.item}")
-
-#                 if _is_valve_item(new_row.item):
-#                     effective_qty = cint(new_row.rev_qty) or cint(new_row.qty)
-#                     if effective_qty > 0:
-#                         fake_item = _make_fake_item(
-#                             new_row.item, effective_qty,
-#                             so_line_idx, new_row.batch_no)
-#                         _bulk_allocate(fake_item, so, branch_code, year_code)
-#                 continue
-
-#             # ── Qty changed ───────────────────────────────────────────────
-#             new_qty        = cint(new_row.rev_qty) if cint(new_row.rev_qty) \
-#                              else cint(new_row.qty)
-#             existing_count = _get_active_sn_count(so.name, so_line_idx)
-#             delta          = new_qty - existing_count
-
-#             if delta > 0:
-#                 fake_item = _make_fake_item(
-#                     new_row.item, delta, so_line_idx, new_row.batch_no)
-#                 _bulk_allocate(fake_item, so, branch_code, year_code)
-
-#             # elif delta < 0:
-#                 # _cancel_lifo(so.name, so_line_idx, abs(delta),
-#                 #              "Qty reduced via OMR")
-
-#         frappe.db.commit()
-
-#     except Exception:
-#         frappe.log_error(frappe.get_traceback(),
-#                          f"SN OMR Reconcile Failed: {omr_name}")
-#         raise
-
-
-# # ─────────────────────────────────────────────────────────────────────────────
-# #  CORE: BULK ALLOCATE
-# # ─────────────────────────────────────────────────────────────────────────────
-
-# def _bulk_allocate(item, so_doc, branch_code, year_code):
-#     """
-#     Counter  : Serial Number Configuration Branches — sub_counter, total_counter
-#     Series   : derived from total_counter // COUNTER_MAX (no extra field)
-#     Lock     : FOR UPDATE on branch row
-#     Output   : bulk insert into Serial Number DocType
-#     Fields written: serial_number, batch, so_id, so_line,
-#                     item_code, counter_value, status, generated_at
-#     """
-#     CHUNK_SIZE    = 25000
-#     remaining_qty = cint(item.qty)
-#     user          = frappe.session.user
-#     values        = []
-
-#     branch_row_name = _get_branch_row_name(branch_code)
-
-#     while remaining_qty > 0:
-
-#         # ── Lock branch row ───────────────────────────────────────────────
-#         frappe.db.sql(
-#             """SELECT name FROM `tabSerial Number Configuration Branches`
-#                WHERE name = %s FOR UPDATE""",
-#             (branch_row_name,)
-#         )
-
-#         # Re-read after lock acquired
-#         branch_row = frappe.db.get_value(
-#             "Serial Number Configuration Branches",
-#             branch_row_name,
-#             ["sub_counter", "total_counter"],
-#             as_dict=True,
-#         )
-
-#         sub_counter   = cint(branch_row.sub_counter)
-#         total_counter = cint(branch_row.total_counter)
-
-#         # ── Derive series from total_counter — no field needed ────────────
-#         # 0–9998      → index 0 → A  (sub 1–9999)
-#         # 9999–19997  → index 1 → B  (sub 1–9999)
-#         # 19998–29996 → index 2 → C
-#         # 29997–39995 → index 3 → D
-#         series_index = total_counter // COUNTER_MAX
-#         if series_index >= len(SERIES_SEQUENCE):
-#             frappe.throw(
-#                 _(f"All series ({', '.join(SERIES_SEQUENCE)}) exhausted "
-#                   f"for branch {branch_code}. Contact administrator.")
-#             )
-#         current_series = SERIES_SEQUENCE[series_index]
-
-#         available = COUNTER_MAX - sub_counter
-#         take      = min(remaining_qty, available)
-#         start     = sub_counter + 1
-#         now       = now_datetime()
-
-#         for counter in range(start, start + take):
-#             serial_number = (
-#                 branch_code
-#                 + year_code
-#                 + current_series
-#                 + _getseries(counter, COUNTER_PADDING)
-#             )
-
-#             values.append((
-#                 serial_number,                           # name
-#                 serial_number,                           # serial_number
-#                 item.get("batch_no") or
-#                 item.get("custom_batch_no") or "",       # batch
-                                       
-#                 total_counter + (counter - sub_counter), # counter_value
-    
-#             ))
-
-#             if len(values) >= CHUNK_SIZE:
-#                 _bulk_insert_sn_rows(values)
-#                 frappe.db.commit()
-#                 values = []
-
-#         new_sub_counter   = sub_counter + take
-#         new_total_counter = total_counter + take
-
-#         # sub_counter resets to 0 when series boundary crossed
-#         # total_counter keeps climbing — drives series_index on next call
-#         if new_sub_counter >= COUNTER_MAX:
-#             new_sub_counter = 0
-
-#         frappe.db.set_value(
-#             "Serial Number Configuration Branches",
-#             branch_row_name,
-#             {
-#                 "sub_counter":   new_sub_counter,
-#                 "total_counter": new_total_counter,
-#             }
-#         )
-#         frappe.db.commit()   # releases FOR UPDATE lock
-
-#         remaining_qty -= take
-
-#     if values:
-#         _bulk_insert_sn_rows(values)
-#         frappe.db.commit()
-
-
-# def _bulk_insert_sn_rows(values):
-#     frappe.db.bulk_insert(
-#         "Serial Number",
-#         fields=[
-#             "name", 
-#             "serial_number", "batch",
-#             "counter_value", 
-#         ],
-#         values=values,
-#         ignore_duplicates=True,
-#     )
-
-
-# # ─────────────────────────────────────────────────────────────────────────────
-# #  VALVE ITEM CHECK
-# # ─────────────────────────────────────────────────────────────────────────────
-
-# def _is_valve_item(item_code):
-#     if not item_code:
-#         return False
-#     result = frappe.db.get_value(
-#         "Item Generator",
-#         {"created_item": item_code},
-#         [ "attribute_1_value"],
-#         as_dict=True,
-#     )
-#     if not result:
-#         return False
-    
-    # val = (result.get("attribute_1_value") or "").strip()
-	# if val == "Valve"
-    # return bool(val) and val != "-"
-
-
-# def _get_valve_lines(doc):
-#     return [
-#         item for item in doc.items
-#         if _is_valve_item(item.item_code)
-#     ]
-
-
-# # ─────────────────────────────────────────────────────────────────────────────
-# #  RECONCILE
-# # ─────────────────────────────────────────────────────────────────────────────
-
-# def _reconcile_so_lines(doc, branch_code, year_code, so_name):
-#     for item in doc.items:
-#         if not _is_valve_item(item.item_code):
-#             continue
-
-#         existing_count = _get_active_sn_count(so_name, item.idx)
-
-#         if item.get("line_status") == "Cancelled":
-#             # _cancel_sns_for_line(so_name, item.idx, "Line cancelled")
-#             continue
-
-#         delta = cint(item.qty) - existing_count
-
-#         if delta > 0:
-#             item.qty = delta
-#             _bulk_allocate(item, doc, branch_code, year_code)
-
-#         # elif delta < 0:
-#         #     _cancel_lifo(so_name, item.idx, abs(delta), "Qty reduced")
-
-#     # Cancel SNs for lines removed entirely from SO
-#     current_line_idxs = {item.idx for item in doc.items}
-#     orphan_lines = frappe.db.sql("""
-#         SELECT DISTINCT so_line
-#         FROM `tabSerial Number`
-#         WHERE  AND status = 'Active'
-#     """, (so_name,), as_dict=True)
-
-#     # for row in orphan_lines:
-#     #     if row.so_line not in current_line_idxs:
-#     #         _cancel_sns_for_line(so_name, row.so_line,
-#     #                              "Line removed from order")
-
-#     frappe.db.commit()
-
-
-# # ─────────────────────────────────────────────────────────────────────────────
-# #  CANCEL HELPERS
-# # ─────────────────────────────────────────────────────────────────────────────
-
-# # def _cancel_sns_for_line(so_name, so_line, reason):
-# #     sns = frappe.get_all(
-# #         "Serial Number",
-# #         filters={"so_id": so_name, "so_line": so_line, "status": "Active"},
-# #         pluck="name",
-# #     )
-# #     for name in sns:
-# #         _cancel_sn_row(name, reason)
-
-
-# # def _cancel_lifo(so_name, so_line, count, reason):
-# #     sns = frappe.get_all(
-# #         "Serial Number",
-# #         filters={"so_id": so_name, "so_line": so_line, "status": "Active"},
-# #         fields=["name", "counter_value"],
-# #         order_by="counter_value desc",
-# #         limit=count,
-# #     )
-# #     for sn in sns:
-# #         _cancel_sn_row(sn.name, reason)
-
-
-# # def _cancel_sn_row(sn_name, reason):
-# #     frappe.db.set_value("Serial Number", sn_name, {
-# #         "status":        "Cancelled",
-# #         "cancelled_at":  now_datetime(),
-# #         "cancel_reason": reason,
-# #     })
-
-
-# # def _cancel_all_for_so(so_name, reason):
-# #     sns = frappe.get_all(
-# #         "Serial Number",
-# #         filters={"so_id": so_name, "status": "Active"},
-# #         pluck="name",
-# #     )
-# #     for name in sns:
-# #         _cancel_sn_row(name, reason)
-# #     if sns:
-# #         frappe.db.commit()
-
-
-# def _get_active_sn_count(so_name, so_line):
-#     return frappe.db.count(
-#         "Serial Number",
-#         # filters={"so_id": so_name, "so_line": so_line, "status": "Active"},
-#     )
-
-
-# # ─────────────────────────────────────────────────────────────────────────────
-# #  UTILITIES
-# # ─────────────────────────────────────────────────────────────────────────────
-
-# def _getseries(current, digits):
-#     return ('%0' + str(digits) + 'd') % current
-
-
-# def _get_branch_row_name(branch_code):
-#     """
-#     S → Sanand row name
-#     N → Nandikoor row name
-#     R → Rabale row name
-#     Reads directly from DB — no config doc load needed.
-#     """
-#     rows = frappe.db.sql("""
-#         SELECT name, branch
-#         FROM `tabSerial Number Configuration Branches`
-#         WHERE parent = 'Serial Number Configuration'
-#     """, as_dict=True)
-
-#     for row in rows:
-#         if row.branch and row.branch[0].upper() == branch_code:
-#             return row.name
-
-#     frappe.throw(
-#         _(f"No branch starting with '{branch_code}' found in "
-#           f"Serial Number Configuration → Branches.")
-#     )
-
-
-# def _get_so_line_idx(so_item_name):
-#     return cint(frappe.db.get_value(
-#         "Sales Order Item", so_item_name, "idx"))
-
-
-# def _make_fake_item(item_code, qty, idx, batch_no):
-#     class _FakeItem:
-#         pass
-#     obj           = _FakeItem()
-#     obj.item_code = item_code
-#     obj.qty       = qty
-#     obj.idx       = idx
-#     obj.batch_no  = batch_no or ""
-#     return obj
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+SEQUENCE_PER_LETTER = 9999      # 0001 – 9999 per letter bucket
+SEQUENCE_DIGITS     = 4         # zero-padded to 4 digits
+BULK_COMMIT_EVERY   = 25_000    # commit to DB every N rows
+BULK_INSERT_CHUNK   = 10_000    # SQL VALUES chunk size
+
+
+INSERT_FIELDS = ["name", "creation", "modified", "modified_by", "owner",
+                 "serial_number", "batch"]
+
+
+# ===========================================================================
+# PUBLIC ENTRY POINT
+# ===========================================================================
+@frappe.whitelist()
+def create_serial_numbers_for_sales_order(sales_order_name: str):
+    """
+    Called from the "Create Serial Numbers" button on the Sales Order.
+
+    Flow
+    ────
+    1.  Read SO branch + items.
+    2.  Validate: skip items whose batch already has serial numbers.
+    3.  Calculate total qty for items that still need serials.
+    4.  Reserve counter block atomically (rolled back if anything fails).
+    5.  Build per-item serial ranges.
+    6.  Chunked bulk INSERT — synchronous, no enqueue, flat memory.
+    7.  Return timing stats for the JS popup.
+    """
+    t_start = time.monotonic()
+
+    so_doc = frappe.get_doc("Sales Order", sales_order_name)
+    branch = so_doc.get("branch")
+    if not branch:
+        frappe.throw(_("Branch is not set on the Sales Order."))
+
+    # Step 1: extract items
+    items = _extract_so_items(so_doc)
+    if not items:
+        frappe.throw(_("No items with valid quantity found on the Sales Order."))
+
+    # Step 2: skip batches that already have serial numbers
+    items_to_process, skipped = _filter_already_created(items)
+
+    if not items_to_process:
+        frappe.msgprint(
+            _("All batches on this Sales Order already have serial numbers. Nothing to generate."),
+            title=_("Already Created"),
+            indicator="orange",
+        )
+        return {"total": 0, "skipped": len(skipped), "elapsed_sec": 0}
+
+    # Step 3: total qty
+    total_qty = sum(row["qty"] for row in items_to_process)
+
+    # Step 4 + 5 + 6: reserve counter, build map, insert — all inside try/except
+    series_info     = None
+    branch_row_name = None
+    old_total       = None
+    old_sub         = None
+
+    try:
+        series_info, branch_row_name, old_total, old_sub = \
+            get_next_naming_series_number(branch, total_qty)
+
+        item_serial_map = _build_item_serial_map(series_info, items_to_process)
+
+        _generate_and_insert(
+            series_info    = series_info,
+            item_serial_map= item_serial_map,
+            sales_order    = sales_order_name,
+            total_qty      = total_qty,
+        )
+
+    except Exception:
+        # Rollback counters so the next attempt starts from the same position
+        if branch_row_name and old_total is not None:
+            frappe.db.set_value(
+                "Serial Number Configuration Branches",
+                branch_row_name,
+                {"total_counter": old_total, "sub_counter": old_sub},
+            )
+            frappe.db.commit()
+        frappe.log_error(frappe.get_traceback(), "Serial Number Generation Failed")
+        frappe.throw(
+            _("Serial number generation failed. Counter has been rolled back. "
+              "Please check the Error Log for details.")
+        )
+
+    elapsed = round(time.monotonic() - t_start, 3)
+
+    skipped_msg = (
+        _(" ({0} batch(es) skipped — already had serial numbers)").format(len(skipped))
+        if skipped else ""
+    )
+
+    # Step 7: return stats — JS shows the timing popup
+    return {
+        "total":        total_qty,
+        "skipped":      len(skipped),
+        "branch":       branch,
+        "first_serial": series_info["first_serial"],
+        "elapsed_sec":  elapsed,
+        "message":      _(
+            "{0} serial numbers generated in {1} seconds.{2}"
+        ).format(total_qty, elapsed, skipped_msg),
+    }
+
+
+# ===========================================================================
+# SUB-FUNCTION 0a  –  _extract_so_items
+# ===========================================================================
+def _extract_so_items(so_doc) -> list:
+    """
+    Returns [{ item_code, item_name, qty, batch_id }, ...] from SO items.
+    Items with qty <= 0 are skipped.
+    """
+    result = []
+    for row in so_doc.get("items", []):
+        qty = cint(row.get("qty") or 0)
+        if qty <= 0:
+            continue
+        result.append({
+            "item_code": row.get("item_code") or "",
+            "item_name": row.get("item_name") or "",
+            "qty":       qty,
+            "batch_id":  row.get("custom_batch_no") or "",
+        })
+    return result
+
+
+# ===========================================================================
+# SUB-FUNCTION 0b  –  _filter_already_created  (duplicate validation)
+# ===========================================================================
+def _filter_already_created(items: list):
+    """
+    For each item, checks if its batch already has >= 1 serial number.
+    If yes — skip that item (do not generate again).
+
+    Returns:
+        to_process  — items that still need serial numbers
+        skipped     — list of { batch_id, existing_count } that were skipped
+    """
+    to_process = []
+    skipped    = []
+
+    for item in items:
+        batch_id = item["batch_id"]
+        if not batch_id:
+            to_process.append(item)
+            continue
+
+        existing = frappe.db.count("Serial Number", {"batch": batch_id})
+        if existing > 0:
+            skipped.append({"batch_id": batch_id, "existing_count": existing})
+        else:
+            to_process.append(item)
+
+    return to_process, skipped
+
+
+# ===========================================================================
+# SUB-FUNCTION 0c  –  _build_item_serial_map
+# ===========================================================================
+def _build_item_serial_map(series_info: dict, items: list) -> list:
+    """
+    Assigns a contiguous slice of the reserved counter block to each item.
+
+    Example (branch Sanand, counter starts at 0):
+        Item A  qty=5  start_total=0  -> S26A0001 ... S26A0005
+        Item B  qty=3  start_total=5  -> S26A0006 ... S26A0008
+    """
+    cursor     = series_info["start_total"]
+    assignment = []
+    for item in items:
+        assignment.append({
+            "batch_id":    item["batch_id"],
+            "qty":         item["qty"],
+            "start_total": cursor,
+        })
+        cursor += item["qty"]
+    return assignment
+
+
+# ===========================================================================
+# SUB-FUNCTION 1  –  get_next_naming_series_number
+# ===========================================================================
+def get_next_naming_series_number(branch: str, qty: int):
+    """
+    Reads Serial Number Configuration, validates capacity, advances counters.
+
+    Returns:
+        series_info     -- dict(prefix, fy, start_total, first_serial)
+        branch_row_name -- row PK (needed for rollback on failure)
+        old_total       -- value before increment (for rollback)
+        old_sub         -- value before increment (for rollback)
+    """
+    config = frappe.get_single("Serial Number Configuration")
+    prefix = _get_branch_prefix(branch, config)
+    fy_raw = config.get("fy_year") or str(frappe.utils.nowdate()[:4])
+    fy     = str(fy_raw).strip()[-2:]
+
+    branch_row = _get_or_create_branch_row(config, branch)
+    old_total  = cint(branch_row.total_counter)
+    old_sub    = cint(branch_row.sub_counter)
+
+    max_serials = 26 * SEQUENCE_PER_LETTER
+    if old_total + qty > max_serials:
+        frappe.throw(
+            _("Cannot generate {0} serial numbers for branch '{1}'. "
+              "Only {2} slots remain in this fiscal year.").format(
+                qty, branch, max_serials - old_total
+            )
+        )
+
+    first_letter_idx = old_total // SEQUENCE_PER_LETTER
+    first_seq        = (old_total % SEQUENCE_PER_LETTER) + 1
+    first_letter     = chr(ord('A') + first_letter_idx)
+    first_serial     = f"{prefix}{fy}{first_letter}{str(first_seq).zfill(SEQUENCE_DIGITS)}"
+
+    new_total = old_total + qty
+    new_sub   = (new_total % SEQUENCE_PER_LETTER) or SEQUENCE_PER_LETTER
+
+    frappe.db.set_value(
+        "Serial Number Configuration Branches",
+        branch_row.name,
+        {"total_counter": new_total, "sub_counter": new_sub},
+    )
+    frappe.db.commit()
+
+    series_info = {
+        "prefix":       prefix,
+        "fy":           fy,
+        "branch":       branch,
+        "start_total":  old_total,
+        "end_total":    new_total,
+        "first_serial": first_serial,
+    }
+    return series_info, branch_row.name, old_total, old_sub
+
+
+# ===========================================================================
+# SUB-FUNCTION 2  –  generate_serial_ids
+# ===========================================================================
+def generate_serial_ids(
+    series_info: dict,
+    item_assignment: dict,
+    user: str,
+) -> list:
+    """
+    Pure CPU — no DB calls.
+    Builds INSERT-ready tuples for one item slice.
+
+    Tuple order matches INSERT_FIELDS exactly:
+        name, creation, modified, modified_by, owner, serial_number, batch
+    """
+    prefix      = series_info["prefix"]
+    fy          = series_info["fy"]
+    start_total = item_assignment["start_total"]
+    qty         = item_assignment["qty"]
+    batch_id    = item_assignment["batch_id"]
+
+    now_time = frappe.utils.get_datetime()
+    rows     = []
+
+    for i in range(qty):
+        pos        = start_total + i
+        letter_idx = pos // SEQUENCE_PER_LETTER
+        seq        = (pos % SEQUENCE_PER_LETTER) + 1   # 1-based
+
+        letter    = chr(ord('A') + letter_idx)
+        serial_no = f"{prefix}{fy}{letter}{str(seq).zfill(SEQUENCE_DIGITS)}"
+
+        rows.append((
+            serial_no,   # name          (PK)
+            now_time,    # creation
+            now_time,    # modified
+            user,        # modified_by
+            user,        # owner
+            serial_no,   # serial_number
+            batch_id,    # batch
+        ))
+
+    return rows
+
+
+# ===========================================================================
+# SUB-FUNCTION 3  –  _bulk_insert_serials
+# ===========================================================================
+def _bulk_insert_serials(rows: list):
+    """
+    Inserts rows via chunked raw SQL.
+
+    Fix for 'not all arguments converted during string formatting':
+    ───────────────────────────────────────────────────────────────
+    The original bug: VALUES clause had N placeholder groups, but pymysql
+    received the flat values list as positional args for Python's % operator
+    instead of as SQL bind parameters.
+
+    Correct approach:
+        - Build the VALUES string as N copies of the placeholder group.
+        - Pass flat_values as the second arg to frappe.db.sql().
+        - Validate len(flat_values) == len(chunk) * len(INSERT_FIELDS) before
+          every execute to catch any future field/tuple mismatch immediately.
+    """
+    if not rows:
+        return
+
+    n_fields    = len(INSERT_FIELDS)
+    field_str   = ", ".join(f"`{f}`" for f in INSERT_FIELDS)
+    placeholder = "(" + ", ".join(["%s"] * n_fields) + ")"
+
+    for chunk_start in range(0, len(rows), BULK_INSERT_CHUNK):
+        chunk       = rows[chunk_start : chunk_start + BULK_INSERT_CHUNK]
+        flat_values = [val for row in chunk for val in row]
+
+        # Guard: catch field/tuple length mismatch before hitting the DB
+        expected = len(chunk) * n_fields
+        if len(flat_values) != expected:
+            frappe.throw(
+                _(
+                    "SQL placeholder mismatch — expected {0} values, got {1}. "
+                    "INSERT_FIELDS has {2} fields but each row has {3} values."
+                ).format(expected, len(flat_values), n_fields, len(chunk[0]))
+            )
+
+        values_sql = ", ".join([placeholder] * len(chunk))
+
+        frappe.db.sql(
+            f"INSERT IGNORE INTO `tabSerial Number` ({field_str}) VALUES {values_sql}",
+            flat_values,
+        )
+
+
+# ===========================================================================
+# CORE EXECUTOR  –  chunked bulk INSERT
+# ===========================================================================
+def _generate_and_insert(
+    series_info: dict,
+    item_serial_map: list,
+    sales_order: str,
+    total_qty: int,
+):
+    """
+    Iterates over each item assignment, slices into BULK_COMMIT_EVERY chunks,
+    inserts + commits each chunk. At peak only one chunk lives in RAM.
+    """
+    total_inserted = 0
+    user           = frappe.session.user
+
+    for item_assignment in item_serial_map:
+        item_qty = item_assignment["qty"]
+
+        for slice_offset in range(0, item_qty, BULK_COMMIT_EVERY):
+            slice_qty = min(BULK_COMMIT_EVERY, item_qty - slice_offset)
+
+            sliced = {
+                **item_assignment,
+                "start_total": item_assignment["start_total"] + slice_offset,
+                "qty":         slice_qty,
+            }
+
+            rows = generate_serial_ids(series_info, sliced, user)
+            _bulk_insert_serials(rows)
+            frappe.db.commit()
+
+            total_inserted += slice_qty
+
+            frappe.publish_realtime(
+                event="serial_no_progress",
+                message={
+                    "percent":     round(total_inserted / total_qty * 100, 1),
+                    "inserted":    total_inserted,
+                    "total":       total_qty,
+                    "sales_order": sales_order,
+                },
+                user=user,
+            )
+
+
+# ===========================================================================
+# INTERNAL HELPERS
+# ===========================================================================
+def _get_branch_prefix(branch: str, config) -> str:
+    """
+    Matches branch against Serial Number Configuration branches child table.
+    Converts to UPPER, returns first character as prefix.
+    e.g. 'sanand' -> 'SANAND' -> 'S'
+    """
+    branch_lower = branch.strip().lower()
+    for row in config.get("branches", []):
+        if row.branch.strip().lower() == branch_lower:
+            return row.branch.strip().upper()[0]
+    frappe.throw(
+        _("Branch '{0}' is not configured in Serial Number Configuration. "
+          "Please add it to the Branches table.").format(branch)
+    )
+
+
+def _get_or_create_branch_row(config, branch: str):
+    """
+    Returns the child-table row for the branch, creating it if absent.
+    """
+    branch_lower = branch.strip().lower()
+    for row in config.get("branches", []):
+        if row.branch.strip().lower() == branch_lower:
+            return row
+    row = config.append("branches", {
+        "branch":        branch,
+        "sub_counter":   0,
+        "total_counter": 0,
+    })
+    config.save(ignore_permissions=True)
+    frappe.db.commit()
+    return row

@@ -1,6 +1,7 @@
 {
  "actions": [],
  "allow_rename": 1,
+ "autoname": "field:serial_number",
  "creation": "2026-03-13 17:28:08.368181",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -9,8 +10,7 @@
   "batch",
   "amended_from",
   "column_break_ngxq",
-  "serial_number",
-  "counter_value"
+  "serial_number"
  ],
  "fields": [
   {
@@ -40,22 +40,19 @@
   {
    "fieldname": "serial_number",
    "fieldtype": "Data",
-   "label": "Serial Number"
-  },
-  {
-   "fieldname": "counter_value",
-   "fieldtype": "Int",
-   "label": "Counter Value"
+   "label": "Serial Number",
+   "unique": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-03-13 17:48:34.039952",
+ "modified": "2026-03-16 14:34:03.014355",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Serial Number",
+ "naming_rule": "By fieldname",
  "owner": "Administrator",
  "permissions": [
   {

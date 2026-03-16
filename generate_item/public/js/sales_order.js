@@ -563,6 +563,11 @@ frappe.ui.form.on('Sales Order', {
                 make_batch(frm);
             }, __('Create'));
         }
+        if (!frm.is_new()) {
+            frm.add_custom_button(__('Serial Number'), function () {
+                make_serial_number(frm);
+            }, __('Create'));
+        }
         if (!frm.is_new() ) {
             frm.add_custom_button(__('Add To CRM'), function () {
                 frappe.call({
@@ -1194,6 +1199,175 @@ function delete_batches_for_items(deleted_items, frm) {
     });
 
     return Promise.all(delete_promises);
+}
+
+
+ 
+// ── Main button handler ──────────────────────────────────────────────────────
+function make_serial_number(frm) {
+    if (!frm.doc.branch) {
+        frappe.msgprint({
+            title: __("Missing Branch"),
+            message: __("Please set the Branch on this Sales Order before generating serial numbers."),
+            indicator: "red",
+        });
+        return;
+    }
+ 
+    const valid_items = (frm.doc.items || []).filter(r => (r.qty || 0) > 0);
+    if (!valid_items.length) {
+        frappe.msgprint({
+            title: __("No Items"),
+            message: __("This Sales Order has no items with a valid quantity."),
+            indicator: "red",
+        });
+        return;
+    }
+ 
+    const total_qty = valid_items.reduce((s, r) => s + (r.qty || 0), 0);
+ 
+    
+ 
+    frappe.confirm(
+        `<p style="margin-bottom:8px">
+            Branch: <b>${frm.doc.branch}</b>
+            &nbsp;|&nbsp; Total serials to generate: <b>${total_qty}</b>
+         </p>
+         <p style="color:#888;font-size:12px">
+             Batches that already have serial numbers will be skipped automatically.
+         </p>`,
+        () => _call_generate(frm, total_qty),
+        () => {}
+    );
+}
+ 
+ 
+// ── Progress dialog + server call ────────────────────────────────────────────
+function _call_generate(frm, total_qty) {
+ 
+    // Build progress dialog
+    const dlg = new frappe.ui.Dialog({
+        title: __("Generating Serial Numbers"),
+        static: true,
+    });
+    dlg.$body.html(`
+        <div style="padding:12px 0">
+            <div class="progress" style="height:22px;border-radius:4px;background:#e9ecef;overflow:hidden">
+                <div id="sn-bar"
+                     class="progress-bar progress-bar-striped progress-bar-animated"
+                     style="width:0%;height:100%;background:#5e64ff;
+                            transition:width .3s ease;line-height:22px;color:#fff;font-size:12px">
+                    0%
+                </div>
+            </div>
+            <p id="sn-label" style="text-align:center;margin-top:8px;color:#6c757d;font-size:13px">
+                Starting…
+            </p>
+        </div>`);
+    dlg.show();
+ 
+    const $bar   = dlg.$body.find("#sn-bar");
+    const $label = dlg.$body.find("#sn-label");
+ 
+    function update_bar(pct, inserted, total) {
+        const p = Math.min(pct, 100).toFixed(1);
+        $bar.css("width", p + "%").text(p + "%");
+        $label.text(`${inserted.toLocaleString()} / ${total.toLocaleString()} serial numbers`);
+    }
+ 
+    // Real-time progress events pushed from the server
+    frappe.realtime.on("serial_no_progress", (data) => {
+        if (data.sales_order !== frm.doc.name) return;
+        update_bar(data.percent, data.inserted, data.total);
+    });
+ 
+    // Server call — synchronous on server side, result has timing stats
+    frappe.call({
+        method: "generate_item.generate_item.doctype.serial_number.serial_number.create_serial_numbers_for_sales_order",
+        // ↑ Replace with actual dotted Python module path 
+        args: { sales_order_name: frm.doc.name },
+ 
+        callback(r) {
+            frappe.realtime.off("serial_no_progress");
+            dlg.hide();
+ 
+            if (r.exc) {
+                frappe.msgprint({
+                    title:     __("Generation Failed"),
+                    message:   r.exc,
+                    indicator: "red",
+                });
+                return;
+            }
+ 
+            const d = r.message || {};
+ 
+            // Nothing generated (all already existed)
+            if (d.total === 0) {
+                frappe.msgprint({
+                    title:     __("Nothing to Generate"),
+                    message:   __("All batches already have serial numbers."),
+                    indicator: "orange",
+                });
+                return;
+            }
+ 
+            // ── Timing popup ─────────────────────────────────────────────────
+            const elapsed     = d.elapsed_sec || 0;
+            const rate        = elapsed > 0 ? Math.round(d.total / elapsed) : "—";
+            const skipped_row = d.skipped
+                ? `<tr><td>Batches skipped (already existed)</td>
+                       <td style="text-align:right"><b>${d.skipped}</b></td></tr>`
+                : "";
+ 
+            frappe.msgprint({
+                title: __("Serial Numbers Generated"),
+                message: `
+                    <table class="table table-bordered" style="font-size:13px;margin-bottom:0">
+                        <tbody>
+                            <tr>
+                                <td>Branch</td>
+                                <td style="text-align:right"><b>${d.branch || frm.doc.branch}</b></td>
+                            </tr>
+                            <tr>
+                                <td>Total generated</td>
+                                <td style="text-align:right">
+                                    <b style="color:#28a745">${(d.total || 0).toLocaleString()}</b>
+                                </td>
+                            </tr>
+                            ${skipped_row}
+                            <tr>
+                                <td>First serial number</td>
+                                <td style="text-align:right">
+                                    <b style="font-family:monospace">${d.first_serial || "—"}</b>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td>Time taken</td>
+                                <td style="text-align:right"><b>${elapsed} seconds</b></td>
+                            </tr>
+                            <tr>
+                                <td>Throughput</td>
+                                <td style="text-align:right"><b>${rate} serials / sec</b></td>
+                            </tr>
+                        </tbody>
+                    </table>`,
+                indicator: "green",
+            });
+ 
+            frm.reload_doc();
+        },
+ 
+        error() {
+            frappe.realtime.off("serial_no_progress");
+            dlg.hide();
+            frappe.msgprint({
+                title:     __("Error"),
+                message:   __("An unexpected error occurred. Please check the Error Log."),
+                indicator: "red",
+            });
+        },
+    });
 }
 
 function make_batch(frm) {
