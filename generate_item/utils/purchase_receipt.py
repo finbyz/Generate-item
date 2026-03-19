@@ -171,6 +171,7 @@ def validate_duplicate_po(doc, method):
                 ),
                 title=("Duplicate Draft Purchase Receipt Detected")
             )
+            
 @frappe.whitelist()
 def make_quality_inspections(doctype, docname, items):
 
@@ -193,30 +194,53 @@ def make_quality_inspections(doctype, docname, items):
         if not qi_name:
             continue
 
+        is_subcontracting = doctype == "Subcontracting Receipt"
         # Fetch data from Purchase Receipt Item
-        row = frappe.db.get_value(
-            doctype + " Item",
-            ref,
-            ["qty", "uom", "stock_uom", "stock_qty"],
-            as_dict=True
-        )
+        if is_subcontracting:
+            row = frappe.db.get_value(
+                doctype + " Item",
+                ref,
+                ["qty", "stock_uom"],
+                as_dict=True
+            )
+        else:
+            row = frappe.db.get_value(
+                doctype + " Item",
+                ref,
+                ["qty", "uom", "stock_uom", "stock_qty"],
+                as_dict=True
+            )
+        if not row:
+            continue
+
 
         qty = flt(row.qty)
         uom = row.uom
         stock_uom = row.stock_uom
-        received_qty_in_stock_uom = flt(row.stock_qty)
 
-        frappe.db.set_value(
-            "Quality Inspection",
-            qi_name,
-            {
+        if is_subcontracting:
+            update_values = {
+                "received_qty": qty,
+                "sample_size": qty,
+                "stock_uom": stock_uom,
+            }
+        else:
+            received_qty_in_stock_uom = flt(row.stock_qty)
+            update_values = {
                 "received_qty": qty,
                 "sample_size": qty,
                 "uom": uom,
                 "stock_uom": stock_uom,
                 "received_qty_in_stock_uom": received_qty_in_stock_uom,
-                "sample_size_in_stock_uom": received_qty_in_stock_uom
+                "sample_size_in_stock_uom": received_qty_in_stock_uom,
             }
+            
+            
+
+        frappe.db.set_value(
+            "Quality Inspection",
+            qi_name,
+            update_values
         )
 
     return inspection_names
