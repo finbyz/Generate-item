@@ -7,7 +7,7 @@
   "doctype_or_field": "DocType",
   "field_name": null,
   "is_system_generated": 0,
-  "modified": "2026-03-02 15:13:01.113593",
+  "modified": "2026-03-19 14:19:05.474779",
   "module": "Generate Item",
   "name": "Sales Taxes and Charges-main-field_order",
   "property": "field_order",

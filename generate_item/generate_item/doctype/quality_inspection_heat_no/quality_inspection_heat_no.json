@@ -1,0 +1,45 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-03-16 17:58:57.154119",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "heat_no",
+  "column_break_nthb",
+  "qty"
+ ],
+ "fields": [
+  {
+   "fieldname": "heat_no",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Heat No"
+  },
+  {
+   "fieldname": "column_break_nthb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Qty"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-03-16 18:00:15.412292",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Quality Inspection Heat No",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
