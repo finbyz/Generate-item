@@ -80,14 +80,14 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Line Status",
-   "options": "\nHold\nModified\nDelivered\nCanceled\nPartial Delivered",
+   "options": "\nHold\nModified\nDelivered\nCancelled\nPartial Delivered",
    "read_only": 1
   },
   {
    "fieldname": "rev_line_status",
    "fieldtype": "Select",
    "label": "Rev Line Status",
-   "options": "\nHold\nModified\nDelivered\nCanceled\nPartial Delivered"
+   "options": "\nHold\nModified\nDelivered\nCancelled\nPartial Delivered"
   },
   {
    "fieldname": "delivery_date",
@@ -201,7 +201,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-03-13 18:49:51.064389",
+ "modified": "2026-03-20 12:59:06.049077",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Sales Order Item For OMR",

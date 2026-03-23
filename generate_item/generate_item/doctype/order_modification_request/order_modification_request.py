@@ -282,6 +282,30 @@ class OrderModificationRequest(Document):
                     f"Row {row.idx}: Rev Qty cannot be 0 when Qty is 0",
                     title="Invalid Quantity",
                 )
+              #  Normalize values
+            rev_rate = row.rev_rate
+            rev_status = (row.rev_line_status or "").strip()
+
+            #  1. Skip validation if BOTH are empty
+            if not rev_rate and not rev_status:
+                continue
+
+            # Convert safely (handles None, "")
+            rev_rate = frappe.utils.flt(rev_rate)
+
+            #  2. Allow: Cancelled + 0 rate
+            if rev_status == "Cancelled" and rev_rate == 0:
+                continue
+
+            #  3. Block: Not cancelled + 0 rate
+            if rev_status != "Cancelled" and rev_rate == 0:
+                frappe.throw(
+                    f"Row {row.idx}: Rev Rate cannot be 0 when Rev Line Status is not 'Cancelled'",
+                    title="Invalid Rate",
+                )
+
+           
+                
 
     def validate_sales_order(self):
         if not self.sales_order:
@@ -342,7 +366,16 @@ class OrderModificationRequest(Document):
         trans_items = []
         for row in self.sales_order_item:
             qty  = row.rev_qty  if (row.rev_qty  and row.rev_qty  > 0) else row.qty
-            rate = row.rev_rate if (row.rev_rate and row.rev_rate > 0) else row.rate
+            # rate = row.rev_rate if (row.rev_rate and row.rev_rate > 0) else row.rate
+            is_cancelled = (row.rev_line_status or "").strip() == "Cancelled"
+
+            # For cancelled lines, always use 0. Otherwise use rev_rate if positive.
+            if is_cancelled:
+                rate = 0
+            elif row.rev_rate and row.rev_rate > 0:
+                rate = row.rev_rate
+            else:
+                rate = row.rate
 
             # - New item: no sales_order_item_name + rev_item is set → use rev_item
             # - Existing item: use row.item

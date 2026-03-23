@@ -2,7 +2,7 @@ from erpnext.manufacturing.doctype.production_plan.production_plan import Produc
 import frappe
 from erpnext.manufacturing.doctype.work_order.work_order import get_item_details
 from erpnext.manufacturing.doctype.bom.bom import get_children as get_bom_children
-from frappe import _
+from frappe import _,msgprint
 from frappe.query_builder.functions import IfNull, Sum
 from pypika.terms import ExistsCriterion
 from frappe.utils import (
@@ -1304,279 +1304,478 @@ class ProductionPlan(_ProductionPlan):
             
         return None
 
+########## ---------    Pervious Code Creating Errors --------- ##########
+    # @frappe.whitelist()
+    # def make_material_request(self):
+    #     """Create Material Requests with custom fields from assembly BOM items.
+        
+    #     Flow:
+    #     1. For each raw material in mr_items, find which assembly BOM contains it
+    #     2. Copy custom fields from that BOM item to the Material Request item
+    #     3. Group MRs by Sales Order, MR Type, and Customer
+    #     4. Check for existing material requests with same sales order (total existing for cap, unlinked for adjustment)
+    #     5. Reduce making qty in production plan based on unlinked (advance) and cap at total remaining
+    #     6. Optionally link unlinked (advance) MR items to this production plan
+    #     """
+    #     from frappe import _, msgprint
+    #     from frappe.utils import add_days, nowdate, cint, comma_and, get_link_to_form
+        
+    #     material_request_list = []
+    #     material_request_map = {}
+    #     notifications = []
 
+    #     for item in self.mr_items:
+    #         if not getattr(item, "item_code", None):
+    #             continue
+                
+    #         item_doc = frappe.get_cached_doc("Item", item.item_code)
+    #         material_request_type = item.material_request_type or item_doc.default_material_request_type
+
+    #         # Calculate schedule_date early
+    #         schedule_date = item.schedule_date or add_days(nowdate(), cint(getattr(item_doc, "lead_time_days", 0)))
+
+    #         # Get custom_batch_no from production plan po_items
+    #         custom_batch_no = None
+    #         if hasattr(self, 'po_items') and self.po_items:
+    #             for po_item in self.po_items:
+    #                 if hasattr(po_item, 'custom_batch_no') and po_item.custom_batch_no:
+    #                     custom_batch_no = po_item.custom_batch_no
+    #                     break
+
+    #         branch_value = getattr(self, "branch", None)
+    #         if hasattr(self, 'po_items') and self.po_items:
+    #             for po_item in self.po_items:
+    #                 if hasattr(po_item, 'branch') and po_item.branch:
+    #                     branch = po_item.branch
+    #                     break
+
+    #         # Adjustment logic if sales_order present
+    #         plan_qty = flt(item.quantity)
+    #         if getattr(item, "sales_order", None):
+    #             so = item.sales_order
+    #             so_qty = 0
+    #             if getattr(item, "sales_order_item", None):
+    #                 so_qty = frappe.db.get_value("Sales Order Item", item.sales_order_item, "qty") or 0
+    #             else:
+    #                 try:
+    #                     so_qty = frappe.db.get_value(
+    #                         "Sales Order Item",
+    #                         {"parent": so, "item_code": item.item_code},
+    #                         "qty"
+    #                     ) or 0
+    #                 except Exception:
+    #                     so_qty = 0
+
+    #             # Get unlinked qty (production_plan IS NULL) - for adjustment
+    #             if custom_batch_no:
+    #                 unlinked_qty = flt(frappe.db.sql("""
+    #                     SELECT IFNULL(SUM(mri.qty), 0)
+    #                     FROM `tabMaterial Request Item` mri
+    #                     LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
+    #                     WHERE mri.item_code = %s
+    #                       AND mri.production_plan IS NULL
+    #                       AND mr.docstatus != 2
+    #                       AND (
+    #                         mri.custom_batch_no = %s OR mr.linked_batch = %s
+    #                       )
+    #                 """, (item.item_code, custom_batch_no, custom_batch_no))[0][0])
+    #             else:
+    #                 unlinked_qty = flt(frappe.db.sql("""
+    #                     SELECT IFNULL(SUM(qty), 0)
+    #                     FROM `tabMaterial Request Item` mri
+    #                     LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
+    #                     WHERE mri.sales_order = %s AND mri.item_code = %s 
+    #                     AND mri.production_plan IS NULL
+    #                     AND mr.docstatus != 2
+    #                 """, (so, item.item_code))[0][0])
+
+    #             # Get total existing qty - for cap
+    #             if custom_batch_no:
+    #                 total_existing_qty = flt(frappe.db.sql("""
+    #                     SELECT IFNULL(SUM(mri.qty), 0)
+    #                     FROM `tabMaterial Request Item` mri
+    #                     LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
+    #                     WHERE mri.item_code = %s
+    #                     AND mr.docstatus != 2
+    #                       AND (
+    #                         mri.custom_batch_no = %s OR mr.linked_batch = %s
+    #                       )
+    #                 """, (item.item_code, custom_batch_no, custom_batch_no))[0][0])
+    #             else:
+    #                 total_existing_qty = flt(frappe.db.sql("""
+    #                 SELECT IFNULL(SUM(qty), 0)
+    #                 FROM `tabMaterial Request Item` mri
+    #                 LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
+    #                 WHERE mri.sales_order = %s AND mri.item_code = %s
+    #                   AND mr.docstatus != 2
+    #             """, (so, item.item_code))[0][0])
+
+    #             # Calculate how much of plan_qty can be covered by unlinked MRs
+    #             coverage_from_unlinked = min(plan_qty, unlinked_qty)
+    #             # New MR qty = plan qty minus what unlinked MRs will cover
+    #             # Don't cap by SO qty here because plan_qty is already the correct requirement
+    #             item.quantity = max(0, plan_qty - coverage_from_unlinked)
+
+    #             frappe.log_error(
+    #                 "MR Qty per Split/Advance Logic",
+    #                 f"Item: {item.item_code} | Plan qty: {plan_qty} | Unlinked MR qty: {unlinked_qty} | Coverage from unlinked: {coverage_from_unlinked} | New MR qty needed: {item.quantity}"
+    #             )
+    #             if item.quantity <= 0:
+    #                 frappe.log_error(
+    #                     "MR Item Skipped",
+    #                     f"Skipping {item.item_code}: Plan qty {plan_qty} fully covered by unlinked MR qty {unlinked_qty}"
+    #                 )
+    #                 notifications.append(_(f"{item.item_code}: plan qty {plan_qty} fully covered by existing unlinked MRs ({unlinked_qty}), skipping new MR."))
+    #                 continue
+
+    #             # Try to link unlinked MR items to this plan (for tracking)
+    #             if coverage_from_unlinked > 0:
+    #                 if custom_batch_no:
+    #                     unlinked_items = frappe.db.sql("""
+    #                         SELECT mri.name, mri.parent, mri.qty, mri.warehouse, mri.bom_no,
+    #                             mri.custom_drawing_no, mri.custom_pattern_drawing_no, mri.from_warehouse
+    #                         FROM `tabMaterial Request Item` mri
+    #                         LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
+    #                         WHERE mri.item_code = %s AND mri.production_plan IS NULL
+    #                         AND mr.docstatus != 2
+    #                           AND (mri.custom_batch_no = %s OR mr.linked_batch = %s)
+    #                         ORDER BY mri.creation ASC
+    #                     """, (item.item_code, custom_batch_no, custom_batch_no), as_dict=True)
+    #                 else:
+    #                     unlinked_items = frappe.db.sql("""
+    #                         SELECT mri.name, mri.parent, mri.qty, mri.warehouse, mri.bom_no,
+    #                             mri.custom_drawing_no, mri.custom_pattern_drawing_no, mri.from_warehouse
+    #                         FROM `tabMaterial Request Item` mri
+    #                         LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
+    #                         WHERE mri.sales_order = %s AND mri.item_code = %s AND mri.production_plan IS NULL
+    #                         AND mr.docstatus != 2
+    #                         ORDER BY mri.creation ASC
+    #                     """, (so, item.item_code), as_dict=True)
+
+    #                 remaining_to_link = coverage_from_unlinked
+    #                 for ui in unlinked_items:
+    #                     if remaining_to_link <= 0:
+    #                         break
+    #                     mr_name = ui['parent']
+    #                     mr = frappe.get_doc("Material Request", mr_name)
+    #                     if mr.docstatus in (1, 2):
+    #                         continue  # Skip submitted MRs
+
+    #                     ui_qty = ui['qty']
+    #                     alloc_qty = min(remaining_to_link, ui_qty)
+
+    #                     if alloc_qty == ui_qty:
+    #                         # Full allocation: link the item
+    #                         update_fields = {
+    #                             "production_plan": self.name,
+    #                             "material_request_plan_item": item.name
+    #                         }
+    #                         if custom_batch_no and not ui.get('custom_batch_no'):
+    #                             update_fields['custom_batch_no'] = custom_batch_no
+    #                         frappe.db.set_value("Material Request Item", ui['name'], update_fields)
+    #                         if custom_batch_no and not mr.linked_batch:
+    #                             frappe.db.set_value("Material Request", mr_name, "linked_batch", custom_batch_no)
+    #                         frappe.log_error("MR Item Linked", f"Linked full item {ui['name']} to plan {self.name}")
+    #                         remaining_to_link -= alloc_qty
+    #                     else:
+    #                         # Partial allocation: split by appending new linked item and reducing original
+    #                         bom_no, custom_fields = self._get_bom_custom_fields_for_mr_item(item.item_code)
+    #                         new_mr_item_data = {
+    #                             "item_code": item.item_code,
+    #                             "qty": alloc_qty,
+    #                             "schedule_date": schedule_date,
+    #                             "warehouse": ui['warehouse'],
+    #                             "from_warehouse": ui['from_warehouse'] if material_request_type == "Material Transfer" else None,
+    #                             "sales_order": so,
+    #                             "production_plan": self.name,
+    #                             "material_request_plan_item": item.name,
+    #                             "project": frappe.db.get_value("Sales Order", so, "project") if so else None,
+    #                             "custom_batch_no": custom_batch_no,
+    #                         }
+    #                         if bom_no:
+    #                             new_mr_item_data["bom_no"] = bom_no
+    #                         # Custom fields from BOM, override with UI if present
+    #                         for field, value in custom_fields.items():
+    #                             if value:
+    #                                 new_mr_item_data[field] = value
+    #                         if ui.get('custom_drawing_no'):
+    #                             new_mr_item_data["custom_drawing_no"] = ui['custom_drawing_no']
+    #                         if ui.get('custom_pattern_drawing_no'):
+    #                             new_mr_item_data["custom_pattern_drawing_no"] = ui['custom_pattern_drawing_no']
+
+    #                         # Append new item
+    #                         new_row = mr.append("items", new_mr_item_data)
+    #                         # Reduce original item qty
+    #                         new_ui_qty = ui_qty - alloc_qty
+    #                         frappe.db.set_value("Material Request Item", ui['name'], "qty", new_ui_qty)
+    #                         if new_ui_qty == 0:
+    #                             frappe.db.delete("Material Request Item", ui['name'])
+    #                         # Set linked_batch if needed
+    #                         if custom_batch_no and not mr.linked_batch:
+    #                             mr.linked_batch = custom_batch_no
+    #                         # Save MR
+    #                         mr.flags.ignore_permissions = 1
+    #                         mr.run_method("set_missing_values")
+    #                         mr.save()
+    #                         frappe.log_error("MR Item Partial Linked", f"Partial linked {alloc_qty} for item {item.item_code} in MR {mr_name}")
+    #                         remaining_to_link -= alloc_qty
+    #         else:
+    #             # No sales_order: reduce by existing MR qty for same item+batch (advance MR concept)
+    #             if custom_batch_no:
+    #                 total_existing_qty_by_batch = flt(frappe.db.sql("""
+    #                     SELECT IFNULL(SUM(mri.qty), 0)
+    #                     FROM `tabMaterial Request Item` mri
+    #                     LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
+    #                     WHERE mri.item_code = %s
+    #                     AND mr.docstatus != 2
+    #                       AND (mri.custom_batch_no = %s OR mr.linked_batch = %s)
+    #                 """, (item.item_code, custom_batch_no, custom_batch_no))[0][0])
+    #                 # result = frappe.db.sql("""
+    #                 #     SELECT 
+    #                 #         COALESCE(SUM(ppmr.quantity), 0) AS total_qty
+    #                 #     FROM `tabMaterial Request Plan Item` ppmr
+    #                 #     INNER JOIN `tabProduction Plan Item` ppi
+    #                 #         ON ppmr.parent = ppi.parent
+    #                 #     WHERE 
+    #                 #         ppi.custom_batch_no = %(custom    _batch_no)s
+    #                 #         AND ppmr.parent IN (
+    #                 #             SELECT name 
+    #                 #             FROM `tabProduction Plan`
+    #                 #             WHERE docstatus != 2
+    #                 #         )
+    #                 # """, {"custom_batch_no": custom_batch_no}, as_dict=True)
+
+    #                 # total_qty = flt(result[0].total_qty if result else 0)
+    #             # else:
+    #             #     total_existing_qty_by_batch = flt(frappe.db.sql("""
+    #             #     SELECT IFNULL(SUM(qty), 0)
+    #             #     FROM `tabMaterial Request Item` mri
+    #             #     LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
+    #             #     WHERE mri.item_code = %s
+    #             #       AND mr.docstatus != 2
+    #             # """, (item.item_code,))[0][0])
+
+    #             item.quantity = max(0, plan_qty - total_existing_qty_by_batch)
+    #             if item.quantity <= 0:
+    #                 notifications.append(_(f"{item.item_code}: already requested {total_existing_qty_by_batch} for batch {custom_batch_no or '-'}; remaining is 0, skipping."))
+    #                 continue
+
+    #         # Get customer from Sales Order if available
+    #         customer = ""
+    #         if getattr(item, "sales_order", None):
+    #             try:
+    #                 customer = frappe.db.get_value("Sales Order", item.sales_order, "customer") or ""
+    #             except Exception:
+    #                 customer = ""
+    #         if not customer:
+    #             customer = getattr(item_doc, "customer", "") or ""
+
+    #         # Group by Sales Order:MR Type:Customer
+    #         key = f"{item.sales_order}:{material_request_type}:{customer}"
+
+    #         if key not in material_request_map:
+    #             mr = frappe.new_doc("Material Request")
+                
+    #             # Get naming series mapping
+    #             series_mapping = self._get_naming_series_mapping()
+                
+    #             # Determine the appropriate naming series based on material request type
+    #             if material_request_type == "Purchase":
+    #                 naming_series = series_mapping.get('material_request_purchase', 'MMRS.fiscal.####')
+    #             elif material_request_type == "Material Transfer":
+    #                 naming_series = series_mapping.get('material_request_transfer', 'MTRS.fiscal.####')
+    #             else:
+    #                 naming_series = series_mapping.get('material_request_purchase', 'MMRS.fiscal.####')
+                
+    #             # Resolve branch from Production Plan
+    #             branch_value = getattr(self, 'branch', None)
+    #             if not branch_value and getattr(self, 'po_items', None):
+    #                 try:
+    #                     branch_value = next((pi.branch for pi in self.po_items if getattr(pi, 'branch', None)), None)
+    #                 except Exception:
+    #                     branch_value = None
+                
+    #             header_fields = {
+    #                 "transaction_date": nowdate(),
+    #                 "status": "Draft",
+    #                 "company": self.company,
+    #                 "material_request_type": material_request_type,
+    #                 "customer": customer,
+    #                 "naming_series": naming_series,
+    #             }
+    #             # Set branch on MR parent if field exists and value is present
+    #             try:
+    #                 if branch_value and hasattr(mr, 'branch'):
+    #                     header_fields["branch"] = branch_value
+    #             except Exception:
+    #                 pass
+    #             mr.update(header_fields)
+                
+    #             # Set linked_batch if custom_batch_no is available
+    #             if custom_batch_no:
+    #                 mr.linked_batch = custom_batch_no
+    #                 frappe.log_error(
+    #                     "Material Request Linked Batch Set",
+    #                     f"Setting linked_batch={custom_batch_no} for Material Request"
+    #                 )
+                
+    #             frappe.log_error(
+    #                 "Material Request Naming Series Set",
+    #                 f"Setting naming_series={naming_series} for Material Request type {material_request_type}"
+    #             )
+                
+    #             material_request_map[key] = mr
+    #             material_request_list.append(mr)
+    #         else:
+    #             mr = material_request_map[key]
+
+    #         # Prepare base MR item data
+    #         mr_item_data = {
+    #             "item_code": item.item_code,
+    #             "from_warehouse": item.from_warehouse if material_request_type == "Material Transfer" else None,
+    #             "qty": item.quantity,
+    #             "schedule_date": schedule_date,
+    #             "warehouse": item.warehouse,
+    #             "sales_order": item.sales_order,
+    #             "production_plan": self.name,
+    #             "material_request_plan_item": item.name,
+    #             "project": frappe.db.get_value("Sales Order", item.sales_order, "project") if item.sales_order else None,
+    #         }
+            
+    #         # Set custom_batch_no on MR item if available
+    #         if custom_batch_no:
+    #             mr_item_data["custom_batch_no"] = custom_batch_no
+
+    #         # Find BOM and get custom fields for this MR item
+    #         bom_no, custom_fields = self._get_bom_custom_fields_for_mr_item(item.item_code)
+            
+    #         if bom_no:
+    #             mr_item_data["bom_no"] = bom_no
+    #             frappe.log_error(
+    #                 "MR Item BOM Set",
+    #                 f"MR Item {item.item_code} got BOM: {bom_no}"
+    #             )
+                
+    #         # Log what we found before appending
+    #         frappe.log_error(
+    #             "MR Item Before Append",
+    #             f"Item {item.item_code}: BOM={bom_no}, Custom Fields={custom_fields}"
+    #         )
+                
+    #         # Add custom fields to mr_item_data dictionary
+    #         if custom_fields:
+    #             for field_name, field_value in custom_fields.items():
+    #                 if field_value:  # Only set non-empty values
+    #                     mr_item_data[field_name] = field_value
+
+    #         # Append the item - this returns the row object
+    #         mr_item_row = mr.append("items", mr_item_data)
+            
+    #         # CRITICAL: Also set custom fields directly on the appended row object
+    #         # This ensures they're set even if mr_item_data didn't work
+    #         if bom_no and hasattr(mr_item_row, 'bom_no'):
+    #             mr_item_row.bom_no = bom_no
+                
+    #         if custom_fields:
+    #             for field_name, field_value in custom_fields.items():
+    #                 if field_value and hasattr(mr_item_row, field_name):
+    #                     setattr(mr_item_row, field_name, field_value)
+    #                     frappe.log_error(
+    #                         "MR Item Row Field Set",
+    #                         f"Set {field_name}={field_value} on MR item row for {item.item_code}"
+    #                     )
+
+    #     # Show summary notifications for removed/zero quantity lines
+    #     if notifications:
+    #         msgprint("<br>".join(notifications))
+
+    #     # Save and submit Material Requests
+    #     for material_request in material_request_list:
+    #         # material_request.flags.ignore_permissions = 1
+    #         material_request.run_method("set_missing_values")
+            
+    #         # Log MR items before save to verify fields are set
+    #         for idx, mr_item in enumerate(material_request.items):
+    #             frappe.log_error(
+    #                 "MR Item Before Save",
+    #                 f"Item {idx}: {mr_item.item_code}, BOM: {getattr(mr_item, 'bom_no', 'NOT SET')}, "
+    #                 f"Drawing: {getattr(mr_item, 'custom_drawing_no', 'NOT SET')}, "
+    #                 f"Pattern: {getattr(mr_item, 'custom_pattern_drawing_no', 'NOT SET')}"
+    #             )
+            
+    #         material_request.save()
+            
+    #         # After save, verify and update if needed
+    #         for mr_item in material_request.items:
+    #             if getattr(mr_item, 'item_code', None):
+    #                 # Re-fetch custom fields for this item
+    #                 bom_no, custom_fields = self._get_bom_custom_fields_for_mr_item(mr_item.item_code)
+                    
+    #                 # Check if fields need to be set via db_set
+    #                 needs_update = False
+    #                 updates = {}
+                    
+    #                 if bom_no and not getattr(mr_item, 'bom_no', None):
+    #                     updates['bom_no'] = bom_no
+    #                     needs_update = True
+                    
+    #                 if custom_fields:
+    #                     for field_name, field_value in custom_fields.items():
+    #                         if field_value and not getattr(mr_item, field_name, None):
+    #                             updates[field_name] = field_value
+    #                             needs_update = True
+                    
+    #                 if needs_update:
+    #                     frappe.log_error(
+    #                         "MR Item Post-Save Update",
+    #                         f"Updating MR item {mr_item.name} with: {updates}"
+    #                     )
+    #                     mr_item.db_set(updates, update_modified=False)
+            
+    #         if self.get("submit_material_request"):
+    #             material_request.submit()
+
+    #     frappe.flags.mute_messages = False
+        
+    #     if material_request_list:
+    #         links = [get_link_to_form("Material Request", m.name) for m in material_request_list]
+    #         msgprint(_("{0} created").format(comma_and(links)))
+            
+    #         # Show additional info about quantity adjustments if any
+    #         if any(getattr(item, "sales_order", None) for item in self.mr_items):
+    #             msgprint(_("Note: Quantities have been adjusted to account for existing Material Requests (advance/unlinked) for the Sales Order(s)."))
+    #     else:
+    #         msgprint(_("No material request created"))
+    
+    
     @frappe.whitelist()
     def make_material_request(self):
-        """Create Material Requests with custom fields from assembly BOM items.
-        
-        Flow:
-        1. For each raw material in mr_items, find which assembly BOM contains it
-        2. Copy custom fields from that BOM item to the Material Request item
-        3. Group MRs by Sales Order, MR Type, and Customer
-        4. Check for existing material requests with same sales order (total existing for cap, unlinked for adjustment)
-        5. Reduce making qty in production plan based on unlinked (advance) and cap at total remaining
-        6. Optionally link unlinked (advance) MR items to this production plan
-        """
-        from frappe import _, msgprint
-        from frappe.utils import add_days, nowdate, cint, comma_and, get_link_to_form
-        
+        """Create Material Requests grouped by Sales Order and Material Request Type"""
         material_request_list = []
         material_request_map = {}
-        notifications = []
 
         for item in self.mr_items:
-            if not getattr(item, "item_code", None):
-                continue
-                
             item_doc = frappe.get_cached_doc("Item", item.item_code)
-            material_request_type = item.material_request_type or item_doc.default_material_request_type
 
-            # Calculate schedule_date early
-            schedule_date = item.schedule_date or add_days(nowdate(), cint(getattr(item_doc, "lead_time_days", 0)))
+            material_request_type = (
+                item.material_request_type or item_doc.default_material_request_type
+            )
 
-            # Get custom_batch_no from production plan po_items
-            custom_batch_no = None
-            if hasattr(self, 'po_items') and self.po_items:
-                for po_item in self.po_items:
-                    if hasattr(po_item, 'custom_batch_no') and po_item.custom_batch_no:
-                        custom_batch_no = po_item.custom_batch_no
-                        break
+            # key for Sales Order:Material Request Type:Customer
+            key = "{}:{}:{}".format(
+                item.sales_order, material_request_type, item_doc.customer or ""
+            )
 
-            branch_value = getattr(self, "branch", None)
-            if hasattr(self, 'po_items') and self.po_items:
-                for po_item in self.po_items:
-                    if hasattr(po_item, 'branch') and po_item.branch:
-                        branch = po_item.branch
-                        break
-
-            # Adjustment logic if sales_order present
-            plan_qty = flt(item.quantity)
-            if getattr(item, "sales_order", None):
-                so = item.sales_order
-                so_qty = 0
-                if getattr(item, "sales_order_item", None):
-                    so_qty = frappe.db.get_value("Sales Order Item", item.sales_order_item, "qty") or 0
-                else:
-                    try:
-                        so_qty = frappe.db.get_value(
-                            "Sales Order Item",
-                            {"parent": so, "item_code": item.item_code},
-                            "qty"
-                        ) or 0
-                    except Exception:
-                        so_qty = 0
-
-                # Get unlinked qty (production_plan IS NULL) - for adjustment
-                if custom_batch_no:
-                    unlinked_qty = flt(frappe.db.sql("""
-                        SELECT IFNULL(SUM(mri.qty), 0)
-                        FROM `tabMaterial Request Item` mri
-                        LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
-                        WHERE mri.item_code = %s
-                          AND mri.production_plan IS NULL
-                          AND mr.docstatus != 2
-                          AND (
-                            mri.custom_batch_no = %s OR mr.linked_batch = %s
-                          )
-                    """, (item.item_code, custom_batch_no, custom_batch_no))[0][0])
-                else:
-                    unlinked_qty = flt(frappe.db.sql("""
-                        SELECT IFNULL(SUM(qty), 0)
-                        FROM `tabMaterial Request Item` mri
-                        LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
-                        WHERE mri.sales_order = %s AND mri.item_code = %s 
-                        AND mri.production_plan IS NULL
-                        AND mr.docstatus != 2
-                    """, (so, item.item_code))[0][0])
-
-                # Get total existing qty - for cap
-                if custom_batch_no:
-                    total_existing_qty = flt(frappe.db.sql("""
-                        SELECT IFNULL(SUM(mri.qty), 0)
-                        FROM `tabMaterial Request Item` mri
-                        LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
-                        WHERE mri.item_code = %s
-                        AND mr.docstatus != 2
-                          AND (
-                            mri.custom_batch_no = %s OR mr.linked_batch = %s
-                          )
-                    """, (item.item_code, custom_batch_no, custom_batch_no))[0][0])
-                else:
-                    total_existing_qty = flt(frappe.db.sql("""
-                    SELECT IFNULL(SUM(qty), 0)
-                    FROM `tabMaterial Request Item` mri
-                    LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
-                    WHERE mri.sales_order = %s AND mri.item_code = %s
-                      AND mr.docstatus != 2
-                """, (so, item.item_code))[0][0])
-
-                # Calculate how much of plan_qty can be covered by unlinked MRs
-                coverage_from_unlinked = min(plan_qty, unlinked_qty)
-                # New MR qty = plan qty minus what unlinked MRs will cover
-                # Don't cap by SO qty here because plan_qty is already the correct requirement
-                item.quantity = max(0, plan_qty - coverage_from_unlinked)
-
-                frappe.log_error(
-                    "MR Qty per Split/Advance Logic",
-                    f"Item: {item.item_code} | Plan qty: {plan_qty} | Unlinked MR qty: {unlinked_qty} | Coverage from unlinked: {coverage_from_unlinked} | New MR qty needed: {item.quantity}"
-                )
-                if item.quantity <= 0:
-                    frappe.log_error(
-                        "MR Item Skipped",
-                        f"Skipping {item.item_code}: Plan qty {plan_qty} fully covered by unlinked MR qty {unlinked_qty}"
-                    )
-                    notifications.append(_(f"{item.item_code}: plan qty {plan_qty} fully covered by existing unlinked MRs ({unlinked_qty}), skipping new MR."))
-                    continue
-
-                # Try to link unlinked MR items to this plan (for tracking)
-                if coverage_from_unlinked > 0:
-                    if custom_batch_no:
-                        unlinked_items = frappe.db.sql("""
-                            SELECT mri.name, mri.parent, mri.qty, mri.warehouse, mri.bom_no,
-                                mri.custom_drawing_no, mri.custom_pattern_drawing_no, mri.from_warehouse
-                            FROM `tabMaterial Request Item` mri
-                            LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
-                            WHERE mri.item_code = %s AND mri.production_plan IS NULL
-                            AND mr.docstatus != 2
-                              AND (mri.custom_batch_no = %s OR mr.linked_batch = %s)
-                            ORDER BY mri.creation ASC
-                        """, (item.item_code, custom_batch_no, custom_batch_no), as_dict=True)
-                    else:
-                        unlinked_items = frappe.db.sql("""
-                            SELECT mri.name, mri.parent, mri.qty, mri.warehouse, mri.bom_no,
-                                mri.custom_drawing_no, mri.custom_pattern_drawing_no, mri.from_warehouse
-                            FROM `tabMaterial Request Item` mri
-                            LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
-                            WHERE mri.sales_order = %s AND mri.item_code = %s AND mri.production_plan IS NULL
-                            AND mr.docstatus != 2
-                            ORDER BY mri.creation ASC
-                        """, (so, item.item_code), as_dict=True)
-
-                    remaining_to_link = coverage_from_unlinked
-                    for ui in unlinked_items:
-                        if remaining_to_link <= 0:
-                            break
-                        mr_name = ui['parent']
-                        mr = frappe.get_doc("Material Request", mr_name)
-                        if mr.docstatus in (1, 2):
-                            continue  # Skip submitted MRs
-
-                        ui_qty = ui['qty']
-                        alloc_qty = min(remaining_to_link, ui_qty)
-
-                        if alloc_qty == ui_qty:
-                            # Full allocation: link the item
-                            update_fields = {
-                                "production_plan": self.name,
-                                "material_request_plan_item": item.name
-                            }
-                            if custom_batch_no and not ui.get('custom_batch_no'):
-                                update_fields['custom_batch_no'] = custom_batch_no
-                            frappe.db.set_value("Material Request Item", ui['name'], update_fields)
-                            if custom_batch_no and not mr.linked_batch:
-                                frappe.db.set_value("Material Request", mr_name, "linked_batch", custom_batch_no)
-                            frappe.log_error("MR Item Linked", f"Linked full item {ui['name']} to plan {self.name}")
-                            remaining_to_link -= alloc_qty
-                        else:
-                            # Partial allocation: split by appending new linked item and reducing original
-                            bom_no, custom_fields = self._get_bom_custom_fields_for_mr_item(item.item_code)
-                            new_mr_item_data = {
-                                "item_code": item.item_code,
-                                "qty": alloc_qty,
-                                "schedule_date": schedule_date,
-                                "warehouse": ui['warehouse'],
-                                "from_warehouse": ui['from_warehouse'] if material_request_type == "Material Transfer" else None,
-                                "sales_order": so,
-                                "production_plan": self.name,
-                                "material_request_plan_item": item.name,
-                                "project": frappe.db.get_value("Sales Order", so, "project") if so else None,
-                                "custom_batch_no": custom_batch_no,
-                            }
-                            if bom_no:
-                                new_mr_item_data["bom_no"] = bom_no
-                            # Custom fields from BOM, override with UI if present
-                            for field, value in custom_fields.items():
-                                if value:
-                                    new_mr_item_data[field] = value
-                            if ui.get('custom_drawing_no'):
-                                new_mr_item_data["custom_drawing_no"] = ui['custom_drawing_no']
-                            if ui.get('custom_pattern_drawing_no'):
-                                new_mr_item_data["custom_pattern_drawing_no"] = ui['custom_pattern_drawing_no']
-
-                            # Append new item
-                            new_row = mr.append("items", new_mr_item_data)
-                            # Reduce original item qty
-                            new_ui_qty = ui_qty - alloc_qty
-                            frappe.db.set_value("Material Request Item", ui['name'], "qty", new_ui_qty)
-                            if new_ui_qty == 0:
-                                frappe.db.delete("Material Request Item", ui['name'])
-                            # Set linked_batch if needed
-                            if custom_batch_no and not mr.linked_batch:
-                                mr.linked_batch = custom_batch_no
-                            # Save MR
-                            mr.flags.ignore_permissions = 1
-                            mr.run_method("set_missing_values")
-                            mr.save()
-                            frappe.log_error("MR Item Partial Linked", f"Partial linked {alloc_qty} for item {item.item_code} in MR {mr_name}")
-                            remaining_to_link -= alloc_qty
-            else:
-                # No sales_order: reduce by existing MR qty for same item+batch (advance MR concept)
-                if custom_batch_no:
-                    total_existing_qty_by_batch = flt(frappe.db.sql("""
-                        SELECT IFNULL(SUM(mri.qty), 0)
-                        FROM `tabMaterial Request Item` mri
-                        LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
-                        WHERE mri.item_code = %s
-                        AND mr.docstatus != 2
-                          AND (mri.custom_batch_no = %s OR mr.linked_batch = %s)
-                    """, (item.item_code, custom_batch_no, custom_batch_no))[0][0])
-                    # result = frappe.db.sql("""
-                    #     SELECT 
-                    #         COALESCE(SUM(ppmr.quantity), 0) AS total_qty
-                    #     FROM `tabMaterial Request Plan Item` ppmr
-                    #     INNER JOIN `tabProduction Plan Item` ppi
-                    #         ON ppmr.parent = ppi.parent
-                    #     WHERE 
-                    #         ppi.custom_batch_no = %(custom_batch_no)s
-                    #         AND ppmr.parent IN (
-                    #             SELECT name 
-                    #             FROM `tabProduction Plan`
-                    #             WHERE docstatus != 2
-                    #         )
-                    # """, {"custom_batch_no": custom_batch_no}, as_dict=True)
-
-                    # total_qty = flt(result[0].total_qty if result else 0)
-                # else:
-                #     total_existing_qty_by_batch = flt(frappe.db.sql("""
-                #     SELECT IFNULL(SUM(qty), 0)
-                #     FROM `tabMaterial Request Item` mri
-                #     LEFT JOIN `tabMaterial Request` mr ON mr.name = mri.parent
-                #     WHERE mri.item_code = %s
-                #       AND mr.docstatus != 2
-                # """, (item.item_code,))[0][0])
-
-                item.quantity = max(0, plan_qty - total_existing_qty_by_batch)
-                if item.quantity <= 0:
-                    notifications.append(_(f"{item.item_code}: already requested {total_existing_qty_by_batch} for batch {custom_batch_no or '-'}; remaining is 0, skipping."))
-                    continue
-
-            # Get customer from Sales Order if available
-            customer = ""
-            if getattr(item, "sales_order", None):
-                try:
-                    customer = frappe.db.get_value("Sales Order", item.sales_order, "customer") or ""
-                except Exception:
-                    customer = ""
-            if not customer:
-                customer = getattr(item_doc, "customer", "") or ""
-
-            # Group by Sales Order:MR Type:Customer
-            key = f"{item.sales_order}:{material_request_type}:{customer}"
+            schedule_date = item.schedule_date or add_days(
+                nowdate(), cint(item_doc.lead_time_days)
+            )
 
             if key not in material_request_map:
-                mr = frappe.new_doc("Material Request")
+                # make a new MR for the combination
+                material_request_map[key] = frappe.new_doc("Material Request")
+                material_request = material_request_map[key]
                 
-                # Get naming series mapping
+                #Get naming series mapping
                 series_mapping = self._get_naming_series_mapping()
                 
                 # Determine the appropriate naming series based on material request type
@@ -1586,167 +1785,62 @@ class ProductionPlan(_ProductionPlan):
                     naming_series = series_mapping.get('material_request_transfer', 'MTRS.fiscal.####')
                 else:
                     naming_series = series_mapping.get('material_request_purchase', 'MMRS.fiscal.####')
-                
-                # Resolve branch from Production Plan
-                branch_value = getattr(self, 'branch', None)
-                if not branch_value and getattr(self, 'po_items', None):
-                    try:
-                        branch_value = next((pi.branch for pi in self.po_items if getattr(pi, 'branch', None)), None)
-                    except Exception:
-                        branch_value = None
-                
-                header_fields = {
-                    "transaction_date": nowdate(),
-                    "status": "Draft",
-                    "company": self.company,
-                    "material_request_type": material_request_type,
-                    "customer": customer,
-                    "naming_series": naming_series,
-                }
-                # Set branch on MR parent if field exists and value is present
-                try:
-                    if branch_value and hasattr(mr, 'branch'):
-                        header_fields["branch"] = branch_value
-                except Exception:
-                    pass
-                mr.update(header_fields)
-                
-                # Set linked_batch if custom_batch_no is available
-                if custom_batch_no:
-                    mr.linked_batch = custom_batch_no
-                    frappe.log_error(
-                        "Material Request Linked Batch Set",
-                        f"Setting linked_batch={custom_batch_no} for Material Request"
-                    )
-                
-                frappe.log_error(
-                    "Material Request Naming Series Set",
-                    f"Setting naming_series={naming_series} for Material Request type {material_request_type}"
+
+                material_request.update(
+                    {
+                        "transaction_date": nowdate(),
+                        "status": "Draft",
+                        "company": self.company,
+                        "material_request_type": material_request_type,
+                        "customer": item_doc.customer or "",
+                        "naming_series": naming_series,
+                    }
                 )
-                
-                material_request_map[key] = mr
-                material_request_list.append(mr)
+                material_request_list.append(material_request)
             else:
-                mr = material_request_map[key]
+                material_request = material_request_map[key]
 
-            # Prepare base MR item data
-            mr_item_data = {
-                "item_code": item.item_code,
-                "from_warehouse": item.from_warehouse if material_request_type == "Material Transfer" else None,
-                "qty": item.quantity,
-                "schedule_date": schedule_date,
-                "warehouse": item.warehouse,
-                "sales_order": item.sales_order,
-                "production_plan": self.name,
-                "material_request_plan_item": item.name,
-                "project": frappe.db.get_value("Sales Order", item.sales_order, "project") if item.sales_order else None,
-            }
-            
-            # Set custom_batch_no on MR item if available
-            if custom_batch_no:
-                mr_item_data["custom_batch_no"] = custom_batch_no
-
-            # Find BOM and get custom fields for this MR item
-            bom_no, custom_fields = self._get_bom_custom_fields_for_mr_item(item.item_code)
-            
-            if bom_no:
-                mr_item_data["bom_no"] = bom_no
-                frappe.log_error(
-                    "MR Item BOM Set",
-                    f"MR Item {item.item_code} got BOM: {bom_no}"
-                )
-                
-            # Log what we found before appending
-            frappe.log_error(
-                "MR Item Before Append",
-                f"Item {item.item_code}: BOM={bom_no}, Custom Fields={custom_fields}"
+            # add item
+            material_request.append(
+                "items",
+                {
+                    "item_code": item.item_code,
+                    "from_warehouse": item.from_warehouse
+                    if material_request_type == "Material Transfer"
+                    else None,
+                    "qty": item.quantity,
+                    "schedule_date": schedule_date,
+                    "warehouse": item.warehouse,
+                    "sales_order": item.sales_order,
+                    "production_plan": self.name,
+                    "material_request_plan_item": item.name,
+                    "project": frappe.db.get_value(
+                        "Sales Order", item.sales_order, "project"
+                    )
+                    if item.sales_order
+                    else None,
+                },
             )
-                
-            # Add custom fields to mr_item_data dictionary
-            if custom_fields:
-                for field_name, field_value in custom_fields.items():
-                    if field_value:  # Only set non-empty values
-                        mr_item_data[field_name] = field_value
 
-            # Append the item - this returns the row object
-            mr_item_row = mr.append("items", mr_item_data)
-            
-            # CRITICAL: Also set custom fields directly on the appended row object
-            # This ensures they're set even if mr_item_data didn't work
-            if bom_no and hasattr(mr_item_row, 'bom_no'):
-                mr_item_row.bom_no = bom_no
-                
-            if custom_fields:
-                for field_name, field_value in custom_fields.items():
-                    if field_value and hasattr(mr_item_row, field_name):
-                        setattr(mr_item_row, field_name, field_value)
-                        frappe.log_error(
-                            "MR Item Row Field Set",
-                            f"Set {field_name}={field_value} on MR item row for {item.item_code}"
-                        )
-
-        # Show summary notifications for removed/zero quantity lines
-        if notifications:
-            msgprint("<br>".join(notifications))
-
-        # Save and submit Material Requests
         for material_request in material_request_list:
-            # material_request.flags.ignore_permissions = 1
+            # submit
+            material_request.flags.ignore_permissions = 1
             material_request.run_method("set_missing_values")
-            
-            # Log MR items before save to verify fields are set
-            for idx, mr_item in enumerate(material_request.items):
-                frappe.log_error(
-                    "MR Item Before Save",
-                    f"Item {idx}: {mr_item.item_code}, BOM: {getattr(mr_item, 'bom_no', 'NOT SET')}, "
-                    f"Drawing: {getattr(mr_item, 'custom_drawing_no', 'NOT SET')}, "
-                    f"Pattern: {getattr(mr_item, 'custom_pattern_drawing_no', 'NOT SET')}"
-                )
-            
+
             material_request.save()
-            
-            # After save, verify and update if needed
-            for mr_item in material_request.items:
-                if getattr(mr_item, 'item_code', None):
-                    # Re-fetch custom fields for this item
-                    bom_no, custom_fields = self._get_bom_custom_fields_for_mr_item(mr_item.item_code)
-                    
-                    # Check if fields need to be set via db_set
-                    needs_update = False
-                    updates = {}
-                    
-                    if bom_no and not getattr(mr_item, 'bom_no', None):
-                        updates['bom_no'] = bom_no
-                        needs_update = True
-                    
-                    if custom_fields:
-                        for field_name, field_value in custom_fields.items():
-                            if field_value and not getattr(mr_item, field_name, None):
-                                updates[field_name] = field_value
-                                needs_update = True
-                    
-                    if needs_update:
-                        frappe.log_error(
-                            "MR Item Post-Save Update",
-                            f"Updating MR item {mr_item.name} with: {updates}"
-                        )
-                        mr_item.db_set(updates, update_modified=False)
-            
             if self.get("submit_material_request"):
                 material_request.submit()
 
         frappe.flags.mute_messages = False
-        
+
         if material_request_list:
-            links = [get_link_to_form("Material Request", m.name) for m in material_request_list]
-            msgprint(_("{0} created").format(comma_and(links)))
-            
-            # Show additional info about quantity adjustments if any
-            if any(getattr(item, "sales_order", None) for item in self.mr_items):
-                msgprint(_("Note: Quantities have been adjusted to account for existing Material Requests (advance/unlinked) for the Sales Order(s)."))
+            material_request_list = [
+                get_link_to_form("Material Request", m.name)
+                for m in material_request_list
+            ]
+            msgprint(_("{0} created").format(comma_and(material_request_list)))
         else:
-            msgprint(_("No material request created"))
-    
+            msgprint(_("No material request created"))    
 
     def _get_bom_custom_fields_for_mr_item(self, item_code):
         """Get BOM and custom fields for a specific MR item using the working pattern from work_order.py.

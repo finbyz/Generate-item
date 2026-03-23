@@ -78,7 +78,7 @@ def on_update(doc, method):
 
 def before_save(doc, method=None):
     for i in doc.items:
-        if i.is_free_item:
+        if i.is_free_item or i.line_status == "Cancelled":
             i.rate = 0
 
             if not i.qty or i.qty == 0:

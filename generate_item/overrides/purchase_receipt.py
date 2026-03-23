@@ -62,8 +62,47 @@ from erpnext.controllers.buying_controller import BuyingController
 # 			)
 
 
-class CustomPurchaseReceipt(PurchaseReceipt):
+class CustomBuyingController(BuyingController):
+
+    def set_qty_as_per_stock_uom(self):
+        # frappe.log_error("custom called-- set_qty_as_per_stock_uom")
+        if self.doctype == "Purchase Receipt":
+            return
+        allow_to_edit_stock_qty = frappe.db.get_single_value(
+            "Stock Settings", "allow_to_edit_stock_uom_qty_for_purchase"
+        )
+
+        for d in self.get("items"):
+            if d.meta.get_field("stock_qty"):
+                # Check if item code is present
+                # Conversion factor should not be mandatory for non itemized items
+                if not d.conversion_factor and d.item_code:
+                    frappe.throw(
+                        _("Row {0}: Conversion Factor is mandatory").format(d.idx)
+                    )
+                d.stock_qty = flt(d.qty) * flt(d.conversion_factor)
+
+                if self.doctype == "Purchase Receipt" and d.meta.get_field(
+                    "received_stock_qty"
+                ):
+                    # Set Received Qty in Stock UOM
+                    d.received_stock_qty = flt(d.received_qty) * flt(
+                        d.conversion_factor, d.precision("conversion_factor")
+                    )
+
+                if allow_to_edit_stock_qty:
+                    d.stock_qty = flt(d.stock_qty, d.precision("stock_qty"))
+                    if d.get("received_stock_qty") and d.meta.get_field(
+                        "received_stock_qty"
+                    ):
+                        d.received_stock_qty = flt(
+                            d.received_stock_qty, d.precision("received_stock_qty")
+                        )
+
+
+class CustomPurchaseReceipt(CustomBuyingController, PurchaseReceipt):
     def validate(self):
+        # frappe.log_error("custom called-- CustomPurchaseReceipt validate")
         # frappe.throw(_("Custom validation logic executed"), alert=True)  # Debug message
         self.validate_posting_time()
         super(PurchaseReceipt, self).validate()
@@ -85,11 +124,13 @@ class CustomPurchaseReceipt(PurchaseReceipt):
 
         self.get_current_stock()
         self.reset_default_field_value("set_warehouse", "items", "warehouse")
-        self.reset_default_field_value("rejected_warehouse", "items", "rejected_warehouse")
+        self.reset_default_field_value(
+            "rejected_warehouse", "items", "rejected_warehouse"
+        )
         self.reset_default_field_value("set_from_warehouse", "items", "from_warehouse")
         if self.is_new():
             update_stock_uom_qty(self)
-        update_accepted_qty(self)
+        # update_accepted_qty(self)
 
     # def on_submit(self):
     #     super().on_submit()
@@ -116,7 +157,6 @@ class CustomPurchaseReceipt(PurchaseReceipt):
     #     self.set_consumed_qty_in_subcontract_order()
     #     self.reserve_stock_for_sales_order()
     #     self.validate_uom_is_integer()
-        
 
 
 def update_stock_uom_qty(self):
@@ -125,27 +165,33 @@ def update_stock_uom_qty(self):
 
         if not item.purchase_order_item:
             continue
-        
+
         if item.stock_qty:
             continue
-        
+
         # 1️⃣ Get total received stock_qty from Purchase Receipt Item
-        total_received = frappe.db.sql("""
+        total_received = frappe.db.sql(
+            """
             SELECT SUM(stock_qty)
             FROM `tabPurchase Receipt Item`
             WHERE purchase_order_item = %s
               AND docstatus < 2
               AND parent != %s
-        """, (item.purchase_order_item, self.name))
+        """,
+            (item.purchase_order_item, self.name),
+        )
 
-        total_received = flt(total_received[0][0]) if total_received and total_received[0][0] else 0
+        total_received = (
+            flt(total_received[0][0]) if total_received and total_received[0][0] else 0
+        )
 
         # 2️⃣ Get stock_qty from Purchase Order Item
-        po_stock_qty = frappe.db.get_value(
-            "Purchase Order Item",
-            item.purchase_order_item,
-            "stock_qty"
-        ) or 0
+        po_stock_qty = (
+            frappe.db.get_value(
+                "Purchase Order Item", item.purchase_order_item, "stock_qty"
+            )
+            or 0
+        )
 
         po_stock_qty = flt(po_stock_qty)
 
@@ -154,40 +200,8 @@ def update_stock_uom_qty(self):
 
         # 4️⃣ Update current row stock_qty
         item.db_set("stock_qty", remaining_qty)
-        
-        
-        
-        
-def update_accepted_qty(self):
-    for item in self.items:
-        item.stock_qty = item.received_stock_qty - item.rejected_stock_qty
 
-class CustomBuyingController(BuyingController):
-    
-    def set_qty_as_per_stock_uom(self):
-        # frappe.log_error("custom called--")
-        if self.doctype == "Purchase Receipt":
-            return
-        allow_to_edit_stock_qty = frappe.db.get_single_value(
-            "Stock Settings", "allow_to_edit_stock_uom_qty_for_purchase"
-        )
 
-        for d in self.get("items"):
-            if d.meta.get_field("stock_qty"):
-                # Check if item code is present
-                # Conversion factor should not be mandatory for non itemized items
-                if not d.conversion_factor and d.item_code:
-                    frappe.throw(_("Row {0}: Conversion Factor is mandatory").format(d.idx))
-                d.stock_qty = flt(d.qty) * flt(d.conversion_factor)
-
-                if self.doctype == "Purchase Receipt" and d.meta.get_field("received_stock_qty"):
-                    # Set Received Qty in Stock UOM
-                    d.received_stock_qty = flt(d.received_qty) * flt(
-                        d.conversion_factor, d.precision("conversion_factor")
-                    )
-
-                if allow_to_edit_stock_qty:
-                    d.stock_qty = flt(d.stock_qty, d.precision("stock_qty"))
-                    if d.get("received_stock_qty") and d.meta.get_field("received_stock_qty"):
-                        d.received_stock_qty = flt(d.received_stock_qty, d.precision("received_stock_qty"))
-
+# def update_accepted_qty(self):
+#     for item in self.items:
+#         item.stock_qty = item.received_stock_qty - item.rejected_stock_qty

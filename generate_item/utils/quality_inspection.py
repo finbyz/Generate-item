@@ -1,32 +1,12 @@
 from posix import read
 import frappe
+from frappe.utils import flt
+
+
 @frappe.whitelist()
 def get_reference_name(reference_name, reference_type):
     ref_data = frappe.get_value(reference_type, reference_name, "branch")
     return ref_data
-
-# def on_submit(doc,method):
-#     if not doc.rejected_qty:
-#         return
-#     reference_doc = frappe.get_doc("Purchase Receipt",doc.reference_name)
-#     if not reference_doc:
-#         return
-#     if reference_doc.branch == "Nandikoor":
-#         reference_doc.rejected_warehouse = "Nandikoor Stores - SVIPL"
-#     elif reference_doc.branch == "Sanand":
-#         reference_doc.rejected_warehouse = "Sanand Stores - SVIPL"
-#     elif reference_doc.branch == "Rabale":
-#         reference_doc.rejected_warehouse = "Rabale Stores - SVIPL"
-        
-#     for item in reference_doc.items:
-#         if item.item_code == doc.item_code:
-#             item.qty -= doc.rejected_qty
-#             item.rejected_qty = doc.rejected_qty
-        
-
-
-    
-#     reference_doc.save()
 
 
 def on_submit(doc, method):
@@ -47,22 +27,23 @@ def on_submit(doc, method):
     elif pr.branch == "Rabale":
         pr.rejected_warehouse = "Rabale Stores - SVIPL"
 
-    rejected_qty = doc.rejected_qty or 0
-    rejected_qty_stock = doc.rejected_qty_in_stock_uom or 0
+    # rejected_qty = doc.rejected_qty or 0
+    # rejected_qty_stock = doc.rejected_qty_in_stock_uom or 0
 
-    for item in pr.items:
-        if item.name == doc.child_row_reference:
+    # for item in pr.items:
+    #     if item.name == doc.child_row_reference:
 
-            # Transaction UOM update
-            item.qty = (item.qty or 0) - rejected_qty
-            item.rejected_qty = rejected_qty
+    #         # Transaction UOM update
+    #         item.qty = (item.qty or 0) - rejected_qty
+    #         item.rejected_qty = rejected_qty
 
-            # Stock UOM update
-            
-            item.rejected_stock_qty = rejected_qty_stock
-            
+    # Stock UOM update
+
+    # item.rejected_stock_qty = rejected_qty_stock
 
     pr.save()
+    update_accepted_qty(doc)
+
 
 def before_save(doc, method):
     if doc.branch or not (doc.reference_type and doc.reference_name):
@@ -73,15 +54,49 @@ def before_save(doc, method):
         if branch:
             doc.branch = branch
     except Exception as e:
-        frappe.log_error(f"Failed to fetch branch for {doc.reference_type} - {doc.reference_name}: {e}", "Quality Inspection before_save")
+        frappe.log_error(
+            f"Failed to fetch branch for {doc.reference_type} - {doc.reference_name}: {e}",
+            "Quality Inspection before_save",
+        )
 
-        
+
+def update_accepted_qty(self):
+
+    if self.reference_type == "Purchase Receipt" and self.child_row_reference:
+        pr_item = frappe.get_doc("Purchase Receipt Item", self.child_row_reference)
+        rejected_qty_in_stock_uom = flt(self.rejected_qty_in_stock_uom)
+        accepted_qty = flt(pr_item.stock_qty) - rejected_qty_in_stock_uom
+        # frappe.log_error(
+        #     f"Accepted Qty: {accepted_qty} , Rejected Qty: {rejected_qty_in_stock_uom}, Stock Qty: {pr_item.stock_qty}",
+        #     "Quality Inspection update_accepted_qty",
+        # )
+
+        # Transaction UOM update
+        qty = (pr_item.qty or 0) - self.rejected_qty
+        rejected_qty = self.rejected_qty
+
+        frappe.db.set_value(
+            "Purchase Receipt Item",
+            self.child_row_reference,
+            {
+                "qty": qty,
+                "rejected_qty": rejected_qty,
+                "stock_qty": accepted_qty,
+                "rejected_stock_qty": rejected_qty_in_stock_uom,
+                "received_stock_qty": accepted_qty + rejected_qty_in_stock_uom,
+            },
+            update_modified=True,
+        )
+
 
 @frappe.whitelist()
-def get_bom_item_custom_fields(item_code: str, batch_no_ref: str, fields: list | str | None = None):
+def get_bom_item_custom_fields(
+    item_code: str, batch_no_ref: str, fields: list | str | None = None
+):
     # Patch: decode if passed as JSON string from JS (Frappe 15+ type validation)
     if fields and isinstance(fields, str):
         import json
+
         fields = json.loads(fields)
     """Return selected custom fields from BOM Item for given component `item_code`
     and selected `batch_no_ref`.
@@ -106,7 +121,9 @@ def get_bom_item_custom_fields(item_code: str, batch_no_ref: str, fields: list |
     bom_name = frappe.db.get_value("Item", parent_item, "default_bom")
     if bom_name:
         # Ensure this BOM is submitted and active
-        is_valid = frappe.db.exists("BOM", {"name": bom_name, "docstatus": 1, "is_active": 1})
+        is_valid = frappe.db.exists(
+            "BOM", {"name": bom_name, "docstatus": 1, "is_active": 1}
+        )
         if not is_valid:
             bom_name = None
 
@@ -144,13 +161,19 @@ def get_bom_item_custom_fields(item_code: str, batch_no_ref: str, fields: list |
 
     # By default, return all custom_* fields present on BOM Item
     meta = frappe.get_meta("BOM Item")
-    custom_fields = [df.fieldname for df in meta.fields if df.fieldname and df.fieldname.startswith("custom_")]
+    custom_fields = [
+        df.fieldname
+        for df in meta.fields
+        if df.fieldname and df.fieldname.startswith("custom_")
+    ]
     response = {f: bom_item_row.get(f) for f in custom_fields}
 
     # Always include a few useful identifiers
-    response.update({
-        "bom": bom_name,
-        "parent_item": parent_item,
-    })
+    response.update(
+        {
+            "bom": bom_name,
+            "parent_item": parent_item,
+        }
+    )
 
     return response

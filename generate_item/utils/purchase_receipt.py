@@ -251,8 +251,6 @@ def update_received_qty_stock_uom(doc, method):
         if not item.purchase_order or not item.purchase_order_item:
             continue
 
-            
-
         po_item = frappe.get_doc("Purchase Order Item", item.purchase_order_item)
         if item.received_stock_qty :
             update_po_item_received_stock_qty(item.purchase_order_item)

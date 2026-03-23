@@ -202,7 +202,7 @@
    "fieldname": "line_status",
    "fieldtype": "Select",
    "label": "Line Status",
-   "options": "\nHold\nModified\nDelivered\nCanceled\nPartial Delivered",
+   "options": "\nHold\nModified\nDelivered\nCancelled\nPartial Delivered",
    "read_only": 1
   },
   {
@@ -253,7 +253,7 @@
    "fieldname": "rev_line_status",
    "fieldtype": "Select",
    "label": "Rev Line Status",
-   "options": "\nHold\nModified\nDelivered\nCanceled\nPartial Delivered"
+   "options": "\nHold\nModified\nDelivered\nCancelled\nPartial Delivered"
   },
   {
    "fieldname": "rev_delivery_date",
@@ -293,7 +293,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-03-04 14:36:09.511278",
+ "modified": "2026-03-20 13:09:52.148425",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request Detail History",
