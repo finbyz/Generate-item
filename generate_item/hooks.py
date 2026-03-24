@@ -400,3 +400,14 @@ fixtures = [
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
 
+
+
+# po override
+
+from erpnext.buying.doctype.purchase_order.purchase_order import PurchaseOrder as erpnextPurchaseOrder
+
+from generate_item.overrides.purchase_order import CustomPurchaseOrder
+
+
+erpnextPurchaseOrder.update_receiving_percentage = CustomPurchaseOrder.update_receiving_percentage
+

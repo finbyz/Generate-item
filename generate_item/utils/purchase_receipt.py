@@ -245,8 +245,8 @@ def make_quality_inspections(doctype, docname, items):
 
     return inspection_names
 
-
 def update_received_qty_stock_uom(doc, method):
+    po_names = set()
     for item in doc.items:
         if not item.purchase_order or not item.purchase_order_item:
             continue
@@ -254,20 +254,25 @@ def update_received_qty_stock_uom(doc, method):
         po_item = frappe.get_doc("Purchase Order Item", item.purchase_order_item)
         if item.received_stock_qty :
             update_po_item_received_stock_qty(item.purchase_order_item)
-            # po_item.db_set(
-            # 	"received_qty_in_stock_uom",
-            # 	item.received_stock_qty,
-            # 	update_modified=False
-            # )
+            
    
         calculate_pending_qty(item)
+        po_names.add(item.purchase_order)
 
-        # if item.pending_qty_in_stock_uom :
-            # po_item.db_set(
-            # 	"pending_qty_in_stock_uom",
-            # 	item.pending_qty_in_stock_uom,
-            # 	update_modified=False
-            # )
+    # After all items are processed, update per_received on each linked PO
+    for po_name in po_names:
+        try:
+            po = frappe.get_doc("Purchase Order", po_name)
+
+            po.update_receiving_percentage()
+            po.set_status(update=True)
+
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"update_receiving_percentage failed for PO {po_name}"
+            )
+
 
 
 def update_po_item_received_stock_qty(purchase_order_item):

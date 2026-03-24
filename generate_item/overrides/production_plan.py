@@ -1819,6 +1819,8 @@ class ProductionPlan(_ProductionPlan):
                     "custom_pattern_drawing_no":item.custom_pattern_drawing_no,
                     "custom_pattern_drawing_rev_no":item.custom_pattern_drawing_rev_no,
                     "custom_purchase_specification_no":item.custom_purchase_specification_no,
+                    "custom_purchase_specification_rev_no":item.custom_purchase_specification_rev_no,
+                    "branch":self.branch,
                     "project": frappe.db.get_value(
                         "Sales Order", item.sales_order, "project"
                     )
