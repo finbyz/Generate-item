@@ -190,126 +190,164 @@ const is_system_manager = frappe.user_roles.includes('System Manager');
         }
     },
 
-    after_save: function(frm) {
-        // Prevent duplicate triggers
+
+    after_save: function (frm) {
+
+        // ── Guard against duplicate triggers ─────────────────────
         if (frm.__after_save_lock) {
-            console.log("Skipping after_save due to lock");
+            console.log("Skipping after_save (lock active)");
             return;
         }
         frm.__after_save_lock = true;
 
-        console.log("Entering after_save for Item Generator:", frm.doc.name);
+        console.log("after_save — Item Generator:", frm.doc.name);
 
-        // Only process if this is a Sales Order linked document
+        // Only run when opened from another doctype
         if (frm.doc.is_create_with_sales_order !== 1) {
             frm.__after_save_lock = false;
             return;
         }
 
-        // Get the item code that should be created
-        let item_code = frm.doc.created_item || frm.doc.item_code;
+        // Resolve the item code that was created
+        const item_code = frm.doc.created_item || frm.doc.item_code;
         if (!item_code) {
-            console.log("No item code found, releasing lock");
+            console.log("No item code found — releasing lock.");
             frm.__after_save_lock = false;
             return;
         }
 
         console.log("Item code to verify:", item_code);
 
-        // Check if this is a Sales Order linked Item Generator
-        let context = null;
+        // ── Read Sales Order context (EXISTING — unchanged) ──────
+        let so_context = null;
         try {
             const raw = sessionStorage.getItem('ig_return_context');
             if (raw) {
-                context = JSON.parse(raw);
-                console.log("Sales Order context found:", context);
+                so_context = JSON.parse(raw);
+                console.log("[Item Generator] SO context:", so_context);
             }
         } catch (e) {
-            console.error("Error parsing context:", e);
+            console.error("[Item Generator] Error parsing SO context:", e);
+        }
+
+        // ──  (OMR): Read Order Modification Request context ────
+        let omr_context = null;
+        try {
+            const omr_raw = sessionStorage.getItem('omr_ig_context');
+            if (omr_raw) {
+                omr_context = JSON.parse(omr_raw);
+                console.log("[Item Generator] OMR context:", omr_context);
+            }
+        } catch (e) {
+            console.error("[Item Generator] Error parsing OMR context:", e);
+        }
+
+        // If neither context present, nothing to route back to
+        if (!so_context && !omr_context) {
+            console.log("[Item Generator] No routing context found.");
             frm.__after_save_lock = false;
             return;
         }
 
-        if (!context || !context.so_name) {
-            console.log("No valid Sales Order context found");
-            frm.__after_save_lock = false;
-            return;
-        }
-
-        // Function to verify item exists and handle Sales Order update
-        function verifyItemAndProceed(retryCount = 0) {
-            const maxRetries = 5;
-            const retryDelay = 1000; // 1 second
+        // ── Verify item exists (with retries) then route back ─────
+        function verifyAndRoute(retryCount = 0) {
+            const MAX_RETRIES  = 5;
+            const RETRY_DELAY  = 1000; // ms
 
             frappe.call({
                 method: "frappe.client.get",
-                args: {
-                    doctype: "Item",
-                    name: item_code
-                },
-                callback: function(r) {
+                args  : { doctype: "Item", name: item_code },
+
+                callback: function (r) {
                     if (r.message) {
-                        console.log("Item verified successfully:", item_code);
-                        
-                        // Handle Sales Order integration if context exists
-                        if (context && context.so_name) {
-                            // Store result for Sales Order to pick up
+                        // Item confirmed — decide where to go back
+                        console.log("[Item Generator] Item verified:", item_code);
+
+                        // ── Sales Order branch (EXISTING logic) ──────────
+                        if (so_context && so_context.so_name) {
                             const result = {
-                                so_name: context.so_name,
-                                cdn: context.cdn,
+                                so_name  : so_context.so_name,
+                                cdn      : so_context.cdn,
                                 item_code: item_code,
-                                temp_id: context.temp_id,
-                                row_index: context.row_index
+                                temp_id  : so_context.temp_id,
+                                row_index: so_context.row_index
                             };
                             sessionStorage.setItem('ig_return_result', JSON.stringify(result));
                             sessionStorage.removeItem('ig_return_context');
-                            
+
                             frappe.show_alert({
-                                message: __("Item {0} created successfully and linked to Sales Order.", [item_code]),
+                                message  : __("Item {0} created and linked to Sales Order.", [item_code]),
                                 indicator: "green"
                             });
 
-                            // Navigate back to Sales Order after a short delay
                             setTimeout(() => {
-                                frappe.set_route('Form', 'Sales Order', context.so_name);
+                                frappe.set_route('Form', 'Sales Order', so_context.so_name);
                             }, 1500);
-                        } else {
-                            console.log("No Sales Order context, Item Generator save complete");
+
+                            frm.__after_save_lock = false;
+                            return;
+                        }
+
+                        // ──  (OMR): Order Modification Request branch ──
+                        if (omr_context && omr_context.omr_name) {
+                            const omr_result = {
+                                omr_name : omr_context.omr_name,
+                                cdn      : omr_context.cdn,
+                                item_code: item_code,   // written to rev_item on OMR
+                                temp_id  : omr_context.temp_id,
+                                row_index: omr_context.row_index
+                            };
+                            sessionStorage.setItem('omr_ig_result', JSON.stringify(omr_result));
+                            sessionStorage.removeItem('omr_ig_context');
+
                             frappe.show_alert({
-                                message: __("Item {0} created successfully.", [item_code]),
+                                message  : __("Item {0} created. Returning to OMR…", [item_code]),
                                 indicator: "green"
                             });
-                        }
-                        frm.__after_save_lock = false;
-                    } else {
-                        // Item not found, retry if we haven't exceeded max retries
-                        if (retryCount < maxRetries) {
-                            console.log(`Item not found, retrying... (${retryCount + 1}/${maxRetries})`);
+
                             setTimeout(() => {
-                                verifyItemAndProceed(retryCount + 1);
-                            }, retryDelay);
+                                frappe.set_route(
+                                    'Form',
+                                    'Order Modification Request',
+                                    omr_context.omr_name
+                                );
+                            }, 1500);
+
+                            frm.__after_save_lock = false;
+                            return;
+                        }
+
+                        // Standalone save (no context at all)
+                        frappe.show_alert({
+                            message  : __("Item {0} created successfully.", [item_code]),
+                            indicator: "green"
+                        });
+                        frm.__after_save_lock = false;
+
+                    } else {
+                        // Item not yet visible in DB — retry
+                        if (retryCount < MAX_RETRIES) {
+                            console.log(`[Item Generator] Item not found, retry ${retryCount + 1}/${MAX_RETRIES}`);
+                            setTimeout(() => verifyAndRoute(retryCount + 1), RETRY_DELAY);
                         } else {
-                            console.error("Item not found after maximum retries:", item_code);
                             frappe.msgprint({
-                                title: __("Error"),
-                                message: __("Item {0} was not created. Please check if all required fields are filled.", [item_code]),
+                                title    : __("Error"),
+                                message  : __("Item {0} was not created. Please check all required fields.", [item_code]),
                                 indicator: "red"
                             });
                             frm.__after_save_lock = false;
                         }
                     }
                 },
-                error: function(err) {
-                    console.error("Error verifying item:", err);
-                    if (retryCount < maxRetries) {
-                        console.log(`API error, retrying... (${retryCount + 1}/${maxRetries})`);
-                        setTimeout(() => {
-                            verifyItemAndProceed(retryCount + 1);
-                        }, retryDelay);
+
+                error: function () {
+                    if (retryCount < MAX_RETRIES) {
+                        console.log(`[Item Generator] API error, retry ${retryCount + 1}/${MAX_RETRIES}`);
+                        setTimeout(() => verifyAndRoute(retryCount + 1), RETRY_DELAY);
                     } else {
                         frappe.msgprint({
-                            title: __("Server Error"),
-                            message: __("Could not verify item creation. Please check manually."),
+                            title    : __("Server Error"),
+                            message  : __("Could not verify item creation. Please check manually."),
                             indicator: "red"
                         });
                         frm.__after_save_lock = false;
@@ -318,10 +356,10 @@ const is_system_manager = frappe.user_roles.includes('System Manager');
             });
         }
 
-        setTimeout(() => {
-            verifyItemAndProceed();
-        }, 500);
-    },
+        // Small initial delay to let the server-side save complete
+        setTimeout(() => verifyAndRoute(), 500);
+    }
+,
 
     template_name: function(frm) {
         if (!frm.doc.short_description) {

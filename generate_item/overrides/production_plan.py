@@ -1794,6 +1794,7 @@ class ProductionPlan(_ProductionPlan):
                         "material_request_type": material_request_type,
                         "customer": item_doc.customer or "",
                         "naming_series": naming_series,
+                        "branch":self.branch,
                     }
                 )
                 material_request_list.append(material_request)
@@ -1820,7 +1821,6 @@ class ProductionPlan(_ProductionPlan):
                     "custom_pattern_drawing_rev_no":item.custom_pattern_drawing_rev_no,
                     "custom_purchase_specification_no":item.custom_purchase_specification_no,
                     "custom_purchase_specification_rev_no":item.custom_purchase_specification_rev_no,
-                    "branch":self.branch,
                     "project": frappe.db.get_value(
                         "Sales Order", item.sales_order, "project"
                     )

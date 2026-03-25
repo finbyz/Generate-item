@@ -310,32 +310,33 @@ def get_dispatchable_sales_orders_list(customer=None, company=None, project=None
             if not item_warehouse:
                 continue
 
-            actual_qty = flt(frappe.db.get_value(
-                "Bin",
-                {"item_code": item.item_code, "warehouse": item_warehouse},
-                "actual_qty"
-            ) or 0)
+
+            batches = frappe.get_all(
+                "Batch",
+                filters={
+                    "item": item.item_code,
+                    "reference_name": so.name,  
+                    "reference_doctype": "Sales Order", 
+                    "disabled": 0
+                },
+                pluck="name"
+            )
+            # frappe.log_error( "Batches data----",batches)
+
+            total_batch_qty = 0
+
+            for batch_no in batches:
+                qty = get_batch_qty(
+                    batch_no=batch_no,
+                    warehouse=item_warehouse,
+                    item_code=item.item_code
+                )
+                total_batch_qty += flt(qty)
             
-            # if actual_qty >= flt(item.qty):
-            #     at_least_one_in_stock = True
-            # else:
-            #     all_items_in_stock = False
-
-            # NEW
-            already_delivered_qty = flt(delivered_qty_map.get(item.name, 0))
-            remaining_qty = flt(item.qty) - already_delivered_qty
-
-            if remaining_qty <= 0:
-                continue
-
-            if actual_qty >= remaining_qty:   # same as JS: actual_qty >= qty
-                at_least_one_in_stock = True
+            
+            if total_batch_qty > 0:
+                at_least_one_in_stock = True 
                 break
-
-
-            # if actual_qty < flt(item.qty):
-            #     all_items_in_stock = False
-            #     break
 
         # if all_items_in_stock:
         #     dispatchable_orders.append({"name": so.name})
