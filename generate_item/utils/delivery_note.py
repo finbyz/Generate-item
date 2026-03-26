@@ -223,7 +223,7 @@ def get_dispatchable_sales_orders(doctype, txt, searchfield, start, page_len, fi
     return frappe.db.sql(query, values, as_list=True)
 
 @frappe.whitelist()
-def get_dispatchable_sales_orders_list(customer=None, company=None, project=None, warehouse=None):
+def get_dispatchable_sales_orders_list(customer=None, company=None, project=None, warehouse=None, branch=None):
     """
     Returns Sales Orders that:
     1. Belong to given customer
@@ -248,6 +248,10 @@ def get_dispatchable_sales_orders_list(customer=None, company=None, project=None
     if project:
         conditions.append("so.project = %(project)s")
         values["project"] = project
+        
+    if branch:
+        conditions.append("so.branch = %(branch)s")
+        values["branch"] = branch
 
     where_clause = " AND ".join(conditions)
 

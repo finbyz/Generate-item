@@ -1,7 +1,7 @@
 // frappe.ui.form.on("Delivery Note", {
 //     onload: function(frm) {
 //         const is_delivery_user = frappe.user_roles.includes("Delivery User");
-        
+
 //         setTimeout(() => {
 //             if (!frm.doc.__islocal && !is_delivery_user) {
 //                 set_delivery_fields_readonly(frm, true);
@@ -23,14 +23,14 @@
 //         } else {
 //             if (is_delivery_user) {
 //                 set_delivery_fields_readonly(frm, false);
-                
+
 //                 frappe.show_alert({
 //                     message: __("You can edit items and shipping address as Delivery User"),
 //                     indicator: "blue"
 //                 }, 3);
 //             } else {
 //                 set_delivery_fields_readonly(frm, true);
-                
+
 //                 if (frm.doc.items && frm.doc.items.length > 0) {
 //                     frappe.show_alert({
 //                         message: __("Items and shipping address are locked. Only Delivery Users can modify these fields."),
@@ -253,29 +253,29 @@
 //             console.log("Form not ready, skipping permission setup");
 //             return;
 //         }
-        
+
 //         let fields_updated = 0;
-        
+
 //         // Make Items table read-only or editable
 //         if (frm.fields_dict["items"] && frm.fields_dict["items"].grid) {
 //             const grid = frm.fields_dict["items"].grid;
-            
+
 //             // Wait for grid to be fully loaded
 //             if (!grid.grid_rows || grid.grid_rows.length === 0) {
 //                 console.log("Grid rows not loaded, retrying...");
 //                 setTimeout(() => set_delivery_fields_readonly(frm, read_only), 200);
 //                 return;
 //             }
-            
+
 //             // Define which fields Delivery Users can edit (if read_only is false)
 //             const editable_fields = [
 //                 "qty", "batch_no", "serial_no", "warehouse", "custom_batch_no",
 //                 "target_warehouse", "quality_inspection", "expense_account"
 //             ];
-            
+
 //             // Get all document fields for the grid
 //             const docfields = grid.get_docfields ? grid.get_docfields() : [];
-            
+
 //             if (docfields.length > 0) {
 //                 // Set fields in items table to read-only based on permissions
 //                 docfields.forEach(df => {
@@ -285,13 +285,13 @@
 //                         const should_be_readonly = read_only ? 
 //                             (df.fieldname !== "item_code" && df.fieldname !== "item_name") : 
 //                             !editable_fields.includes(df.fieldname);
-                        
+
 //                         frm.fields_dict["items"].grid.update_docfield_property(
 //                             df.fieldname,
 //                             "read_only",
 //                             should_be_readonly ? 1 : 0
 //                         );
-                        
+
 //                         if (should_be_readonly) fields_updated++;
 //                     } catch (fieldError) {
 //                         console.warn(`Error updating field ${df.fieldname}:`, fieldError);
@@ -368,7 +368,7 @@
 //         }, 100);
 
 //         console.log(`Delivery Note: ${read_only ? 'Locked' : 'Unlocked'} ${fields_updated} fields for ${frm.doc.__islocal ? 'new' : 'saved'} document`);
-        
+
 //     } catch (error) {
 //         console.error("Error in set_delivery_fields_readonly:", error);
 //     }
@@ -377,15 +377,15 @@
 
 // function check_insufficient_items(frm) {
 //     frm.remove_custom_button('Remove Insufficient Items');
-   
+
 //     if (!frm.doc.items || frm.doc.items.length === 0) {
 //         return;
 //     }
-   
+
 //     const has_insufficient_items = frm.doc.items.some(item => {
 //         return item.actual_qty < item.qty;
 //     });
-   
+
 //     if (has_insufficient_items) {
 //         frm.add_custom_button(__('Remove Insufficient Items'), function() {
 //             remove_insufficient_items(frm);
@@ -396,7 +396,7 @@
 // function remove_insufficient_items(frm) {
 //     let removed_items = [];
 //     let valid_items = [];
-   
+
 //     frm.doc.items.forEach(item => {
 //         if (item.actual_qty < item.qty) {
 //             removed_items.push({
@@ -411,7 +411,7 @@
 //             valid_items.push(item);
 //         }
 //     });
-   
+
 //     if (removed_items.length > 0) {
 //         show_removal_confirmation(frm, removed_items, valid_items);
 //     }
@@ -454,7 +454,7 @@
 
 
 frappe.ui.form.on("Delivery Note", {
-    onload: function(frm) {
+    onload: function (frm) {
         apply_permissions(frm);
     },
     // items_on_form_rendered: function(frm) {      
@@ -463,12 +463,12 @@ frappe.ui.form.on("Delivery Note", {
     refresh(frm) {
         apply_permissions(frm);
         validate_and_set_batch_from_sales_order(frm)
-        if( frm.doc.docstatus === 0){
+        if (frm.doc.docstatus === 0) {
 
             check_insufficient_items(frm);
-           
-            
-           
+
+
+
         }
         if (
             !frm.doc.is_return &&
@@ -493,6 +493,7 @@ frappe.ui.form.on("Delivery Note", {
                         args: {
                             customer: frm.doc.customer,
                             company: frm.doc.company,
+                            branch: frm.doc.branch,
                             warehouse: frm.doc.set_warehouse || (frm.doc.items && frm.doc.items.length ? frm.doc.items[0].warehouse : undefined)
                         },
                         callback: function (r) {
@@ -535,9 +536,9 @@ frappe.ui.form.on("Delivery Note", {
                                 // frappe.after_ajax(() => {
                                 //     update_shipping_address_from_so_items(frm, dispatchable_so_list);
                                 // });
-                                console.log("dispatchable_so_list-------",dispatchable_so_list)
+                                console.log("dispatchable_so_list-------", dispatchable_so_list)
                             } else {
-                                frappe.msgprint(__("No dispatchable Sales Orders found for this customer."));
+                                frappe.msgprint(__("No dispatchable Sales Orders found for this customer for branch."));
                             }
                         },
                     });
@@ -647,7 +648,7 @@ function fetch_and_update_taxes(frm) {
         },
         freeze: true,
         freeze_message: __("Fetching remaining taxes..."),
-        callback: function(r) {
+        callback: function (r) {
             frm.__fetching_remaining_taxes = false;
 
             if (r.message && !r.exc) {
@@ -688,7 +689,7 @@ function validate_and_set_batch_from_sales_order(frm) {
 
     frm.__setting_batches = true;
 
-    const items_to_check = frm.doc.items.filter(item => 
+    const items_to_check = frm.doc.items.filter(item =>
         item.against_sales_order && item.so_detail && !item.custom_batch_no
     );
 
@@ -712,7 +713,7 @@ function validate_and_set_batch_from_sales_order(frm) {
         },
         freeze: true,
         freeze_message: __("Fetching custom batches..."),
-        callback: function(r) {
+        callback: function (r) {
             frm.__setting_batches = false;
 
             if (r.message && !r.exc) {
@@ -736,7 +737,7 @@ function validate_and_set_batch_from_sales_order(frm) {
                 }
             }
         },
-        error: function(err) {
+        error: function (err) {
             frm.__setting_batches = false;
             frappe.msgprint({
                 title: __("Error"),
@@ -780,9 +781,9 @@ function apply_permissions(frm) {
 //     const is_sys_mgr  = roles.includes('System Manager');
 
 //     const can_edit_shipping = is_delivery || is_sales || is_sys_mgr;
-    
+
 //     const can_edit_billing = is_sys_mgr;
-    
+
 //     const can_edit_items = is_delivery;
 
 //     console.log('Delivery User:', is_delivery, 'Sales User:', is_sales, 'System Manager:', is_sys_mgr);
@@ -807,7 +808,7 @@ function apply_permissions(frm) {
 //     const shipping_fields = [
 //         'shipping_address_name',
 //     ];
-    
+
 //     shipping_fields.forEach(f => {
 //         if (frm.fields_dict[f]) {
 //             frm.set_df_property(f, 'read_only', can_edit_shipping ? 0 : 1);
@@ -817,7 +818,7 @@ function apply_permissions(frm) {
 //     const billing_fields = [
 //         'customer_address',
 //     ];
-    
+
 //     billing_fields.forEach(f => {
 //         if (frm.fields_dict[f]) {
 //             frm.set_df_property(f, 'read_only', can_edit_billing ? 0 : 1);
@@ -835,18 +836,18 @@ function check_insufficient_items(frm) {
     frm.remove_custom_button('Remove Insufficient Items');
     // Do NOT auto-trigger non-stock removal here.
     // Keep this function limited to showing/hiding the "Remove Insufficient Items" button.
-   
+
     if (!frm.doc.items || frm.doc.items.length === 0) {
         return;
     }
-    
-   
+
+
     const has_insufficient_items = frm.doc.items.some(item => {
         return item.actual_qty < item.qty;
     });
-   
+
     if (has_insufficient_items) {
-        frm.add_custom_button(__('Remove Insufficient Items'), function() {
+        frm.add_custom_button(__('Remove Insufficient Items'), function () {
             remove_insufficient_items(frm);
             // remove_non_stock_items_and_adjust_qty(frm);
         }).addClass('btn-danger');
@@ -927,11 +928,11 @@ function show_removal_confirmation(frm, removed_items, valid_items) {
     });
     msg += `</ul><p>${__('Do you want to continue?')}</p>`;
 
-    frappe.confirm(msg, function() {
+    frappe.confirm(msg, function () {
         frm.doc.items = valid_items;
         frm.refresh_field('items');
-        frm.dirty(); 
-        check_insufficient_items(frm); 
+        frm.dirty();
+        check_insufficient_items(frm);
         frappe.msgprint(__('Insufficient items removed successfully.'));
     });
 }
@@ -1029,7 +1030,7 @@ function remove_non_stock_items_and_adjust_qty(frm) {
 
             frm.dirty();
 
-            
+
             frm._stock_cleanup_result = {
                 removed_items,
                 updated_items

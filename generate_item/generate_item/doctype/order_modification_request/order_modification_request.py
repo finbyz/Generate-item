@@ -289,8 +289,11 @@ class OrderModificationRequest(Document):
                     title="Invalid Quantity",
                 )
               #  Normalize values
-            rev_rate = row.rev_rate
-            rev_status = (row.rev_line_status or "").strip()
+            # rev_rate = row.rev_rate
+
+            # rev_status = (row.rev_line_status or "").strip()
+            rev_rate = frappe.utils.flt(getattr(row, "rev_rate", 0))
+            rev_status = (getattr(row, "rev_line_status", "") or "").strip()
 
             #  1. Skip validation if BOTH are empty
             if not rev_rate and not rev_status:
@@ -830,14 +833,14 @@ def get_change(self):
 
     updated, updated_boms = update_sales_order_items(self, mismatched_rows)
 
-    created_requests = create_order_modification_requests(updated_boms)
+    created_requests = create_order_modification_requests(updated_boms, self.branch)
 
     update_child_rows_with_omr(self, created_requests)
 
     omr_list = [entry["new_omr"] for entry in created_requests]
 
     frappe.msgprint(
-        f"Created {len(omr_list)} Order Modification Request(s): "
+        f"Created {len(omr_list)} Bom Modification Request(s): "
         f"{', '.join(omr_list)}"
     )
 
@@ -1008,7 +1011,7 @@ def update_finish_item_bom(custom_batch_no, new_item):
     return bom_name
 
 
-def create_order_modification_requests(updated_boms):
+def create_order_modification_requests(updated_boms, branch):
 
     created_docs = []
 
@@ -1017,9 +1020,11 @@ def create_order_modification_requests(updated_boms):
         bom_name = entry["bom"]
         row_name = entry["row_name"]
 
-        doc = frappe.new_doc("Order Modification Request")
-        doc.type = "BOM"
+        doc = frappe.new_doc("Bom Modification Request")
+        # doc.type = "BOM"
         doc.bom = bom_name
+        doc.branch = branch
+        doc.reason_for_change = "Sales Order Modification"
 
         doc.insert(ignore_permissions=True)
 
@@ -1041,40 +1046,44 @@ def fetch_items_from_reference(doc):
     and fills child table 'items'.
     """
 
-    if not doc.type:
-        return
+    # if not doc.type:
+    #     return
 
     # Determine reference document
-    if doc.type == "Sales Order":
-        ref_name = doc.sales_order
-    elif doc.type == "BOM":
+    # if doc.type == "Sales Order":
+    #     ref_name = doc.sales_order
+    # elif doc.type == "BOM":
+    #     ref_name = doc.bom
+    # else:
+    #     return
+
+    if doc.bom:
         ref_name = doc.bom
-    else:
-        return
+        doc_type = "BOM"
 
     if not ref_name:
         return
 
     # Get reference document
-    reference_doc = frappe.get_doc(doc.type, ref_name)
+    reference_doc = frappe.get_doc(doc_type, ref_name)
 
     # Clear existing child table (optional but recommended)
     doc.set("items", [])
-    doc.set("sales_order_item", [])
+    # doc.set("sales_order_item", [])
 
     # -------- SALES ORDER --------
-    if doc.type == "Sales Order":
-        for item in reference_doc.items:
-            row = doc.append("sales_order_item", {})
-            row.sales_order_item_name = item.name
-            row.item = item.item_code
-            row.qty = item.qty
-            row.batch_no = item.custom_batch_no
-            row.po_line_no = item.po_line_no
-            row.rate = item.rate
+    # if doc.type == "Sales Order":
+    #     for item in reference_doc.items:
+    #         row = doc.append("sales_order_item", {})
+    #         row.sales_order_item_name = item.name
+    #         row.item = item.item_code
+    #         row.qty = item.qty
+    #         row.batch_no = item.custom_batch_no
+    #         row.po_line_no = item.po_line_no
+    #         row.rate = item.rate
 
     # -------- BOM --------
-    elif doc.type == "BOM":
+    if reference_doc.items:
         for item in reference_doc.items:
             row = doc.append("items", {})
             row.item = item.item_code
@@ -1092,24 +1101,46 @@ def fetch_items_from_reference(doc):
 
 def update_child_rows_with_omr(self, created_requests):
     """
-    Update child table field `bom_update_request`
-    based on created OMR mapping.
+    Update child table field `bom_update_request` on sales_order_item rows
+    (item-change rows only) after BOM Modification Requests are created.
+
+    created_requests entries: {"row": <omr sales_order_item child name>, "new_omr": <bmr name>}
     """
 
     if not created_requests:
         return
 
-    row_map = {row.name: row for row in self.items}
+    # Build map: child row name → new BMR name
+    omr_map = {
+        entry["row"]: entry["new_omr"]
+        for entry in created_requests
+        if entry.get("row") and entry.get("new_omr")
+    }
 
-    for entry in created_requests:
-        row_name = entry.get("row")
-        new_omr = entry.get("new_omr")
+    if not omr_map:
+        return
 
-        child_row = row_map.get(row_name)
+    
+    child_doctype = frappe.get_meta(self.doctype).get_field("sales_order_item").options
 
-        if child_row and new_omr:
-            child_row.bom_update_request = new_omr
+    for row in self.sales_order_item:         
+        new_omr = omr_map.get(row.name)
+        if not new_omr:
+            continue
 
+        
+        row.bom_update_request = new_omr
+
+        #  Persist to DB 
+        frappe.db.set_value(
+            child_doctype,
+            row.name,
+            "bom_update_request",
+            new_omr,
+            update_modified=False,
+        )
+
+    # frappe.db.commit()
 
 def create_history_records(self):
     """

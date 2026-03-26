@@ -32,6 +32,7 @@
   {
    "fieldname": "batch",
    "fieldtype": "Link",
+   "in_standard_filter": 1,
    "label": "Batch",
    "options": "Batch"
   },
@@ -48,21 +49,23 @@
   {
    "fieldname": "api_monogram_req",
    "fieldtype": "Select",
+   "in_standard_filter": 1,
    "label": "API Monogram Req.",
    "options": "\nYES\nNO"
   },
   {
    "fieldname": "mfg_type",
    "fieldtype": "Select",
+   "in_standard_filter": 1,
    "label": "Mfg Type",
-   "options": "\nIN-HOUSE"
+   "options": "\nIN-HOUSE\nOUTSOURCE"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-03-25 11:49:03.611219",
+ "modified": "2026-03-26 11:30:19.408470",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Serial Number",

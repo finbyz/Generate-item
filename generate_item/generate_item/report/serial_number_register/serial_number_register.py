@@ -17,6 +17,47 @@ def get_serial_number_options():
         "api_monogram_req": get_options("api_monogram_req")
     }
 
+@frappe.whitelist()
+def bulk_update_by_batch(batch, mfg_type=None, api_monogram_req=None):
+    """Bulk update all serial numbers belonging to a batch using optimized SQL."""
+    if not batch:
+        frappe.throw("Batch is required")
+
+    if not mfg_type and not api_monogram_req:
+        frappe.throw("At least one field (mfg_type or api_monogram_req) is required")
+
+    # Build SET clause dynamically based on provided values
+    set_clauses = []
+    values = {}
+
+    if mfg_type:
+        set_clauses.append("mfg_type = %(mfg_type)s")
+        values["mfg_type"] = mfg_type
+
+    if api_monogram_req:
+        set_clauses.append("api_monogram_req = %(api_monogram_req)s")
+        values["api_monogram_req"] = api_monogram_req
+
+    
+    values["batch"] = batch
+
+    sql = f"""
+        UPDATE `tabSerial Number`
+        SET {', '.join(set_clauses)}
+        WHERE batch = %(batch)s
+    """
+
+    frappe.db.sql(sql, values)
+    frappe.db.commit()
+
+    # Get count for confirmation message
+    count = frappe.db.sql(
+        "SELECT COUNT(*) FROM `tabSerial Number` WHERE batch = %(batch)s",
+        {"batch": batch}
+    )[0][0]
+
+    return f"Successfully updated {count} serial number(s) in batch '{batch}'."
+
 
 def execute(filters=None):
 
@@ -82,7 +123,7 @@ def get_data(filters):
 
     if filters.get("batch"):
         # frappe.log_error("filters---",filters)
-        conditions += " AND soi.custom_batch_no = %(batch)s"
+        conditions += " AND sn.batch = %(batch)s"
         values["batch"] = filters.get("batch")
 
     

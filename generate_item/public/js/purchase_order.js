@@ -158,6 +158,7 @@ frappe.ui.form.on('Purchase Order', {
 
 		const add_button = function (group_label) {
 			frm.add_custom_button(__('Material Request'), function () {
+
 				erpnext.utils.map_current_doc({
 					method: 'erpnext.stock.doctype.material_request.material_request.make_purchase_order',
 					source_doctype: 'Material Request',
@@ -170,6 +171,7 @@ frappe.ui.form.on('Purchase Order', {
 						docstatus: 1,
 						status: ['in', ['Partially Received', 'Pending', 'Partially Ordered']],
 						company: frm.doc.company,
+						branch: frm.doc.branch,
 					},
 					get_query: function () {
 						return {

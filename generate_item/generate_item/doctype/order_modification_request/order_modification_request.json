@@ -39,7 +39,7 @@
    "options": "type"
   },
   {
-   "depends_on": "eval:doc.modification_type == \"Order Item Change\"",
+   "depends_on": "eval:doc.modification_type == \"Order Item Change\" || doc.type == \"BOM\"",
    "fieldname": "get_item",
    "fieldtype": "Button",
    "label": "Get Item"
@@ -186,7 +186,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-03-25 19:16:42.291480",
+ "modified": "2026-03-26 12:00:40.335196",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request",

@@ -23,8 +23,8 @@
   "rev_drawing_rev_no",
   "column_break_98rx",
   "pattern_drawing_no",
-  "pattern_drawing_rev_no",
   "rev_pattern_drawing_no",
+  "pattern_drawing_rev_no",
   "rev_pattern_drawing_rev_no",
   "column_break_yvwv",
   "purchase_specification_rev_no",
@@ -159,7 +159,7 @@
    "fieldname": "bom_update_request",
    "fieldtype": "Link",
    "label": "BOM Update Request",
-   "options": "Order Modification Request",
+   "options": "Bom Modification Request",
    "read_only": 1
   },
   {
@@ -181,7 +181,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-03-10 13:49:03.665045",
+ "modified": "2026-03-26 16:40:37.043218",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request Detail",
