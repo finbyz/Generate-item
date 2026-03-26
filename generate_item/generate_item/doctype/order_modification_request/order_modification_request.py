@@ -18,6 +18,7 @@ from frappe.utils import get_url_to_form
 
 class OrderModificationRequest(Document):
     
+    
     def autoname(self):
 
         if self.type == "Sales Order":
@@ -38,11 +39,16 @@ class OrderModificationRequest(Document):
         # 	self.update_sales_order_items_using_db_set()
 
         if self.type == "Sales Order" and self.sales_order:
-            self.update_sales_order_values()
-            self.update_sales_order_revision()
-            create_batches_for_omr(self)
-            create_history_records(self)
-            get_change(self)
+            if self.modification_type == "Order Change":
+                # self.update_sales_order_commercial_details()
+                self.update_so_commercial_fields()
+
+            elif self.modification_type == "Order Item Change":
+                self.update_sales_order_values()
+                self.update_sales_order_revision()
+                create_batches_for_omr(self)
+                create_history_records(self)
+                get_change(self)
 
     def update_sales_order_items_using_db_set(self):
         if not self.sales_order:
@@ -342,6 +348,7 @@ class OrderModificationRequest(Document):
             so.rev_date = today()
             so.save(ignore_permissions=True)
 
+
   
 
     def update_sales_order_values(self):
@@ -534,6 +541,38 @@ def get_linked_documents(items):
                 }
             )
 
+    return result
+
+@frappe.whitelist()
+def fetch_commercial_details(doc):
+
+    if isinstance(doc, str):
+        doc = frappe._dict(json.loads(doc)) 
+    if not doc.sales_order:
+        return
+
+    # 1. Get the Sales Order Meta to find all custom fields
+    so_meta = frappe.get_meta("Sales Order")
+    
+    # 2. Filter fields: We take all fields starting with 'custom_' 
+    # or you can filter by a specific Section Break label if you prefer
+    custom_fields = [f for f in so_meta.fields if f.fieldname.startswith("custom_")]
+    
+    so_doc = frappe.get_doc("Sales Order", doc.sales_order)
+    
+  
+    result = []
+    for field in custom_fields:
+        # Skip internal frappe fields if any
+        if field.fieldtype in ["Section Break", "Column Break", "Tab Break", "Button", "Table", "HTML"]:
+            continue
+            
+        result.append( {
+            "fieldname": field.fieldname,
+            "label": field.label,
+            "original_value": so_doc.get(field.fieldname)
+        })
+    
     return result
 
 

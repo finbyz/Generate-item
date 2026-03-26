@@ -11,7 +11,9 @@
   "sales_order",
   "bom",
   "date",
+  "modification_type",
   "get_item",
+  "get_detail",
   "column_break_oear",
   "sales_order_date",
   "customer_name",
@@ -19,6 +21,7 @@
   "reason_for_change",
   "section_break_10xk",
   "items",
+  "commercial_detail",
   "sales_order_item",
   "get_link_documents",
   "link_documents",
@@ -36,6 +39,7 @@
    "options": "type"
   },
   {
+   "depends_on": "eval:doc.modification_type == \"Order Item Change\"",
    "fieldname": "get_item",
    "fieldtype": "Button",
    "label": "Get Item"
@@ -150,19 +154,39 @@
    "reqd": 1
   },
   {
-   "depends_on": "eval:parent.type==\"Sales Order\"",
+   "depends_on": "eval:parent.type==\"Sales Order\" && parent.modification_type == \"Order Item Change\"",
    "fieldname": "sales_order_item",
    "fieldtype": "Table",
    "label": "Items",
    "no_copy": 1,
    "options": "Sales Order Item For OMR"
+  },
+  {
+   "depends_on": "eval:doc.type == \"Sales Order\"",
+   "fieldname": "modification_type",
+   "fieldtype": "Select",
+   "label": "Modification Type",
+   "options": "\nOrder Change\nOrder Item Change"
+  },
+  {
+   "depends_on": "eval:doc.modification_type == \"Order Change\"",
+   "fieldname": "get_detail",
+   "fieldtype": "Button",
+   "label": "Get Detail"
+  },
+  {
+   "depends_on": "eval:doc.modification_type == \"Order Change\"",
+   "fieldname": "commercial_detail",
+   "fieldtype": "Table",
+   "label": "Commercial Detail",
+   "options": "Commercial Detail"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-03-13 18:47:37.066835",
+ "modified": "2026-03-25 19:16:42.291480",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request",

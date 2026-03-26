@@ -1,0 +1,60 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-03-25 18:01:59.872530",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "label",
+  "original_value",
+  "column_break_tprq",
+  "revised_value",
+  "fieldname"
+ ],
+ "fields": [
+  {
+   "fieldname": "label",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Label"
+  },
+  {
+   "fieldname": "original_value",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Old Value",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_tprq",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "revised_value",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "New Value"
+  },
+  {
+   "fieldname": "fieldname",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Fieldname"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-03-25 18:07:08.636855",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Commercial Detail",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

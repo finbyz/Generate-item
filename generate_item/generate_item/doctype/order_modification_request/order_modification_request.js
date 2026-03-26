@@ -42,6 +42,34 @@ frappe.ui.form.on("Order Modification Request", {
         frm.refresh_field("sales_order");
     },
 
+
+     get_detail: function(frm) {
+        frappe.call({
+            method: "generate_item.generate_item.doctype.order_modification_request.order_modification_request.fetch_commercial_details",
+            freeze: true,
+            freeze_message: __("Fetching Commercial Details..."),
+            
+            args: {
+            doc: frm.doc 
+        },
+            callback: function(r) {
+                console.log(r.message);
+                console.log("res---",r)
+                if (r.message) {
+
+                    frm.clear_table("commercial_detail");
+                    r.message.forEach(row => {
+                    let child = frm.add_child("commercial_detail");
+                    child.fieldname = row.fieldname;
+                    child.label = row.label;
+                    child.original_value = row.original_value;
+                });
+                     
+                    frm.refresh_field("commercial_detail");
+                }
+            }
+        });
+    },
     get_item(frm) {
         if (!frm.doc.type) {
             frappe.msgprint("Please select Type first");
@@ -157,6 +185,7 @@ function fetch_items_dynamic(frm) {
 
             // Sales Order
             if (frm.doc.type === "Sales Order") {
+
                 (r.message.items || []).forEach(item => {
                     let row = frm.add_child("sales_order_item");
                     row.sales_order_item_name = item.name;
