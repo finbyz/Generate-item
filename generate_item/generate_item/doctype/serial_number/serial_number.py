@@ -32,7 +32,7 @@ BULK_INSERT_CHUNK   = 10_000    # SQL VALUES chunk size
 
 
 INSERT_FIELDS = ["name", "creation", "modified", "modified_by", "owner",
-                 "serial_number", "batch"]
+                 "serial_number", "batch","branch"]
 
 
 # ===========================================================================
@@ -96,6 +96,7 @@ def create_serial_numbers_for_sales_order(sales_order_name: str):
             item_serial_map= item_serial_map,
             sales_order    = sales_order_name,
             total_qty      = total_qty,
+            branch         = so_doc.branch,
         )
 
     except Exception:
@@ -146,6 +147,15 @@ def _extract_so_items(so_doc) -> list:
         qty = cint(row.get("qty") or 0)
         if qty <= 0:
             continue
+        item_code = row.get("item_code")
+
+        # 🔹 Fetch item group
+        item_group = frappe.db.get_value("Item", item_code, "item_group")
+
+        # 🔹 Apply validation
+        if not item_group or "valve" not in item_group.lower():
+            continue
+        
         result.append({
             "item_code": row.get("item_code") or "",
             "item_name": row.get("item_name") or "",
@@ -272,6 +282,7 @@ def generate_serial_ids(
     series_info: dict,
     item_assignment: dict,
     user: str,
+    branch:str,
 ) -> list:
     """
     Pure CPU — no DB calls.
@@ -305,6 +316,7 @@ def generate_serial_ids(
             user,        # owner
             serial_no,   # serial_number
             batch_id,    # batch
+            series_info["branch"],
         ))
 
     return rows
@@ -366,6 +378,7 @@ def _generate_and_insert(
     item_serial_map: list,
     sales_order: str,
     total_qty: int,
+    branch:str,
 ):
     """
     Iterates over each item assignment, slices into BULK_COMMIT_EVERY chunks,
@@ -386,7 +399,7 @@ def _generate_and_insert(
                 "qty":         slice_qty,
             }
 
-            rows = generate_serial_ids(series_info, sliced, user)
+            rows = generate_serial_ids(series_info, sliced, user,branch)
             _bulk_insert_serials(rows)
             frappe.db.commit()
 

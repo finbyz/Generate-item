@@ -40,8 +40,9 @@ class OrderModificationRequest(Document):
 
         if self.type == "Sales Order" and self.sales_order:
             if self.modification_type == "Order Change":
-                # self.update_sales_order_commercial_details()
-                self.update_so_commercial_fields()
+                pass
+                self.update_sales_order_commercial_details()
+                # self.update_so_commercial_fields()
 
             elif self.modification_type == "Order Item Change":
                 self.update_sales_order_values()
@@ -49,6 +50,84 @@ class OrderModificationRequest(Document):
                 create_batches_for_omr(self)
                 create_history_records(self)
                 get_change(self)
+
+    def update_sales_order_commercial_details(self):
+        """Updates Commercial T&C + Details + Reference Data + Terms & Conditions in Sales Order"""
+
+        # ── Commercial T&C 
+        commercial_map = {
+            "rev_price_basis":            "custom_price_basis",
+            "rev_mode_of_dispatch":       "custom_mode_of_dispatch",
+            "rev_validity":               "custom_validity",
+            "rev_freight_charges":        "custom_freight_charges",
+            "rev_transit_insurance":      "custom_transit_insurance",
+            "rev_delivery":               "custom_delivery",
+            "rev_tpi_agency_charges":     "custom_tpi_agency_charges",
+            "rev_inspection":             "custom_inspection",
+            "rev_legal_requirement":      "custom_legal_requirement",
+            "rev_test_certificate":       "custom_test_certificate",
+            "rev_bank_charges":           "custom_bank_charges",
+            "rev_liquidate_damage":       "custom_liquidate_damage",
+            "rev_packing_and_forwarding": "custom_packing_and_forwarding",
+            "rev_packing_type":           "custom_packing_type",
+            "rev_painting_specification": "custom_painting_specification",
+            "rev_qsl_no":                 "custom_qsl_no",
+            "rev_drawing_approval":       "custom_drawing_approvalqap",
+            "rev_manufacturing_clearance":"custom_manufacturing_clearance",
+            "rev_api_monogram":           "custom_api_monogram",
+            "rev_ce_marking":             "custom_ce_marking",
+            "rev_eway_bill":              "custom_eway_bill",
+            "rev_repeat_order_ref":       "custom_repeat_order_ref",
+            "rev_payment_terms":          "custom_payment_terms",
+            "rev_bank_guaranty":          "custom_bank_guaranty",
+        }
+
+        # ── Details
+        details_map = {
+            "rev_customers_purchase_order":      "po_no",     
+            "rev_customers_purchase_order_date": "po_date",   
+        }
+
+        # ── Reference Data
+        reference_map = {
+            "rev_qtn_ref_no":            "custom_qtn_ref_no",
+            "rev_qtn_ref_date":          "custom_qtn_ref_date",
+            "rev_loi_no":                "custom_loi_no",
+            "rev_loi_date":              "custom_loi_date",
+            "rev_customer_project_name": "custom_customer_project_name",
+            "rev_end_user":              "custom_end_user",
+        }
+
+        # ── Terms & Conditions
+        terms_map = {
+            "rev_so_remarks": "terms",   
+        }
+
+        # ── Merge all maps and build UPDATE query
+        all_maps = {
+            **commercial_map,
+            **details_map,
+            **reference_map,
+            **terms_map,
+        }
+
+        updates = []
+        params = {"so_name": self.sales_order}
+
+        for omr_field, so_field in all_maps.items():
+            val = self.get(omr_field)
+            if val is not None and val != "":
+                updates.append(f"`{so_field}` = %({omr_field})s")
+                params[omr_field] = val
+
+        if updates:
+            frappe.db.sql(f"""
+                UPDATE `tabSales Order`
+                SET {", ".join(updates)}
+                WHERE name = %(so_name)s
+            """, params)
+
+          
 
     def update_sales_order_items_using_db_set(self):
         if not self.sales_order:
@@ -546,37 +625,6 @@ def get_linked_documents(items):
 
     return result
 
-@frappe.whitelist()
-def fetch_commercial_details(doc):
-
-    if isinstance(doc, str):
-        doc = frappe._dict(json.loads(doc)) 
-    if not doc.sales_order:
-        return
-
-    # 1. Get the Sales Order Meta to find all custom fields
-    so_meta = frappe.get_meta("Sales Order")
-    
-    # 2. Filter fields: We take all fields starting with 'custom_' 
-    # or you can filter by a specific Section Break label if you prefer
-    custom_fields = [f for f in so_meta.fields if f.fieldname.startswith("custom_")]
-    
-    so_doc = frappe.get_doc("Sales Order", doc.sales_order)
-    
-  
-    result = []
-    for field in custom_fields:
-        # Skip internal frappe fields if any
-        if field.fieldtype in ["Section Break", "Column Break", "Tab Break", "Button", "Table", "HTML"]:
-            continue
-            
-        result.append( {
-            "fieldname": field.fieldname,
-            "label": field.label,
-            "original_value": so_doc.get(field.fieldname)
-        })
-    
-    return result
 
 
 def get_all_linked_documents(source_doctype, source_name):

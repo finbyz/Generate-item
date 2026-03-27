@@ -42,34 +42,94 @@ frappe.ui.form.on("Order Modification Request", {
         frm.refresh_field("sales_order");
     },
 
+    get_detail: function(frm) {
+    if (frm.doc.type === "Sales Order" && frm.doc.modification_type === "Order Change") {
+        if (!frm.doc.sales_order) {
+            frappe.msgprint(__("Please select a Sales Order first."));
+            return;
+        }
 
-     get_detail: function(frm) {
-        frappe.call({
-            method: "generate_item.generate_item.doctype.order_modification_request.order_modification_request.fetch_commercial_details",
-            freeze: true,
-            freeze_message: __("Fetching Commercial Details..."),
-            
-            args: {
-            doc: frm.doc 
-        },
-            callback: function(r) {
-                console.log(r.message);
-                console.log("res---",r)
-                if (r.message) {
+        frappe.model.with_doc("Sales Order", frm.doc.sales_order, function() {
+            let so = frappe.get_doc("Sales Order", frm.doc.sales_order);
 
-                    frm.clear_table("commercial_detail");
-                    r.message.forEach(row => {
-                    let child = frm.add_child("commercial_detail");
-                    child.fieldname = row.fieldname;
-                    child.label = row.label;
-                    child.original_value = row.original_value;
+            // ── Commercial T&C 
+            const commercial_map = {
+                "price_basis":           "custom_price_basis",
+                "mode_of_dispatch": "custom_mode_of_dispatch",
+                "validity":              "custom_validity",
+                "freight_charges":       "custom_freight_charges",
+                "transit_insurance":     "custom_transit_insurance",
+                "delivery":              "custom_delivery",
+                "tpi_agency_charges":    "custom_tpi_agency_charges",
+                "inspection":            "custom_inspection",
+                "legal_requirement":     "custom_legal_requirement",
+                "test_certificate":      "custom_test_certificate",
+                "bank_charges":          "custom_bank_charges",
+                "liquidate_damage":      "custom_liquidate_damage",
+                "packing_and_forwarding":"custom_packing_and_forwarding",
+                "packing_type":          "custom_packing_type",
+                "painting_specification":"custom_painting_specification",
+                "qsl_no":                "custom_qsl_no",
+                "drawing_approvalqap":   "custom_drawing_approvalqap",
+                "manufacturing_clearance":"custom_manufacturing_clearance",
+                "api_monogram":          "custom_api_monogram",
+                "ce_marking":            "custom_ce_marking",
+                "eway_bill":             "custom_eway_bill",
+                "repeat_order_ref":      "custom_repeat_order_ref",
+                "payment_terms":         "custom_payment_terms",
+                "bank_guaranty":         "custom_bank_guaranty"
+            };
+
+            // ── Details 
+            const details_map = {
+                "customers_purchase_order":      "po_no",     
+                "customers_purchase_order_date": "po_date"         
+            };
+
+            // ── Reference Data 
+            const reference_map = {
+                "qtn_ref_no":            "custom_qtn_ref_no",      
+                "qtn_ref_date":          "custom_qtn_ref_date",
+                "loi_no":                "custom_loi_no",
+                "loi_date":              "custom_loi_date",
+                "customer_project_name": "custom_customer_project_name",
+                "end_user":              "custom_end_user"
+            };
+
+            // ── Terms & Conditions 
+            const terms_map = {
+                "so_remarks": "terms"                            
+            };
+
+            // ── Apply all maps 
+            const all_maps = [
+                commercial_map,
+                details_map,
+                reference_map,
+                terms_map
+            ];
+
+            all_maps.forEach(function(map) {
+                $.each(map, function(omr_field, so_field) {
+                    if (so[so_field] !== undefined && so[so_field] !== null) {
+                        frm.set_value(omr_field, so[so_field]);
+                    }
                 });
-                     
-                    frm.refresh_field("commercial_detail");
-                }
-            }
+            });
+
+            frappe.show_alert({
+                message: __("Details fetched from Sales Order"),
+                indicator: "green"
+            });
         });
-    },
+
+    } else {
+        frappe.msgprint(__(
+            "Get Detail is only applicable for 'Sales Order' type with 'Order Change' modification."
+        ));
+    }
+},
+
     get_item(frm) {
         if (!frm.doc.type) {
             frappe.msgprint("Please select Type first");

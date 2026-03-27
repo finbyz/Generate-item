@@ -19,6 +19,79 @@
   "customer_name",
   "emails",
   "reason_for_change",
+  "commercial",
+  "price_basis",
+  "mode_of_dispatch",
+  "validity",
+  "freight_charges",
+  "transit_insurance",
+  "delivery",
+  "tpi_agency_charges",
+  "inspection",
+  "legal_requirement",
+  "test_certificate",
+  "bank_charges",
+  "liquidate_damage",
+  "packing_and_forwarding",
+  "packing_type",
+  "painting_specification",
+  "qsl_no",
+  "drawing_approvalqap",
+  "manufacturing_clearance",
+  "api_monogram",
+  "ce_marking",
+  "eway_bill",
+  "repeat_order_ref",
+  "payment_terms",
+  "bank_guaranty",
+  "column_break_wdwn",
+  "rev_price_basis",
+  "rev_mode_of_dispatch",
+  "rev_validity",
+  "rev_freight_charges",
+  "rev_transit_insurance",
+  "rev_delivery",
+  "rev_tpi_agency_charges",
+  "rev_inspection",
+  "rev_legal_requirement",
+  "rev_test_certificate",
+  "rev_bank_charges",
+  "rev_liquidate_damage",
+  "rev_packing_and_forwarding",
+  "rev_packing_type",
+  "rev_painting_specification",
+  "rev_qsl_no",
+  "rev_drawing_approvalqap",
+  "rev_manufacturing_clearance",
+  "rev_api_monogram",
+  "rev_ce_marking",
+  "rev_eway_bill",
+  "rev_repeat_order_ref",
+  "rev_payment_terms",
+  "rev_bank_guaranty",
+  "section_break_lebh",
+  "customers_purchase_order",
+  "customers_purchase_order_date",
+  "column_break_lwmg",
+  "rev_customers_purchase_order",
+  "rev_customers_purchase_order_date",
+  "section_break_oela",
+  "qtn_ref_no",
+  "qtn_ref_date",
+  "loi_no",
+  "loi_date",
+  "customer_project_name",
+  "end_user",
+  "column_break_ippc",
+  "rev_qtn_ref_no",
+  "rev_qtn_ref_date",
+  "rev_loi_no",
+  "rev_loi_date",
+  "rev_customer_project_name",
+  "rev_end_user",
+  "term_conditions",
+  "so_remarks",
+  "rev_so_remarks",
   "section_break_10xk",
   "items",
   "commercial_detail",
@@ -178,15 +251,491 @@
    "depends_on": "eval:doc.modification_type == \"Order Change\"",
    "fieldname": "commercial_detail",
    "fieldtype": "Table",
+   "hidden": 1,
    "label": "Commercial Detail",
    "options": "Commercial Detail"
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.modification_type == \"Order Change\"",
+   "fieldname": "commercial",
+   "fieldtype": "Section Break",
+   "label": "Commercial T&C"
+  },
+  {
+   "fieldname": "price_basis",
+   "fieldtype": "Data",
+   "label": "Price Basis",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_wdwn",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "rev_price_basis",
+   "fieldtype": "Data",
+   "label": "Rev Price Basis",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "mode_of_dispatch",
+   "fieldtype": "Data",
+   "label": "Mode of Dispatch",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "validity",
+   "fieldtype": "Data",
+   "label": "Validity",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_mode_of_dispatch",
+   "fieldtype": "Data",
+   "label": "Rev Mode of Dispatch",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "rev_validity",
+   "fieldtype": "Data",
+   "label": "Rev Validity",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "freight_charges",
+   "fieldtype": "Data",
+   "label": "Freight Charges",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "transit_insurance",
+   "fieldtype": "Data",
+   "label": "Transit Insurance",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_freight_charges",
+   "fieldtype": "Data",
+   "label": "Rev Freight Charges",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "rev_transit_insurance",
+   "fieldtype": "Data",
+   "label": "Rev Transit Insurance",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "delivery",
+   "fieldtype": "Data",
+   "label": "Delivery",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_delivery",
+   "fieldtype": "Data",
+   "label": "Rev Delivery",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "tpi_agency_charges",
+   "fieldtype": "Data",
+   "label": "TPI Agency Charges",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "inspection",
+   "fieldtype": "Data",
+   "label": "Inspection",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "legal_requirement",
+   "fieldtype": "Data",
+   "label": "Legal Requirement",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_tpi_agency_charges",
+   "fieldtype": "Data",
+   "label": "Rev TPI Agency Charges",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "rev_inspection",
+   "fieldtype": "Data",
+   "label": "Rev Inspection",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "rev_legal_requirement",
+   "fieldtype": "Data",
+   "label": "Rev Legal Requirement",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "test_certificate",
+   "fieldtype": "Data",
+   "label": "Test Certificate",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "bank_charges",
+   "fieldtype": "Data",
+   "label": "Bank Charges",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_test_certificate",
+   "fieldtype": "Data",
+   "label": "Rev Test Certificate",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "rev_bank_charges",
+   "fieldtype": "Data",
+   "label": "Rev Bank Charges",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "liquidate_damage",
+   "fieldtype": "Data",
+   "label": "Liquidate Damage",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "packing_and_forwarding",
+   "fieldtype": "Data",
+   "label": "Packing and Forwarding",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "packing_type",
+   "fieldtype": "Data",
+   "label": "Packing Type",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_liquidate_damage",
+   "fieldtype": "Data",
+   "label": "Rev Liquidate Damage",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "rev_packing_and_forwarding",
+   "fieldtype": "Data",
+   "label": "Rev Packing and Forwarding",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "rev_packing_type",
+   "fieldtype": "Data",
+   "label": "Rev Packing Type",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "painting_specification",
+   "fieldtype": "Data",
+   "label": "Painting Specification",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "qsl_no",
+   "fieldtype": "Data",
+   "label": "QSL No.",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_painting_specification",
+   "fieldtype": "Data",
+   "label": "Rev Painting Specification",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "rev_qsl_no",
+   "fieldtype": "Data",
+   "label": "Rev QSL No.",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "drawing_approvalqap",
+   "fieldtype": "Data",
+   "label": "Drawing Approval-QAP",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_drawing_approvalqap",
+   "fieldtype": "Data",
+   "label": "Rev Drawing Approval-QAP",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "manufacturing_clearance",
+   "fieldtype": "Data",
+   "label": "Manufacturing Clearance",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "api_monogram",
+   "fieldtype": "Data",
+   "label": "API Monogram",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "ce_marking",
+   "fieldtype": "Data",
+   "label": "CE Marking",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_manufacturing_clearance",
+   "fieldtype": "Data",
+   "label": "Rev Manufacturing Clearance",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "rev_api_monogram",
+   "fieldtype": "Data",
+   "label": "Rev API Monogram",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "rev_ce_marking",
+   "fieldtype": "Data",
+   "label": "Rev CE Marking",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "eway_bill",
+   "fieldtype": "Data",
+   "label": "E-Way Bill",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_eway_bill",
+   "fieldtype": "Data",
+   "label": "Rev E-Way Bill",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "repeat_order_ref",
+   "fieldtype": "Data",
+   "label": "Repeat Order Ref.",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_repeat_order_ref",
+   "fieldtype": "Data",
+   "label": "Rev Repeat Order Ref.",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "payment_terms",
+   "fieldtype": "Small Text",
+   "label": "Payment Terms",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_payment_terms",
+   "fieldtype": "Small Text",
+   "label": "Rev Payment Terms",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "bank_guaranty",
+   "fieldtype": "Small Text",
+   "label": "Bank Guaranty",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_bank_guaranty",
+   "fieldtype": "Small Text",
+   "label": "Rev Bank Guaranty",
+   "no_copy": 1
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.modification_type == \"Order Change\"",
+   "fieldname": "term_conditions",
+   "fieldtype": "Section Break",
+   "label": "Terms & Conditions"
+  },
+  {
+   "fieldname": "so_remarks",
+   "fieldtype": "Text Editor",
+   "label": "SO Remarks",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.modification_type == \"Order Change\"",
+   "fieldname": "section_break_lebh",
+   "fieldtype": "Section Break",
+   "label": "Details"
+  },
+  {
+   "fieldname": "customers_purchase_order",
+   "fieldtype": "Data",
+   "label": "Customer's Purchase Order",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "customers_purchase_order_date",
+   "fieldtype": "Date",
+   "label": "Customer's Purchase Order Date",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_lwmg",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "rev_customers_purchase_order",
+   "fieldtype": "Data",
+   "label": "Rev Customer's Purchase Order",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "rev_customers_purchase_order_date",
+   "fieldtype": "Date",
+   "label": "Rev Customer's Purchase Order Date",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "rev_so_remarks",
+   "fieldtype": "Text Editor",
+   "label": "Rev SO Remarks",
+   "no_copy": 1
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.modification_type == \"Order Change\"",
+   "fieldname": "section_break_oela",
+   "fieldtype": "Section Break",
+   "label": "Reference Data"
+  },
+  {
+   "fieldname": "qtn_ref_no",
+   "fieldtype": "Data",
+   "label": "QTN Ref No.",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_ippc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.qtn_ref_no",
+   "fieldname": "rev_qtn_ref_no",
+   "fieldtype": "Data",
+   "label": "Rev QTN Ref No.",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "qtn_ref_date",
+   "fieldtype": "Date",
+   "label": "QTN Ref Date.",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "loi_no",
+   "fieldtype": "Data",
+   "label": "L.O.I. No.",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "loi_date",
+   "fieldtype": "Data",
+   "label": "L.O.I. Date",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.qtn_ref_date ",
+   "fieldname": "rev_qtn_ref_date",
+   "fieldtype": "Date",
+   "label": "Rev QTN Ref Date.",
+   "no_copy": 1
+  },
+  {
+   "depends_on": "eval:doc.loi_no ",
+   "fieldname": "rev_loi_no",
+   "fieldtype": "Data",
+   "label": "Rev L.O.I. No.",
+   "no_copy": 1
+  },
+  {
+   "depends_on": "eval:doc.loi_date ",
+   "fieldname": "rev_loi_date",
+   "fieldtype": "Date",
+   "label": "Rev L.O.I. Date",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "customer_project_name",
+   "fieldtype": "Data",
+   "label": "Customer Project Name",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "end_user",
+   "fieldtype": "Data",
+   "label": "End User",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:doc.customer_project_name",
+   "fieldname": "rev_customer_project_name",
+   "fieldtype": "Data",
+   "label": "Rev Customer Project Name",
+   "no_copy": 1
+  },
+  {
+   "depends_on": "eval:doc.end_user",
+   "fieldname": "rev_end_user",
+   "fieldtype": "Data",
+   "label": "Rev End User",
+   "no_copy": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-03-26 12:00:40.335196",
+ "modified": "2026-03-27 12:35:18.225131",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request",

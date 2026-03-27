@@ -12,7 +12,7 @@
         const child_meta = frappe.get_meta(`${frm.doc.doctype} Item`);
         const has_reserved_stock = opts.has_reserved_stock ? true : false;
         const table_fieldname = opts.child_docname || child_docname;
-        const custom_fields = ["po_line_no", "tag_no", "line_remark", "description", "custom_shipping_address", "item_name","line_status"];
+        const custom_fields = ["po_line_no", "tag_no", "line_remark", "description", "custom_shipping_address", "item_name", "line_status"];
         const get_precision = (fieldname) => {
             const meta_fields = (child_meta && child_meta.fields) || [];
             const field = meta_fields.find((f) => f.fieldname === fieldname);
@@ -37,7 +37,7 @@
             custom_shipping_address: d.custom_shipping_address,
             custom_batch_no: d.custom_batch_no,
             batch_no: d.batch_no,
-            line_status: d.line_status || "", 
+            line_status: d.line_status || "",
         }));
 
         const fields = [
@@ -219,7 +219,7 @@
                 fieldname: "line_status",
                 label: __("Line Status"),
                 in_list_view: 1,
-                options: "\nHold\nModified\nCanceled\nDelivered\nPartial Delivered",  
+                options: "\nHold\nModified\nCanceled\nDelivered\nPartial Delivered",
             },
         ];
 
@@ -432,10 +432,10 @@
 
 frappe.ui.form.on('Sales Order', {
     refresh: function (frm) {
-        
 
-            frm.fields_dict["items"].grid.get_field("component_of").get_query = function (doc, cdt, cdn) {
-    
+
+        frm.fields_dict["items"].grid.get_field("component_of").get_query = function (doc, cdt, cdn) {
+
             let current_row = locals[cdt][cdn];
 
             // Get item_codes where:
@@ -443,7 +443,7 @@ frappe.ui.form.on('Sales Order', {
             // 2. not the current row item
             // 3. amount > 0
             const item_codes = (doc.items || [])
-                .filter(row => 
+                .filter(row =>
                     row.item_code &&
                     row.item_code !== current_row.item_code &&
                     flt(row.amount) > 0
@@ -568,7 +568,7 @@ frappe.ui.form.on('Sales Order', {
                 make_serial_number(frm);
             }, __('Create'));
         }
-        if (!frm.is_new() ) {
+        if (!frm.is_new()) {
             frm.add_custom_button(__('Add To CRM'), function () {
                 frappe.call({
                     method: "generate_item.utils.sales_order.create_crm_note_from_sales_order",
@@ -577,14 +577,14 @@ frappe.ui.form.on('Sales Order', {
                     },
                     callback: function (r) {
                         if (r.message) {
-                           frappe.msgprint({
+                            frappe.msgprint({
                                 title: __('CRM Initiated'),
                                 message: __('CRM Note Created: <a href="/app/crm-notes/{0}">{0}</a>', [r.message]),
                                 indicator: 'green'
                             });
                         }
                     }
-                });  
+                });
             }, __('Create'));
         }
         // && frm.doc.docstatus ===1
@@ -820,7 +820,21 @@ frappe.ui.form.on('Sales Order', {
 
                 return make_batch(frm)
                     .then(() => {
-                        try { frappe.dom.unfreeze(); } catch (e) { }
+                        try {
+                            frappe.dom.unfreeze();
+                            const valid_items = (frm.doc.items || []).filter(r => (r.qty || 0) > 0);
+                            if (!valid_items.length) {
+                                frappe.msgprint({
+                                    title: __("No Items"),
+                                    message: __("This Sales Order has no items with a valid quantity."),
+                                    indicator: "red",
+                                });
+                                return;
+                            }
+
+                            const total_qty = valid_items.reduce((s, r) => s + (r.qty || 0), 0);
+                            _call_generate(frm, total_qty);
+                        } catch (e) { }
                     })
                     .catch(error => {
                         try { frappe.dom.unfreeze(); } catch (e) { }
@@ -1202,7 +1216,7 @@ function delete_batches_for_items(deleted_items, frm) {
 }
 
 
- 
+
 // ── Main button handler ──────────────────────────────────────────────────────
 function make_serial_number(frm) {
     if (!frm.doc.branch) {
@@ -1213,7 +1227,7 @@ function make_serial_number(frm) {
         });
         return;
     }
- 
+
     const valid_items = (frm.doc.items || []).filter(r => (r.qty || 0) > 0);
     if (!valid_items.length) {
         frappe.msgprint({
@@ -1223,11 +1237,11 @@ function make_serial_number(frm) {
         });
         return;
     }
- 
+
     const total_qty = valid_items.reduce((s, r) => s + (r.qty || 0), 0);
- 
-    
- 
+
+
+
     frappe.confirm(
         `<p style="margin-bottom:8px">
             Branch: <b>${frm.doc.branch}</b>
@@ -1237,58 +1251,58 @@ function make_serial_number(frm) {
              Batches that already have serial numbers will be skipped automatically.
          </p>`,
         () => _call_generate(frm, total_qty),
-        () => {}
+        () => { }
     );
 }
- 
- 
+
+
 // ── Progress dialog + server call ────────────────────────────────────────────
 function _call_generate(frm, total_qty) {
- 
+
     // Build progress dialog
-   
- 
+
+
     // Real-time progress events pushed from the server
-    
- 
+
+
     // Server call — synchronous on server side, result has timing stats
     frappe.call({
         method: "generate_item.generate_item.doctype.serial_number.serial_number.create_serial_numbers_for_sales_order",
         // ↑ Replace with actual dotted Python module path 
         args: { sales_order_name: frm.doc.name },
- 
+
         callback(r) {
-            
- 
+
+
             if (r.exc) {
                 frappe.msgprint({
-                    title:     __("Generation Failed"),
-                    message:   r.exc,
+                    title: __("Generation Failed"),
+                    message: r.exc,
                     indicator: "red",
                 });
                 return;
             }
- 
+
             const d = r.message || {};
- 
+
             // Nothing generated (all already existed)
             if (d.total === 0) {
                 frappe.msgprint({
-                    title:     __("Nothing to Generate"),
-                    message:   __("All batches already have serial numbers."),
+                    title: __("Nothing to Generate"),
+                    message: __("All batches already have serial numbers."),
                     indicator: "orange",
                 });
                 return;
             }
- 
+
             // ── Timing popup ─────────────────────────────────────────────────
-            const elapsed     = d.elapsed_sec || 0;
-            const rate        = elapsed > 0 ? Math.round(d.total / elapsed) : "—";
+            const elapsed = d.elapsed_sec || 0;
+            const rate = elapsed > 0 ? Math.round(d.total / elapsed) : "—";
             const skipped_row = d.skipped
                 ? `<tr><td>Batches skipped (already existed)</td>
                        <td style="text-align:right"><b>${d.skipped}</b></td></tr>`
                 : "";
- 
+
             frappe.msgprint({
                 title: __("Serial Numbers Generated"),
                 message: `
@@ -1323,15 +1337,15 @@ function _call_generate(frm, total_qty) {
                     </table>`,
                 indicator: "green",
             });
- 
+
             frm.reload_doc();
         },
- 
+
         error() {
-            
+
             frappe.msgprint({
-                title:     __("Error"),
-                message:   __("An unexpected error occurred. Please check the Error Log."),
+                title: __("Error"),
+                message: __("An unexpected error occurred. Please check the Error Log."),
                 indicator: "red",
             });
         },
@@ -1733,7 +1747,7 @@ function finalize_batch_process(frm, created_batches, errors) {
         };
 
 
-persist(false);
+        persist(false);
     });
 }
 
