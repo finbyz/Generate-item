@@ -72,7 +72,7 @@ class OrderModificationRequest(Document):
             "rev_packing_type":           "custom_packing_type",
             "rev_painting_specification": "custom_painting_specification",
             "rev_qsl_no":                 "custom_qsl_no",
-            "rev_drawing_approval":       "custom_drawing_approvalqap",
+            "rev_drawing_approvalqap":       "custom_drawing_approvalqap",
             "rev_manufacturing_clearance":"custom_manufacturing_clearance",
             "rev_api_monogram":           "custom_api_monogram",
             "rev_ce_marking":             "custom_ce_marking",

@@ -185,12 +185,16 @@ doc_events = {
  
     },  
     "Stock Entry": {
-        "before_insert": "generate_item.utils.stock_entry.before_insert"
+        "before_insert": "generate_item.utils.stock_entry.before_insert",
+        "validate":"generate_item.utils.stock_entry.on_submit"
     },
     "Sales Order": {
         "before_save": "generate_item.utils.sales_order.before_save",
         "validate": "generate_item.utils.sales_order.validate",
         "before_validate":"generate_item.utils.sales_order.before_validate",
+        "on_cancel": "generate_item.generate_item.doctype.serial_number.serial_number.on_cancel_sales_order",
+        "before_cancel": "generate_item.generate_item.doctype.serial_number.serial_number.before_cancel_sales_order",
+         "on_update_after_submit": "generate_item.generate_item.doctype.serial_number.serial_number.on_update_sales_order",
     },
         #     "before_save": "generate_item.utils.sales_order.before_save",
         # "validate": "generate_item.utils.sales_order.validate",
@@ -263,23 +267,28 @@ doc_events = {
 # Scheduled Tasks
 # ---------------
 
-# scheduler_events = {
-# 	"all": [
-# 		"generate_item.tasks.all"
-# 	],
-# 	"daily": [
-# 		"generate_item.tasks.daily"
-# 	],
-# 	"hourly": [
-# 		"generate_item.tasks.hourly"
-# 	],
-# 	"weekly": [
-# 		"generate_item.tasks.weekly"
-# 	],
-# 	"monthly": [
-# 		"generate_item.tasks.monthly"
-# 	],
-# }
+scheduler_events = {
+	# "all": [
+	# 	"generate_item.tasks.all"
+	# ],
+	# "daily": [
+	# 	"generate_item.tasks.daily"
+	# ],
+	# "hourly": [
+	# 	"generate_item.tasks.hourly"
+	# ],
+	# "weekly": [
+	# 	"generate_item.tasks.weekly"
+	# ],
+	# "monthly": [
+	# 	"generate_item.tasks.monthly"
+	# ],
+    "cron": {
+        "0 0 * * *": [ 
+            "generate_item.api.process_sales_orders_for_serial_creation"
+        ]
+    }
+}
 
 # Testing
 # -------

@@ -354,3 +354,112 @@ def apply_custom_fields_to_item(item, custom_fields):
     for key, val in custom_fields.items():
         if val:
             setattr(item, key, val)
+
+
+
+def on_submit(doc, method=None):
+    frappe.log_error(f"Stock Entry: {doc.name}", "Stock Entry")
+    """
+    Bulk-update Serial Number → stock_entry for every serialised, batched child row
+    in the submitted Stock Entry.
+    """
+    rows_to_process = [
+        row for row in (doc.items or [])
+        if row.get("has_serial_no") and row.get("batch_no") or row.get("custom_batch_no")
+    ]
+
+    if not rows_to_process:
+        return
+
+    errors = []
+
+    for row in rows_to_process:
+        batch = row.batch_no or row.custom_batch_no
+        
+
+        try:
+            _bulk_update_serial_stock_entry(
+                stock_entry_name=doc.name,
+                batch_no=batch,
+               
+            )
+        except Exception as exc:
+            # Collect errors so we can report all failures at once rather than
+            # rolling back on the first one.
+            frappe.log_error(
+                title=f"Serial No update failed — {doc.name}  / {batch}",
+                message=frappe.get_traceback(),
+            )
+            errors.append(f"(Batch <b>{batch}</b>): {exc}")
+
+    if errors:
+        frappe.throw(
+            "<br>".join(errors),
+            title="Serial Number Update Failed",
+        )
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Core: one bulk UPDATE per child row
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _bulk_update_serial_stock_entry(
+    stock_entry_name: str,
+    batch_no: str,
+   
+) -> int:
+   
+
+    # ------------------------------------------------------------------
+    # 1. Collect the target serial numbers in one SELECT.
+    #    We only touch serials that don't already reference another entry
+    #    (stock_entry IS NULL or '').
+    # ------------------------------------------------------------------
+    serial_names: list[str] = frappe.db.sql(
+        """
+        SELECT name
+        FROM   `tabSerial Number`
+        WHERE docstatus = 1
+        AND batch   = %(batch_no)s
+          AND  (stock_entry IS NULL OR stock_entry = '')
+        ORDER BY name ASC
+        """,
+        {"batch_no": batch_no},
+        as_dict=False,           # returns list of single-element tuples
+        debug=False,
+    )
+
+    # Flatten to plain list of strings
+    serial_names = [row[0] for row in serial_names]
+
+    if not serial_names:
+        frappe.logger().info(
+            f"[SerialAlloc] No unlinked serials found for "
+            f"batch={batch_no} — skipping."
+        )
+        return 0
+
+    # ------------------------------------------------------------------
+    # 2. Bulk UPDATE using an IN-list.
+    #    frappe.db.sql() uses %s placeholders; we need one per item in the
+    #    list.  We build the placeholder string dynamically and pass the
+    #    values as positional parameters so the DB driver handles escaping.
+    # ------------------------------------------------------------------
+    placeholders = ", ".join(["%s"] * len(serial_names))
+
+    frappe.db.sql(
+        f"""
+        UPDATE `tabSerial Number`
+        SET    stock_entry  = %s,
+               modified     = NOW(),
+               modified_by  = %s
+        WHERE  name IN ({placeholders})
+        """,
+        [stock_entry_name, frappe.session.user, *serial_names],
+        auto_commit=False,   # let Frappe's transaction wrapper handle commit
+    )
+
+
+    return len(serial_names)
+
+

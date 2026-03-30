@@ -271,7 +271,7 @@ def update_received_qty_stock_uom(doc, method):
             frappe.log_error(
                 frappe.get_traceback(),
                 f"update_receiving_percentage failed for PO {po_name}"
-            )
+            )   
 
 
 

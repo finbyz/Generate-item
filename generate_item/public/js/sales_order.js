@@ -219,7 +219,7 @@
                 fieldname: "line_status",
                 label: __("Line Status"),
                 in_list_view: 1,
-                options: "\nHold\nModified\nCanceled\nDelivered\nPartial Delivered",
+                options: "\nHold\nModified\nCancelled\nDelivered\nPartial Delivered",
             },
         ];
 
@@ -1268,7 +1268,7 @@ function _call_generate(frm, total_qty) {
     // Server call — synchronous on server side, result has timing stats
     frappe.call({
         method: "generate_item.generate_item.doctype.serial_number.serial_number.create_serial_numbers_for_sales_order",
-        // ↑ Replace with actual dotted Python module path 
+        
         args: { sales_order_name: frm.doc.name },
 
         callback(r) {
