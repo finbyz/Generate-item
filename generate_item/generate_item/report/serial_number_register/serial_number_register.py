@@ -73,6 +73,7 @@ def get_columns():
     return [
 
 		{"label": "Batch No", "fieldname": "batch", "fieldtype": "Link", "options": "Batch", "width": 150},
+        {"label": "Stock Entry", "fieldname": "stock_entry", "fieldtype": "Link", "options": "Stock Entry", "width": 150},
 		{"label": "Branch", "fieldname": "branch", "fieldtype": "Link", "options": "Branch", "width": 150},
         {"label": "Status", "fieldname": "status", "fieldtype": "Data", "width": 120},
       
@@ -148,6 +149,7 @@ def get_data(filters):
             ig.attribute_9_value AS shell_moc,
 
             sn.serial_number AS serial_no,
+            sn.stock_entry,
             sn.mfg_type,
             sn.api_monogram_req
 

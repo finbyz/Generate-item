@@ -460,6 +460,7 @@ function _fetch_and_open(frm, row, batch, qty) {
         filters: {
           docstatus: 1,
           batch: batch,
+         stock_entry:""
         },
         fields: ["name"],
         limit_start: start,

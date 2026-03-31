@@ -10,6 +10,8 @@ from frappe.utils import cint
 from frappe import enqueue
 import math
 import time
+import calendar
+from frappe.utils import nowdate, getdate
 
 class SerialNumber(Document):
 	pass
@@ -795,52 +797,199 @@ def before_cancel_sales_order(doc, method):
     
     
 
+
+
+# ===========================================================================
+# SCHEDULER  –  process_sales_orders_for_serial_creation
+# ===========================================================================
+
 def process_sales_orders_for_serial_creation():
-    # Step 1: Get eligible Sales Orders
-    sales_orders = frappe.get_all(
-        "Sales Order",
-        filters={
-            "docstatus": 1,  # Submitted only
-            "status": ["not in", ["Completed", "Cancelled"]],
-        },
-        fields=["name"]
+    """
+    Scheduled job — runs periodically to auto-generate serial numbers.
+
+    Logic per SO item:
+        required   = MIN(so_qty, batch_qty)   # how many can be fulfilled
+        difference = required - existing_serial_count
+
+        difference <= 0  → skip (already generated or batch has no stock)
+        difference >  0  → generate `difference` more serials
+
+    Only processes:
+        - Submitted SOs (docstatus = 1)
+        - Workflow state = 'Approved'
+        - Status NOT IN ('Draft', 'Cancelled', 'Completed')
+        - Items where item_group contains 'valve' (matches _extract_so_items logic)
+        - Items with a custom_batch_no set
+        - Items with line_status NOT IN ('Cancelled', 'Delivered')
+    """
+
+    # ── Step 1: Fetch eligible Sales Orders ─────────────────────────────────
+    eligible_sos = frappe.db.sql("""
+        SELECT DISTINCT so.name
+        FROM   `tabSales Order` so
+        WHERE  so.docstatus      = 1
+          AND  so.workflow_state = 'Approved'
+          AND  so.status NOT IN ('Draft', 'Cancelled', 'Completed')
+          
+    """, as_dict=True)
+
+    # testing of scheduler
+
+    # eligible_sos = [{'name': 'SODR25180'}]
+
+    # frappe.log_error("list of so ----",eligible_sos)
+
+    if not eligible_sos:
+        frappe.logger().info("Serial Scheduler: No eligible Sales Orders found.")
+        return
+
+    frappe.logger().info(
+        f"Serial Scheduler: Processing {len(eligible_sos)} Sales Order(s)."
     )
 
-    for so in sales_orders:
-        so_doc = frappe.get_doc("Sales Order", so.name)
+    for so_row in eligible_sos:
+        so_name = so_row["name"]
+        try:
+            _process_single_so_for_serial_creation(so_name)
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"Serial Scheduler: Failed for Sales Order {so_name}",
+            )
 
-        valid = False
 
-        for item in so_doc.items:
-            # Step 2: Line status condition
-            if item.line_status not in (None, "", "Hold"):
-                continue
+def _process_single_so_for_serial_creation(so_name: str):
+    """
+    Processes one Sales Order:
+      1. Joins SO items → Batch → Serial Number count
+      2. Calculates how many serials still need to be generated
+      3. Calls the existing generation pipeline for items that need serials
+    """
 
-            # Step 3: Check batch qty
-            if not item.batch_no:
-                continue
+    # ── Step 2: Pull items with batch qty + serial count in one query ────────
+    rows = frappe.db.sql("""
+        SELECT
+            soi.name            AS soi_name,
+            soi.item_code,
+            soi.item_name,
+            soi.qty             AS so_qty,
+            soi.custom_batch_no AS batch_id,
+            COALESCE(b.batch_qty, 0)        AS batch_qty,
+            COALESCE(sn_counts.sn_count, 0) AS serial_count
+        FROM
+            `tabSales Order Item` soi
 
-            batch_qty = frappe.db.get_value(
-                "Batch",
-                item.batch_no,
-                "batch_qty"
-            ) or 0
+            -- Join Batch to get available batch_qty
+            LEFT JOIN `tabBatch` b
+                ON b.name = soi.custom_batch_no
 
-            if batch_qty < item.qty:
-                valid = True
-                break
+            -- Join pre-aggregated serial number counts (submitted only)
+            LEFT JOIN (
+                SELECT batch, COUNT(*) AS sn_count
+                FROM   `tabSerial Number`
+                WHERE  docstatus = 1
+                GROUP  BY batch
+            ) sn_counts
+                ON sn_counts.batch = soi.custom_batch_no
 
-        # Step 4: Execute function if valid
-        if valid:
-            try:
-                frappe.enqueue(
-                    "generate_item.api.create_serial_numbers_for_sales_order",
-                    sales_order=so_doc.name,
-                    queue="default",
-                    timeout=300
-                )
-            except Exception as e:
-                frappe.log_error(
-                    frappe.get_traceback(),
-                    f"Scheduler Error for Sales Order {so_doc.name}"
-                )
+            -- Join Item to filter by item_group
+            INNER JOIN `tabItem` item
+                ON item.name = soi.item_code
+
+        WHERE
+            soi.parent          = %(so_name)s
+            AND soi.custom_batch_no IS NOT NULL
+            AND soi.custom_batch_no != ''
+            AND soi.qty             > 0
+            AND LOWER(COALESCE(soi.line_status, '')) NOT IN ('cancelled', 'delivered')
+            AND LOWER(COALESCE(item.item_group, '')) LIKE '%%valve%%'
+    """, {"so_name": so_name}, as_dict=True)
+
+    if not rows:
+        return
+
+    # ── Step 3: Calculate required generation per item ───────────────────────
+    items_to_generate = []
+
+    for row in rows:
+        so_qty       = cint(row["so_qty"])
+        batch_qty    = cint(row["batch_qty"])
+        serial_count = cint(row["serial_count"])
+
+        # Required = how many can actually be fulfilled
+        
+        # required   = min(so_qty, batch_qty)
+        required = so_qty - batch_qty
+
+        if required<=0:
+            continue
+
+        # Difference = how many still need to be generated
+        difference = required - serial_count
+
+        # Skip: already generated, over-generated, or batch has no stock
+        if difference <= 0:
+            continue
+
+        items_to_generate.append({
+            "item_code": row["item_code"],
+            "item_name": row["item_name"],
+            "qty":       difference,      # only generate the gap
+            "batch_id":  row["batch_id"],
+        })
+
+    if not items_to_generate:
+        frappe.logger().info(
+            f"Serial Scheduler: SO {so_name} — all items already satisfied, skipping."
+        )
+        return
+
+    # ── Step 4: Get branch from the SO ──────────────────────────────────────
+    branch = frappe.db.get_value("Sales Order", so_name, "branch")
+    if not branch:
+        frappe.log_error(
+            f"Branch not set on Sales Order {so_name}. Skipping serial generation.",
+            "Serial Scheduler: Missing Branch",
+        )
+        return
+
+    # ── Step 5: Reserve counter block + generate serials ────────────────────
+    total_qty       = sum(item["qty"] for item in items_to_generate)
+    series_info     = None
+    branch_row_name = None
+    old_total       = None
+    old_sub         = None
+
+    try:
+        series_info, branch_row_name, old_total, old_sub = \
+            get_next_naming_series_number(branch, total_qty)
+
+        item_serial_map = _build_item_serial_map(series_info, items_to_generate)
+
+        _generate_and_insert(
+            series_info    = series_info,
+            item_serial_map= item_serial_map,
+            sales_order    = so_name,
+            total_qty      = total_qty,
+            branch         = branch,
+        )
+
+        frappe.logger().info(
+            f"Serial Scheduler: SO {so_name} — generated {total_qty} serial(s) "
+            f"starting from {series_info['first_serial']}."
+        )
+
+    except Exception:
+        # Rollback counters so the next run starts from the correct position
+        if branch_row_name and old_total is not None:
+            frappe.db.set_value(
+                "Serial Number Configuration Branches",
+                branch_row_name,
+                {"total_counter": old_total, "sub_counter": old_sub},
+            )
+            frappe.db.commit()
+
+        frappe.log_error(
+            frappe.get_traceback(),
+            f"Serial Scheduler: Generation failed for SO {so_name} — counter rolled back.",
+        )

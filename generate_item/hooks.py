@@ -160,7 +160,7 @@ override_doctype_class = {
     "Production Plan": "generate_item.overrides.production_plan.ProductionPlan",
     "Work Order": "generate_item.overrides.customWorkorder.WorkOrder",
     "Sales Order": "generate_item.overrides.custom_sales_order.CustomSalesOrder",
-
+    "Purchase Order": "generate_item.overrides.purchase_order.CustomPurchaseOrder",
     "Purchase Receipt": "generate_item.overrides.purchase_receipt.CustomPurchaseReceipt",
 }
 
@@ -255,7 +255,6 @@ doc_events = {
     "Supplier":{
         "validate":"generate_item.utils.customer.supplier_validate"
     }
-   
 }
 # 	"*": {
 # 		"on_update": "method",
@@ -283,11 +282,15 @@ scheduler_events = {
 	# "monthly": [
 	# 	"generate_item.tasks.monthly"
 	# ],
-    "cron": {
-        "0 0 * * *": [ 
-            "generate_item.api.process_sales_orders_for_serial_creation"
-        ]
-    }
+    "daily_long": [
+        "generate_item.generate_item.doctype.serial_number.serial_number.process_sales_orders_for_serial_creation"
+    ]
+
+    #  "cron": {
+    #     "*/5 * * * *": [
+    #         "generate_item.generate_item.doctype.serial_number.serial_number.process_sales_orders_for_serial_creation"
+    #     ]
+    # }
 }
 
 # Testing
@@ -411,12 +414,5 @@ fixtures = [
 
 
 
-# po override
 
-from erpnext.buying.doctype.purchase_order.purchase_order import PurchaseOrder as erpnextPurchaseOrder
-
-from generate_item.overrides.purchase_order import CustomPurchaseOrder
-
-
-erpnextPurchaseOrder.update_receiving_percentage = CustomPurchaseOrder.update_receiving_percentage
 
