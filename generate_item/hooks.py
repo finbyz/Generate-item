@@ -186,7 +186,7 @@ doc_events = {
     },  
     "Stock Entry": {
         "before_insert": "generate_item.utils.stock_entry.before_insert",
-        "validate":"generate_item.utils.stock_entry.on_submit"
+        "on_submit":"generate_item.utils.stock_entry.on_submit"
     },
     "Sales Order": {
         "before_save": "generate_item.utils.sales_order.before_save",
