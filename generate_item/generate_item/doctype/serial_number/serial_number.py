@@ -50,6 +50,26 @@ def create_serial_numbers_for_sales_order(sales_order_name: str):
     t_start = time.monotonic()
 
     so_doc = frappe.get_doc("Sales Order", sales_order_name)
+
+    # ── Guard: reject Draft / Cancelled SOs ─────────────────────────────────
+    if so_doc.docstatus != 1:
+        frappe.throw(
+            _("Serial Numbers can only be generated for submitted Sales Orders. "
+              "This Sales Order is currently in '{0}' state.").format(
+                "Draft" if so_doc.docstatus == 0 else "Cancelled"
+            ),
+            title=_("Invalid Sales Order State"),
+        )
+
+    if so_doc.status in ("Draft","Cancelled", "Closed", "Completed"):
+        frappe.throw(
+            _("Serial Numbers cannot be generated for a Sales Order with status '{0}'.").format(
+                so_doc.status
+            ),
+            title=_("Invalid Sales Order Status"),
+        )
+    # ────────────────────────────────────────────────────────────────────────
+
     branch = so_doc.get("branch")
     if not branch:
         frappe.throw(_("Branch is not set on the Sales Order."))
@@ -223,10 +243,13 @@ def _extract_so_items(so_doc) -> list:
         item_code = row.get("item_code")
 
         # 🔹 Fetch item group
-        item_group = frappe.db.get_value("Item", item_code, "item_group")
+        item_group = frappe.db.get_value("Item Generator", item_code, "attribute_1_value")
 
         # 🔹 Apply validation
-        if not item_group or "valve" not in item_group.lower():
+        # if not item_group or "valve" not in item_group.lower():
+        #     continue
+
+        if  item_group != "Valve":
             continue
         
         result.append({
@@ -268,7 +291,7 @@ def _filter_already_created(items: list):
             to_process.append(item)
             continue
 
-        existing = frappe.db.count("Serial Number", {"batch": batch_id, "docstatus": 1})
+        existing = frappe.db.count("Serial Number", {"batch": batch_id})
 
         if existing == 0:
             # Normal case — generate all
@@ -815,7 +838,7 @@ def process_sales_orders_for_serial_creation():
         difference >  0  → generate `difference` more serials
 
     Only processes:
-        - Submitted SOs (docstatus = 1)
+       
         - Workflow state = 'Approved'
         - Status NOT IN ('Draft', 'Cancelled', 'Completed')
         - Items where item_group contains 'valve' (matches _extract_so_items logic)
@@ -829,7 +852,7 @@ def process_sales_orders_for_serial_creation():
         FROM   `tabSales Order` so
         WHERE  so.docstatus      = 1
           AND  so.workflow_state = 'Approved'
-          AND  so.status NOT IN ('Draft', 'Cancelled', 'Completed')
+          AND  so.status NOT IN ('Draft','Closed', 'Cancelled', 'Completed','To Bill')
           
     """, as_dict=True)
 
@@ -867,43 +890,42 @@ def _process_single_so_for_serial_creation(so_name: str):
     """
 
     # ── Step 2: Pull items with batch qty + serial count in one query ────────
+   
     rows = frappe.db.sql("""
-        SELECT
-            soi.name            AS soi_name,
-            soi.item_code,
-            soi.item_name,
-            soi.qty             AS so_qty,
-            soi.custom_batch_no AS batch_id,
-            COALESCE(b.batch_qty, 0)        AS batch_qty,
-            COALESCE(sn_counts.sn_count, 0) AS serial_count
-        FROM
-            `tabSales Order Item` soi
-
-            -- Join Batch to get available batch_qty
-            LEFT JOIN `tabBatch` b
-                ON b.name = soi.custom_batch_no
-
-            -- Join pre-aggregated serial number counts (submitted only)
-            LEFT JOIN (
-                SELECT batch, COUNT(*) AS sn_count
-                FROM   `tabSerial Number`
-                WHERE  docstatus = 1
-                GROUP  BY batch
-            ) sn_counts
-                ON sn_counts.batch = soi.custom_batch_no
-
-            -- Join Item to filter by item_group
-            INNER JOIN `tabItem` item
-                ON item.name = soi.item_code
-
-        WHERE
-            soi.parent          = %(so_name)s
-            AND soi.custom_batch_no IS NOT NULL
-            AND soi.custom_batch_no != ''
-            AND soi.qty             > 0
-            AND LOWER(COALESCE(soi.line_status, '')) NOT IN ('cancelled', 'delivered')
-            AND LOWER(COALESCE(item.item_group, '')) LIKE '%%valve%%'
-    """, {"so_name": so_name}, as_dict=True)
+            SELECT
+                soi.name            AS soi_name,
+                soi.item_code,
+                soi.item_name,
+                soi.qty             AS so_qty,
+                soi.delivered_qty,
+                soi.custom_batch_no AS batch_id,
+                COALESCE(b.batch_qty, 0)        AS batch_qty,
+                COALESCE(sn_counts.sn_count, 0) AS serial_count
+            FROM
+                `tabSales Order Item` soi
+                -- Join Batch to get available batch_qty
+                LEFT JOIN `tabBatch` b
+                    ON b.name = soi.custom_batch_no
+                -- Join pre-aggregated serial number counts
+                LEFT JOIN (
+                    SELECT batch, COUNT(*) AS sn_count
+                    FROM   `tabSerial Number`
+                    WHERE stock_entry IS NULL OR stock_entry = ""
+                    GROUP  BY batch
+                ) sn_counts
+                    ON sn_counts.batch = soi.custom_batch_no
+                -- Join Item Generator to filter by Type Of Product = 'Valve'
+                INNER JOIN `tabItem Generator` ig
+                    ON ig.item_code = soi.item_code
+                    AND ig.attribute_1       = 'Type Of Product'
+                    AND ig.attribute_1_value = 'Valve'
+            WHERE
+                soi.parent          = %(so_name)s
+                AND soi.custom_batch_no IS NOT NULL
+                AND soi.custom_batch_no != ''
+                AND soi.qty             > 0
+                AND LOWER(COALESCE(soi.line_status, '')) NOT IN ('cancelled', 'delivered')
+        """, {"so_name": so_name}, as_dict=True)
 
     if not rows:
         return
@@ -913,13 +935,15 @@ def _process_single_so_for_serial_creation(so_name: str):
 
     for row in rows:
         so_qty       = cint(row["so_qty"])
+        delivered_qty = cint(row["delivered_qty"])
         batch_qty    = cint(row["batch_qty"])
         serial_count = cint(row["serial_count"])
 
         # Required = how many can actually be fulfilled
         
         # required   = min(so_qty, batch_qty)
-        required = so_qty - batch_qty
+        pending_qty = so_qty - delivered_qty
+        required = pending_qty - batch_qty
 
         if required<=0:
             continue
