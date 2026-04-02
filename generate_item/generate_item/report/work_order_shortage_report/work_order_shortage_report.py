@@ -47,6 +47,19 @@ def get_columns():
             "width": 120
         },
         {
+            "fieldname": "production_plan_no",
+            "label": _("Production Plan No."),
+            "fieldtype": "Link",
+            "options": "Production Plan",
+            "width": 150
+        },
+        {
+            "fieldname": "pp_status",
+            "label": _("Production Plan Status"),
+            "fieldtype": "Data",
+            "width": 150
+        },
+        {
             "fieldname": "fg_code",
             "label": _("FG CODE"),
             "fieldtype": "Data",
@@ -147,19 +160,19 @@ def get_columns():
             "fieldtype": "Float",
             "width": 120
         },
-         {
-            "fieldname": "stock_transfer_qty",
-            "label": _("Stock Transfer Qty(from PP)"),
-            "fieldtype": "Float",
-            "width": 120
-        },
-        {
-            "fieldname": "production_plan_no",
-            "label": _("Production Plan No."),
-            "fieldtype": "Link",
-            "options": "Production Plan",
-            "width": 150
-        },
+        #  {
+        #     "fieldname": "stock_transfer_qty",
+        #     "label": _("Stock Transfer Qty(from PP)"),
+        #     "fieldtype": "Float",
+        #     "width": 120
+        # },
+        # {
+        #     "fieldname": "production_plan_no",
+        #     "label": _("Production Plan No."),
+        #     "fieldtype": "Link",
+        #     "options": "Production Plan",
+        #     "width": 150
+        # },
         {
             "fieldname": "material_request_no",
             "label": _("Material Request No."),
@@ -167,21 +180,21 @@ def get_columns():
             "options": "Material Request",
             "width": 150
         },
-         {
-            "fieldname": "material_transferrequest_no",
-            "label": _("Material Transfer Request No.."),
-            "fieldtype": "Data",
-            "width": 150
-        },
+        #  {
+        #     "fieldname": "material_transferrequest_no",
+        #     "label": _("Material Transfer Request No.."),
+        #     "fieldtype": "Data",
+        #     "width": 150
+        # },
 
 
-        {
-            "fieldname": "material_transfer_no",
-            "label": _("Material Transfer No."),
-            "fieldtype": "Link",
-            "options": "Stock Entry",
-            "width": 150
-        },
+        # {
+        #     "fieldname": "material_transfer_no",
+        #     "label": _("Material Transfer No."),
+        #     "fieldtype": "Link",
+        #     "options": "Stock Entry",
+        #     "width": 150
+        # },
         {
             "fieldname": "po_no",
             "label": _("PO NO"),
@@ -704,6 +717,7 @@ def get_base_data(filters):
     return frappe.db.sql(f"""
         SELECT
             pp.name AS production_plan_no,
+            pp.status AS pp_status,
             pp.posting_date,
 
             wo.name AS work_order,
@@ -724,6 +738,14 @@ def get_base_data(filters):
             woi.required_qty,
             woi.transferred_qty AS issued_qty,
 
+
+            --  ADDED: Per Valve Input
+            CASE
+                WHEN woi.item_code IS NOT NULL AND wo.qty > 0
+                THEN woi.required_qty / wo.qty
+                ELSE 0
+            END AS per_valve_input,
+
             mr.name AS material_request_no,
             mr.transaction_date,
             
@@ -738,10 +760,12 @@ def get_base_data(filters):
 
             poi.parent AS po_no,
             poi.qty AS po_qty,
-            poi.received_qty,
+            poi.received_qty AS po_received_qty,
             poi.schedule_date AS required_by,
+            poi.po_line_no AS po_line_no,  
 
             po.supplier_name,
+            po.transaction_date AS po_date,  
 
             DATEDIFF(
                 CURDATE(),
@@ -821,9 +845,9 @@ def get_stock_data():
         JOIN `tabWarehouse` wh
         ON wh.name = bin.warehouse
 
-        WHERE
-            wh.raw_material_warehouse = 1
-            OR wh.store_warehouse = 1
+        # WHERE
+        #     wh.raw_material_warehouse = 1
+        #     OR wh.store_warehouse = 1
 
         GROUP BY
             bin.item_code
@@ -836,18 +860,20 @@ def build_final_data(base_data, allocation_map, stock_map):
     result = []
 
     for row in base_data:
+        item_code = row.get("input_item_code")
 
         key = (row.material_request_no, row.item_code)
 
         transfer_qty = allocation_map.get(key, 0)
-        stock_qty = stock_map.get(row.item_code, 0)
+        # stock_qty = stock_map.get(row.item_code, 0)
+        stock_qty = stock_map.get(item_code, 0) 
 
         total_req = row.required_qty or row.mr_qty or row.po_qty or 0
 
         allocated = (row.po_qty or 0) + transfer_qty
         shortage = max(total_req - allocated, 0)
 
-        row["stock_transfer_qty"] = transfer_qty
+        # row["stock_transfer_qty"] = transfer_qty
         row["allocated_qty"] = allocated
         row["on_hand_qty"] = stock_qty
         row["shortage_qty"] = shortage
