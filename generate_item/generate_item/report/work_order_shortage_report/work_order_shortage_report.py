@@ -20,7 +20,7 @@ def execute(filters=None):
 
     base_data = get_base_data(filters)
     allocation_map = get_allocation_data()
-    stock_map = get_stock_data()
+    stock_map = get_stock_data(filters)
 
     data = build_final_data(base_data, allocation_map, stock_map)
 
@@ -329,16 +329,15 @@ def get_data(filters):
         
         -- On Hand Quantity
         IFNULL((
-            SELECT SUM(bin.projected_qty)
-            FROM `tabBin` bin
-            WHERE bin.item_code = COALESCE(woi.item_code, mri.item_code, poi.item_code)
-            AND bin.warehouse IN (
-                SELECT wh.name
-                FROM `tabWarehouse` wh
-                WHERE wh.company = pp.company
-                AND (wh.raw_material_warehouse = 1 OR wh.store_warehouse = 1)
-            )
-        ), 0) AS on_hand_qty,
+    SELECT SUM(bin.actual_qty)
+    FROM `tabBin` bin
+    INNER JOIN `tabWarehouse` wh 
+        ON wh.name = bin.warehouse
+    WHERE bin.item_code = COALESCE(woi.item_code, mri.item_code, poi.item_code)
+    AND wh.company = pp.company
+    AND wh.branch = pp.branch   -- ✅ dynamic branch
+    AND (wh.raw_material_warehouse = 1 OR wh.store_warehouse = 1)
+), 0) AS on_hand_qty,
         
         -- Shortage Calculation
         GREATEST(
@@ -766,6 +765,17 @@ def get_base_data(filters):
 
             po.supplier_name,
             po.transaction_date AS po_date,  
+            
+            IFNULL((
+            SELECT SUM(bin.actual_qty)
+            FROM `tabBin` bin
+            INNER JOIN `tabWarehouse` wh 
+                ON wh.name = bin.warehouse
+            WHERE bin.item_code = COALESCE(woi.item_code, mri.item_code, poi.item_code)
+            AND wh.company = pp.company
+            AND wh.branch = pp.branch   -- ✅ dynamic branch
+            AND (wh.raw_material_warehouse = 1 OR wh.store_warehouse = 1)
+        ), 0) AS on_hand_qty,
 
             DATEDIFF(
                 CURDATE(),
@@ -834,24 +844,26 @@ def get_allocation_data():
     }
     
 
-def get_stock_data():
+def get_stock_data(filters):
 
     data = frappe.db.sql("""
         SELECT
             bin.item_code,
-            SUM(bin.projected_qty) AS qty
+            SUM(bin.actual_qty) AS qty
 
         FROM `tabBin` bin
         JOIN `tabWarehouse` wh
         ON wh.name = bin.warehouse
 
-        # WHERE
-        #     wh.raw_material_warehouse = 1
-        #     OR wh.store_warehouse = 1
+        WHERE
+            wh.raw_material_warehouse = 1
+            OR wh.store_warehouse = 1
+        AND wh.branch = %(branch)s
+        AND wh.company = %(company)s
 
         GROUP BY
             bin.item_code
-    """, as_dict=True)
+    """, filters, as_dict=True)
 
     return {d.item_code: d.qty for d in data}
 
