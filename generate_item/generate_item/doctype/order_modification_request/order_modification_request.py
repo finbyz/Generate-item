@@ -9,7 +9,8 @@ from frappe import _
 
 import frappe
 import re
-from frappe.utils import today
+
+from frappe.utils import today, now, flt
 from frappe.model.document import Document
 from frappe.model.naming import make_autoname
 
@@ -129,93 +130,6 @@ class OrderModificationRequest(Document):
 
           
 
-    def update_sales_order_items_using_db_set(self):
-        if not self.sales_order:
-            return
-
-        #  Collect OMR item codes and line numbers for tracking
-        omr_items = {(row.item, row.po_line_no) for row in self.items if row.item}
-
-        # Get the current maximum index for new items
-        current_max_idx = (
-            frappe.db.get_value(
-                "Sales Order Item", {"parent": self.sales_order}, "max(idx)"
-            )
-            or 0
-        )
-
-        #  Update or Insert items
-        for row in self.items:
-            # Construct update_data only with fields that have values
-            update_data = {}
-
-            # Always include qty if it's part of the revision
-            if row.rev_qty:
-                update_data["qty"] = row.rev_qty
-
-            # Check if item exists in Sales Order using both item_code and po_line_no
-            filters = {
-                "parent": self.sales_order,
-                "parenttype": "Sales Order",
-                "item_code": row.item,
-            }
-
-            # Add po_line_no to filters if it exists
-            if row.po_line_no:
-                filters["po_line_no"] = row.po_line_no
-
-            so_item_name = frappe.db.get_value("Sales Order Item", filters, "name")
-
-            if so_item_name:
-                # Update existing record in submitted Sales Order
-                frappe.db.set_value(
-                    "Sales Order Item", so_item_name, update_data, update_modified=True
-                )
-
-            elif frappe.utils.flt(row.rev_qty) > 0:
-                # Insert new record at the end
-                current_max_idx += 1
-
-                # Combine basic info with the revision data
-                new_item_dict = {
-                    "doctype": "Sales Order Item",
-                    "parent": self.sales_order,
-                    "parenttype": "Sales Order",
-                    "parentfield": "items",
-                    "item_code": row.item,
-                    "idx": current_max_idx,
-                }
-
-                # Add po_line_no if it exists
-                if row.po_line_no:
-                    new_item_dict["po_line_no"] = row.po_line_no
-
-                new_item_dict.update(update_data)
-
-                new_so_item = frappe.get_doc(new_item_dict)
-                # new_so_item.db_insert()
-                new_so_item.save()
-
-        #  Delete Sales Order items not present in OMR
-        so_items = frappe.db.get_all(
-            "Sales Order Item",
-            filters={"parent": self.sales_order, "parenttype": "Sales Order"},
-            fields=["name", "item_code", "po_line_no"],
-        )
-
-        for so_row in so_items:
-            # Check if the combination of item_code and po_line_no exists in OMR
-            if (so_row.item_code, so_row.get("po_line_no")) not in omr_items:
-                frappe.db.delete("Sales Order Item", so_row.name)
-
-        # Finalize
-        # Recalculate totals for the submitted Sales Order and update the header
-        so_doc = frappe.get_doc("Sales Order", self.sales_order)
-        so_doc.calculate_taxes_and_totals()
-        so_doc.save()
-        # so_doc.db_update()
-
-   
 
     def update_bom_items_using_db_set(self):
         if not self.bom:
@@ -422,13 +336,35 @@ class OrderModificationRequest(Document):
             return
 
         # Get Sales Order
-        so = frappe.get_doc("Sales Order", self.sales_order)
 
-        # Update revision fields
-        if so:
-            so.latest_rev_no = self.name
-            so.rev_date = today()
-            so.save(ignore_permissions=True)
+
+        now_time = now()
+        user = frappe.session.user
+
+
+        frappe.db.sql("""
+        UPDATE `tabSales Order`
+        SET
+            latest_rev_no = %s,
+            rev_date = %s,
+            modified = %s,
+            modified_by = %s
+        WHERE name = %s
+    """, (
+        self.name,
+        today(),
+        now_time,
+        user,
+        self.sales_order
+    ))
+
+        # so = frappe.get_doc("Sales Order", self.sales_order)
+
+        # # Update revision fields
+        # if so:
+        #     so.latest_rev_no = self.name
+        #     so.rev_date = today()
+        #     so.save(ignore_permissions=True)
 
 
   
