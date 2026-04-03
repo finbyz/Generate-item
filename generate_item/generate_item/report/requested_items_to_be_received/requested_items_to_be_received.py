@@ -347,6 +347,51 @@ def create_purchase_receipt_by_supplier(grouped_items, company, pr_series=None, 
             pr.posting_date = nowdate()
             pr.set_posting_time = 1
 
+            po_name = items[0].get("name")
+            if not po_name:
+                continue
+
+            po_doc = frappe.get_doc("Purchase Order", po_name)
+
+    
+       
+            pr.place_of_supply        = po_doc.place_of_supply
+            pr.tax_category           = po_doc.tax_category
+            pr.taxes_and_charges      = po_doc.taxes_and_charges
+            pr.supplier_address       = po_doc.supplier_address
+            pr.shipping_address       = po_doc.shipping_address
+            pr.billing_address        = po_doc.billing_address
+            pr.supplier_gstin         = po_doc.supplier_gstin
+            pr.company_gstin          = po_doc.company_gstin
+            pr.gst_category           = po_doc.gst_category
+            pr.is_reverse_charge      = po_doc.is_reverse_charge
+            pr.incoterm               = po_doc.get("incoterm")
+            pr.named_place            = po_doc.get("named_place")
+
+            # ── Copy tax rows with ALL gst fields 
+            for tax in po_doc.taxes:
+                pr.append("taxes", {
+                    "category":                              tax.category,
+                    "add_deduct_tax":                        tax.add_deduct_tax,
+                    "charge_type":                           tax.charge_type,
+                    "row_id":                                tax.row_id,
+                    "account_head":                          tax.account_head,
+                    "description":                           tax.description,
+                    "rate":                                  tax.rate,
+                    "tax_amount":                            tax.tax_amount,
+                    "tax_amount_after_discount_amount":      tax.tax_amount_after_discount_amount,
+                    "base_tax_amount":                       tax.base_tax_amount,
+                    "base_tax_amount_after_discount_amount": tax.base_tax_amount_after_discount_amount,
+                    "total":                                 tax.total,
+                    "base_total":                            tax.base_total,
+                    "included_in_print_rate":                tax.included_in_print_rate,
+                    "included_in_paid_amount":               tax.included_in_paid_amount,
+                    "is_tax_withholding_account":            tax.is_tax_withholding_account,
+                    "cost_center":                           tax.cost_center,
+                    "branch":                                tax.branch,
+                    "gst_tax_type":                          tax.gst_tax_type,
+                })
+
             for item in items:
                 uom = item.get("uom")
                 stock_uom = item.get("stock_uom")
