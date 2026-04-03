@@ -243,6 +243,21 @@ frappe.ui.form.on('Purchase Order Item', {
 		if (frm.doc.production_plan && frm.doc.custom_batch_no && row.item_code) {
 			frappe.model.set_value(row.doctype, row.name, 'custom_batch_no', frm.doc.custom_batch_no);
 		}
+		// Item Tax Template
+		 if (row.item_code) {
+            frappe.db.get_doc("Item", row.item_code)
+                .then(item => {
+
+                    if (item.taxes && item.taxes.length > 0) {
+
+                        // Get first Item Tax Template
+                        let tax_template = item.taxes[0].item_tax_template;
+
+                        // Set in Purchase Order Item
+                        frappe.model.set_value(cdt, cdn, "item_tax_template", tax_template);
+                    }
+                });
+        }
 	}
 });
 

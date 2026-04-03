@@ -306,7 +306,7 @@ def get_data(filters):
         ), 0)) AS allocated_qty,
         
         -- PO Quantities
-        COALESCE(poi.qty, 0) AS po_qty,
+        COALESCE(poi.stock_qty , 0) AS po_qty,
         COALESCE(poi.received_qty, 0) AS po_received_qty,
         
         -- Stock Transfer Qty
@@ -758,8 +758,8 @@ def get_base_data(filters):
             mri.qty AS mr_qty,
 
             poi.parent AS po_no,
-            poi.qty AS po_qty,
-            poi.received_qty AS po_received_qty,
+            poi.stock_qty AS po_qty,
+            poi.received_qty_in_stock_uom AS po_received_qty,
             poi.schedule_date AS required_by,
             poi.po_line_no AS po_line_no,  
 
