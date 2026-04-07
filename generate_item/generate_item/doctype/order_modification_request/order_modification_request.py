@@ -812,7 +812,7 @@ def get_change(self):
     mismatched_rows = get_mismatched_items(self)
 
     if not mismatched_rows:
-        frappe.msgprint("No mismatched item codes found.")
+        # frappe.msgprint("No mismatched item codes found.")
         return
 
     updated, updated_boms = update_sales_order_items(self, mismatched_rows)
