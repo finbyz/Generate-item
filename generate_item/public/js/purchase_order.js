@@ -28,6 +28,7 @@ frappe.ui.form.on('Purchase Order', {
 		if (frm.doc.production_plan && !frm.doc.custom_batch_no) {
 			set_batch_no_from_production_plan(frm);
 		}
+		set_po_defaults(frm);
 	},
 
 	production_plan: function (frm) {
@@ -58,8 +59,12 @@ frappe.ui.form.on('Purchase Order', {
 	},
 	branch: function (frm) {
 		set_supplier_warehouse(frm)
+		set_po_defaults(frm)
 
 	},
+	order_type: function(frm) {
+        set_po_defaults(frm);
+    },
 
 	schedule_date: function (frm) {
 		if (!frm.doc.items || frm.doc.items.length === 0) return;
@@ -95,6 +100,8 @@ frappe.ui.form.on('Purchase Order', {
 		// 	}
 		// }
 		// Check if items exist and iterate properly
+
+		set_po_defaults(frm);
 
 
 
@@ -288,3 +295,78 @@ frappe.ui.form.on('Purchase Order Item', {
 		frappe.model.set_value(cdt, cdn, 'pending_qty_in_stock_uom', row.stock_qty);
 	}
 });
+
+
+
+
+function set_po_defaults(frm) {
+
+    // Stop if values not selected
+    if (!frm.doc.branch || !frm.doc.order_type) return;
+
+    const config = {
+
+        "Sanand": {
+            "Domestic Purchase": { series: "SD.fiscal.#####", billing: "Steelstrong-Sanand", shipping: "Steelstrong-Sanand" },
+            "Import Purchase": { series: "SI.fiscal.#####", billing: "Steelstrong-Sanand", shipping: "Steelstrong-Sanand" },
+            "Consumable Purchase": { series: "SC.fiscal.#####", billing: "Steelstrong-Sanand", shipping: "Steelstrong-Sanand" },
+            "Job Work Order": { series: "SJ.fiscal.#####", billing: "Steelstrong-Sanand", shipping: "Steelstrong-Sanand" },
+            "Service Order": { series: "SS.fiscal.#####", billing: "Steelstrong-Sanand", shipping: "Steelstrong-Sanand" },
+            "Asset Purchase": { series: "SA.fiscal.#####", billing: "Steelstrong-Sanand", shipping: "Steelstrong-Sanand" }
+        },
+
+        "Rabale": {
+            "Domestic Purchase": { series: "RD.fiscal.#####", billing: "Steelstrong-Rabale", shipping: "Steelstrong-Rabale" },
+            "Import Purchase": { series: "RI.fiscal.#####", billing: "Steelstrong-Rabale", shipping: "Steelstrong-Rabale" },
+            "Consumable Purchase": { series: "RC.fiscal.#####", billing: "Steelstrong-Rabale", shipping: "Steelstrong-Rabale" },
+            "Job Work Order": { series: "RJ.fiscal.#####", billing: "Steelstrong-Rabale", shipping: "Steelstrong-Rabale" },
+            "Service Order": { series: "RS.fiscal.#####", billing: "Steelstrong-Rabale", shipping: "Steelstrong-Rabale" },
+            "Asset Purchase": { series: "RA.fiscal.#####", billing: "Steelstrong-Rabale", shipping: "Steelstrong-Rabale" }
+        },
+
+        "Nandikoor": {
+            "Domestic Purchase": { series: "ND.fiscal.#####", billing: "Steelstrong-Nandikoor", shipping: "Steelstrong-Nandikoor" },
+            "Import Purchase": { series: "NI.fiscal.#####", billing: "Steelstrong-Nandikoor", shipping: "Steelstrong-Nandikoor" },
+            "Consumable Purchase": { series: "NC.fiscal.#####", billing: "Steelstrong-Nandikoor", shipping: "Steelstrong-Nandikoor" },
+            "Job Work Order": { series: "NJ.fiscal.#####", billing: "Steelstrong-Nandikoor", shipping: "Steelstrong-Nandikoor" },
+            "Service Order": { series: "NS.fiscal.#####", billing: "Steelstrong-Nandikoor", shipping: "Steelstrong-Nandikoor" },
+            "Asset Purchase": { series: "NA.fiscal.#####", billing: "Steelstrong-Nandikoor", shipping: "Steelstrong-Nandikoor" }
+        }
+    };
+
+    let branch = frm.doc.branch;
+    let order_type = frm.doc.order_type;
+
+    // Check mapping exists
+    if (config[branch] && config[branch][order_type]) {
+
+        let data = config[branch][order_type];
+
+        //  Set Naming Series
+        // if (frm.doc.naming_series !== data.series) {
+        //     frm.set_value('naming_series', data.series);
+        // }
+
+		 //  ONLY for NEW DOC
+        if (frm.is_new()) {
+           if (frm.doc.naming_series !== data.series) {
+            frm.set_value('naming_series', data.series);
+        	}
+        }
+
+        //  Set Billing Address
+        if (frm.doc.billing_address !== data.billing) {
+            frm.set_value('billing_address', data.billing);
+        }
+
+        //  Set Shipping Address
+        if (frm.doc.shipping_address !== data.shipping) {
+            frm.set_value('shipping_address', data.shipping);
+        }
+
+        // Refresh fields (important)
+        frm.refresh_field('naming_series');
+        frm.refresh_field('billing_address');
+        frm.refresh_field('shipping_address');
+    }
+}
