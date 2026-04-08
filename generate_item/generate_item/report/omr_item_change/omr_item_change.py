@@ -72,7 +72,7 @@ def get_data(filters):
         approval_details = get_approval_details(omr.name)
         
         items = frappe.get_all(
-            "Sales Order Item For OMR",
+            "Sales Order Item  OForMR",
             filters={"parent": omr.name},
             fields=["item", "rev_item", "batch_no", "qty", "rev_qty", "line_remark", "rev_line_remark"]
         )
