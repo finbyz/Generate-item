@@ -207,7 +207,18 @@ def make_quality_inspections(doctype, docname, items):
             row = frappe.db.get_value(
                 doctype + " Item",
                 ref,
-                ["qty", "uom", "stock_uom", "stock_qty"],
+                [
+                "qty",
+                "uom",
+                "stock_uom",
+                "stock_qty",
+                "custom_drawing_no",
+                "custom_drawing_rev_no",
+                "custom_pattern_drawing_no",
+                "custom_pattern_drawing_rev_no",
+                "custom_purchase_specification_no",
+                "custom_purchase_specification_rev_no",
+        ],
                 as_dict=True
             )
         if not row:
@@ -233,6 +244,12 @@ def make_quality_inspections(doctype, docname, items):
                 "stock_uom": stock_uom,
                 "received_qty_in_stock_uom": received_qty_in_stock_uom,
                 "sample_size_in_stock_uom": received_qty_in_stock_uom,
+                "custom_drawing_no": row.custom_drawing_no,
+                "custom_drawing_rev_no": row.custom_drawing_rev_no,
+                "custom_pattern_drawing_no": row.custom_pattern_drawing_no,
+                "custom_pattern_drawing_rev_no": row.custom_pattern_drawing_rev_no,
+                "custom_purchase_specification_no": row.custom_purchase_specification_no,
+                "custom_purchase_specification_rev_no": row.custom_purchase_specification_rev_no,
             }
             
             

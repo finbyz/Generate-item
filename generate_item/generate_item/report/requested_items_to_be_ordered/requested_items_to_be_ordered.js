@@ -1,6 +1,7 @@
 
 
 // let PO_SERIES_OPTIONS = [];
+let PO_ORDER_TYPE_OPTIONS = [];
 frappe.query_reports["Requested Items To Be Ordered"] = {
 
     get_datatable_options(options) {
@@ -99,6 +100,16 @@ frappe.query_reports["Requested Items To Be Ordered"] = {
             if (r.message) {
                 
                 PO_SERIES_OPTIONS = r.message;
+            }
+        }
+    });
+
+      // Order Type
+    frappe.call({
+        method: "generate_item.generate_item.report.requested_items_to_be_ordered.requested_items_to_be_ordered.get_po_order_types",
+        callback: function (r) {
+            if (r.message) {
+                PO_ORDER_TYPE_OPTIONS = r.message;
             }
         }
     });
@@ -294,19 +305,33 @@ function create_purchase_order_by_supplier() {
                             reqd: 1
                         },
                         {
-                            fieldname: "po_series",
-                            fieldtype: "Select",
-                            label: __("PO Series"),
-                            options: PO_SERIES_OPTIONS.join("\n"),
-                            reqd: 1
-                        },
-                        {
                             fieldname: "branch",
                             fieldtype: "Link",
                             label: __("Branch"),
                             options: "Branch",
+                            onchange: function () {
+                                set_series_in_dialog();
+                            },
+                            reqd: 1,
+                        },
+                         {
+                            fieldname: "order_type",
+                            fieldtype: "Select",
+                            label: __("Order Type"),
+                            options: PO_ORDER_TYPE_OPTIONS.join("\n"),
+                            onchange: function () {
+                                set_series_in_dialog();
+                            },
                             reqd: 1
-                        }
+                        },
+                        {
+                            fieldname: "po_series",
+                            fieldtype: "Select",
+                            label: __("PO Series"),
+                            options: PO_SERIES_OPTIONS.join("\n"),
+                            read_only: 1
+                        },
+                        
                     ],
                     function (values) {
                         supplier = values.supplier;
@@ -325,7 +350,7 @@ function create_purchase_order_by_supplier() {
                         // REMOVE placeholder group
                         delete grouped_by_supplier["__NO_SUPPLIER__"];
 
-                        call_create_po(grouped_by_supplier ,values.po_series, values.branch);
+                        call_create_po(grouped_by_supplier ,values.po_series, values.branch,values.order_type);
 
                     }
                 );
@@ -334,24 +359,29 @@ function create_purchase_order_by_supplier() {
 
             call_create_po(grouped_by_supplier);
 
-            function call_create_po(grouped_by_supplier, po_series=null, branch=null) {
+            function call_create_po(grouped_by_supplier, po_series=null, branch=null,order_type=null) {
 
+                if (!branch) {
+                    frappe.msgprint(__("Please select Branch"));
+                    return;
+                }
+                if (!order_type) {
+                    frappe.msgprint(__("Please select Order Type"));
+                    return;
+                }
                 if (!po_series) {
                     frappe.msgprint(__("Please select PO Series"));
                     return;
                 }
                 
-                if (!branch) {
-                    frappe.msgprint(__("Please select Branch"));
-                    return;
-                }
                 frappe.call({
                     method: 'generate_item.generate_item.report.requested_items_to_be_ordered.requested_items_to_be_ordered.create_purchase_order_by_supplier',
                     args: {
                         "grouped_items": grouped_by_supplier,
                         "company": frappe.query_report.get_filter_value("company"),
                         "po_series": po_series ,
-                        "branch": branch 
+                        "branch": branch,
+                        "order_type": order_type  
                     },
                     freeze: true,
                     freeze_message: __("Creating Purchase Order..."),
@@ -448,3 +478,27 @@ $(function () {
 });
 
 
+
+function set_series_in_dialog() {
+
+    let dialog = cur_dialog;
+    if (!dialog) return;
+
+    let branch = dialog.get_value("branch");
+    let order_type = dialog.get_value("order_type");
+
+    if (!branch || !order_type) return;
+
+    frappe.call({
+        method: "generate_item.generate_item.report.requested_items_to_be_ordered.requested_items_to_be_ordered.get_po_defaults",
+        args: {
+            branch: branch,
+            order_type: order_type
+        },
+        callback: function (r) {
+            if (r.message && r.message.naming_series) {
+                dialog.set_value("po_series", r.message.naming_series);
+            }
+        }
+    });
+}

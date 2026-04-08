@@ -267,7 +267,7 @@ def get_data(filters):
 
 
 @frappe.whitelist()
-def create_purchase_order_by_supplier(grouped_items, company, po_series=None, branch=None):
+def create_purchase_order_by_supplier(grouped_items, company, po_series=None, branch=None,order_type=None):
 	"""
 	Create Purchase order grouped by supplier
 
@@ -294,6 +294,7 @@ def create_purchase_order_by_supplier(grouped_items, company, po_series=None, br
 			# Create Purchase Order
 			purchase_order = frappe.new_doc("Purchase Order")
 			purchase_order.supplier = supplier
+			purchase_order.order_type = order_type
 			# PO series (naming_series)
 			if po_series:
 				purchase_order.naming_series = po_series
@@ -423,3 +424,53 @@ def get_po_naming_series():
         return []
 
     return [opt for opt in field.options.split("\n") if opt]
+
+
+
+@frappe.whitelist()
+def get_po_order_types():
+    meta = frappe.get_meta("Purchase Order")
+    field = meta.get_field("order_type") 
+
+    if not field or not field.options:
+        return []
+
+    return [opt for opt in field.options.split("\n") if opt]
+
+
+@frappe.whitelist()
+def get_po_defaults(branch, order_type):
+    
+    config = {
+        "Sanand": {
+            "Domestic Purchase": "SD.fiscal.#####",
+            "Import Purchase": "SI.fiscal.#####",
+            "Consumable Purchase": "SC.fiscal.#####",
+            "Job Work Order": "SJ.fiscal.#####",
+            "Service Order": "SS.fiscal.#####",
+            "Asset Purchase": "SA.fiscal.#####"
+        },
+        "Rabale": {
+            "Domestic Purchase": "RD.fiscal.#####",
+            "Import Purchase": "RI.fiscal.#####",
+            "Consumable Purchase": "RC.fiscal.#####",
+            "Job Work Order": "RJ.fiscal.#####",
+            "Service Order": "RS.fiscal.#####",
+            "Asset Purchase": "RA.fiscal.#####"
+        },
+        "Nandikoor": {
+            "Domestic Purchase": "ND.fiscal.#####",
+            "Import Purchase": "NI.fiscal.#####",
+            "Consumable Purchase": "NC.fiscal.#####",
+            "Job Work Order": "NJ.fiscal.#####",
+            "Service Order": "NS.fiscal.#####",
+            "Asset Purchase": "NA.fiscal.#####"
+        }
+    }
+
+    if branch in config and order_type in config[branch]:
+        return {
+            "naming_series": config[branch][order_type]
+        }
+
+    return {}

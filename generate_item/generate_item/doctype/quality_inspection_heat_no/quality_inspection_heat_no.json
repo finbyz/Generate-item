@@ -8,14 +8,15 @@
  "field_order": [
   "heat_no",
   "column_break_nthb",
-  "qty"
+  "qty",
+  "tc_no"
  ],
  "fields": [
   {
    "fieldname": "heat_no",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Heat No"
+   "label": "Heat No-Batch No"
   },
   {
    "fieldname": "column_break_nthb",
@@ -26,13 +27,18 @@
    "fieldtype": "Int",
    "in_list_view": 1,
    "label": "Qty"
+  },
+  {
+   "fieldname": "tc_no",
+   "fieldtype": "Data",
+   "label": "TC No."
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-03-16 18:00:15.412292",
+ "modified": "2026-04-08 15:32:45.419529",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Quality Inspection Heat No",
