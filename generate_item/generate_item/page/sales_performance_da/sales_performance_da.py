@@ -99,7 +99,7 @@ def get_orders_status(from_date, to_date, branch):
 def get_order_approval_delay(branch):
     conditions = [
         "so.docstatus = 0",
-        "so.workflow_state IN ('Approval Pending', 'Checking Pending')"
+        # "so.workflow_state IN ('Approval Pending', 'Checking Pending')"
     ]
 
     if branch:
@@ -159,6 +159,41 @@ def get_delay_buckets(rows, date_field):
 # --------------------------------------------------
 # 3. Order Booking Value (FY & Current Month)
 # --------------------------------------------------
+
+# def get_order_booking_value(branch):
+#     conditions = [
+#         "docstatus = 1",
+#         "status NOT IN ('Closed', 'Cancelled')"
+#     ]
+
+#     if branch:
+#         conditions.append("branch = %(branch)s")
+
+#     where = " AND ".join(conditions)
+#     fy_start, fy_end = get_fiscal_year_dates()
+
+#     # FY value using date range
+#     fy_value = frappe.db.sql(f"""
+#         SELECT SUM(grand_total)
+#         FROM `tabSales Order`
+#         WHERE transaction_date BETWEEN %(fy_start)s AND %(fy_end)s
+#         AND {where}
+#     """, {"branch": branch, "fy_start": fy_start, "fy_end": fy_end})[0][0] or 0
+
+#     # Current month value
+#     month_value = frappe.db.sql(f"""
+#         SELECT SUM(grand_total)
+#         FROM `tabSales Order`
+#         WHERE MONTH(transaction_date) = MONTH(CURDATE())
+#         AND YEAR(transaction_date) = YEAR(CURDATE())
+#         AND {where}
+#     """, {"branch": branch})[0][0] or 0
+
+#     return {
+#         "FY": round(fy_value / 100000, 2),
+#         "Current Month": round(month_value / 100000, 2)
+#     }
+
 def get_order_booking_value(branch):
     conditions = [
         "docstatus = 1",
@@ -171,7 +206,6 @@ def get_order_booking_value(branch):
     where = " AND ".join(conditions)
     fy_start, fy_end = get_fiscal_year_dates()
 
-    # FY value using date range
     fy_value = frappe.db.sql(f"""
         SELECT SUM(grand_total)
         FROM `tabSales Order`
@@ -179,7 +213,6 @@ def get_order_booking_value(branch):
         AND {where}
     """, {"branch": branch, "fy_start": fy_start, "fy_end": fy_end})[0][0] or 0
 
-    # Current month value
     month_value = frappe.db.sql(f"""
         SELECT SUM(grand_total)
         FROM `tabSales Order`
@@ -188,15 +221,56 @@ def get_order_booking_value(branch):
         AND {where}
     """, {"branch": branch})[0][0] or 0
 
-    return {
+    usd_rate = get_usd_exchange_rate()
+    
+
+    result = {
         "FY": round(fy_value / 100000, 2),
-        "Current Month": round(month_value / 100000, 2)
+        "Current Month": round(month_value / 100000, 2),
+        "usd_rate": usd_rate
     }
+
+    if usd_rate:
+        result["FY_USD"] = round((fy_value * usd_rate) , 2)
+        result["Current Month_USD"] = round((month_value * usd_rate) , 2)
+
+    return result
 
 
 # --------------------------------------------------
 # 4. Invoicing – FY & Current Month
 # --------------------------------------------------
+# def get_invoicing_value(branch):
+#     conditions = ["docstatus = 1"]
+
+#     if branch:
+#         conditions.append("branch = %(branch)s")
+
+#     where = " AND ".join(conditions)
+#     fy_start, fy_end = get_fiscal_year_dates()
+
+#     # FY value using date range
+#     fy = frappe.db.sql(f"""
+#         SELECT SUM(grand_total)
+#         FROM `tabSales Invoice`
+#         WHERE posting_date BETWEEN %(fy_start)s AND %(fy_end)s
+#         AND {where}
+#     """, {"branch": branch, "fy_start": fy_start, "fy_end": fy_end})[0][0] or 0
+
+#     # Current month
+#     month = frappe.db.sql(f"""
+#         SELECT SUM(grand_total)
+#         FROM `tabSales Invoice`
+#         WHERE MONTH(posting_date) = MONTH(CURDATE())
+#         AND YEAR(posting_date) = YEAR(CURDATE())
+#         AND {where}
+#     """, {"branch": branch})[0][0] or 0
+
+#     return {
+#         "FY": round(fy / 100000, 2),
+#         "Current Month": round(month / 100000, 2)
+#     }
+
 def get_invoicing_value(branch):
     conditions = ["docstatus = 1"]
 
@@ -206,7 +280,6 @@ def get_invoicing_value(branch):
     where = " AND ".join(conditions)
     fy_start, fy_end = get_fiscal_year_dates()
 
-    # FY value using date range
     fy = frappe.db.sql(f"""
         SELECT SUM(grand_total)
         FROM `tabSales Invoice`
@@ -214,7 +287,6 @@ def get_invoicing_value(branch):
         AND {where}
     """, {"branch": branch, "fy_start": fy_start, "fy_end": fy_end})[0][0] or 0
 
-    # Current month
     month = frappe.db.sql(f"""
         SELECT SUM(grand_total)
         FROM `tabSales Invoice`
@@ -223,10 +295,19 @@ def get_invoicing_value(branch):
         AND {where}
     """, {"branch": branch})[0][0] or 0
 
-    return {
+    usd_rate = get_usd_exchange_rate()
+
+    result = {
         "FY": round(fy / 100000, 2),
-        "Current Month": round(month / 100000, 2)
+        "Current Month": round(month / 100000, 2),
+        "usd_rate": usd_rate
     }
+
+    if usd_rate:
+        result["FY_USD"] = round((fy * usd_rate) , 2)
+        result["Current Month_USD"] = round((month * usd_rate), 2)
+
+    return result
 
 
 # --------------------------------------------------
@@ -485,3 +566,33 @@ def to_lakh(obj):
         "count": obj["count"],
         "value": round(obj["value"] / 100000, 2)
     }
+
+
+def get_usd_exchange_rate():
+    """Fetch INR to USD exchange rate from Currency Exchange doctype"""
+    try:
+        rate = frappe.db.get_value(
+            "Currency Exchange",
+            {"from_currency": "INR", "to_currency": "USD"},
+            "exchange_rate",
+            order_by="creation desc"
+        )
+        if rate:
+            return flt(rate)
+    except Exception:
+        pass
+    
+    # Fallback: try from_currency USD to INR (inverse)
+    try:
+        rate = frappe.db.get_value(
+            "Currency Exchange",
+            {"from_currency": "USD", "to_currency": "INR"},
+            "exchange_rate",
+            order_by="creation desc"
+        )
+        if rate and flt(rate) > 0:
+            return round(1 / flt(rate), 6)
+    except Exception:
+        pass
+    
+    return None  # Return None if not found — frontend will hide USD if None

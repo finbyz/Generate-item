@@ -3,6 +3,8 @@
 
 
 let PO_SERIES_OPTIONS = [];
+let CACHED_BRANCH = null;
+let CACHED_SUPPLIER = null;
 frappe.query_reports["Requested Items To Be Received"] = {
 
     datatable_options: {
@@ -69,6 +71,7 @@ frappe.query_reports["Requested Items To Be Received"] = {
             label: __("Supplier"),
             fieldtype: "Link",
             options: "Supplier",
+            reqd: 1,
 
             on_change: function () {
                 frappe.query_report.refresh().then(() => {
@@ -112,6 +115,18 @@ frappe.query_reports["Requested Items To Be Received"] = {
                 });
             },
         },
+        { fieldname: "show_all_lines", label: "Show All Lines", fieldtype: "Check" ,
+             on_change: function() {
+            let show_all = frappe.query_report.get_filter_value("show_all_lines");
+
+            // Toggle mandatory on Supplier and Branch
+            frappe.query_report.get_filter("supplier").df.reqd = show_all ? 0 : 1;
+    
+            // Refresh filter UI to reflect reqd change
+            frappe.query_report.get_filter("supplier").refresh();
+           
+        }
+        },
         {
             fieldname: "allowed_branches",
             label: __("Allowed Branches"),
@@ -126,10 +141,16 @@ frappe.query_reports["Requested Items To Be Received"] = {
     ],
     onload: function (report) {
 
-        fetch_and_set_branches(report, function () {
-            report.refresh();
-        })
+        // fetch_and_set_branches(report, function () {
+        //     report.refresh();
+        // })
 
+        fetch_and_set_branches(report, function() {
+        report.refresh().then(() => {
+            // Cache branch from filter after load
+            CACHED_BRANCH = frappe.query_report.get_filter_value("branch");
+        });
+    });
         frappe.call({
             method: "generate_item.generate_item.report.requested_items_to_be_received.requested_items_to_be_received.get_pr_naming_series",
             callback: function (r) {

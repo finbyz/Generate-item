@@ -137,7 +137,7 @@ frappe.pages['sales-performance-da'].on_page_load = function (wrapper) {
                 </div>
                 <div class="chart-card">
                     <h3>⏱️ Order Approval Delay</h3>
-                    <div class="chart-wrapper">
+                    <div class="chart-wrapper" style="height: 350px;">
                         <canvas id="orderApprovalDelayChart"></canvas>
                     </div>
                 </div>
@@ -299,7 +299,16 @@ frappe.pages['sales-performance-da'].on_page_load = function (wrapper) {
         if (!data) return;
 
         const labels = Object.keys(data);
-        const values = labels.map(k => data[k]?.value || 0);
+        
+        // const values = labels.map(k => data[k]?.value || 0);
+        const values = labels.map(k => {
+            const value = data[k]?.value || 0;
+            const count = data[k]?.count || 0;
+
+            //  Hide bar if both are zero
+            return (value === 0 && count === 0) ? null : value;
+        });
+
         const counts = labels.map(k => data[k]?.count || 0);
 
         if (charts[chartKey] && typeof charts[chartKey].destroy === 'function') {
@@ -315,15 +324,24 @@ frappe.pages['sales-performance-da'].on_page_load = function (wrapper) {
                     data: values,
                     backgroundColor: color,
                     borderRadius: 6,
-                    borderWidth: 0
+                    borderWidth: 0,
+                    barThickness: 40,       
+                    minBarLength: 10 
                 }]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                interaction: {
+                mode: 'nearest',
+                axis: 'x',
+                intersect: false
+            },
                 scales: {
                     y: {
                         beginAtZero: true,
+                        suggestedMin: 0,
+                        suggestedMax: Math.max(...values) * 1.2,
                         title: {
                             display: true,
                             text: 'Amount (₹ Lakh)',
@@ -341,6 +359,9 @@ frappe.pages['sales-performance-da'].on_page_load = function (wrapper) {
                 plugins: {
                     legend: { display: false },
                     tooltip: {
+                        filter: function(context) {
+                            return context.raw !== null;
+                        },
                         callbacks: {
                             label: function(context) {
                                 const idx = context.dataIndex;
@@ -358,37 +379,86 @@ frappe.pages['sales-performance-da'].on_page_load = function (wrapper) {
         });
     }
 
+
+
     function render_booking_cards(data) {
-        const html = `
-            <div class="value-card fy">
-                <div class="label">FY Total</div>
-                <div class="value">${(data?.FY || 0).toFixed(2)} Lakh</div>
+    const hasUSD = data?.FY_USD !== undefined;
+    const usdRate = data?.usd_rate ? `<div class="unit">1 USD = ${(1 / data.usd_rate).toFixed(6)} INR</div>` : '';
+
+    const html = `
+        <div class="value-card fy">
+            <div class="label">FY Total (INR)</div>
+            <div class="value">₹ ${(data?.FY || 0).toFixed(2)}</div>
+            <div class="unit">Lakh</div>
+        </div>
+        ${hasUSD ? `
+        <div class="value-card fy">
+            <div class="label">FY Total (USD)</div>
+            <div class="value">$ ${(data?.FY_USD || 0).toFixed(2)}</div>
+            <div class="unit"> ${usdRate}</div>
+        </div>` : ''}
+        <div class="value-card month">
+            <div class="label">Current Month (INR)</div>
+            <div class="value">₹ ${(data?.['Current Month'] || 0).toFixed(2)}</div>
+            <div class="unit">Lakh</div>
+        </div>
+        ${hasUSD ? `
+        <div class="value-card month">
+            <div class="label">Current Month (USD)</div>
+            <div class="value">$ ${(data?.['Current Month_USD'] || 0).toFixed(2)}</div>
+            <div class="unit"></div>
+        </div>` : ''}
+    `;
+    $('#booking-cards').html(html);
+}
+
+    // function render_invoicing_cards(data) {
+    //     const html = `
+    //         <div class="value-card fy">
+    //             <div class="label">FY Total</div>
+    //             <div class="value">${(data?.FY || 0).toFixed(2)} Lakh</div>
                 
-            </div>
-            <div class="value-card month">
-                <div class="label">Current Month</div>
-                <div class="value">${(data?.['Current Month'] || 0).toFixed(2)} Lakh</div>
+    //         </div>
+    //         <div class="value-card month">
+    //             <div class="label">Current Month</div>
+    //             <div class="value">${(data?.['Current Month'] || 0).toFixed(2)} Lakh</div>
                 
-            </div>
-        `;
-        $('#booking-cards').html(html);
-    }
+    //         </div>
+    //     `;
+    //     $('#invoicing-cards').html(html);
+    // }
 
     function render_invoicing_cards(data) {
-        const html = `
-            <div class="value-card fy">
-                <div class="label">FY Total</div>
-                <div class="value">${(data?.FY || 0).toFixed(2)} Lakh</div>
-                
-            </div>
-            <div class="value-card month">
-                <div class="label">Current Month</div>
-                <div class="value">${(data?.['Current Month'] || 0).toFixed(2)} Lakh</div>
-                
-            </div>
-        `;
-        $('#invoicing-cards').html(html);
-    }
+    const hasUSD = data?.FY_USD !== undefined;
+    
+    const usdRate = data?.usd_rate ? `<div class="unit">1 USD = ${(1 / data.usd_rate).toFixed(6)} INR</div>` : '';
+
+    const html = `
+        <div class="value-card fy">
+            <div class="label">FY Total (INR)</div>
+            <div class="value">₹ ${(data?.FY || 0).toFixed(2)}</div>
+            <div class="unit">Lakh</div>
+        </div>
+        ${hasUSD ? `
+        <div class="value-card fy">
+            <div class="label">FY Total (USD)</div>
+            <div class="value">$ ${(data?.FY_USD || 0).toFixed(2)}</div>
+            <div class="unit"> ${usdRate}</div>
+        </div>` : ''}
+        <div class="value-card month">
+            <div class="label">Current Month (INR)</div>
+            <div class="value">₹ ${(data?.['Current Month'] || 0).toFixed(2)}</div>
+            <div class="unit">Lakh</div>
+        </div>
+        ${hasUSD ? `
+        <div class="value-card month">
+            <div class="label">Current Month (USD)</div>
+            <div class="value">$ ${(data?.['Current Month_USD'] || 0).toFixed(2)}</div>
+            <div class="unit"></div>
+        </div>` : ''}
+    `;
+    $('#invoicing-cards').html(html);
+}
 
     function render_collection_cards(data) {
         const html = `
