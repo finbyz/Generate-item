@@ -282,7 +282,7 @@ def get_data(filters):
 
         # -------- STOCK UOM Pending Logic --------
         po_qty_stock = flt(row.po_qty_stock_uom)
-        received_stock = flt(row.receipt_qty_stock_uom)
+        received_stock = flt(row.receipt_qty_stock_uom) if row.stock_uom != row.uom else flt(row.received_qty)
         total_received_stock = received_stock + draft_received_qty
 
         pending_qty_stock_uom = po_qty_stock - total_received_stock
