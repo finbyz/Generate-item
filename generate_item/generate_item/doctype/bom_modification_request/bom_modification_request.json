@@ -9,10 +9,14 @@
   "section_break_esjd",
   "branch",
   "bom",
+  "fg_item_code",
+  "fg_item_name",
   "date",
   "get_item",
   "column_break_xzpn",
   "reason_for_change",
+  "batch_no_ref",
+  "item_description",
   "section_break_pwog",
   "items",
   "get_link_documents",
@@ -95,13 +99,40 @@
    "label": "BOM No",
    "options": "BOM",
    "reqd": 1
+  },
+  {
+   "fieldname": "fg_item_code",
+   "fieldtype": "Link",
+   "label": "FG Item Code",
+   "no_copy": 1,
+   "options": "Item",
+   "read_only": 1
+  },
+  {
+   "fieldname": "fg_item_name",
+   "fieldtype": "Data",
+   "label": "FG Item Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "batch_no_ref",
+   "fieldtype": "Link",
+   "label": "Batch No Ref",
+   "options": "Batch",
+   "read_only": 1
+  },
+  {
+   "fieldname": "item_description",
+   "fieldtype": "Small Text",
+   "label": "Item Description",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-03-26 14:48:46.934363",
+ "modified": "2026-04-10 12:02:42.664970",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Bom Modification Request",

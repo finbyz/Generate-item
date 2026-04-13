@@ -58,8 +58,18 @@ class BomModificationRequest(Document):
 		current_max_idx = (
 			frappe.db.get_value("BOM Item", {"parent": self.bom}, "max(idx)") or 0
 		)
+		 # Track whether any bom_no change happened — to decide explosion rebuild
+		needs_explosion_rebuild = False
 
 		for row in self.items:
+
+			# ── DELETE LOGIC ─────────────────────────────────────────────
+			if row.is_delete and row.bom_item_name:
+				frappe.db.delete("BOM Item", row.bom_item_name)
+				needs_explosion_rebuild = True
+
+				continue
+
 			update_data = {}
 				# ── Qty, Rate, Amount ────────────────────────────────────────────────────
 			orig_qty  = frappe.utils.flt(row.qty)
@@ -100,6 +110,19 @@ class BomModificationRequest(Document):
 			if row.rev_purchase_specification_rev_no:
 				update_data["custom_purchase_specification_rev_no"] = row.rev_purchase_specification_rev_no
 
+			# ── BOM No & Do Not Explode ───────────────────────────────────────────
+			# Mirrors ERPNext core: do_not_explode clears bom_no
+			if hasattr(row, "rev_do_not_explode") and row.rev_do_not_explode:
+				update_data["do_not_explode"] = 1
+				update_data["bom_no"] = ""        
+				needs_explosion_rebuild = True
+
+			elif hasattr(row, "rev_bom_no") and row.rev_bom_no:
+	
+				update_data["bom_no"]         = row.rev_bom_no
+				update_data["do_not_explode"] = 0
+				needs_explosion_rebuild = True
+
 			# ── Item replacement ─────────────────────────────────────────────────
 			if row.rev_item and row.rev_item != row.item:
 				item_name, description,stock_uom = frappe.db.get_value(
@@ -109,6 +132,7 @@ class BomModificationRequest(Document):
 				update_data["item_name"] = item_name
 				update_data["uom"] = stock_uom
 				update_data["description"] = description
+				needs_explosion_rebuild = True
 
 			# ── Resolve existing BOM item by original item_code ──────────────────
 			bom_item_name = frappe.db.get_value(
@@ -141,6 +165,7 @@ class BomModificationRequest(Document):
 					or row.rev_pattern_drawing_rev_no
 					or row.rev_purchase_specification_no
 					or row.rev_purchase_specification_rev_no
+					or (hasattr(row, "rev_bom_no") and row.rev_bom_no)
 				)
 
 				if not has_any_rev_data:
@@ -162,20 +187,35 @@ class BomModificationRequest(Document):
 
 				new_bom_item = frappe.get_doc(new_item_dict)
 				new_bom_item.db_insert()
+				needs_explosion_rebuild = True
 
-		# ── Delete BOM items not present in OMR ──────────────────────────────────
-		bom_items = frappe.db.get_all(
+	
+		# ── REINDEX ─────────────────────────────────────────────
+		bom_items = frappe.get_all(
 			"BOM Item",
 			filters={"parent": self.bom, "parenttype": "BOM"},
-			fields=["name", "item_code"],
+			fields=["name"],
+			order_by="idx asc"
 		)
 
-		for bom_row in bom_items:
-			if bom_row.item_code not in omr_items:
-				frappe.db.delete("BOM Item", bom_row.name)
+		for i, d in enumerate(bom_items, start=1):
+			frappe.db.set_value(
+				"BOM Item",
+				d.name,
+				"idx",
+				i,
+				update_modified=False
+			)
 
-		# ── Finalize ──────────────────────────────────────────────────────────────
+			# ── Finalize ──────────────────────────────────────────────────────────────
 		bom_doc = frappe.get_doc("BOM", self.bom)
+		bom_doc.reload()
+		# ── Rebuild explosion table only when needed ──────────────────────────────
+
+		if needs_explosion_rebuild:
+			bom_doc.flags.ignore_validate_update_after_submit = True
+			bom_doc.flags.ignore_permissions = True
+			bom_doc.update_exploded_items(save=True)
 		bom_doc.calculate_cost()
 		bom_doc.db_update()
 

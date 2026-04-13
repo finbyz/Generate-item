@@ -42,6 +42,8 @@ def get_conditions(filters):
 		"so.docstatus = 1",
 		"IFNULL(soi.delivered_qty, 0) < IFNULL(soi.qty, 0)"
 		]
+
+	conditions.append("(soi.line_status IS NULL OR soi.line_status = '')")
 	values = {}
 
 	if filters.get("sales_order"):

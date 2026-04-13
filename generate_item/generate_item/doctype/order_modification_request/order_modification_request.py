@@ -978,16 +978,23 @@ def update_finish_item_bom(custom_batch_no, new_item):
     if not bom_name:
         return None
 
+    
+
     bom_name = bom_name[0]["name"]
+    item_name, description = frappe.db.get_value(
+                    "Item", new_item, ["item_name", "description"]
+                )
 
     # Update finished item directly
     frappe.db.sql(
         """
         UPDATE `tabBOM`
-        SET item = %s
+        SET item = %s,
+            item_name = %s,
+            description = %s
         WHERE name = %s
     """,
-        (new_item, bom_name),
+        (new_item,item_name,description, bom_name),
     )
 
     frappe.db.commit()

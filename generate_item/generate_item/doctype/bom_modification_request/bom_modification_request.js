@@ -21,6 +21,34 @@ frappe.ui.form.on("Bom Modification Request", {
         });
 
     },
+    bom(frm) {
+        if (!frm.doc.bom) return;
+
+        // Call to fetch BOM details
+        frappe.call({
+            method: "frappe.client.get",
+            args: {
+                doctype: "BOM",
+                name: frm.doc.bom
+            },
+            callback: function(r) {
+                if (!r.message) return;
+
+                let bom = r.message;
+
+                //  Set FG Item (Finished Good)
+                frm.set_value("fg_item_code", bom.item);
+                // Set Item Name & Description
+                frm.set_value("fg_item_name", bom.item_name);
+                frm.set_value("item_description", bom.description);
+                frm.set_value("batch_no_ref", bom.custom_batch_no || "");
+
+               
+            }
+        });
+
+       
+    },
     get_item(frm) {
         
         if ( !frm.doc.bom ) {
@@ -94,6 +122,11 @@ function fetch_items_dynamic(frm) {
                     let row = frm.add_child("items");
                     row.bom_item_name = item.name ;
                     row.item = item.item_code;
+                    row.item_description = item.description;
+                    row.uom = item.uom;
+                    row.do_not_explode = item.do_not_explode;
+                    row.rev_do_not_explode = item.do_not_explode;
+                    row.bom_no = item.bom_no;
                     row.qty = item.qty;
                     row.rate = item.rate;
                     row.batch_no = item.custom_batch_no || null;
@@ -110,3 +143,69 @@ function fetch_items_dynamic(frm) {
         }
     });
 }
+
+
+
+frappe.ui.form.on('Order Modification Request Detail', {
+    rev_item: function (frm, cdt, cdn) {
+        let row = locals[cdt][cdn];
+
+        //  Clear old values FIRST (VERY IMPORTANT)
+        let fields_to_clear = [
+            "rev_rate",
+            "rev_drawing_no",
+            "rev_drawing_rev_no",
+            "rev_pattern_drawing_no",
+            "rev_pattern_drawing_rev_no",
+            "rev_purchase_specification_no",
+            "rev_purchase_specification_rev_no"
+        ];
+
+        fields_to_clear.forEach(field => {
+            frappe.model.set_value(cdt, cdn, field, "");
+        });
+
+        if (!row.rev_item) return;
+
+        // Fetch Item Price
+        frappe.db.get_value(
+            "Item Price",
+            {
+                item_code: row.rev_item,
+                price_list: frm.doc.selling_price_list
+            },
+            "price_list_rate"
+        ).then(r => {
+            if (r.message && r.message.price_list_rate) {
+                frappe.model.set_value(cdt, cdn, "rev_rate", r.message.price_list_rate);
+            }
+        });
+
+        //  Fetch Item Master Data
+        frappe.db.get_value(
+            "Item",
+            row.rev_item,
+            [
+                "custom_drawing_no",
+                "custom_drawing_rev_no",
+                "custom_pattern_drawing_no",
+                "custom_pattern_drawing_rev_no",
+                "custom_purchase_specification_no",
+                "custom_purchase_specification_rev_no"
+            ]
+        ).then(r => {
+            if (r.message) {
+                let d = r.message;
+
+                frappe.model.set_value(cdt, cdn, {
+                    "rev_drawing_no": d.custom_drawing_no || "",
+                    "rev_drawing_rev_no": d.custom_drawing_rev_no || "",
+                    "rev_pattern_drawing_no": d.custom_pattern_drawing_no || "",
+                    "rev_pattern_drawing_rev_no": d.custom_pattern_drawing_rev_no || "",
+                    "rev_purchase_specification_no": d.custom_purchase_specification_no || "",
+                    "rev_purchase_specification_rev_no": d.custom_purchase_specification_rev_no || ""
+                });
+            }
+        });
+    }
+});
