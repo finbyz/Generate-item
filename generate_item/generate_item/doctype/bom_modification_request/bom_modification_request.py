@@ -60,6 +60,7 @@ class BomModificationRequest(Document):
 		)
 		 # Track whether any bom_no change happened — to decide explosion rebuild
 		needs_explosion_rebuild = False
+		branch = self.branch
 
 		for row in self.items:
 
@@ -125,12 +126,19 @@ class BomModificationRequest(Document):
 
 			# ── Item replacement ─────────────────────────────────────────────────
 			if row.rev_item and row.rev_item != row.item:
-				item_name, description,stock_uom = frappe.db.get_value(
-					"Item", row.rev_item, ["item_name", "description","stock_uom"]
+				item_name, description,stock_uom,is_stock_item,allow_alternative_item,has_variants,include_item_in_manufacturing = frappe.db.get_value(
+					"Item", row.rev_item, ["item_name", "description","stock_uom","is_stock_item","allow_alternative_item","has_variants","include_item_in_manufacturing"]
 				)
 				update_data["item_code"] = row.rev_item
 				update_data["item_name"] = item_name
+				update_data["branch"] = branch
+				update_data["is_stock_item"] = is_stock_item
+				update_data["allow_alternative_item"] = allow_alternative_item
+				update_data["has_variants"] = has_variants
+				update_data["include_item_in_manufacturing"] = include_item_in_manufacturing
+
 				update_data["uom"] = stock_uom
+				update_data["stock_uom"] = stock_uom
 				update_data["description"] = description
 				needs_explosion_rebuild = True
 

@@ -1,0 +1,23 @@
+{
+ "content": null,
+ "creation": "2026-04-14 15:51:30.975237",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-04-14 15:51:30.975237",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "director-dashboard",
+ "owner": "Administrator",
+ "page_name": "director-dashboard",
+ "roles": [
+  {
+   "role": "System Manager"
+  }
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Director Dashboard"
+}
