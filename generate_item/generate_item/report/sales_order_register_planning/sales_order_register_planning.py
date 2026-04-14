@@ -37,6 +37,12 @@ def get_columns():
 			"width": 120
 		},
 		{
+			"label": _("Line Item Delivery Date"),
+			"fieldname": "line_item_delivery_date",
+			"fieldtype": "Date",
+			"width": 120
+		},
+		{
 			"label": _("Customer Name"),
 			"fieldname": "customer_name",
 			"fieldtype": "Data",
@@ -461,6 +467,7 @@ def get_data(filters):
 			"description as item_description",
 			"item_group",
 			"qty as order_qty",
+			"delivery_date as line_item_delivery_date",
 			# "delivered_qty",
 			"rate as unit_rate",
 			"base_amount as item_basic_amount_inr",
@@ -536,6 +543,7 @@ def get_data(filters):
 				so.branch or "",
 				so.order_date,
 				so.order_delivery_date,
+				item.line_item_delivery_date,
 				so.customer_name,
 				so.customer_po_number or "",
 				so.customer_po_date,
