@@ -822,18 +822,18 @@ frappe.ui.form.on('Sales Order', {
                     .then(() => {
                         try {
                             frappe.dom.unfreeze();
-                            const valid_items = (frm.doc.items || []).filter(r => (r.qty || 0) > 0);
-                            if (!valid_items.length) {
-                                frappe.msgprint({
-                                    title: __("No Items"),
-                                    message: __("This Sales Order has no items with a valid quantity."),
-                                    indicator: "red",
-                                });
-                                return;
-                            }
+                            // const valid_items = (frm.doc.items || []).filter(r => (r.qty || 0) > 0);
+                            // if (!valid_items.length) {
+                            //     frappe.msgprint({
+                            //         title: __("No Items"),
+                            //         message: __("This Sales Order has no items with a valid quantity."),
+                            //         indicator: "red",
+                            //     });             
+                            //     return;
+                            // }
 
-                            const total_qty = valid_items.reduce((s, r) => s + (r.qty || 0), 0);
-                            _call_generate(frm, total_qty);
+                            // const total_qty = valid_items.reduce((s, r) => s + (r.qty || 0), 0);
+                            // _call_generate(frm, total_qty);
                         } catch (e) { }
                     })
                     .catch(error => {
