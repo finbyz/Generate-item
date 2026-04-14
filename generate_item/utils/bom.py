@@ -453,53 +453,6 @@ def get_available_batches(current_bom=None):
     return available_batches
 
 
-# @frappe.whitelist()
-# def get_valid_batches(doctype, txt, searchfield, start, page_len, filters):
-#     item = filters.get("item")
-#     branch = filters.get("branch")
-#     bom_name = filters.get("bom_name")
-
-#     return frappe.db.sql("""
-#         SELECT
-#             b.name
-#         FROM
-#             `tabBatch` b
-#         INNER JOIN
-#             `tabSales Order` so
-#                 ON so.name = b.reference_name
-#         WHERE
-#             b.item = %(item)s                    -- 🔥 STRICT ITEM FILTER
-#             AND b.reference_doctype = 'Sales Order'
-#             AND so.branch = %(branch)s
-#             AND b.name NOT IN (
-#                 SELECT custom_batch_no
-#                 FROM `tabBOM`
-#                 WHERE
-#                     custom_batch_no IS NOT NULL
-#                     AND docstatus != 2
-#                     AND name != %(bom_name)s
-#             )
-#             AND NOT EXISTS (
-#                 SELECT 1
-#                 FROM `tabBOM`
-#                 WHERE
-#                     item = %(item)s
-#                     AND branch = %(branch)s
-#                     AND docstatus != 2
-#                     AND name != %(bom_name)s
-#             )
-#             AND b.name LIKE %(txt)s
-#         ORDER BY b.creation DESC
-#         LIMIT %(start)s, %(page_len)s
-#     """, {
-#         "item": item,
-#         "branch": branch,
-#         "bom_name": bom_name,
-#         "txt": f"%{txt}%",
-#         "start": start,
-#         "page_len": page_len
-#     })
-
 
 @frappe.whitelist()
 def get_valid_batches(doctype, txt, searchfield, start, page_len, filters):
@@ -515,10 +468,28 @@ def get_valid_batches(doctype, txt, searchfield, start, page_len, filters):
         INNER JOIN
             `tabSales Order` so
                 ON so.name = b.reference_name
+
+        LEFT JOIN
+            `tabSales Order Item` soi
+                ON soi.parent = so.name
+                AND soi.item_code = b.item
+                AND soi.custom_batch_no = b.name
+
+        
         WHERE
             b.item = %(item)s
             AND b.reference_doctype = 'Sales Order'
             AND so.branch = %(branch)s
+
+
+            -- ✅ Only allow batches where line_status is empty or NULL
+            AND (
+                soi.line_status IS NULL
+                OR soi.line_status = ''
+            )
+
+            
+
 
             -- 🚫 EXCLUDE batch already used in ANY BOM
             AND b.name NOT IN (

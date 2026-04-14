@@ -2,7 +2,15 @@
 // For license information, please see license.txt
 
 
-let PO_SERIES_OPTIONS = [];
+let PO_SERIES_OPTIONS = [
+    
+"OPRS.fiscal.####",
+"OPRR.fiscal.####",
+"OPRN.fiscal.####",
+"OPRS.YY.####",
+"OPRR.YY.####",
+"OPRN.YY.####"
+];
 let CACHED_BRANCH = null;
 let CACHED_SUPPLIER = null;
 frappe.query_reports["Requested Items To Be Received"] = {
@@ -151,16 +159,16 @@ frappe.query_reports["Requested Items To Be Received"] = {
             CACHED_BRANCH = frappe.query_report.get_filter_value("branch");
         });
     });
-        frappe.call({
-            method: "generate_item.generate_item.report.requested_items_to_be_received.requested_items_to_be_received.get_pr_naming_series",
-            callback: function (r) {
-                // console.log("series-------",r)
-                if (r.message) {
+        // frappe.call({
+        //     method: "generate_item.generate_item.report.requested_items_to_be_received.requested_items_to_be_received.get_pr_naming_series",
+        //     callback: function (r) {
+        //         // console.log("series-------",r)
+        //         if (r.message) {
 
-                    PO_SERIES_OPTIONS = r.message;
-                }
-            }
-        });
+        //             PO_SERIES_OPTIONS = r.message;
+        //         }
+        //     }
+        // });
         report.page.add_inner_button(
             __("Past Purchase Receipt History"),
             function () {

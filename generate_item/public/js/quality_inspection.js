@@ -64,6 +64,30 @@ frappe.ui.form.on("Quality Inspection", {
         run_generate(frm);
     },
     
+     branch: function(frm) {
+
+        if (!frm.doc.branch) return;
+
+        let series_map = {
+            "Sanand": "MQIS.fiscal.#####",
+            "Rabale": "MQIR.fiscal.#####",
+            "Nandikoor": "MQIN.fiscal.#####"
+        };
+
+        let selected_series = series_map[frm.doc.branch];
+
+         if (frm.is_new()) {
+           if (selected_series) {
+            frm.set_value("naming_series", selected_series);
+        }
+        }
+        frm.refresh_field("naming_series");
+    },
+
+    onload: function(frm) {
+        // Trigger on load also (for edit cases)
+        frm.trigger("branch");
+    },
     // 2. Set Branch based on the selected Batch's reference document
     batch_no_ref: function(frm) {
         if (frm.doc.batch_no_ref) {

@@ -1,7 +1,59 @@
 
 
-// let PO_SERIES_OPTIONS = [];
-let PO_ORDER_TYPE_OPTIONS = [];
+let PO_SERIES_OPTIONS = [
+"SD.fiscal.#####",
+"SI.fiscal.#####",
+"SC.fiscal.#####",
+"SJ.fiscal.#####",
+"SS.fiscal.#####",
+"SR.fiscal.#####",
+"SA.fiscal.#####",
+"SP.fiscal.#####",
+"RD.fiscal.#####",
+"RI.fiscal.#####",
+"RC.fiscal.#####",
+"RJ.fiscal.#####",
+"RS.fiscal.#####",
+"RR.fiscal.#####",
+"RA.fiscal.#####",
+"ND.fiscal.#####",
+"NI.fiscal.#####",
+"NC.fiscal.#####",
+"NJ.fiscal.#####",
+"NS.fiscal.#####",
+"NR.fiscal.#####",
+"NA.fiscal.#####",
+"SD.YY.#####",
+"SI.YY.#####",
+"SC.YY.#####",
+"SJ.YY.#####",
+"SS.YY.#####",
+"SR.YY.#####",
+"SA.YY.#####",
+"SP.YY.#####",
+"RD.YY.#####",
+"RI.YY.#####",
+"RC.YY.#####",
+"RJ.YY.#####",
+"RS.YY.#####",
+"RR.YY.#####",
+"RA.YY.#####",
+"ND.YY.#####",
+"NI.YY.#####",
+"NC.YY.#####",
+"NJ.YY.#####",
+"NS.YY.#####",
+"NR.YY.#####",
+"NA.YY.#####"
+];
+let PO_ORDER_TYPE_OPTIONS = [
+"Domestic Purchase",
+"Import Purchase",
+"Consumable Purchase",
+"Job Work Order",
+"Service Order",
+"Asset Purchase"
+];
 frappe.query_reports["Requested Items To Be Ordered"] = {
 
     get_datatable_options(options) {
@@ -93,26 +145,26 @@ frappe.query_reports["Requested Items To Be Ordered"] = {
     ],
     onload: function (report) {
 
-         frappe.call({
-        method: "generate_item.generate_item.report.requested_items_to_be_ordered.requested_items_to_be_ordered.get_po_naming_series",
-        callback: function (r) {
-            // console.log("series-------",r)
-            if (r.message) {
+    //      frappe.call({
+    //     method: "generate_item.generate_item.report.requested_items_to_be_ordered.requested_items_to_be_ordered.get_po_naming_series",
+    //     callback: function (r) {
+    //         // console.log("series-------",r)
+    //         if (r.message) {
                 
-                PO_SERIES_OPTIONS = r.message;
-            }
-        }
-    });
+    //             PO_SERIES_OPTIONS = r.message;
+    //         }
+    //     }
+    // });
 
       // Order Type
-    frappe.call({
-        method: "generate_item.generate_item.report.requested_items_to_be_ordered.requested_items_to_be_ordered.get_po_order_types",
-        callback: function (r) {
-            if (r.message) {
-                PO_ORDER_TYPE_OPTIONS = r.message;
-            }
-        }
-    });
+    // frappe.call({
+    //     method: "generate_item.generate_item.report.requested_items_to_be_ordered.requested_items_to_be_ordered.get_po_order_types",
+    //     callback: function (r) {
+    //         if (r.message) {
+    //             PO_ORDER_TYPE_OPTIONS = r.message;
+    //         }
+    //     }
+    // });
         report.page.add_inner_button(
             __("Past Purchase History"),
             function () {
