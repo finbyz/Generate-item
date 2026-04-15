@@ -102,8 +102,13 @@ def get_data(filters):
             ON ig.name = itm.rev_item
 
         WHERE omr.docstatus IN (0, 1)
-            AND itm.item      IS NOT NULL AND itm.item      != ''
-            AND itm.rev_item  IS NOT NULL AND itm.rev_item  != ''
+            # AND itm.item      IS NOT NULL AND itm.item      != ''
+            # AND itm.rev_item  IS NOT NULL AND itm.rev_item  != ''
+            AND (
+                (itm.item IS NOT NULL AND itm.item != '' AND itm.rev_item IS NOT NULL AND itm.rev_item != '')
+                OR
+                (itm.item IS NULL AND itm.rev_item IS NOT NULL AND itm.rev_item != '')
+            )
             {conditions}
 
         ORDER BY omr.creation DESC
@@ -115,6 +120,15 @@ def get_data(filters):
 
     data = []
     for r in raw_rows:
+        item = r.get("original_item")
+        rev_item = r.get("rev_item")
+
+        if item and rev_item:
+            r["change_type"] = _("Item Modified")
+
+        elif (not item) and rev_item:
+            r["change_type"] = _("New Item Added")
+            
         approval = approval_map.get(r.omr_no, {})
         final_qty    = flt(r.rev_qty) if flt(r.rev_qty) > 0 else flt(r.qty)
         final_remark = r.rev_line_remark if r.rev_line_remark else r.line_remark
@@ -129,7 +143,7 @@ def get_data(filters):
             "approved_by":      approval.get("approved_by"),
             "reason_for_change": r.reason_for_change,
             "batch_no":         r.batch_no,
-            "entry_type":       _("Item Modified"),   # always "Modified" since new additions are excluded
+            "entry_type":       r.change_type,
             "item_code":        r.rev_item,
             "item_name":        r.item_name,
             "item_description": r.item_description,

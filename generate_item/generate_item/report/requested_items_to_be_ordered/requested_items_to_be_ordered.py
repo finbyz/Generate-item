@@ -152,7 +152,7 @@ def get_data(filters):
 			ON mri.parent = mr.name
 
 		WHERE
-			mr.docstatus = 1  and mr.status !="Ordered"
+			mr.docstatus = 1  and mr.status NOT IN ("Ordered", "Stopped")
 			{where_clause}
 
 		ORDER BY

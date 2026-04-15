@@ -285,7 +285,13 @@ scheduler_events = {
 	# ],
     "daily_long": [
         "generate_item.generate_item.doctype.serial_number.serial_number.process_sales_orders_for_serial_creation"
-    ]
+    ],
+
+    "cron": {
+        "0 */4 * * *": [
+            "generate_item.utils.currency_exchange.sync_exchange_rates"
+        ]
+    }
 
     #  "cron": {
     #     "*/5 * * * *": [
