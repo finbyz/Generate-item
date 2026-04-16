@@ -878,6 +878,7 @@ frappe.ui.form.on('Sales Order', {
     customer: function (frm) {
         frm.set_query('shipping_address_name', function () {
             return {
+                query: "frappe.contacts.doctype.address.address.address_query",
                 filters: {
                     link_doctype: "Company",
                     link_name: frm.doc.company
