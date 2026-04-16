@@ -209,8 +209,8 @@
                     return {
                         query: "frappe.contacts.doctype.address.address.address_query",
                         filters: {
-                            party_type: "Company",
-                            party: frm.doc.company
+                            link_doctype: "Company",
+                            link_name: frm.doc.company
                         }
                     };
                 }
@@ -594,8 +594,8 @@ frappe.ui.form.on('Sales Order', {
             return {
                 query: "frappe.contacts.doctype.address.address.address_query",
                 filters: {
-                    party_type: "Company",
-                    party: frm.doc.company
+                    link_doctype: "Company",
+                    link_name: frm.doc.company
                 }
             };
         });
@@ -603,8 +603,8 @@ frappe.ui.form.on('Sales Order', {
             return {
                 query: "frappe.contacts.doctype.address.address.address_query",
                 filters: {
-                    party_type: "Company",
-                    party: frm.doc.company
+                    link_doctype: "Company",
+                    link_name: frm.doc.company
                 }
             };
         });
@@ -634,8 +634,8 @@ frappe.ui.form.on('Sales Order', {
             return {
                 query: "frappe.contacts.doctype.address.address.address_query",
                 filters: {
-                    party_type: "Company",
-                    party: frm.doc.company
+                    link_doctype: "Company",
+                    link_name: frm.doc.company
                 }
             };
         };
@@ -699,8 +699,8 @@ frappe.ui.form.on('Sales Order', {
         return {
             query: "frappe.contacts.doctype.address.address.address_query",
             filters: {
-                party_type: "Company",
-                party: frm.doc.company
+                link_doctype: "Company",
+                link_name: frm.doc.company
             }
         };
     },
@@ -880,8 +880,8 @@ frappe.ui.form.on('Sales Order', {
             return {
                 query: "frappe.contacts.doctype.address.address.address_query",
                 filters: {
-                    party_type: "Company",
-                    party: frm.doc.company
+                    link_doctype: "Company",
+                    link_name: frm.doc.company
                 }
             };
         });
