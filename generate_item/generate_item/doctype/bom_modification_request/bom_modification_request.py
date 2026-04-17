@@ -9,6 +9,8 @@ from frappe.desk.form.linked_with import (
     get_linked_docs,
 )
 
+from frappe.utils import today, now, flt
+
 
 
 
@@ -22,6 +24,7 @@ class BomModificationRequest(Document):
 	def on_submit(self):
 		if self.bom:
 			self.update_bom_items_using_db_set()
+			self.update_bom_item_revision()
 
 	def validate(self):
 		self.validate_qty_and_rev_qty()
@@ -42,6 +45,26 @@ class BomModificationRequest(Document):
 					f"Row {row.idx}: Rev Qty cannot be 0 when Qty is 0",
 					title="Invalid Quantity",
 				)
+
+	def update_bom_item_revision(self):
+		if not self.bom:
+			return
+
+		frappe.db.sql("""
+			UPDATE `tabBOM Item`
+			SET
+				rev_no = %s,
+				rev_date = %s,
+				modified = %s,
+				modified_by = %s
+			WHERE parent = %s
+		""", (
+			self.name,          # BMR reference
+			today(),
+			now(),
+			frappe.session.user,
+			self.bom           # BOM name
+		))
 				
 
 	def update_bom_items_using_db_set(self):

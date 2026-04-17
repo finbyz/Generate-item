@@ -13,6 +13,18 @@ frappe.pages['sales-performance-da'].on_page_load = function (wrapper) {
         document.head.appendChild(script);
     }
 
+     // Add dropdown
+    let selector = page.add_field({
+        label: 'Select View',
+        fieldtype: 'Select',
+        fieldname: 'view_type',
+        options: ['Purchase', 'Sales'],
+        default: 'Sales',
+        change: function () {
+            handle_dashboard_switch(selector.get_value());
+        }
+    });
+
     const from_date = page.add_field({
         label: 'From Date',
         fieldtype: 'Date',
@@ -629,3 +641,17 @@ frappe.pages['sales-performance-da'].on_page_load = function (wrapper) {
     // Initial load with small delay for Chart.js
     setTimeout(load_data, 200);
 };
+
+
+function handle_dashboard_switch(value) {
+
+    if (value === 'Sales') {
+        
+        frappe.set_route('sales-performance-da');
+    }
+
+    else if (value === 'Purchase') {
+        
+        frappe.set_route('director-dashboard');
+    }
+}

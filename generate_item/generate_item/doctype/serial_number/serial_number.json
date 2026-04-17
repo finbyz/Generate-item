@@ -10,11 +10,33 @@
   "batch",
   "mfg_type",
   "stock_entry",
+  "mds_status",
+  "mds_no",
+  "mds_rev",
+  "mds_date",
+  "itpqap",
+  "itpqap_rev",
+  "itpqap_receive_date",
+  "after_gad_change_bom_update_or_not",
+  "pattern_status",
+  "advance_action_casting",
+  "advance_action_trim",
+  "bom_released_in_which_gad_revision",
+  "other_remarks",
   "amended_from",
   "column_break_ngxq",
   "branch",
   "serial_number",
-  "api_monogram_req"
+  "api_monogram_req",
+  "gad_required",
+  "gad_status",
+  "gad_rev",
+  "gad_receive_date",
+  "after_gad_change_bom_change_required",
+  "design_remarks",
+  "engg_bom_created_by",
+  "release_date_expected",
+  "reason_for_delay"
  ],
  "fields": [
   {
@@ -76,13 +98,179 @@
    "label": "Stock Entry",
    "options": "Stock Entry",
    "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "mds_status",
+   "fieldtype": "Select",
+   "label": "MDS Status",
+   "options": "\nYES\nNO\nNA",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "mds_no",
+   "fieldtype": "Data",
+   "label": "MDS No.",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "mds_rev",
+   "fieldtype": "Select",
+   "label": "MDS Rev.",
+   "options": "\nNA\n00\n01\n02\n03\n04\n05\n06",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "mds_date",
+   "fieldtype": "Date",
+   "label": "MDS Date",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "gad_required",
+   "fieldtype": "Select",
+   "label": "GAD Required",
+   "options": "\nYES\nNO\nNA",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "gad_status",
+   "fieldtype": "Select",
+   "label": "GAD status",
+   "options": "\nSSV STD GAD\nNO\nNA\nApproved\nSubmitted\nInprocess",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "gad_rev",
+   "fieldtype": "Select",
+   "label": "GAD Rev.",
+   "options": "\n00\n01\n02\n03\n04\n05\n06\nNO",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "gad_receive_date",
+   "fieldtype": "Date",
+   "label": "GAD Receive Date",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "after_gad_change_bom_change_required",
+   "fieldtype": "Select",
+   "label": "AFTER GAD CHANGE BOM CHANGE REQUIRED",
+   "options": "\nYES\nNO",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "itpqap",
+   "fieldtype": "Select",
+   "label": "ITP/QAP",
+   "options": "\nYES\nNO",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "itpqap_rev",
+   "fieldtype": "Select",
+   "label": "ITP/QAP Rev.",
+   "options": "\n00\n01\n02\n03\n04\n05\n06",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "itpqap_receive_date",
+   "fieldtype": "Date",
+   "label": "ITP/QAP Receive Date",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "design_remarks",
+   "fieldtype": "Small Text",
+   "label": "Design Remarks",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "pattern_status",
+   "fieldtype": "Select",
+   "label": "Pattern Status",
+   "options": "\nAvailable\nNew Development",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "advance_action_casting",
+   "fieldtype": "Select",
+   "label": "Advance Action Casting",
+   "options": "\nYES\nNO",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "advance_action_trim",
+   "fieldtype": "Select",
+   "label": "Advance Action Trim",
+   "options": "\nYES\nNO",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "engg_bom_created_by",
+   "fieldtype": "Data",
+   "label": "Engg. BOM Created By.",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "release_date_expected",
+   "fieldtype": "Date",
+   "label": "Release Date (Expected)",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "bom_released_in_which_gad_revision",
+   "fieldtype": "Select",
+   "label": "Bom Released In Which GAD Revision",
+   "options": "\n00\n01\n02\n03\n04\n05\n06",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "other_remarks",
+   "fieldtype": "Small Text",
+   "label": "Other Remarks",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "reason_for_delay",
+   "fieldtype": "Small Text",
+   "label": "Reason For Delay",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "after_gad_change_bom_update_or_not",
+   "fieldtype": "Select",
+   "label": "AFTER GAD CHANGE BOM Update or NOT",
+   "options": "\n00\n01\n02\n03\n04\n05\n06\n07\n01-UPDATED\n02-UPDATED\n03-UPDATED\n04-UPDATED\n05-UPDATED\n06-UPDATED"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-03-30 13:32:49.958643",
+ "modified": "2026-04-17 14:06:37.026713",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Serial Number",

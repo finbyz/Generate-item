@@ -8,12 +8,28 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper)
         single_column: true
     });
 
+    
+
     // ── Chart.js CDN ─────────────────────────────────────────────────
     if (!window.Chart) {
         const script = document.createElement('script');
         script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
         document.head.appendChild(script);
     }
+
+     // Add dropdown
+    let selector = page.add_field({
+        label: 'Select View',
+        fieldtype: 'Select',
+        fieldname: 'view_type',
+        options: ['Purchase', 'Sales'],
+        default: 'Purchase',
+        change: function () {
+            handle_dashboard_switch(selector.get_value());
+        }
+    });
+
+    
 
     // ── Filters ──────────────────────────────────────────────────────
     const from_date = page.add_field({
@@ -376,3 +392,15 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper)
     // ── Boot ──────────────────────────────────────────────────────────
     setTimeout(load_data, 200);
 };
+
+
+function handle_dashboard_switch(value) {
+
+    if (value === 'Sales') {
+        frappe.set_route('sales-performance-da');
+    }
+
+    else if (value === 'Purchase') {
+        frappe.set_route('director-dashboard');
+    }
+}

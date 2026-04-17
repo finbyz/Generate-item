@@ -457,6 +457,8 @@ def get_data(filters):
 			so_conditions_for_items["item_code"] = filters.item_code
 		if filters.get("batch_no"):
 			so_conditions_for_items["custom_batch_no"] = filters.batch_no
+
+		so_conditions_for_items["line_status"] = ["not in", ["Cancelled", "Delivered"]]
 		item_fields = [
 			"name",
 			"idx as item_idx",
@@ -537,6 +539,9 @@ def get_data(filters):
 			delivered_qty = get_delivered_qty_from_delivery_note(item.name)
 
 			invoiced_qty = get_invoiced_qty_from_sales_invoice(item.name)
+			
+
+				
 
 			row = [
 				so.sales_order,

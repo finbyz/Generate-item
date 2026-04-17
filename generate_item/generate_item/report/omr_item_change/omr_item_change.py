@@ -23,6 +23,7 @@ def get_columns():
         {"label": _("Reason for Change"), "fieldname": "reason_for_change", "fieldtype": "Small Text", "width": 150},
         {"label": _("Batch No Ref"), "fieldname": "batch_no", "fieldtype": "Data", "width": 120},
         {"label": _("Entry Type"), "fieldname": "entry_type", "fieldtype": "Data", "width": 130},
+          {"label": _("OMR Line No"), "fieldname": "omr_line_no", "fieldtype": "Data", "width": 150},
         {"label": _("Item Code"), "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 150},
         {"label": _("Item Name"), "fieldname": "item_name", "fieldtype": "Data", "width": 150},
         {"label": _("Item Description"), "fieldname": "item_description", "fieldtype": "Text", "width": 200},
@@ -73,6 +74,7 @@ def get_data(filters):
             omr.reason_for_change AS reason_for_change,
 
             itm.batch_no       AS batch_no,
+            itm.idx           AS omr_line_no,
             itm.item           AS original_item,
             itm.rev_item       AS rev_item,
             itm.qty            AS qty,
@@ -144,6 +146,7 @@ def get_data(filters):
             "reason_for_change": r.reason_for_change,
             "batch_no":         r.batch_no,
             "entry_type":       r.change_type,
+            "omr_line_no":      r.omr_line_no,
             "item_code":        r.rev_item,
             "item_name":        r.item_name,
             "item_description": r.item_description,
