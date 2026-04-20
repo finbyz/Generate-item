@@ -23,7 +23,123 @@ def execute(filters=None):
     filters  = frappe._dict(filters or {})
     columns  = get_columns()
     data     = get_data(filters)
-    return columns, data
+    dashboard = _build_bom_dashboard(data)
+    message   = _render_dashboard_html(dashboard)
+
+    return columns, data,message
+
+def _render_dashboard_html(dashboard):
+
+    def th(val):
+        return f'<th style="text-align:center;padding:6px 14px;border:1px solid #d1d5db;background:#dbeafe;color:#1e3a5f;font-weight:500;">{val}</th>'
+
+    def td(val, total=False):
+        bg = "background:#eff6ff;color:#1e3a5f;font-weight:500;" if total else ""
+        return f'<td style="text-align:right;padding:6px 14px;border:1px solid #d1d5db;{bg}">{val}</td>'
+
+    def td_label(val, total=False):
+        bg = "background:#eff6ff;color:#1e3a5f;font-weight:500;" if total else ""
+        return f'<td style="text-align:left;padding:6px 14px;border:1px solid #d1d5db;{bg}">{val}</td>'
+
+    def build_table(title, buckets, grand_total):
+        # Hide columns with 0 count — mirrors Excel pivot
+        active_cols = [w for w, c in buckets.items() if c > 0]
+
+        header_row = th("BOM Status") + "".join(th(w) for w in active_cols) + th("Grand Total")
+        data_row   = (td_label("BOM Pending")
+                      + "".join(td(buckets[w]) for w in active_cols)
+                      + td(f"<strong>{grand_total}</strong>"))
+        total_row  = (td_label("Grand Total", total=True)
+                      + "".join(td(buckets[w], total=True) for w in active_cols)
+                      + td(f"<strong>{grand_total}</strong>", total=True))
+
+        return f"""
+        <div style="margin-bottom:24px;">
+          <div style="font-size:12px;color:#6b7280;margin-bottom:6px;font-weight:500;">{title}</div>
+          <table style="border-collapse:collapse;font-size:13px;">
+            <thead><tr>{header_row}</tr></thead>
+            <tbody>
+              <tr>{data_row}</tr>
+              <tr>{total_row}</tr>
+            </tbody>
+          </table>
+        </div>
+        """
+
+    so_data  = dashboard["so_based"]
+    exp_data = dashboard["exp_based"]
+
+    table1 = build_table(
+        "BOM Delay — based on SO Approved Date &nbsp;·&nbsp; BOM Pending only",
+        so_data["buckets"],
+        so_data["grand_total"]
+    )
+    table2 = build_table(
+        "BOM Delay — based on Expected Release Date &nbsp;·&nbsp; BOM Pending only",
+        exp_data["buckets"],
+        exp_data["grand_total"]
+    )
+
+    return f"""
+    <div style="margin-bottom:18px;">
+      <div style="display:flex;justify-content:center;gap:40px;flex-wrap:wrap;">
+        {table1}
+        {table2}
+      </div>
+    </div>
+    """
+
+def _build_bom_dashboard(rows):
+    EXCLUDED_LINE_STATUSES = {"Cancelled", "Hold"}
+    WEEK_BUCKETS = ["W 1", "W 2", "W 3", "W 4", "W 4+"]
+
+    # Table 1 — directly from bom_delay_weeks
+    so_counts = {bucket: 0 for bucket in WEEK_BUCKETS}
+
+    # Table 2 — directly from expected_based_delay_week
+    exp_counts = {"(No Exp. Date)": 0}
+    exp_counts.update({bucket: 0 for bucket in WEEK_BUCKETS})
+
+    for r in rows:
+        line_status = r.get("so_line_status", "")
+        bom_status  = r.get("bom_status", "")
+
+        # ── Common filters ──
+        if line_status in EXCLUDED_LINE_STATUSES:
+            continue
+        if bom_status != "BOM Pending":
+            continue
+
+        # ── Table 1 : directly read bom_delay_weeks ──
+        so_week = r.get("bom_delay_weeks") or ""
+        if so_week in so_counts:
+            so_counts[so_week] += 1
+
+        # ── Table 2 : directly read expected_based_delay_week ──
+        # If release_date_expected is empty → (No Exp. Date)
+        # If present → read expected_based_delay_week computed in _post_process
+        release_date = r.get("release_date_expected")
+
+        if not release_date:
+            exp_counts["(No Exp. Date)"] += 1
+        else:
+            exp_week = r.get("expected_based_delay_week") or ""
+            if exp_week in exp_counts:
+                exp_counts[exp_week] += 1
+            else:
+                # Negative / empty / NA → unlabeled
+                exp_counts["(No Exp. Date)"] += 1
+
+    return {
+        "so_based":  {
+            "buckets":     so_counts,
+            "grand_total": sum(so_counts.values())
+        },
+        "exp_based": {
+            "buckets":     exp_counts,
+            "grand_total": sum(exp_counts.values())
+        },
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -324,6 +440,7 @@ def _fetch_rows(filters):
 # ---------------------------------------------------------------------------
 
 _BOM_DONE = {"Active", "Submitted"}
+
 def _post_process(rows):
     today = getdate(get_today())
 
@@ -361,12 +478,13 @@ def _post_process(rows):
         # ── 2 : BOM Delay Days & Weeks (Based on SO Approval) ──
         so_approved  = r.get("so_approved_date")
         bom_released = r.get("bom_released_date")
+        is_released  = bool(bom_released)
 
-        if not bom_released:
+        if not is_released:
             if so_approved:
                 delay_days = date_diff(today, getdate(so_approved))
                 r["bom_delay_days"] = delay_days
-                r["bom_delay_weeks"] = f"{delay_days // 7}W {delay_days % 7}D" if delay_days >= 0 else ""
+                r["bom_delay_weeks"] = _get_week_bucket(delay_days, is_released=False)
             else:
                 r["bom_delay_days"] = ""
                 r["bom_delay_weeks"] = ""
@@ -382,13 +500,40 @@ def _post_process(rows):
         else:
             exp_date = r.get("release_date_expected")
             if exp_date:
-                delay_days = date_diff(today, getdate(exp_date))
+                delay_days = date_diff(getdate(exp_date),today)
                 r["expected_based_delay_days"] = delay_days
-                r["expected_based_delay_week"] = f"{delay_days // 7}W {delay_days % 7}D" if delay_days >= 0 else ""
-
+                r["expected_based_delay_week"] = _get_week_bucket(delay_days, is_released=False)
                 
 
     return rows
+
+
+def _get_week_bucket(delay_days, is_released):
+    """Convert delay days to week bucket label matching Excel logic:
+    Released -> "NA"
+    >27      -> "W 4+"
+    >20      -> "W 4"
+    >14      -> "W 3"
+    >6       -> "W 2"
+    >=0      -> "W 1"
+    <0       -> ""
+    """
+    if is_released:
+        return "NA"
+    if not isinstance(delay_days, (int, float)):
+        return ""
+    if delay_days > 27:
+        return "W 4+"
+    elif delay_days > 20:
+        return "W 4"
+    elif delay_days > 14:
+        return "W 3"
+    elif delay_days > 6:
+        return "W 2"
+    elif delay_days >= 0:
+        return "W 1"
+    else:
+        return ""
 # ---------------------------------------------------------------------------
 # FILTER CONDITIONS
 # ---------------------------------------------------------------------------

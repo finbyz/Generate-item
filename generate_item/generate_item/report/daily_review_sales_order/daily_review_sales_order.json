@@ -11,7 +11,7 @@
  "is_standard": "Yes",
  "letter_head": "Steel Strong",
  "letterhead": null,
- "modified": "2026-04-16 13:26:30.861560",
+ "modified": "2026-04-20 14:30:15.590685",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Daily Review Sales Order",
@@ -23,6 +23,9 @@
  "roles": [
   {
    "role": "System Manager"
+  },
+  {
+   "role": "Dashboard Manager"
   }
  ],
  "timeout": 0
