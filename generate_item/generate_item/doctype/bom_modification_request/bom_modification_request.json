@@ -132,7 +132,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-04-10 12:02:42.664970",
+ "modified": "2026-04-20 10:55:15.464330",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Bom Modification Request",
@@ -141,7 +141,6 @@
  "permissions": [
   {
    "create": 1,
-   "delete": 1,
    "email": 1,
    "export": 1,
    "print": 1,
@@ -156,5 +155,6 @@
  "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "track_changes": 1
 }

@@ -81,9 +81,9 @@ class CustomBOM(OriginalBOM):
             for d in bom.items:
                 if d.item_code and d.item_code.lower() == item_code.lower():
                     rm_item_exists = True
-            # for d in bom.scrap_items:
-            #     if d.item_code and d.item_code.lower() == item_code.lower():
-            #         rm_item_exists = True
+            for d in bom.scrap_items:
+                if d.item_code and d.item_code.lower() == item_code.lower():
+                    rm_item_exists = True
 
             parent_item = bom.item.lower() if bom.item else ""
             item_lower = item_code.lower()

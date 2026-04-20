@@ -239,7 +239,7 @@
    "fieldname": "modification_type",
    "fieldtype": "Select",
    "label": "Modification Type",
-   "options": "\nOrder Change\nOrder Item Change"
+   "options": "Order Item Change\nOrder Change"
   },
   {
    "depends_on": "eval:doc.modification_type == \"Order Change\"",
@@ -735,7 +735,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-03-27 12:35:18.225131",
+ "modified": "2026-04-20 12:36:08.665163",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request",
@@ -744,7 +744,6 @@
  "permissions": [
   {
    "create": 1,
-   "delete": 1,
    "email": 1,
    "export": 1,
    "print": 1,
@@ -759,5 +758,6 @@
  "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "track_changes": 1
 }
