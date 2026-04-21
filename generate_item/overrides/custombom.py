@@ -81,9 +81,9 @@ class CustomBOM(OriginalBOM):
             for d in bom.items:
                 if d.item_code and d.item_code.lower() == item_code.lower():
                     rm_item_exists = True
-            # for d in bom.scrap_items:
-            #     if d.item_code and d.item_code.lower() == item_code.lower():
-            #         rm_item_exists = True
+            for d in bom.scrap_items:
+                if d.item_code and d.item_code.lower() == item_code.lower():
+                    rm_item_exists = True
 
             parent_item = bom.item.lower() if bom.item else ""
             item_lower = item_code.lower()
@@ -96,7 +96,7 @@ class CustomBOM(OriginalBOM):
             if not rm_item_exists:
                 frappe.throw(f"BOM {bom_no} does not belong to Item {item_code}")
 
-    def get_child_exploded_items(self, bom_no, stock_qty,operation):
+    def get_child_exploded_items(self, bom_no, stock_qty):
         """Add all items from Flat BOM of child BOM.
 
         Relaxed to include child BOMs in Draft (docstatus in 0,1) so parent `exploded_items`
