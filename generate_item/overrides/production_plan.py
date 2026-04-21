@@ -362,7 +362,7 @@ class ProductionPlan(_ProductionPlan):
             frappe.throw("Work Order already exists")
         wo_list, po_list = [], []
         subcontracted_po = {}
-        default_warehouses = get_default_warehouse()  
+        default_warehouses = get_default_warehouse(self.company)  
 
         # Run cleanup before creating work orders
         if hasattr(self, 'po_items') and self.po_items:

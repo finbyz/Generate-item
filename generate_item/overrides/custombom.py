@@ -96,7 +96,7 @@ class CustomBOM(OriginalBOM):
             if not rm_item_exists:
                 frappe.throw(f"BOM {bom_no} does not belong to Item {item_code}")
 
-    def get_child_exploded_items(self, bom_no, stock_qty):
+    def get_child_exploded_items(self, bom_no, stock_qty,operation):
         """Add all items from Flat BOM of child BOM.
 
         Relaxed to include child BOMs in Draft (docstatus in 0,1) so parent `exploded_items`
