@@ -65,6 +65,87 @@ class BomModificationRequest(Document):
 			frappe.session.user,
 			self.bom           # BOM name
 		))
+
+	# Sync batch_no_ref & so_ref to rev_bom_no ────────────────────
+	def _sync_batch_so_to_rev_bom(self, row):
+		"""
+		
+		Two cases:
+		  1. Row has NO existing bom_no  → source is the root BOM (self.bom)
+		     • Fetch batch_no_ref & so_ref from root BOM
+		     • Write them into rev_bom_no BOM  (root BOM is NOT cleared)
+ 
+		  2. Row HAS an existing bom_no  → source is that child bom_no
+		     • Fetch batch_no_ref & so_ref from the existing  BOM
+		     • Clear those fields on the existing  BOM
+		     • Write them into rev_bom_no BOM
+ 
+		Does nothing if rev_bom_no is blank or matches the source BOM.
+		"""
+		rev_bom_no = row.get("rev_bom_no") if hasattr(row, "get") else getattr(row, "rev_bom_no", None)
+		if not rev_bom_no:
+			return
+ 
+		# ── Check actual bom_no stored in tabBOM Item (DB truth, not form data) ─
+		bom_no = row.get("bom_no") if hasattr(row, "get") else getattr(row, "bom_no", None)			
+ 
+		# ── Determine source BOM ────────────────────────────────────────────────
+		if bom_no:
+			# Case 2: existing BOM Item has a bom_no in DB → source is that child BOM
+			source_bom = bom_no
+		else:
+			# Case 1: bom_no is blank in DB → source is the root BOM
+			source_bom = self.bom
+ 
+		# Avoid self-referential no-op
+		if source_bom == rev_bom_no:
+			return
+ 
+		# ── Fetch batch & SO from source BOM ────────────────────────────────────
+		source_values = frappe.db.get_value(
+			"BOM",
+			source_bom,
+			["custom_batch_no", "sales_order"],  
+			as_dict=True,
+		)
+ 
+		if not source_values:
+			frappe.log_error(
+				f"BOM Modification Request {self.name}: source BOM '{source_bom}' not found "
+				f"while syncing batch/SO to '{rev_bom_no}'.",
+				"BMR: Source BOM Missing",
+			)
+			return
+ 
+		batch_no_ref = source_values.get("custom_batch_no") or ""
+		so_ref       = source_values.get("sales_order") or ""
+ 
+		# ── Case 2 only: clear source child BOM ─────────────────────────────────
+		if bom_no:
+			frappe.db.set_value(
+				"BOM",
+				bom_no,
+				{
+					"custom_batch_no": "",
+					"sales_order": "",
+				},
+				update_modified=False,
+			)
+			
+ 
+		# ── Write batch & SO to rev_bom_no BOM ──────────────────────────────────
+		frappe.db.set_value(
+			"BOM",
+			rev_bom_no,
+			{
+				"custom_batch_no": batch_no_ref,
+				"sales_order": so_ref,
+			},
+			update_modified=False,
+		)
+		
+ 
+	# ── END HELPER ───────────────────────────────────────────────────────────────
 				
 
 	def update_bom_items_using_db_set(self):
@@ -147,6 +228,9 @@ class BomModificationRequest(Document):
 				update_data["do_not_explode"] = 0
 				needs_explosion_rebuild = True
 
+				# Sync batch_no_ref & so_ref to the revised sub-BOM 
+				self._sync_batch_so_to_rev_bom(row)
+
 			# ── Item replacement ─────────────────────────────────────────────────
 			if row.rev_item and row.rev_item != row.item:
 				item_name, description,stock_uom,is_stock_item,allow_alternative_item,has_variants,include_item_in_manufacturing = frappe.db.get_value(
@@ -176,7 +260,7 @@ class BomModificationRequest(Document):
 				# Existing item — update only if there is something to update
 				if update_data:
 					frappe.db.set_value(
-						"BOM Item", bom_item_name, update_data, update_modified=True
+						"BOM Item", bom_item_name, update_data, update_modified=False
 					)
 
 			else:

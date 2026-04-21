@@ -296,6 +296,8 @@ class OrderModificationRequest(Document):
             rev_rate = frappe.utils.flt(rev_rate)
 
             #  2. Allow: Cancelled + 0 rate
+            if rev_status == "Reset":
+                continue
             if rev_status == "Cancelled" and rev_rate == 0:
                 continue
 
@@ -385,6 +387,12 @@ class OrderModificationRequest(Document):
         # Fields where False/0 is a valid value to write (don't skip with falsy check)
         ALLOW_FALSY_FIELDS = {"rev_is_free_item"}
 
+        # Fields that should clear on SO if rev is blank but SO currently has a value
+        # Maps: rev_field → actual SO Item DB field name
+        CLEARABLE_FIELDS = {
+            "rev_line_status": "line_status",
+        }
+
         so = frappe.get_doc("Sales Order", self.sales_order)
 
         # ── Step 1: Build trans_items for qty / rate update ──────────────────────
@@ -450,6 +458,17 @@ class OrderModificationRequest(Document):
 
                 if rev_value is sentinel:
                     continue  
+
+                 # ── Clearable field logic ────────────────────────────────────────
+                original_field = CLEARABLE_FIELDS.get(rev_field)
+                if original_field:
+                    if rev_value == "Reset":
+                        update_fields[so_field] = ""   # clear SO line_status
+                    elif rev_value is not None and rev_value != "":
+                        update_fields[so_field] = rev_value  # write new value
+                    # blank → skip
+                    continue
+
 
                 if rev_field in ALLOW_FALSY_FIELDS:
                     # Always write — False/0 is a valid intended value
