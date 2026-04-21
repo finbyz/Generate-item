@@ -148,6 +148,57 @@ class BomModificationRequest(Document):
 	# ── END HELPER ───────────────────────────────────────────────────────────────
 				
 
+	# HELPER: Identify if a child row is a sub-assembly
+	# ────────────────────────────────────────────────────────────────────────────
+	def _get_sub_assembly_bom(self, row):
+		"""
+		Returns the sub-assembly BOM name if this child row is linked to one,
+		otherwise returns None.
+ 
+		Identification logic (DB-based, not form data):
+		  - Read bom_no from tabBOM Item using bom_item_name (DB truth)
+		  - If bom_no is present → this row IS a sub-assembly
+		  - If bom_no is blank   → this row is a regular component
+ 
+		Using DB lookup (not row.bom_no) because form data can be stale.
+		"""
+		bom_item_name = getattr(row, "bom_item_name", None)
+		if not bom_item_name:
+			return None
+ 
+		bom_no = frappe.db.get_value("BOM Item", bom_item_name, "bom_no") or None
+		return bom_no 
+
+	# ────────────────────────────────────────────────────────────────────────────
+	#  Clear batch & SO from a sub-assembly BOM when it is deleted
+	# ────────────────────────────────────────────────────────────────────────────
+	def _clear_batch_so_on_sub_assembly_delete(self, row):
+		"""
+		Called only when is_delete=1 on a child row.
+ 
+		If the deleted row is a sub-assembly (has a bom_no in DB),
+		clears custom_batch_no and sales_order from that sub-assembly BOM.
+ 
+		Does nothing for regular component rows (no bom_no).
+		Does NOT touch any other logic — purely additive.
+		"""
+		sub_assembly_bom = self._get_sub_assembly_bom(row)
+ 
+		if not sub_assembly_bom:
+			
+			return
+ 
+		frappe.db.set_value(
+			"BOM",
+			sub_assembly_bom,
+			{
+				"custom_batch_no": "",
+				"sales_order":     "",
+			},
+			update_modified=False,
+		)
+		
+
 	def update_bom_items_using_db_set(self):
 		if not self.bom:
 			return
@@ -170,6 +221,7 @@ class BomModificationRequest(Document):
 
 			# ── DELETE LOGIC ─────────────────────────────────────────────
 			if row.is_delete and row.bom_item_name:
+				self._clear_batch_so_on_sub_assembly_delete(row)
 				frappe.db.delete("BOM Item", row.bom_item_name)
 				needs_explosion_rebuild = True
 
