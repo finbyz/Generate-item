@@ -29,7 +29,7 @@ def before_insert(doc, method=None):
                     limit=1,
                 )
                 if soi:
-                    batch_no = soi[0].get('custom_batch_no')
+                    batch_no = soi[0].get('custom_batch_no') 
                     branch = soi[0].get('branch')
                     sales_order = soi[0].get('parent')
                     logger.info(f"Batch from exact Sales Order Item {sales_order_item_name}: {batch_no}")

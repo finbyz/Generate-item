@@ -90,7 +90,7 @@ class CustomBOM(OriginalBOM):
             variant_of = frappe.db.get_value("Item", item_code, "variant_of")
             variant_lower = (variant_of or "").lower()
 
-            if parent_item == item_lower or parent_item == variant_lower:
+            if parent_item == item_lower or parent_item == variant_lower: 
                 rm_item_exists = True
 
             if not rm_item_exists:
