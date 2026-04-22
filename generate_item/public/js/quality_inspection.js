@@ -1,26 +1,3 @@
-// frappe.ui.form.on("Quality Inspection", {
-//     reference_name: function(frm) {
-//         if (frm.doc.reference_name && frm.doc.reference_type) {
-//             frappe.call({
-//                 method: "generate_item.utils.quality_inspection.get_reference_name",
-//                 args: {
-//                     reference_name: frm.doc.reference_name,
-//                     reference_type: frm.doc.reference_type
-//                 },
-//                 callback: function(r) {
-//                     if (r.message) {
-//                         frm.set_value("branch", r.message);
-//                     }
-//                 },
-               
-//             });
-//         }
-//         else {
-//             frm.set_value("branch", "");
-//         }
-//     },
-
-// });
 
 frappe.ui.form.on("Quality Inspection", {
     // Existing logic to set 'branch' from the Quality Inspection's reference document
@@ -174,115 +151,113 @@ frappe.ui.form.on("Quality Inspection", {
 });
 
 
-function run_generate(frm)
- {
-    // ── Client-side validation ──────────────────────────────────────────
-    const { series_value, start_value, end_value, received_qty, rejected_qty, uom, stock_uom, received_qty_in_stock_uom, rejected_qty_in_stock_uom } = frm.doc;
+
+function run_generate(frm) {
+    const {
+        series_value, start_value, end_value,
+        received_qty, rejected_qty,
+        uom, stock_uom,
+        received_qty_in_stock_uom, rejected_qty_in_stock_uom,
+    } = frm.doc;
 
     if (!series_value) {
-        frappe.msgprint({
-            title: __("Validation Error"),
-            message: __("Series Value is required."),
-            indicator: "red",
-        });
+        frappe.msgprint({ title: __("Validation Error"), message: __("Series Value is required."), indicator: "red" });
         return;
     }
-
     if (!start_value || !end_value) {
-        frappe.msgprint({
-            title: __("Validation Error"),
-            message: __("Start Value and End Value are required."),
-            indicator: "red",
-        });
+        frappe.msgprint({ title: __("Validation Error"), message: __("Start Value and End Value are required."), indicator: "red" });
         return;
     }
-
     if (cint(end_value) < cint(start_value)) {
-        frappe.msgprint({
-            title: __("Validation Error"),
-            message: __("End Value must be greater than or equal to Start Value."),
-            indicator: "red",
-        });
+        frappe.msgprint({ title: __("Validation Error"), message: __("End Value must be greater than or equal to Start Value."), indicator: "red" });
         return;
     }
 
-    const uom_is_same = (
-        uom && stock_uom
-            ? uom === stock_uom
-            : true
-    );
-    
-
-    let actual_received_qty, actual_rejected_qty;  
-
-    if (uom_is_same) {
-        actual_received_qty = flt(received_qty);
-        actual_rejected_qty = flt(rejected_qty);
-    } else {
-        actual_received_qty = flt(received_qty_in_stock_uom);
-        actual_rejected_qty = flt(rejected_qty_in_stock_uom);
-    }
-
-    const total_qty = actual_received_qty - actual_rejected_qty;
-
-   
-    let row_count   = (cint(end_value) - cint(start_value)) + 1;  // inclusive
-    
-    
-  
-    row_count   = Math.min(row_count, Math.floor(total_qty))
-      
-    
+    const uom_is_same = (uom && stock_uom) ? uom === stock_uom : true;
+    const actual_received = flt(uom_is_same ? received_qty : received_qty_in_stock_uom);
+    const actual_rejected = flt(uom_is_same ? rejected_qty : rejected_qty_in_stock_uom);
+    const total_qty = actual_received - actual_rejected;
 
     if (total_qty <= 0) {
-        frappe.msgprint({
-            title: __("Validation Error"),
-            message: __("Total quantity (received − rejected) must be greater than 0."),
-            indicator: "red",
-        });
+        frappe.msgprint({ title: __("Validation Error"), message: __("Total quantity (received − rejected) must be greater than 0."), indicator: "red" });
         return;
     }
 
-    
-            
-            frappe.call(
-                {
-                method: "generate_item.utils.heat_no_generator.generate_heat_numbers",
-                args: {
-                    docname: frm.doc.name,
-                },
-                freeze: true,
-                freeze_message: __("Generating heat numbers, please wait…"),
-                callback(r) {
-                    if (r.message && !r.exc) {
-                        frm.reload_doc();
-                            if (r.message.qty_less_than_range) {
-                            // ── Warn: range was capped to qty ──────────────────
-                            frappe.msgprint({
-                                title: __("Heat Numbers Generated with Warning"),
-                                message: __(r.message.message),
-                                indicator: "orange",
-                            });
-                        } 
-                        else{
-
-                            frappe.show_alert({
-                                message: __(r.message.message),
-                                indicator: "green",
-                            });
-                        }
+    // ── Auto-save if doc is new/unsaved, then call the server ───────────
+    const do_call = () => {
+        frappe.call({
+            method: "generate_item.utils.heat_no_generator.generate_heat_numbers",
+            args: {
+                docname:                    frm.doc.name,
+                series_value:               series_value,
+                start_value:                start_value,
+                end_value:                  end_value,
+                uom:                        uom || "",
+                stock_uom:                  stock_uom || "",
+                received_qty:               received_qty || 0,
+                rejected_qty:               rejected_qty || 0,
+                received_qty_in_stock_uom:  received_qty_in_stock_uom || 0,
+                rejected_qty_in_stock_uom:  rejected_qty_in_stock_uom || 0,
+            },
+            freeze: true,
+            freeze_message: __("Generating heat numbers, please wait…"),
+            callback(r) {
+                if (r.message && !r.exc) {
+                    frm.reload_doc();
+                    if (r.message.qty_less_than_range) {
+                        frappe.msgprint({ title: __("Heat Numbers Generated with Warning"), message: __(r.message.message), indicator: "orange" });
+                    } else {
+                        frappe.show_alert({ message: __(r.message.message), indicator: "green" });
                     }
-                },
-                error(r) {
-                    frappe.msgprint({
-                        title: __("Error"),
-                        message: r.message || __("Something went wrong."),
-                        indicator: "red",
-                    });
-                },
-            });
-        
-        
+                }
+            },
+            error(r) {
+                frappe.msgprint({ title: __("Error"), message: r.message || __("Something went wrong."), indicator: "red" });
+            },
+        });
+    };
+
+
+    if (frm.doc.__islocal || frm.is_dirty()) {
+        frm.save("Save", () => do_call(), null, () => {
+            frappe.msgprint({ title: __("Save Failed"), message: __("Could not save the document. Please fix any errors and try again."), indicator: "red" });
+        });
+    } else {
+        do_call();
+    }
+}
+
+
+
+
+
+
+
+frappe.ui.form.on("Quality Inspection Heat No", {
+
     
 
-}
+    open_url(frm, cdt, cdn) {
+        const row = locals[cdt][cdn];
+
+        if (!row.url) {
+            frappe.show_alert({
+                message: "Please enter URL first",
+                indicator: "orange"
+            });
+            return;
+        }
+
+        let url = row.url.trim();
+
+        if (!/^https?:\/\//i.test(url)) {
+            url = "https://" + url;
+        }
+
+        window.open(url, "_blank");
+    }
+
+
+
+});
+

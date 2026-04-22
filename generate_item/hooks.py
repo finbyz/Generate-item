@@ -243,7 +243,8 @@ doc_events = {
     },
     "Quality Inspection": {
         "on_submit":"generate_item.utils.quality_inspection.on_submit",
-        "before_save": "generate_item.utils.quality_inspection.before_save"
+        "before_save": "generate_item.utils.quality_inspection.before_save",
+        "validate":"generate_item.utils.quality_inspection.validate_heat_no_qty"
     },
     "Subcontracting Receipt": {
         "before_save": "generate_item.utils.subcontracting_receipt.before_save",

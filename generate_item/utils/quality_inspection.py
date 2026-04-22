@@ -1,7 +1,7 @@
 from posix import read
 import frappe
-from frappe.utils import flt
-
+from frappe import _
+from frappe.utils import cint, flt
 
 @frappe.whitelist()
 def get_reference_name(reference_name, reference_type):
@@ -43,6 +43,34 @@ def on_submit(doc, method):
 
     pr.save()
     update_accepted_qty(doc)
+
+def validate_heat_no_qty(doc,method):
+    if not doc.heat_no:
+        return  # No heat rows, nothing to validate
+
+    # ── Pick correct qty fields (same UOM logic as generator) ────────────
+    uom_is_same = (doc.uom == doc.stock_uom) if (doc.uom and doc.stock_uom) else True
+
+    if uom_is_same:
+        received_qty = flt(doc.received_qty)
+        rejected_qty = flt(doc.rejected_qty)
+    else:
+        received_qty = flt(doc.received_qty_in_stock_uom)
+        rejected_qty = flt(doc.rejected_qty_in_stock_uom)
+
+    total_qty = flt(received_qty) - flt(rejected_qty)
+
+    # ── Sum all heat_no child rows ────────────────────────────────────────
+    heat_qty_sum = sum(flt(row.qty) for row in doc.heat_no)
+
+    if heat_qty_sum != total_qty:
+        frappe.throw(
+            _(
+                "Sum of Heat Number quantities ({0}) must equal the total quantity ({1}). "
+                "You cannot manually increase or decrease quantities in the Heat Number table."
+            ).format(frappe.bold(heat_qty_sum), frappe.bold(total_qty)),
+            title=_("Heat Number Quantity Mismatch"),
+        )
 
 
 def before_save(doc, method):
