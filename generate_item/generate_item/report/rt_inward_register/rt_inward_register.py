@@ -260,11 +260,33 @@ def get_conditions(filters):
 	return " ".join(conditions)
 
 
-
 @frappe.whitelist()
 def update_heat_no(name, used):
-    doc = frappe.get_doc("Quality Inspection Heat No", name)
-    doc.used = used
-    doc.save(ignore_permissions=True)
+    """
+    Direct SQL UPDATE on tabQuality Inspection Heat No child table.
+    Works even on submitted parent documents.
+    """
 
+    # ── Verify row exists ─────────────────────────────────────────────────────
+    exists = frappe.db.sql(
+        "SELECT name FROM `tabQuality Inspection Heat No` WHERE name = %s",
+        name, as_dict=True
+    )
+    if not exists:
+        frappe.throw(_("Heat No record {0} not found").format(name))
+
+ 
+
+    # ── Update + stamp modified ───────────────────────────────────────────────
+    frappe.db.sql("""
+        UPDATE `tabQuality Inspection Heat No`
+        SET    used        = %s,
+               modified    = NOW(),
+               modified_by = %s
+        WHERE  name = %s
+    """, (used, frappe.session.user, name))
+
+    frappe.db.commit()
+
+    return {"status": "ok", "updated": name}
 
