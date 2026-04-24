@@ -2,7 +2,7 @@
 // For license information, please see license.txt
 
 
-let PO_SERIES_OPTIONS = [
+let PR_SERIES_OPTIONS = [
 
     "OPRS.fiscal.####",
     "OPRR.fiscal.####",
@@ -166,7 +166,7 @@ frappe.query_reports["Requested Items To Be Received"] = {
         //         // console.log("series-------",r)
         //         if (r.message) {
 
-        //             PO_SERIES_OPTIONS = r.message;
+        //             PR_SERIES_OPTIONS = r.message;
         //         }
         //     }
         // });
@@ -385,7 +385,7 @@ function create_purchase_receipt_by_supplier() {
                         fieldname: "pr_series",
                         fieldtype: "Select",
                         label: __("PR Series"),
-                        options: PO_SERIES_OPTIONS.join("\n"),
+                        options: PR_SERIES_OPTIONS.join("\n"),
                         reqd: 1
                     },
                     {
