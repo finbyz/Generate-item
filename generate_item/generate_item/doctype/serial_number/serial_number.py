@@ -817,6 +817,29 @@ def before_cancel_sales_order(doc, method):
     3. Then allow SO cancellation to proceed
     """
     _cancel_linked_omrs(doc)
+
+def before_cancel_stock_entry(doc, method):
+    """
+    Before Stock Entry cancels:
+    1. Check if Stock Entry is for transferring serial numbers
+    2. Check if Stock Entry is for transferring serial numbers
+    3. Cancel each submitted OMR first
+    4. Then allow SO cancellation to proceed
+    """
+    frappe.db.sql(
+        f"""
+        UPDATE `tabSerial Number`
+        SET    
+               stock_entry = ""
+               
+        WHERE  
+            stock_entry=%s
+            
+        """,
+        doc.name,
+    )
+    frappe.db.commit()
+
     
     
 

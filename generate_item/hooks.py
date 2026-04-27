@@ -187,7 +187,8 @@ doc_events = {
     },  
     "Stock Entry": {
         "before_insert": "generate_item.utils.stock_entry.before_insert",
-        "on_submit":"generate_item.utils.stock_entry.on_submit"
+        "on_submit":"generate_item.utils.stock_entry.on_submit",
+        "before_cancel":"generate_item.generate_item.doctype.serial_number.serial_number.before_cancel_stock_entry"
     },
     "Sales Order": {
         "before_save": "generate_item.utils.sales_order.before_save",

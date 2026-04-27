@@ -183,6 +183,9 @@
 // });
 
 frappe.ui.form.on('Stock Entry', {
+  setup: function (frm) {
+		frm.ignore_doctypes_on_cancel_all = ["Serial Number","Serial and Batch Bundle"];
+  },
     onload: function(frm) {
         // Case 1: Work Order is already set
         if (frm.doc.work_order && !frm.doc.custom_batch_no) {
