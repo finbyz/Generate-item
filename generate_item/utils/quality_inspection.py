@@ -10,6 +10,7 @@ def get_reference_name(reference_name, reference_type):
 
 
 def on_submit(doc, method):
+    set_inspected_by(doc)
 
     if doc.reference_type != "Purchase Receipt":
         return
@@ -44,6 +45,9 @@ def on_submit(doc, method):
     pr.save()
     update_accepted_qty(doc)
 
+def set_inspected_by(doc):
+    full_name = frappe.db.get_value("User", frappe.session.user, "full_name")
+    doc.db_set("inspected_by", full_name)
 def validate_heat_no_qty(doc,method):
     if not doc.heat_no:
         return  # No heat rows, nothing to validate
