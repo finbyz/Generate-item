@@ -69,6 +69,7 @@ frappe.query_reports["Daily Review Sales Order"] = {
     _sn_meta:         null,
     _pending_changes: {},  
     _save_btn:        null,
+    _bulk_btn:        null,
 
     // ─── LIFECYCLE ────────────────────────────────────────────────────────────
     onload(report) {
@@ -82,10 +83,16 @@ frappe.query_reports["Daily Review Sales Order"] = {
             },
         });
 
+         // ── Bulk Update toolbar button ───────────────────────────────────────────
+        me._bulk_btn = report.page.add_inner_button(__("Bulk Update"), () => {
+            me._open_bulk_update_dialog();
+        });
+
         // ── Save Changes toolbar button ──────────────────────────────────────
         me._save_btn = report.page.add_inner_button(__("Save Changes"), () => {
             me._save_all_changes();
         });
+       
         me._update_save_button();
 
         // ── Cell click → open inline editor ─────────────────────────────────
@@ -359,6 +366,291 @@ frappe.query_reports["Daily Review Sales Order"] = {
             });
         }
     },
+
+
+_open_bulk_update_dialog() {
+    const me = frappe.query_reports["Daily Review Sales Order"];
+
+    if (!me._sn_meta || !Object.keys(me._sn_meta).length) {
+        frappe.show_alert({
+            message:   __("Field metadata not ready yet — please wait a moment and try again."),
+            indicator: "orange",
+        }, 3);
+        return;
+    }
+
+    // ── 1. Read active filter values (batch takes priority over SO) ───────
+    const filter_vals  = me._report.get_values();
+    const filter_batch = filter_vals.batch_no    || "";
+    const filter_so    = filter_vals.sales_order || "";
+
+    // Priority rule: if batch filter is set → use Batch; else SO
+    const default_type  = filter_batch ? "Batch"
+                        : filter_so    ? "Sales Order"
+                        :                "";
+    const default_ref   = filter_batch || filter_so || "";
+
+    // ── 2. Build editable field defs from server meta ─────────────────────
+    const editable_fields = Object.entries(me._sn_meta).map(([fieldname, meta]) => ({
+        fieldname,
+        label:     meta.label    || frappe.unscrub(fieldname),
+        fieldtype: meta.fieldtype || "Data",
+        options:   meta.options   || "",
+    }));
+
+    // Only fieldnames of actual data fields (not layout fields) — needed for toggle
+    const editable_fieldnames = editable_fields.map(f => f.fieldname);
+
+    // ── 3. Helper: show/hide the entire editable section ─────────────────
+    //    Targets sec_fields + update_note + every data fieldname.
+    //    Column Break / Section Break (hide_border) layout rows have no
+    //    fieldname so they cannot be toggled individually; they render
+    //    invisibly when their neighbours are hidden — no visual impact.
+    const _toggle_editable_section = (show) => {
+        const hidden = show ? 0 : 1;
+        dialog.set_df_property("sec_fields",  "hidden", hidden);
+        dialog.set_df_property("update_note", "hidden", hidden);
+        editable_fieldnames.forEach(fn =>
+            dialog.set_df_property(fn, "hidden", hidden)
+        );
+        dialog.refresh();
+    };
+
+    // ── 4. Build 2-column grid layout rows (all hidden by default) ────────
+    const field_rows = [];
+    editable_fields.forEach((f, idx) => {
+        field_rows.push({
+            fieldname: f.fieldname,
+            label:     f.label,
+            fieldtype: f.fieldtype,
+            options:   f.options,
+            hidden:    1,             // hidden until reference is selected
+        });
+        if (idx % 2 === 0) {
+            field_rows.push({ fieldtype: "Column Break" });
+        } else {
+            field_rows.push({ fieldtype: "Section Break", hide_border: 1 });
+        }
+    });
+
+    // ── 5. Dialog field schema ─────────────────────────────────────────────
+    let dialog;
+
+    const dialog_fields = [
+
+        // ── Reference section ──────────────────────────────────────────────
+        {
+            fieldname: "sec_ref",
+            label:     __("Select Reference"),
+            fieldtype: "Section Break",
+        },
+        {
+            fieldname: "select_type",
+            label:     __("Update By"),
+            fieldtype: "Select",
+            options:   "\nSales Order\nBatch",
+            reqd:      1,
+            onchange() {
+                const val    = dialog.get_value("select_type");
+                const is_so  = val === "Sales Order";
+                const is_bat = val === "Batch";
+
+                // Show/hide the correct reference link field
+                dialog.set_df_property("sales_order_ref", "hidden", !is_so);
+                dialog.set_df_property("sales_order_ref", "reqd",    is_so ? 1 : 0);
+                dialog.set_df_property("batch_ref",       "hidden", !is_bat);
+                dialog.set_df_property("batch_ref",       "reqd",    is_bat ? 1 : 0);
+
+              
+                if (is_so)  dialog.set_value("batch_ref",       "");
+                if (is_bat) dialog.set_value("sales_order_ref", "");
+
+                
+                const existing_ref = is_so
+                    ? dialog.get_value("sales_order_ref")
+                    : dialog.get_value("batch_ref");
+                _toggle_editable_section(!!existing_ref);
+
+                dialog.refresh();
+            },
+        },
+        {
+            fieldname: "sales_order_ref",
+            label:     __("Sales Order"),
+            fieldtype: "Link",
+            options:   "Sales Order",
+            hidden:    1,
+            reqd:      0,
+            onchange() {
+                // Show editable fields only when a reference is actually chosen
+                _toggle_editable_section(!!dialog.get_value("sales_order_ref"));
+            },
+        },
+        {
+            fieldname: "batch_ref",
+            label:     __("Batch"),
+            fieldtype: "Link",
+            options:   "Batch",
+            hidden:    1,
+            reqd:      0,
+            onchange() {
+                _toggle_editable_section(!!dialog.get_value("batch_ref"));
+            },
+        },
+
+        // ── Editable fields section (hidden until reference is selected) ───
+        {
+            fieldname: "sec_fields",
+            label:     __("Fields to Update"),
+            fieldtype: "Section Break",
+            hidden:    1,
+        },
+        {
+            fieldname: "update_note",
+            fieldtype: "HTML",
+            hidden:    1,
+            options: `
+                <div style="
+                    background : var(--blue-50,#eff6ff);
+                    border-left: 3px solid var(--blue-400,#60a5fa);
+                    border-radius: 3px;
+                    padding    : 6px 10px;
+                    font-size  : 12px;
+                    color      : var(--text-color);
+                    margin-bottom: 8px;
+                ">
+                    <i class="fa fa-info-circle mr-1"></i>
+                    ${__("Leave fields blank to skip — only filled fields will be updated on all matching Serial Numbers.")}
+                </div>`,
+        },
+        ...field_rows,
+    ];
+
+    // ── 6. Create and show dialog ──────────────────────────────────────────
+    dialog = new frappe.ui.Dialog({
+        title:                __("Bulk Update Serial Numbers"),
+        fields:               dialog_fields,
+        size:                 "large",
+        primary_action_label: __("Update"),
+        primary_action(values) {
+            me._execute_bulk_update(values, dialog);
+        },
+    });
+
+    dialog.show();
+
+    // ── 7. Apply filter defaults AFTER render ──────────────────────────────
+    //    setTimeout lets the dialog DOM fully initialise before we push values.
+    //    All three set_value calls are sequential so the onchange chain fires
+    //    correctly without race conditions.
+    if (default_type && default_ref) {
+        setTimeout(() => {
+            const is_so  = default_type === "Sales Order";
+            const is_bat = default_type === "Batch";
+
+            // Step A: set the "Update By" dropdown
+            dialog.set_value("select_type", default_type);
+
+            // Step B: show the correct reference field (onchange won't fire
+            //         for programmatic set_value in all Frappe versions, so
+            //         we do it explicitly here too)
+            dialog.set_df_property("sales_order_ref", "hidden", !is_so);
+            dialog.set_df_property("sales_order_ref", "reqd",    is_so ? 1 : 0);
+            dialog.set_df_property("batch_ref",       "hidden", !is_bat);
+            dialog.set_df_property("batch_ref",       "reqd",    is_bat ? 1 : 0);
+
+            // Step C: populate the reference field with the filter value
+            const ref_field = is_so ? "sales_order_ref" : "batch_ref";
+            dialog.set_value(ref_field, default_ref);
+
+            // Step D: reference is pre-filled → show the editable fields immediately
+            _toggle_editable_section(true);
+
+            dialog.refresh();
+        }, 120);   // 120 ms is enough for dialog paint; safe across slow machines
+    }
+},
+// ─── EXECUTE BULK UPDATE ──────────────────────────────────────────────────────
+async _execute_bulk_update(values, dialog) {
+    const me = frappe.query_reports["Daily Review Sales Order"];
+
+    const select_type = values.select_type;
+    const reference   = select_type === "Sales Order"
+        ? values.sales_order_ref
+        : values.batch_ref;
+
+    if (!reference) {
+        frappe.show_alert({
+            message:   __("Please select a {0} first.", [select_type]),
+            indicator: "orange",
+        }, 3);
+        return;
+    }
+
+    // ── Collect only non-blank user-filled editable fields ────────────────
+    const field_value_map = {};
+    for (const fieldname of Object.keys(me._sn_meta)) {
+        const val = values[fieldname];
+        if (val !== undefined && val !== null && val !== "") {
+            field_value_map[fieldname] = val;
+        }
+    }
+
+    const field_count = Object.keys(field_value_map).length;
+    if (!field_count) {
+        frappe.show_alert({
+            message:   __("Please fill at least one field to update."),
+            indicator: "orange",
+        }, 3);
+        return;
+    }
+
+    // ── Confirm before mass-update ────────────────────────────────────────
+    frappe.confirm(
+        __(`This will update <strong>{0}</strong> field(s) across all Serial Numbers
+            linked to <strong>{1}</strong>.<br><br>
+           
+            Are you sure?`, [
+            field_count,
+            reference,
+            // Object.keys(field_value_map).join(", "),
+        ]),
+        async () => {
+            dialog.hide();
+
+            frappe.show_alert({
+                message:   __("Bulk updating — please wait…"),
+                indicator: "blue",
+            }, 30);
+
+            try {
+                const result = await frappe.xcall(
+                    "generate_item.generate_item.report.daily_review_sales_order"
+                    + ".daily_review_sales_order.bulk_update_by_reference",
+                    { select_type, reference, field_value_map }
+                );
+
+                frappe.show_alert({
+                    message: __(
+                        "✓ {0} Serial Number(s) updated successfully across {1} field(s).",
+                        [result.updated, field_count]
+                    ),
+                    indicator: "green",
+                }, 8);
+
+                me._report.refresh();
+
+            } catch (err) {
+                console.error("Bulk update error:", err);
+                frappe.msgprint({
+                    title:     __("Bulk Update Failed"),
+                    message:   err.message || __("An unexpected server error occurred."),
+                    indicator: "red",
+                });
+            }
+        }
+    );
+},
 
     formatter(value, row, column, data, default_formatter) {
         const me = frappe.query_reports["Daily Review Sales Order"];

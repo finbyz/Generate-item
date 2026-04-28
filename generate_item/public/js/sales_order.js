@@ -207,13 +207,12 @@
                 in_list_view: 1,
                 get_query: () => {
                     return {
-                        query: "frappe.contacts.doctype.address.address.address_query",
-                        filters: {
-                            link_doctype: "Company",
-                            link_name: frm.doc.company
-                        }
+                        filters: [
+                            ['Address', 'link_doctype', '=', 'Customer'],
+                            ['Address', 'link_name', '=', frm.doc.customer]
+                        ]
                     };
-                }
+                },
             },
             {
                 fieldtype: "Select",
@@ -592,20 +591,18 @@ frappe.ui.form.on('Sales Order', {
 
         frm.set_query("company_address", () => {
             return {
-                query: "frappe.contacts.doctype.address.address.address_query",
-                filters: {
-                    link_doctype: "Company",
-                    link_name: frm.doc.company
-                }
+                filters: [
+                    ["Address", "link_doctype", "=", "Company"],
+                    ["Address", "link_name", "=", frm.doc.company]
+                ]
             };
         });
         frm.set_query('shipping_address_name', () => {
             return {
-                query: "frappe.contacts.doctype.address.address.address_query",
-                filters: {
-                    link_doctype: "Company",
-                    link_name: frm.doc.company
-                }
+                filters: [
+                    ['Address', 'link_doctype', '=', 'Customer'],
+                    ['Address', 'link_name', '=', frm.doc.customer]
+                ]
             };
         });
 
@@ -632,11 +629,10 @@ frappe.ui.form.on('Sales Order', {
 
         frm.fields_dict["items"].grid.get_field("custom_shipping_address").get_query = function (doc, cdt, cdn) {
             return {
-                query: "frappe.contacts.doctype.address.address.address_query",
-                filters: {
-                    link_doctype: "Company",
-                    link_name: frm.doc.company
-                }
+                filters: [
+                    ['Address', 'link_doctype', '=', 'Customer'],
+                    ['Address', 'link_name', '=', frm.doc.customer]
+                ]
             };
         };
 
@@ -694,15 +690,6 @@ frappe.ui.form.on('Sales Order', {
         if (frm.doc.amended_from) {
             update_batch_links(frm);
         }
-    },
-    get_query: () => {
-        return {
-            query: "frappe.contacts.doctype.address.address.address_query",
-            filters: {
-                link_doctype: "Company",
-                link_name: frm.doc.company
-            }
-        };
     },
     before_save: function (frm) {
 
@@ -878,11 +865,10 @@ frappe.ui.form.on('Sales Order', {
     customer: function (frm) {
         frm.set_query('shipping_address_name', function () {
             return {
-                query: "frappe.contacts.doctype.address.address.address_query",
-                filters: {
-                    link_doctype: "Company",
-                    link_name: frm.doc.company
-                }
+                filters: [
+                    ['Address', 'link_doctype', '=', 'Customer'],
+                    ['Address', 'link_name', '=', frm.doc.customer],
+                ]
             };
         });
     },
@@ -1282,7 +1268,7 @@ function _call_generate(frm, total_qty) {
     // Server call — synchronous on server side, result has timing stats
     frappe.call({
         method: "generate_item.generate_item.doctype.serial_number.serial_number.create_serial_numbers_for_sales_order",
-
+        
         args: { sales_order_name: frm.doc.name },
 
         callback(r) {

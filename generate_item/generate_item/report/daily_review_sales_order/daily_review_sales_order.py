@@ -965,3 +965,204 @@ def _clean_value(value):
     if isinstance(value, str):
         return value.strip()
     return value
+
+# ---------------------------------------------------------------------------
+# BULK UPDATE BY REFERENCE (Sales Order or Batch)
+# ---------------------------------------------------------------------------
+
+@frappe.whitelist()
+def bulk_update_by_reference(select_type, reference, field_value_map):
+    """
+    Bulk-update multiple Serial Number fields for all SNs linked to either
+    a Sales Order (via its batch chain) or a single Batch.
+
+    Flow
+    ----
+    Sales Order
+        └─ tabSales Order Item  (parent = reference, custom_batch_no IS NOT NULL)
+                └─ tabSerial Number  (batch IN collected_batches)
+                        └─ chunked multi-field SQL UPDATE
+
+    Batch
+        └─ tabSerial Number  (batch = reference)
+                └─ chunked multi-field SQL UPDATE
+
+
+    Args:
+        select_type     (str)       : "Sales Order" | "Batch"
+        reference       (str)       : SO name or Batch name
+        field_value_map (str|dict)  : JSON / dict  { fieldname: value, ... }
+                                      Only non-blank fields the user filled.
+
+    Returns:
+        dict  { updated: int, batches_resolved: int, chunks: int }
+    """
+    _check_permission()
+
+    # ── 1. Parse & validate incoming field map ────────────────────────────
+    if isinstance(field_value_map, str):
+        field_value_map = json.loads(field_value_map)
+
+    if not field_value_map:
+        frappe.throw(_("No fields provided for bulk update."))
+
+   
+    for fn in field_value_map:
+        _validate_field(fn)
+
+   
+    clean_map = {fn: _clean_value(v) for fn, v in field_value_map.items()}
+
+    # ── 2. Resolve target Serial Number names ─────────────────────────────
+    if select_type == "Sales Order":
+        sn_names, batches_resolved = _sn_names_for_sales_order(reference)
+
+    elif select_type == "Batch":
+        sn_names        = _sn_names_for_batch(reference)
+        batches_resolved = 1 if sn_names else 0
+
+    else:
+        frappe.throw(_("Invalid select_type '{0}'. Expected 'Sales Order' or 'Batch'.").format(select_type))
+
+    if not sn_names:
+        frappe.throw(
+            _("No Serial Numbers found for {0}: {1}.").format(select_type, reference)
+        )
+
+    # ── 3. Build the SET clause once 
+    #       All fieldnames already validated → safe to interpolate
+    set_parts  = [f"`{fn}` = %({fn}_val)s" for fn in clean_map]
+    set_parts += [
+        "`modified`    = %(now)s",
+        "`modified_by` = %(user)s",
+    ]
+    set_clause = ", ".join(set_parts)
+
+    base_params = {f"{fn}_val": v for fn, v in clean_map.items()}
+    base_params.update({
+        "now":  now_datetime(),
+        "user": frappe.session.user,
+    })
+
+    # ── 4. Chunked bulk UPDATE ─────────────────────────────────────────────
+   
+    total_updated = 0
+    chunks        = 0
+
+    for offset in range(0, len(sn_names), CHUNK_SIZE):
+        chunk        = sn_names[offset : offset + CHUNK_SIZE]
+        placeholders = ", ".join(["%s"] * len(chunk))
+
+
+        set_positional  = [v for fn, v in clean_map.items()]          
+        set_positional += [base_params["now"], base_params["user"]]   
+        set_positional += chunk                                        
+
+        
+        set_parts_pos  = [f"`{fn}` = %s" for fn in clean_map]
+        set_parts_pos += ["`modified` = %s", "`modified_by` = %s"]
+
+        frappe.db.sql(
+            f"""
+            UPDATE `tabSerial Number`
+               SET {', '.join(set_parts_pos)}
+             WHERE `name` IN ({placeholders})
+            """,
+            set_positional,
+        )
+
+        frappe.db.commit()         
+        total_updated += len(chunk)
+        chunks        += 1
+
+    # ── 5. Audit log — one entry per call (not per SN) ────────────────────
+    # frappe.log_error(
+    #     title=f"Bulk SN Update — {select_type}: {reference}",
+    #     message=(
+    #         f"User      : {frappe.session.user}\n"
+    #         f"Reference : {select_type} = {reference}\n"
+    #         f"Batches   : {batches_resolved}\n"
+    #         f"SNs updated : {total_updated}\n"
+    #         f"Fields    : {list(clean_map.keys())}\n"
+    #         f"Values    : {list(clean_map.values())}"
+    #     ),
+    # )
+
+    return {
+        "updated":          total_updated,
+        "batches_resolved": batches_resolved,
+        "chunks":           chunks,
+    }
+
+
+# ---------------------------------------------------------------------------
+# INTERNAL HELPERS for bulk_update_by_reference
+# ---------------------------------------------------------------------------
+
+def _sn_names_for_sales_order(so_name):
+    """
+    Resolve all Serial Number names that belong to a Sales Order.
+
+    Steps
+    -----
+    1. Collect distinct non-null custom_batch_no values from SO Items.
+    2. Fetch all SN names where batch IN (those batches).
+
+    Returns
+    -------
+    tuple  (sn_names: list[str], batches_resolved: int)
+    """
+    # Step 1 — batches on this SO
+    batch_rows = frappe.db.sql(
+        """
+        SELECT DISTINCT custom_batch_no
+          FROM `tabSales Order Item`
+         WHERE parent        = %s
+           AND docstatus     = 1
+           AND custom_batch_no IS NOT NULL
+           AND custom_batch_no != ''
+        """,
+        (so_name,),
+        as_list=True,
+    )
+    batches = [row[0] for row in batch_rows if row[0]]
+
+    if not batches:
+        frappe.throw(
+            _("Sales Order {0} has no batch-linked line items.").format(so_name)
+        )
+
+    # Step 2 — SNs in those batches
+    placeholders = ", ".join(["%s"] * len(batches))
+    sn_rows = frappe.db.sql(
+        f"""
+        SELECT name
+          FROM `tabSerial Number`
+         WHERE docstatus = 1
+            AND batch IN ({placeholders})
+         ORDER BY batch, name
+        """,
+        batches,
+        as_list=True,
+    )
+    sn_names = [row[0] for row in sn_rows]
+
+    return sn_names, len(batches)
+
+
+def _sn_names_for_batch(batch_name):
+    """
+    Return all Serial Number names for a single batch, ordered by name.
+    """
+    rows = frappe.db.sql(
+        """
+        SELECT name
+          FROM `tabSerial Number`
+         WHERE batch = %s
+            AND docstatus = 1
+         ORDER BY name
+        """,
+        (batch_name,),
+        as_list=True,
+    )
+    return [row[0] for row in rows]
