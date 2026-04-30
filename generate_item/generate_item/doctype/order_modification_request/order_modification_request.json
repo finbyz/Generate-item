@@ -100,7 +100,8 @@
   "link_documents",
   "amended_from",
   "history_tab",
-  "original_record"
+  "original_record",
+  "commercial_details"
  ],
  "fields": [
   {
@@ -207,6 +208,7 @@
    "label": "History"
   },
   {
+   "depends_on": "eval:parent.type==\"Sales Order\" && parent.modification_type == \"Order Item Change\"",
    "fieldname": "original_record",
    "fieldtype": "Table",
    "label": "Original Record",
@@ -729,13 +731,20 @@
    "fieldtype": "Data",
    "label": "Rev End User",
    "no_copy": 1
+  },
+  {
+   "depends_on": "eval:parent.type==\"Sales Order\" && parent.modification_type == \"Order Change\"",
+   "fieldname": "commercial_details",
+   "fieldtype": "Table",
+   "label": "Commercial Details",
+   "options": "Commercial Details"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-04-28 14:44:15.163624",
+ "modified": "2026-04-29 17:54:29.649755",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request",

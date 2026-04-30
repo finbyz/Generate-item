@@ -29,6 +29,8 @@ class OrderModificationRequest(Document):
             self.name = make_autoname(f"{self.bom}-.##")
 
     def validate(self):
+        create_history_records(self)
+        _create_commercial_history(self)
         self.validate_sales_order()
         self.validate_qty_and_rev_qty()
 
@@ -46,10 +48,10 @@ class OrderModificationRequest(Document):
                 # self.update_so_commercial_fields()
 
             elif self.modification_type == "Order Item Change":
+                # create_history_records(self)
                 self.update_sales_order_values()
                 self.update_sales_order_revision()
                 create_batches_for_omr(self)
-                create_history_records(self)
                 get_change(self)
 
     def update_sales_order_commercial_details(self):
@@ -1152,56 +1154,196 @@ def update_child_rows_with_omr(self, created_requests):
 
     # frappe.db.commit()
 
+
 def create_history_records(self):
     """
-    Compare items with original_record.
-    If changed:
-        - store new item in new_item
-        - store new qty in rev_qty
-        - store new rate in rev_rate
-    Keep only changed rows in original_record.
+    Compare each sales_order_item row's original values with revised values.
+    Only keep rows in original_record where actual changes were made.
+    The original values are stored in the main fields (item, qty, rate, etc.)
+    The revised values are in the rev_* fields (rev_item, rev_qty, rev_rate, etc.)
     """
-
-    if not self.sales_order_item or not self.original_record:
+    if not self.sales_order_item:
         self.set("original_record", [])
         return
-        
 
-    # Map current items using stable key
-    current_map = {row.sales_order_item_name: row for row in self.sales_order_item}
+    # Check if any rev fields are actually populated
+    has_any_revision = False
+    for row in self.sales_order_item:
+        if (row.rev_item or 
+            flt(row.rev_qty) > 0 or 
+            flt(row.rev_rate) > 0 or
+            (row.rev_line_status and row.rev_line_status.strip()) or
+            row.rev_delivery_date or
+            row.rev_tag_no or
+            row.rev_shipping_address or
+            row.rev_line_remark or
+            row.rev_po_line_no or
+            row.rev_component_of or
+            row.rev_is_free_item not in (None, 0, False)):
+            has_any_revision = True
+            break
 
-    rows_to_keep = []
+    if not has_any_revision:
+        # Clear history if no changes
+        self.set("original_record", [])
+        return
 
-    for old_row in self.original_record:
+    # Clear existing history
+    self.set("original_record", [])
 
-        current_row = current_map.get(old_row.sales_order_item_name)
-        if not current_row:
+    # Compare each row's original vs revised values
+    for row in self.sales_order_item:
+        if not row.sales_order_item_name:
             continue
 
         changed = False
-        old_data = old_row.as_dict()
+        history_data = {
+            "sales_order_item_name": row.sales_order_item_name,
+            "item": row.item,  # Original item
+            "qty": row.qty,  # Original qty
+            "rate": row.rate,  # Original rate
+            "batch_no": row.batch_no,  # Original batch
+            "po_line_no": row.po_line_no,  # Original PO line
+            "line_status": row.line_status,  # Original line status
+            "delivery_date": row.delivery_date,  # Original delivery date
+            "tag_no": row.tag_no,  # Original tag no
+            "shipping_address": row.shipping_address,  # Original shipping address
+            "line_remark": row.line_remark,  # Original line remark
+            "is_free_item": row.is_free_item,  # Original is_free_item
+            "component_of": row.component_of,  # Original component_of
+        }
 
-        # 1️⃣ Check Item Change
-        if old_row.item != current_row.item:
-            old_data["new_item"] = current_row.item
+        # Check item change
+        if row.rev_item and row.rev_item != row.item:
+            history_data["new_item"] = row.rev_item
             changed = True
 
-        # 2️⃣ Check Qty Change
-        if old_row.rev_qty != current_row.rev_qty:
-            old_data["rev_qty"] = current_row.rev_qty
+        # Check qty change (only if rev_qty is provided and different)
+        if flt(row.rev_qty) > 0 and flt(row.rev_qty) != flt(row.qty):
+            history_data["rev_qty"] = row.rev_qty
             changed = True
 
-        # 3️⃣ Check Rate Change
-        if old_row.rev_rate != current_row.rev_rate:
-            old_data["rev_rate"] = current_row.rev_rate
+        # Check rate change (only if rev_rate is provided and different)
+        if flt(row.rev_rate) > 0 and flt(row.rev_rate) != flt(row.rate):
+            history_data["rev_rate"] = row.rev_rate
             changed = True
 
+        # Check line status change
+        if row.rev_line_status and row.rev_line_status != row.line_status:
+            history_data["rev_line_status"] = row.rev_line_status
+            changed = True
+
+        # Check delivery date change
+        if row.rev_delivery_date and str(row.rev_delivery_date) != str(row.delivery_date):
+            history_data["rev_delivery_date"] = row.rev_delivery_date
+            changed = True
+
+        # Check tag no change
+        if row.rev_tag_no and row.rev_tag_no != row.tag_no:
+            history_data["rev_tag_no"] = row.rev_tag_no
+            changed = True
+
+        # Check shipping address change
+        if row.rev_shipping_address and row.rev_shipping_address != row.shipping_address:
+            history_data["rev_shipping_address"] = row.rev_shipping_address
+            changed = True
+
+        # Check line remark change
+        if row.rev_line_remark and row.rev_line_remark != row.line_remark:
+            history_data["rev_line_remark"] = row.rev_line_remark
+            changed = True
+
+        # Check PO line no change
+        if row.rev_po_line_no and row.rev_po_line_no != row.po_line_no:
+            history_data["rev_po_line_no"] = row.rev_po_line_no
+            changed = True
+
+        # Check component_of change
+        if row.rev_component_of and row.rev_component_of != row.component_of:
+            history_data["rev_component_of"] = row.rev_component_of
+            changed = True
+
+        # Check is_free_item change (boolean field)
+        if row.rev_is_free_item not in (None, 0, False) and row.rev_is_free_item != row.is_free_item:
+            history_data["rev_is_free_item"] = row.rev_is_free_item
+            changed = True
+
+        # Only add to history if at least one field changed
         if changed:
-            rows_to_keep.append(old_data)
+            self.append("original_record", history_data)
 
-    # Clear table
-    self.set("original_record", [])
 
-    # Add only changed rows
-    for row in rows_to_keep:
-        self.append("original_record", row)
+def _create_commercial_history(self):
+    """Create history records for commercial-level changes - one row per changed field"""
+    
+    COMMERCIAL_FIELD_MAP = [
+        # Commercial T&C
+        ("price_basis", "rev_price_basis", "Price Basis"),
+        ("mode_of_dispatch", "rev_mode_of_dispatch", "Mode of Dispatch"),
+        ("validity", "rev_validity", "Validity"),
+        ("freight_charges", "rev_freight_charges", "Freight Charges"),
+        ("transit_insurance", "rev_transit_insurance", "Transit Insurance"),
+        ("delivery", "rev_delivery", "Delivery"),
+        ("tpi_agency_charges", "rev_tpi_agency_charges", "TPI Agency Charges"),
+        ("inspection", "rev_inspection", "Inspection"),
+        ("legal_requirement", "rev_legal_requirement", "Legal Requirement"),
+        ("test_certificate", "rev_test_certificate", "Test Certificate"),
+        ("bank_charges", "rev_bank_charges", "Bank Charges"),
+        ("liquidate_damage", "rev_liquidate_damage", "Liquidate Damage"),
+        ("packing_and_forwarding", "rev_packing_and_forwarding", "Packing and Forwarding"),
+        ("packing_type", "rev_packing_type", "Packing Type"),
+        ("painting_specification", "rev_painting_specification", "Painting Specification"),
+        ("qsl_no", "rev_qsl_no", "QSL No"),
+        ("drawing_approvalqap", "rev_drawing_approvalqap", "Drawing Approval QAP"),
+        ("manufacturing_clearance", "rev_manufacturing_clearance", "Manufacturing Clearance"),
+        ("api_monogram", "rev_api_monogram", "API Monogram"),
+        ("ce_marking", "rev_ce_marking", "CE Marking"),
+        ("eway_bill", "rev_eway_bill", "E-way Bill"),
+        ("repeat_order_ref", "rev_repeat_order_ref", "Repeat Order Ref"),
+        ("payment_terms", "rev_payment_terms", "Payment Terms"),
+        ("bank_guaranty", "rev_bank_guaranty", "Bank Guaranty"),
+        
+        # Details
+        ("customers_purchase_order", "rev_customers_purchase_order", "Customer's P.O."),
+        ("customers_purchase_order_date", "rev_customers_purchase_order_date", "Customer's P.O. Date"),
+        
+        # Reference Data
+        ("qtn_ref_no", "rev_qtn_ref_no", "QTN Ref No"),
+        ("qtn_ref_date", "rev_qtn_ref_date", "QTN Ref Date"),
+        ("loi_no", "rev_loi_no", "LOI No"),
+        ("loi_date", "rev_loi_date", "LOI Date"),
+        ("customer_project_name", "rev_customer_project_name", "Customer Project Name"),
+        ("end_user", "rev_end_user", "End User"),
+        
+        # Terms & Conditions
+        ("so_remarks", "rev_so_remarks", "SO Remarks"),
+    ]
+    
+    # Clear existing commercial details
+    self.set("commercial_details", [])
+    
+    # Add one row per changed field
+    changes_count = 0
+    for orig_field, rev_field, display_name in COMMERCIAL_FIELD_MAP:
+        orig_value = self.get(orig_field)
+        rev_value = self.get(rev_field)
+        
+        # Skip if rev value is empty/None
+        if rev_value is None or rev_value == "":
+            continue
+        
+        # Convert to string for comparison
+        orig_str = str(orig_value) if orig_value is not None else ""
+        rev_str = str(rev_value) if rev_value is not None else ""
+        
+        # Only add row if values are different
+        if orig_str != rev_str:
+            row = self.append("commercial_details", {})
+            row.label = display_name
+            row.original_value = orig_str
+            row.revise_value = rev_str
+            changes_count += 1
+    
+    # If no changes found, table remains empty
+    if changes_count == 0:
+        self.set("commercial_details", [])

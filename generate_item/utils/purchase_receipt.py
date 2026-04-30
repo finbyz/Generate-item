@@ -197,7 +197,6 @@ def make_qc(doctype, docname, items):
                     accepted_quantity=item.get("qty"),
                 )
             )
-
         quality_inspection = frappe.get_doc(
             {
                 "doctype": "Quality Inspection",
@@ -226,8 +225,39 @@ def make_quality_inspections(doctype, docname, items):
     if isinstance(items, str):
         items = json.loads(items)
 
+    existing_qis = []
+    items_to_process = []
+    existing_items_map = {}  # Map to store QI name -> item code
+    for item in items:
+        existing_qi = frappe.db.exists(
+            "Quality Inspection",
+            {
+                "reference_type": doctype,
+                    "reference_name": docname,
+                    "item_code": item.get("item_code"),
+                    "docstatus": ["in", [0, 1]]
+                }
+            )
+        
+        if existing_qi:
+            existing_qis.append(existing_qi)
+            existing_items_map[existing_qi] = item.get("item_code")  # Store mapping
+        else:
+            items_to_process.append(item)
+
+    if existing_qis:
+        for qi in existing_qis:
+            item_code = existing_items_map.get(qi)
+            frappe.msgprint(
+                (f"Quality Inspection <b>{qi}</b> already exist for this <b>{item_code}</b>.")
+            )
+            continue
+        
+
+   
+
     # inspection_names = original_make_qis(doctype, docname, items)
-    inspection_names = make_qc(doctype, docname, items)
+    inspection_names = make_qc(doctype, docname, items_to_process)
     
 
     qi_map = {
