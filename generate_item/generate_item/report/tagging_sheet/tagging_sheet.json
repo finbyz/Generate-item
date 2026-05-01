@@ -1,0 +1,65 @@
+{
+ "add_total_row": 0,
+ "add_translate_data": 0,
+ "columns": [],
+ "creation": "2026-05-01 10:21:27.908976",
+ "disabled": 0,
+ "docstatus": 0,
+ "doctype": "Report",
+ "filters": [],
+ "idx": 0,
+ "is_standard": "Yes",
+ "letter_head": "Steel Strong",
+ "letterhead": null,
+ "modified": "2026-05-01 10:21:27.908976",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Tagging Sheet",
+ "owner": "Administrator",
+ "prepared_report": 0,
+ "ref_doctype": "Purchase Order",
+ "report_name": "Tagging Sheet",
+ "report_type": "Script Report",
+ "roles": [
+  {
+   "role": "Stock User"
+  },
+  {
+   "role": "Purchase Manager"
+  },
+  {
+   "role": "Purchase User"
+  },
+  {
+   "role": "Design User"
+  },
+  {
+   "role": "Design Manager"
+  },
+  {
+   "role": "PO Checking"
+  },
+  {
+   "role": "PO Approval"
+  },
+  {
+   "role": "System Manager"
+  },
+  {
+   "role": "Quality User"
+  },
+  {
+   "role": "Purchase Master Manager"
+  },
+  {
+   "role": "Manufacturing User"
+  },
+  {
+   "role": "Projects User"
+  },
+  {
+   "role": "Accounts User"
+  }
+ ],
+ "timeout": 0
+}
