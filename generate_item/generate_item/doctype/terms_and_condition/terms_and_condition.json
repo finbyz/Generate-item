@@ -1,0 +1,47 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-05-04 12:37:49.318249",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_hzok",
+  "lable",
+  "value"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_hzok",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "lable",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Lable",
+   "options": "\nDispatch Mode\nPayment\nInsurance\nPrice Basis\nFrieght"
+  },
+  {
+   "fieldname": "value",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Value"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-05-04 13:17:45.061553",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Terms and Condition",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
