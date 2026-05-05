@@ -1,0 +1,106 @@
+{
+ "actions": [],
+ "creation": "2026-05-02 00:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "general_tab",
+  "general_section",
+  "allow_system_manager_bypass",
+  "stock_entry_tab",
+  "stock_entry_section",
+  "enable_stock_entry_submit_control",
+  "stock_entry_scenario_roles",
+  "material_request_tab",
+  "manual_purchase_mr_section",
+  "enable_manual_purchase_mr_approval",
+  "manual_purchase_mr_approval_rules"
+ ],
+ "fields": [
+  {
+   "fieldname": "general_tab",
+   "fieldtype": "Tab Break",
+   "label": "General"
+  },
+  {
+   "fieldname": "general_section",
+   "fieldtype": "Section Break",
+   "label": "General"
+  },
+  {
+   "default": "1",
+   "fieldname": "allow_system_manager_bypass",
+   "fieldtype": "Check",
+   "label": "Allow System Manager Bypass"
+  },
+  {
+   "fieldname": "stock_entry_tab",
+   "fieldtype": "Tab Break",
+   "label": "Stock Entry"
+  },
+  {
+   "fieldname": "stock_entry_section",
+   "fieldtype": "Section Break",
+   "label": "Stock Entry Submit Control"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_stock_entry_submit_control",
+   "fieldtype": "Check",
+   "label": "Enable Stock Entry Submit Control"
+  },
+  {
+   "fieldname": "stock_entry_scenario_roles",
+   "fieldtype": "Table",
+   "label": "Scenario Submit Roles",
+   "options": "Stock Entry Scenario Role"
+  },
+  {
+   "fieldname": "material_request_tab",
+   "fieldtype": "Tab Break",
+   "label": "Material Request"
+  },
+  {
+   "fieldname": "manual_purchase_mr_section",
+   "fieldtype": "Section Break",
+   "label": "Manual Purchase Material Request Approval"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_manual_purchase_mr_approval",
+   "fieldtype": "Check",
+   "label": "Enable Manual Purchase MR Approval"
+  },
+  {
+   "fieldname": "manual_purchase_mr_approval_rules",
+   "fieldtype": "Table",
+   "label": "Creator and Approver Rules",
+   "options": "Material Request Approval Rule"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-05-05 11:35:28.733639",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Scenario Workflow Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

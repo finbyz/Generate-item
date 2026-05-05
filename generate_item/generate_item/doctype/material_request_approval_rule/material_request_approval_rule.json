@@ -1,0 +1,50 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-05-02 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "creator_role",
+  "approver_role",
+  "disabled"
+ ],
+ "fields": [
+  {
+   "fieldname": "creator_role",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Creator Role",
+   "options": "Role",
+   "reqd": 1
+  },
+  {
+   "fieldname": "approver_role",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Approver Role",
+   "options": "Role",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Disabled"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-05-05 11:34:32.347118",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Material Request Approval Rule",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

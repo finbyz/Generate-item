@@ -3,6 +3,8 @@ from frappe import _
 from frappe.model.mapper import get_mapped_doc
 from frappe.utils import flt, getdate, nowdate, escape_html
 from erpnext.stock.doctype.item.item import get_item_defaults
+from generate_item.utils.scenario_workflow import validate_material_request_create
+
 
 def validate(doc,method):
     validate_duplicate_mr(doc, method)
@@ -11,8 +13,14 @@ def validate(doc,method):
             row.db_set("custom_batch_no", doc.custom_batch_no)
 
 def before_insert(doc, method=None):
+    # frappe.log_error("before_insert MR")
     """Run only when creating new Material Request"""
     populate_custom_fields(doc)
+    validate_material_request_create(doc, method)
+
+
+
+
 
 
 

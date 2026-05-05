@@ -53,12 +53,12 @@ doctype_js = {"Item" : "public/js/item.js",
               "Sales Order" : "public/js/sales_order.js",
               "BOM" : "public/js/bom.js",
               "BOM Creator" : "public/js/bom_creator.js",
-              "Material Request" : "public/js/material_request.js",
+              "Material Request" : ["public/js/material_request.js","public/js/scenario_workflow.js"],
               "Purchase Receipt" : "public/js/purchase_receipt.js",
               "Production Plan" : "public/js/production_plan.js",
               "Purchase Order" : "public/js/purchase_order.js",
               "Purchase Invoice" : "public/js/purchase_invoice.js",
-              "Stock Entry" : "public/js/stock_entry.js",
+              "Stock Entry" : ["public/js/stock_entry.js","public/js/scenario_workflow.js"],
               "Subcontracting Order" : "public/js/subcontracting_order.js",
               "Delivery Note" : "public/js/delivery_note.js",
               "Sales Invoice" : "public/js/sales_invoice.js",
@@ -188,6 +188,11 @@ doc_events = {
     "Stock Entry": {
         "before_insert": "generate_item.utils.stock_entry.before_insert",
         "on_submit":"generate_item.utils.stock_entry.on_submit",
+
+          "onload": "generate_item.utils.scenario_workflow.set_submit_control_onload",
+       
+        "before_submit": "generate_item.utils.scenario_workflow.validate_stock_entry_submit",
+   
         "before_cancel":"generate_item.generate_item.doctype.serial_number.serial_number.before_cancel_stock_entry"
     },
     "Sales Order": {
@@ -210,7 +215,9 @@ doc_events = {
         "after_save": "generate_item.utils.subcontracting_order.after_save"
     },
     "Material Request":{
-        "before_insert": "generate_item.utils.material_request.before_insert",
+       "before_insert":"generate_item.utils.material_request.before_insert",
+  "onload": "generate_item.utils.scenario_workflow.set_submit_control_onload",
+            "before_submit": "generate_item.utils.scenario_workflow.validate_material_request_submit",
         "validate":"generate_item.utils.material_request.validate"
     },
     "Sales Invoice": {
