@@ -350,8 +350,300 @@ def get_dispatchable_sales_orders_list(customer=None, company=None, project=None
             })
             
     return dispatchable_orders
+import frappe
+from frappe import _
+from frappe.utils import flt
 
 
+@frappe.whitelist()
+def get_dispatchable_so():
+    """
+    Return dispatchable Sales Orders.
+    Checks ALL submitted SOs that are not fully delivered and have available stock.
+    """
+    # ── 1. Eligible SOs ──────────────────────────────────────────────────────
+    eligible_sos = frappe.db.sql(
+        """
+        SELECT name, set_warehouse
+        FROM `tabSales Order`
+        WHERE docstatus = 1
+          AND status NOT IN ('Closed', 'On Hold', 'Completed')
+          AND COALESCE(per_delivered, 0) < 99.99
+        ORDER BY modified DESC
+        """,
+        as_dict=True,
+    )
+
+    if not eligible_sos:
+        return []
+
+    so_names = [so.name for so in eligible_sos]
+    so_wh_map = {so.name: so.set_warehouse for so in eligible_sos}
+    ph = _build_placeholders(so_names)
+
+    # ── 2. All SO items (bulk) ───────────────────────────────────────────────
+    so_items = frappe.db.sql(
+        f"""
+        SELECT name, parent, item_code, qty, warehouse
+        FROM `tabSales Order Item`
+        WHERE parent IN ({ph})
+        """,
+        so_names,
+        as_dict=True,
+    )
+
+    if not so_items:
+        return []
+
+    # ── 3. All delivered quantities (bulk) ───────────────────────────────────
+    delivered_rows = frappe.db.sql(
+        f"""
+        SELECT dni.so_detail, SUM(dni.qty) AS delivered_qty
+        FROM `tabDelivery Note Item` dni
+        INNER JOIN `tabDelivery Note` dn ON dn.name = dni.parent
+        WHERE dn.docstatus != 2
+          AND dni.against_sales_order IN ({ph})
+        GROUP BY dni.so_detail
+        """,
+        so_names,
+        as_dict=True,
+    )
+    delivered_map = {r.so_detail: flt(r.delivered_qty) for r in delivered_rows}
+
+    # ── 4. Get all item-warehouse pairs needed ───────────────────────────────
+    item_warehouse_pairs = set()
+    for item in so_items:
+        warehouse = so_wh_map.get(item.parent) or item.warehouse
+        if warehouse and item.item_code:
+            item_warehouse_pairs.add((item.item_code, warehouse))
+
+    # ── 5. Get available stock for all items at once ─────────────────────────
+    batch_avail = _get_stock_availability(item_warehouse_pairs)
+
+    # ── 6. Python-side filtering ────────────────────────────────────────────
+    items_by_so = {}
+    for item in so_items:
+        items_by_so.setdefault(item.parent, []).append(item)
+
+    dispatchable = []
+    for so in eligible_sos:
+        items = items_by_so.get(so.name, [])
+        if not items:
+            continue
+
+        for item in items:
+            # Calculate pending quantity
+            pending = flt(item.qty) - flt(delivered_map.get(item.name, 0))
+            
+            # Skip if fully delivered
+            if pending <= 0:
+                continue
+
+            # Get warehouse (priority: SO set_warehouse > item warehouse)
+            warehouse = so_wh_map.get(so.name) or item.warehouse
+            if not warehouse:
+                continue
+
+            # Check if stock is available
+            available = batch_avail.get((item.item_code, warehouse), 0)
+            
+            if available > 0:
+                dispatchable.append({"name": so.name})
+                break  # One stocked pending item is enough
+
+    return dispatchable
+
+
+def _get_stock_availability(item_warehouse_pairs):
+    """
+    Get available stock quantities for multiple item-warehouse combinations.
+    Returns {(item_code, warehouse): total_actual_qty}
+    """
+    if not item_warehouse_pairs:
+        return {}
+
+    # Build OR conditions for all pairs
+    conditions = []
+    params = []
+    for item_code, warehouse in item_warehouse_pairs:
+        conditions.append("(sle.item_code = %s AND sle.warehouse = %s)")
+        params.extend([item_code, warehouse])
+
+    where_clause = " OR ".join(conditions)
+
+    rows = frappe.db.sql(
+        f"""
+        SELECT 
+            sle.item_code, 
+            sle.warehouse, 
+            SUM(sle.actual_qty) AS qty
+        FROM `tabStock Ledger Entry` sle
+        WHERE ({where_clause})
+          AND sle.is_cancelled = 0
+        GROUP BY sle.item_code, sle.warehouse
+        HAVING SUM(sle.actual_qty) > 0
+        """,
+        params,
+        as_dict=True,
+    )
+
+    return {(r.item_code, r.warehouse): flt(r.qty) for r in rows}
+
+
+def _build_placeholders(lst):
+    """Return a %s placeholder string for a list."""
+    return ",".join(["%s"] * len(lst))
+
+
+# ── Link-field query (used by frontend dialog) ──────────────────────────────
+@frappe.whitelist()
+def get_dispatchable_so_for_query(doctype, txt, searchfield, start, page_len, filters):
+    """
+    Link-field query for dispatchable SOs.
+    """
+    so_names = [so["name"] for so in get_dispatchable_so()]
+
+    if not so_names:
+        return []
+
+    ph = _build_placeholders(so_names)
+    params = list(so_names)
+
+    txt_cond = ""
+    if txt:
+        txt_cond = " AND name LIKE %s"
+        params.append(f"%{txt}%")
+
+    params.extend([int(page_len), int(start)])
+
+    return frappe.db.sql(
+        f"""
+        SELECT name
+        FROM `tabSales Order`
+        WHERE name IN ({ph}){txt_cond}
+        ORDER BY modified DESC
+        LIMIT %s OFFSET %s
+        """,
+        params,
+    )
+
+
+# ── Get items for selected SO ───────────────────────────────────────────────
+@frappe.whitelist()
+def get_so_items_for_selection(sales_order):
+    """
+    Fetch SO items with pending qty + available stock for the dialog.
+    """
+    if not sales_order:
+        frappe.throw(_("Sales Order is required"))
+
+    so = frappe.get_doc("Sales Order", sales_order)
+    if so.docstatus != 1:
+        frappe.throw(_("Selected Sales Order is not submitted."))
+
+    # ── 1. Delivered quantities ──────────────────────────────────────────────
+    delivered_rows = frappe.db.sql(
+        """
+        SELECT dni.so_detail, SUM(dni.qty) AS delivered_qty
+        FROM `tabDelivery Note Item` dni
+        INNER JOIN `tabDelivery Note` dn ON dn.name = dni.parent
+        WHERE dn.docstatus != 2
+          AND dni.against_sales_order = %s
+        GROUP BY dni.so_detail
+        """,
+        sales_order,
+        as_dict=True,
+    )
+    delivered_map = {r.so_detail: flt(r.delivered_qty) for r in delivered_rows}
+
+    # ── 2. Get item-warehouse pairs ──────────────────────────────────────────
+    item_warehouse_pairs = set()
+    for item in so.items:
+        warehouse = so.set_warehouse or item.warehouse
+        if warehouse and item.item_code:
+            item_warehouse_pairs.add((item.item_code, warehouse))
+
+    # ── 3. Get available stock ───────────────────────────────────────────────
+    batch_avail = _get_stock_availability(item_warehouse_pairs)
+
+    # ── 4. Build result ──────────────────────────────────────────────────────
+    result = []
+    for item in so.items:
+        ordered = flt(item.qty)
+        delivered = flt(delivered_map.get(item.name, 0))
+        pending = ordered - delivered
+
+        if pending <= 0:
+            continue
+
+        warehouse = so.set_warehouse or item.warehouse
+        available_qty = max(0, flt(batch_avail.get((item.item_code, warehouse), 0))) if warehouse else 0
+
+        result.append({
+            # Identity
+            "name": item.name,
+            "idx": item.idx,
+            # Item details
+            "item_code": item.item_code,
+            "item_name": item.item_name,
+            "description": item.description,
+            "gst_hsn_code": item.gst_hsn_code,
+            # Quantities
+            "ordered_qty": ordered,
+            "delivered_qty": delivered,
+            "pending_qty": pending,
+            "available_batch_qty": available_qty,
+            "qty": pending,
+            # UOM
+            "uom": item.uom,
+            "stock_uom": item.stock_uom,
+            "conversion_factor": item.conversion_factor,
+            # Pricing
+            "rate": item.rate,
+            "amount": item.amount,
+            "net_rate": item.net_rate,
+            "net_amount": item.net_amount,
+            "base_rate": item.base_rate,
+            "base_amount": item.base_amount,
+            "base_net_rate": item.base_net_rate,
+            "base_net_amount": item.base_net_amount,
+            "price_list_rate": item.price_list_rate,
+            "margin_type": item.margin_type,
+            "margin_rate_or_amount": item.margin_rate_or_amount,
+            "discount_percentage": item.discount_percentage,
+            "discount_amount": item.discount_amount,
+            # Logistics
+            "warehouse": warehouse,
+            "against_sales_order": so.name,
+            "so_detail": item.name,
+            # GST
+            "igst_rate": item.igst_rate,
+            "cgst_rate": item.cgst_rate,
+            "sgst_rate": item.sgst_rate,
+            "cess_rate": item.cess_rate,
+            "igst_amount": item.igst_amount,
+            "cgst_amount": item.cgst_amount,
+            "sgst_amount": item.sgst_amount,
+            "cess_amount": item.cess_amount,
+            "taxable_value": item.taxable_value,
+            # Custom fields
+            "custom_batch_no": item.get("custom_batch_no"),
+            "branch": item.get("branch") or so.get("branch"),
+            "project": item.get("project") or so.project,
+            "cost_center": item.get("cost_center"),
+            "expense_account": item.get("expense_account"),
+            "weight_per_unit": item.get("weight_per_unit"),
+            "weight_uom": item.get("weight_uom"),
+            "custom_drg_and_pur_spec": item.get("custom_drg_and_pur_spec"),
+            "custom_drawing_no": item.get("custom_drawing_no"),
+            "custom_drawing_rev_no": item.get("custom_drawing_rev_no"),
+            "custom_pattern_drawing_no": item.get("custom_pattern_drawing_no"),
+            "custom_pattern_drawing_rev_no": item.get("custom_pattern_drawing_rev_no"),
+            "custom_purchase_specification_no": item.get("custom_purchase_specification_no"),
+            "custom_purchase_specification_rev_no": item.get("custom_purchase_specification_rev_no"),
+        })
+
+    return result
 @frappe.whitelist()
 def make_delivery_note_for_so(source_name, target_doc=None, kwargs=None):
     
