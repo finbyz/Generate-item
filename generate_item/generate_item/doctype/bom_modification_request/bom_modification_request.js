@@ -153,6 +153,7 @@ frappe.ui.form.on('Order Modification Request Detail', {
         //  Clear old values FIRST (VERY IMPORTANT)
         let fields_to_clear = [
             "rev_rate",
+            "rev_item_description",
             "rev_drawing_no",
             "rev_drawing_rev_no",
             "rev_pattern_drawing_no",
@@ -186,6 +187,7 @@ frappe.ui.form.on('Order Modification Request Detail', {
             "Item",
             row.rev_item,
             [
+                "description",
                 "custom_drawing_no",
                 "custom_drawing_rev_no",
                 "custom_pattern_drawing_no",
@@ -198,6 +200,7 @@ frappe.ui.form.on('Order Modification Request Detail', {
                 let d = r.message;
 
                 frappe.model.set_value(cdt, cdn, {
+                    "rev_item_description": d.description || "",
                     "rev_drawing_no": d.custom_drawing_no || "",
                     "rev_drawing_rev_no": d.custom_drawing_rev_no || "",
                     "rev_pattern_drawing_no": d.custom_pattern_drawing_no || "",

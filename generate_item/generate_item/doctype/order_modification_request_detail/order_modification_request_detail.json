@@ -7,6 +7,7 @@
  "engine": "InnoDB",
  "field_order": [
   "item",
+  "description",
   "qty",
   "rate",
   "batch_no",
@@ -17,6 +18,7 @@
   "bom_no",
   "column_break_1eqv",
   "rev_item",
+  "rev_item_description",
   "rev_qty",
   "rev_rate",
   "bom_update_request",
@@ -225,13 +227,24 @@
    "fieldtype": "Link",
    "label": "Rev Bom No",
    "options": "BOM"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_item_description",
+   "fieldtype": "Small Text",
+   "label": "Rev Item Description"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-04-10 14:46:50.575264",
+ "modified": "2026-05-06 10:20:31.593916",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request Detail",

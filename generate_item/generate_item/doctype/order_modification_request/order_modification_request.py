@@ -1099,6 +1099,11 @@ def fetch_items_from_reference(doc):
         for item in reference_doc.items:
             row = doc.append("items", {})
             row.item = item.item_code
+            if item.item_code:
+                description = frappe.db.get_value(
+                    "Item", item.item_code, "description"
+                )
+                row.description = description
             row.qty = item.qty
             row.batch_no = item.custom_batch_no
             row.drawing_no = item.custom_drawing_no
