@@ -122,7 +122,7 @@ function fetch_items_dynamic(frm) {
                     let row = frm.add_child("items");
                     row.bom_item_name = item.name ;
                     row.item = item.item_code;
-                    row.item_description = item.description;
+                    row.description = item.description;
                     row.uom = item.uom;
                     row.do_not_explode = item.do_not_explode;
                     row.rev_do_not_explode = item.do_not_explode;
