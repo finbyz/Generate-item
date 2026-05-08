@@ -5,6 +5,7 @@ from frappe.utils import today, add_days, nowdate
 from datetime import datetime
 
 API_URL = "https://cdn.moneyconvert.net/api/latest.json"
+
 BASE_CURRENCY = "USD"
 RETENTION_DAYS = 7
 REQUEST_TIMEOUT = 10  # seconds
@@ -47,7 +48,13 @@ def sync_exchange_rates():
 def _fetch_rates():
     """Fetch USD-based rates from moneyconvert API."""
     try:
-        response = requests.get(API_URL, timeout=REQUEST_TIMEOUT)
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json, */*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://moneyconvert.net/",
+        }
+        response = requests.get(API_URL, timeout=REQUEST_TIMEOUT, headers=headers)
         response.raise_for_status()
         data = response.json()
 
