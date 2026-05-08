@@ -298,7 +298,7 @@ class OrderModificationRequest(Document):
             rev_rate = frappe.utils.flt(rev_rate)
 
             #  2. Allow: Cancelled + 0 rate
-            if rev_status == "Reset":
+            if rev_status == "Live":
                 continue
             if rev_status == "Cancelled" and rev_rate == 0:
                 continue
@@ -464,7 +464,7 @@ class OrderModificationRequest(Document):
                  # ── Clearable field logic ────────────────────────────────────────
                 original_field = CLEARABLE_FIELDS.get(rev_field)
                 if original_field:
-                    if rev_value == "Reset":
+                    if rev_value == "Live":
                         update_fields[so_field] = ""   # clear SO line_status
                     elif rev_value is not None and rev_value != "":
                         update_fields[so_field] = rev_value  # write new value
