@@ -43,7 +43,6 @@ class OrderModificationRequest(Document):
 
         if self.type == "Sales Order" and self.sales_order:
             if self.modification_type == "Order Change":
-                pass
                 self.update_sales_order_commercial_details()
                 # self.update_so_commercial_fields()
 
