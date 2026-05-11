@@ -841,10 +841,14 @@ def get_change(self):
 
     update_child_rows_with_omr(self, created_requests)
 
-    omr_list = [entry["new_omr"] for entry in created_requests]
+    omr_list = [entry["new_omr"]for entry in created_requests]
+    actions = [entry["action"] for entry in created_requests]
+
+    # If any were updated, show "Updated", else "Created"
+    action = "Updated" if "Updated" in actions else "Created"
 
     frappe.msgprint(
-        f"Created {len(omr_list)} Bom Modification Request(s): "
+        f"{action} {len(omr_list)} Bom Modification Request(s): "
         f"{', '.join(omr_list)}"
     )
 
@@ -933,7 +937,7 @@ def update_sales_order_items(self, mismatched_rows):
                 update_batch_item(custom_batch_no, row.rev_item)
                 bom_name = update_finish_item_bom(custom_batch_no, row.rev_item)
                 if bom_name:
-                    updated_boms.append({"row_name": row.name, "bom": bom_name})
+                    updated_boms.append({"row_name": row.name, "bom": bom_name, "custom_batch_no": custom_batch_no})
 
     if updated or updated_boms:
         frappe.db.commit()
@@ -1025,19 +1029,38 @@ def update_finish_item_bom(custom_batch_no, new_item):
 def create_order_modification_requests(updated_boms, branch):
 
     created_docs = []
+  
 
     for entry in updated_boms:
 
         bom_name = entry["bom"]
         row_name = entry["row_name"]
+        custom_batch_no = entry["custom_batch_no"]
 
-        doc = frappe.new_doc("Bom Modification Request")
-        # doc.type = "BOM"
-        doc.bom = bom_name
-        doc.branch = branch
-        doc.reason_for_change = "Sales Order Modification"
 
-        doc.insert(ignore_permissions=True)
+        # ── Check if Draft BOM Modification Request already exists for this BOM ──
+        existing_draft = frappe.db.get_value(
+            "Bom Modification Request",
+            {"bom": bom_name, "batch_no_ref": custom_batch_no, "docstatus": 0},  # docstatus 0 = Draft
+            "name"
+        )
+
+        if existing_draft:
+            action = "Updated"
+            # ── Draft exists → Update it, do NOT create new ──
+            doc = frappe.get_doc("Bom Modification Request", existing_draft)
+            doc.branch = branch
+            doc.reason_for_change = "Sales Order Modification"
+
+        else:
+            action = "Created"
+            doc = frappe.new_doc("Bom Modification Request")
+            # doc.type = "BOM"
+            doc.bom = bom_name
+            doc.branch = branch
+            doc.reason_for_change = "Sales Order Modification"
+
+            doc.insert(ignore_permissions=True)
 
         fetch_items_from_reference(doc)
 
@@ -1045,7 +1068,7 @@ def create_order_modification_requests(updated_boms, branch):
 
         frappe.db.commit()
 
-        created_docs.append({"row": row_name, "new_omr": doc.name})
+        created_docs.append({"row": row_name, "new_omr": doc.name, "action": action})
 
     return created_docs
 
