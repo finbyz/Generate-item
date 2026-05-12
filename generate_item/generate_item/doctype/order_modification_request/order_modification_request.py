@@ -1038,6 +1038,28 @@ def create_order_modification_requests(updated_boms, branch):
         custom_batch_no = entry["custom_batch_no"]
 
 
+        # ── Fetch BOM header fields once ──────────────────────────────────────
+        bom_header = frappe.db.get_value(
+            "BOM",
+            bom_name,
+            ["item", "item_name", "description","custom_batch_no"],
+            as_dict=True,
+        ) or {}
+
+        fg_item_code  = bom_header.get("item")
+        fg_item_name  = bom_header.get("item_name")
+        # Fall back to Item master description if BOM.description is blank
+        item_description = bom_header.get("description") or (
+            frappe.db.get_value("Item", fg_item_code, "description")
+            if fg_item_code else None
+        )
+
+        bom_custom_batch_no = bom_header.get("custom_batch_no")
+        actual_batch = bom_custom_batch_no or custom_batch_no
+
+        
+
+
         # ── Check if Draft BOM Modification Request already exists for this BOM ──
         existing_draft = frappe.db.get_value(
             "Bom Modification Request",
@@ -1061,6 +1083,12 @@ def create_order_modification_requests(updated_boms, branch):
             doc.reason_for_change = "Sales Order Modification"
 
             doc.insert(ignore_permissions=True)
+
+        # ── Always (re)populate these fields ─────────────────────────────────
+        doc.batch_no_ref      = actual_batch
+        doc.fg_item_code      = fg_item_code
+        doc.fg_item_name      = fg_item_name
+        doc.item_description  = item_description
 
         fetch_items_from_reference(doc)
 
