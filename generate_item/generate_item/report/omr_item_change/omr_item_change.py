@@ -297,14 +297,14 @@ def get_data(filters):
             ON rev_i.name = itm.rev_item
             AND itm.rev_item IS NOT NULL 
             AND itm.rev_item != ''
-            AND itm.rev_item != itm.item
+            AND (itm.item IS NULL OR itm.item = '' OR itm.rev_item != itm.item)
 
         -- Join Revised Item Generator (only if rev_item exists and is different from item)
         LEFT JOIN `tabItem Generator` rev_ig
             ON rev_ig.name = itm.rev_item
             AND itm.rev_item IS NOT NULL 
             AND itm.rev_item != ''
-            AND itm.rev_item != itm.item
+            AND (itm.item IS NULL OR itm.item = '' OR itm.rev_item != itm.item)
 
         WHERE omr.docstatus IN (0, 1)
             {conditions}
@@ -332,17 +332,29 @@ def get_data(filters):
         rev_item = r.get("rev_item")
 
         # Determine if item was changed
-        item_changed = False
-        if rev_item and rev_item != original_item:
-            item_changed = True
+        # item_changed = False
+        # if rev_item and rev_item != original_item:
+        #     item_changed = True
+
+        # # Determine entry type
+        # entry_type = ""
+        # if item_changed:
+        #     entry_type = _("Item Modified")
+        # elif rev_item and not original_item:
+        #     entry_type = _("New Item Added")
+
+        # Determine if item was changed
+        is_new_item = bool(rev_item and not original_item)
+        item_changed = bool(rev_item and original_item and rev_item != original_item)
+        show_revised = is_new_item or item_changed
 
         # Determine entry type
         entry_type = ""
-        if item_changed:
-            entry_type = _("Item Modified")
-        elif rev_item and not original_item:
+        if is_new_item:
             entry_type = _("New Item Added")
-        
+        elif item_changed:
+            entry_type = _("Item Modified")
+                
 
         approval = approval_map.get(r.omr_no, {})
 
@@ -401,19 +413,19 @@ def get_data(filters):
             
             # Item Code - Show revised only if item was changed
             "original_item_code": original_item,
-            "revised_item_code": rev_item if item_changed else None,
+            "revised_item_code": rev_item if show_revised else None,
             
             # Item Name - Show revised only if item was changed
             "original_item_name": r.original_item_name,
-            "revised_item_name": r.revised_item_name if item_changed else None,
+            "revised_item_name": r.revised_item_name if show_revised else None,
             
             # Item Description - Show revised only if item was changed
             "original_item_description": r.original_item_description,
-            "revised_item_description": r.revised_item_description if item_changed else None,
+            "revised_item_description": r.revised_item_description if show_revised  else None,
             
             # Item Group - Show revised only if item was changed
             "original_item_group": r.original_item_group,
-            "revised_item_group": r.revised_item_group if item_changed else None,
+            "revised_item_group": r.revised_item_group if show_revised  else None,
         }
 
         # Add all attributes with original and revised values
@@ -424,7 +436,7 @@ def get_data(filters):
             
             row[f"original_{field}"] = orig_value
             # Only show revised attribute if item was changed
-            row[f"revised_{field}"] = rev_value if item_changed else None
+            row[f"revised_{field}"] = rev_value if show_revised  else None
 
         data.append(row)
 

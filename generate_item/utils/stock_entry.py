@@ -363,9 +363,12 @@ def on_submit(doc, method=None):
     Bulk-update Serial Number → stock_entry for every serialised, batched child row
     in the submitted Stock Entry.
     """
+    if doc.stock_entry_type != "Manufacture":
+        return
+    
     rows_to_process = [
         row for row in (doc.items or [])
-        if row.get("has_serial_no") and row.get("batch_no") or row.get("custom_batch_no")
+        if row.get("use_serial_batch_fields") and row.get("batch_no") and row.get("custom_batch_no") and row.get("serial_no")
     ]
 
     if not rows_to_process:
