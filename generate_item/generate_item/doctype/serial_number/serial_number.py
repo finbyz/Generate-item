@@ -818,30 +818,56 @@ def before_cancel_sales_order(doc, method):
     """
     _cancel_linked_omrs(doc)
 
-def before_cancel_stock_entry(doc, method):
-    """
-    Before Stock Entry cancels:
-    1. Check if Stock Entry is for transferring serial numbers
-    2. Check if Stock Entry is for transferring serial numbers
-    3. Cancel each submitted OMR first
-    4. Then allow SO cancellation to proceed
-    """
-    frappe.db.sql(
-        f"""
-        UPDATE `tabSerial Number`
-        SET    
-               stock_entry = ""
-               
-        WHERE  
-            stock_entry=%s
-            
-        """,
-        doc.name,
-    )
-    frappe.db.commit()
+
 
     
-    
+def before_cancel_stock_entry(doc, method=None):
+    """
+    Before Stock Entry cancels:
+    Clear the stock_entry reference ONLY on Serial Numbers that are
+    explicitly listed in the child rows' serial_no field.
+    """
+    if doc.stock_entry_type != "Manufacture":
+        return
+
+    # ── Collect all serial numbers from child rows ────────────────────────
+    serial_nos = []
+    for row in (doc.items or []):
+        if row.get("use_serial_batch_fields") and row.get("serial_no"):
+            parsed = [
+                s.strip()
+                for s in (row.serial_no or "").splitlines()
+                if s.strip()
+            ]
+            serial_nos.extend(parsed)
+
+    # Deduplicate while preserving order
+    serial_nos = list(dict.fromkeys(serial_nos))
+
+    if not serial_nos:
+        frappe.log_error(
+            f"[SerialAlloc] Cancel {doc.name}: no serial numbers found in child rows — skipping."
+        )
+        return
+
+    # ── Bulk clear stock_entry only for serials belonging to this entry ───
+    placeholders = ", ".join(["%s"] * len(serial_nos))
+
+    updated = frappe.db.sql(
+        f"""
+        UPDATE `tabSerial Number`
+        SET    stock_entry  = ''
+               
+        WHERE  name         IN ({placeholders})
+          AND  stock_entry  = %s
+        """,
+        [ *serial_nos, doc.name],
+        auto_commit=False,   # let Frappe's transaction wrapper handle commit
+    )
+
+    frappe.log_error(
+        f"[SerialAlloc] Cancel {doc.name}: cleared stock_entry on serials {serial_nos}."
+    )  
 
 
 

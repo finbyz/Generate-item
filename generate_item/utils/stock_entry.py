@@ -355,8 +355,6 @@ def apply_custom_fields_to_item(item, custom_fields):
         if val:
             setattr(item, key, val)
 
-
-
 def on_submit(doc, method=None):
     frappe.log_error(f"Stock Entry: {doc.name}", "Stock Entry")
     """
@@ -365,10 +363,13 @@ def on_submit(doc, method=None):
     """
     if doc.stock_entry_type != "Manufacture":
         return
-    
+
     rows_to_process = [
         row for row in (doc.items or [])
-        if row.get("use_serial_batch_fields") and row.get("batch_no") and row.get("custom_batch_no") and row.get("serial_no")
+        if row.get("use_serial_batch_fields")
+        and row.get("batch_no")
+        and row.get("custom_batch_no")
+        and row.get("serial_no")  # must have serial_no text
     ]
 
     if not rows_to_process:
@@ -378,19 +379,32 @@ def on_submit(doc, method=None):
 
     for row in rows_to_process:
         batch = row.batch_no or row.custom_batch_no
-        
+
+        # ── Parse the newline-separated serial_no field ──────────────────
+        serial_nos = [
+            s.strip()
+            for s in (row.serial_no or "").splitlines()
+            if s.strip()
+        ]
+
+        if not serial_nos:
+            frappe.logger().info(
+                f"[SerialAlloc] Row {row.idx}: serial_no field is empty — skipping."
+            )
+            continue
 
         try:
-            _bulk_update_serial_stock_entry(
+            updated = _bulk_update_serial_stock_entry(
                 stock_entry_name=doc.name,
                 batch_no=batch,
-               
+                serial_nos=serial_nos,
+            )
+            frappe.logger().info(
+                f"[SerialAlloc] {doc.name} / batch={batch}: updated {updated} serial(s)."
             )
         except Exception as exc:
-            # Collect errors so we can report all failures at once rather than
-            # rolling back on the first one.
             frappe.log_error(
-                title=f"Serial No update failed — {doc.name}  / {batch}",
+                title=f"Serial No update failed — {doc.name} / {batch}",
                 message=frappe.get_traceback(),
             )
             errors.append(f"(Batch <b>{batch}</b>): {exc}")
@@ -403,52 +417,66 @@ def on_submit(doc, method=None):
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Core: one bulk UPDATE per child row
+# Core: bulk UPDATE scoped to the serial numbers listed in the child row
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _bulk_update_serial_stock_entry(
     stock_entry_name: str,
     batch_no: str,
-   
+    serial_nos: list[str],          # ← parsed from child row's serial_no field
 ) -> int:
-   
-
-    # ------------------------------------------------------------------
-    # 1. Collect the target serial numbers in one SELECT.
-    #    We only touch serials that don't already reference another entry
-    #    (stock_entry IS NULL or '').
-    # ------------------------------------------------------------------
-    serial_names: list[str] = frappe.db.sql(
-        """
-        SELECT name
-        FROM   `tabSerial Number`
-        WHERE docstatus = 1
-        AND batch   = %(batch_no)s
-          AND  (stock_entry IS NULL OR stock_entry = '')
-        ORDER BY name ASC
-        """,
-        {"batch_no": batch_no},
-        as_dict=False,           # returns list of single-element tuples
-        debug=False,
-    )
-
-    # Flatten to plain list of strings
-    serial_names = [row[0] for row in serial_names]
-
-    if not serial_names:
-        frappe.logger().info(
-            f"[SerialAlloc] No unlinked serials found for "
-            f"batch={batch_no} — skipping."
-        )
+    """
+    Updates stock_entry on Serial Number records that:
+      1. Appear in the provided serial_nos list (from the child row)
+      2. Belong to the expected batch
+      3. Don't already reference another stock entry
+    Returns the number of rows updated.
+    """
+    if not serial_nos:
         return 0
 
     # ------------------------------------------------------------------
-    # 2. Bulk UPDATE using an IN-list.
-    #    frappe.db.sql() uses %s placeholders; we need one per item in the
-    #    list.  We build the placeholder string dynamically and pass the
-    #    values as positional parameters so the DB driver handles escaping.
+    # 1. Verify which of the provided serial numbers are actually eligible:
+    #    - present in tabSerial Number
+    #    - belong to the correct batch
+    #    - not already linked to a stock entry
+    # This SELECT acts as a safety guard before the UPDATE.
     # ------------------------------------------------------------------
-    placeholders = ", ".join(["%s"] * len(serial_names))
+    name_placeholders = ", ".join(["%s"] * len(serial_nos))
+
+    eligible_serials = frappe.db.sql(
+        f"""
+        SELECT name
+        FROM   `tabSerial Number`
+        WHERE  name   IN ({name_placeholders})
+          AND  batch   = %s
+          AND  (stock_entry IS NULL OR stock_entry = '')
+        ORDER BY name ASC
+        """,
+        [*serial_nos, batch_no],     # serial list first, then batch
+        as_dict=False,
+    )
+
+    eligible_serials = [row[0] for row in eligible_serials]
+
+    if not eligible_serials:
+        frappe.logger().info(
+            f"[SerialAlloc] No eligible serials for batch={batch_no} "
+            f"among provided list {serial_nos} — skipping."
+        )
+        return 0
+
+    # Log if some serials from the child row were skipped
+    skipped = set(serial_nos) - set(eligible_serials)
+    if skipped:
+        frappe.logger().warning(
+            f"[SerialAlloc] Skipped serials (already linked or not found): {skipped}"
+        )
+
+    # ------------------------------------------------------------------
+    # 2. Bulk UPDATE only the eligible subset.
+    # ------------------------------------------------------------------
+    update_placeholders = ", ".join(["%s"] * len(eligible_serials))
 
     frappe.db.sql(
         f"""
@@ -456,13 +484,10 @@ def _bulk_update_serial_stock_entry(
         SET    stock_entry  = %s,
                modified     = NOW(),
                modified_by  = %s
-        WHERE  name IN ({placeholders})
+        WHERE  name IN ({update_placeholders})
         """,
-        [stock_entry_name, frappe.session.user, *serial_names],
+        [stock_entry_name, frappe.session.user, *eligible_serials],
         auto_commit=False,   # let Frappe's transaction wrapper handle commit
     )
 
-
-    return len(serial_names)
-
-
+    return len(eligible_serials)
