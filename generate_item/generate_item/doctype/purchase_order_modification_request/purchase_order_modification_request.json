@@ -1,0 +1,162 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "PMR-.YYYY.-.MM.-.####",
+ "creation": "2026-03-31 17:29:30.085371",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_ilns",
+  "branch",
+  "purchase_order_no",
+  "modification_type",
+  "get_item",
+  "get_detail",
+  "column_break_yckl",
+  "purchase_order_date",
+  "supplier_name",
+  "reason_for_change",
+  "section_break_pbll",
+  "items",
+  "amended_from",
+  "history_tab",
+  "original_record"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_ilns",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Branch",
+   "options": "Branch",
+   "reqd": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Purchase Order Modification Request",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "column_break_yckl",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "purchase_order_no.transaction_date",
+   "fieldname": "purchase_order_date",
+   "fieldtype": "Date",
+   "label": "Purchase Order Date",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "purchase_order_no.supplier",
+   "fieldname": "supplier_name",
+   "fieldtype": "Link",
+   "label": "Supplier Name",
+   "options": "Supplier",
+   "read_only": 1
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Purchase Order Modification Request",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "reason_for_change",
+   "fieldtype": "Small Text",
+   "label": "Reason For Change",
+   "reqd": 1
+  },
+  {
+   "fieldname": "purchase_order_no",
+   "fieldtype": "Link",
+   "label": "Purchase Order No",
+   "options": "Purchase Order"
+  },
+  {
+   "depends_on": "eval:doc.purchase_order_no",
+   "fieldname": "modification_type",
+   "fieldtype": "Select",
+   "label": "Modification Type",
+   "options": "\nOrder Change\nOrder Item Change"
+  },
+  {
+   "depends_on": "eval:doc.modification_type == \"Order Item Change\"",
+   "fieldname": "get_item",
+   "fieldtype": "Button",
+   "label": "Get Item"
+  },
+  {
+   "depends_on": "eval:doc.modification_type == \"Order Change\"",
+   "fieldname": "get_detail",
+   "fieldtype": "Button",
+   "label": "Get Detail"
+  },
+  {
+   "fieldname": "section_break_pbll",
+   "fieldtype": "Section Break"
+  },
+  {
+   "depends_on": "eval:doc.modification_type == \"Order Item Change\"",
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "no_copy": 1,
+   "options": "Purchase Order Modification Request Detail"
+  },
+  {
+   "fieldname": "history_tab",
+   "fieldtype": "Tab Break",
+   "label": "History"
+  },
+  {
+   "fieldname": "original_record",
+   "fieldtype": "Table",
+   "label": "Original Record",
+   "no_copy": 1,
+   "options": "Purchase Order Modification Request Detail History"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-04-01 17:09:02.755459",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Purchase Order Modification Request",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
