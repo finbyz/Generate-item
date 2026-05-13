@@ -116,12 +116,12 @@ def get_data(filters):
 			& (mr.per_received < 100)
 
 			 # exclude unwanted PR
-			& ((pr.docstatus.isnull()) | (pr.docstatus != 2))   
-			& ((pr.is_return.isnull()) | (pr.is_return != 1))   
-			&  (
-				(pr.status.isnull()) |
-				(~pr.status.isin(["Cancelled", "Return Issued", "Closed"]))
-			)
+			# & ((pr.docstatus.isnull()) | (pr.docstatus != 2))   
+			# & ((pr.is_return.isnull()) | (pr.is_return != 1))   
+			# &  (
+			# 	(pr.status.isnull()) |
+			# 	(~pr.status.isin(["Cancelled", "Return Issued", "Closed"]))
+			# )
 		)
 	)
 
