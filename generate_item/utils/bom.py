@@ -22,22 +22,24 @@ def validate_bom_creation(doc, method=None):
         "Sales Order Item",
         filters={
             "parent": doc.sales_order,
-            "line_status": ["is", "set"]   
+            "line_status": ["is", "set"],
+            "custom_batch_no" : doc.custom_batch_no   
         },
         fields=["item_code", "idx", "line_status"]
     )
 
     # If any line has line_status filled, block BOM creation
     if blocked_items:
-        blocked_item_list = ", ".join(
-            [f"Row {d.idx} ({d.item_code}) - Status: {d.line_status}" 
-             for d in blocked_items]
-        )
+        
+            blocked_item_list = ", ".join(
+                [f"Row {d.idx} ({d.item_code}) - Status: {d.line_status}" 
+                for d in blocked_items]
+            )
 
-        frappe.throw(
-            _("Cannot create BOM because the following Sales Order lines have a status set: {0}")
-            .format(blocked_item_list)
-        )
+            frappe.throw(
+                _("Cannot create BOM because the following Sales Order lines have a status set: {0}")
+                .format(blocked_item_list)
+            )
 
 def before_insert(doc, method=None):
     """Set custom BOM name before document is inserted"""
