@@ -361,16 +361,6 @@ class OrderModificationRequest(Document):
         self.sales_order
     ))
 
-        # so = frappe.get_doc("Sales Order", self.sales_order)
-
-        # # Update revision fields
-        # if so:
-        #     so.latest_rev_no = self.name
-        #     so.rev_date = today()
-        #     so.save(ignore_permissions=True)
-
-
-  
 
     def update_sales_order_values(self):
 
