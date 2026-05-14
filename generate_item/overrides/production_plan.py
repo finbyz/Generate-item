@@ -93,265 +93,265 @@ class ProductionPlan(_ProductionPlan):
                 frappe.log_error("Production Plan Validation", f"Validation error in Production Plan: {str(e)}")
                 frappe.throw(_("Error validating Production Plan due to invalid references: {0}").format(str(e)))
                 
-    def get_so_items(self):
-        valid_items = []
-        # Check for empty table or empty rows
-        if not self.get("sales_orders") or not self.get_so_mr_list("sales_order", "sales_orders"):
-            frappe.throw(_("Please fill the Sales Orders table"), title=_("Sales Orders Required"))
-        so_list = self.get_so_mr_list("sales_order", "sales_orders")
-        bom = frappe.qb.DocType("BOM")
-        so_item = frappe.qb.DocType("Sales Order Item")
-        items_subquery = frappe.qb.from_(bom).select(bom.name, bom.custom_batch_no).where(bom.is_active == 1)
-        items_query = (
-            frappe.qb.from_(so_item)
-            .select(
-                so_item.parent,
-                so_item.item_code,
-                so_item.warehouse,
-                so_item.qty,
-                so_item.work_order_qty,
-                so_item.delivered_qty,
-                so_item.conversion_factor,
-                so_item.description,
-                so_item.name,
-                so_item.bom_no,  # Ignored below—kept for query compatibility
-                so_item.custom_batch_no,
-            )
-            .distinct()
-            .where(
-                (so_item.parent.isin(so_list))
-                & (so_item.docstatus == 1)
-                & (so_item.qty > so_item.work_order_qty)
-            )
-        )
-        if self.item_code and frappe.db.exists("Item", self.item_code):
-            items_query = items_query.where(so_item.item_code == self.item_code)
+    # def get_so_items(self):
+    #     valid_items = []
+    #     # Check for empty table or empty rows
+    #     if not self.get("sales_orders") or not self.get_so_mr_list("sales_order", "sales_orders"):
+    #         frappe.throw(_("Please fill the Sales Orders table"), title=_("Sales Orders Required"))
+    #     so_list = self.get_so_mr_list("sales_order", "sales_orders")
+    #     bom = frappe.qb.DocType("BOM")
+    #     so_item = frappe.qb.DocType("Sales Order Item")
+    #     items_subquery = frappe.qb.from_(bom).select(bom.name, bom.custom_batch_no).where(bom.is_active == 1)
+    #     items_query = (
+    #         frappe.qb.from_(so_item)
+    #         .select(
+    #             so_item.parent,
+    #             so_item.item_code,
+    #             so_item.warehouse,
+    #             so_item.qty,
+    #             so_item.work_order_qty,
+    #             so_item.delivered_qty,
+    #             so_item.conversion_factor,
+    #             so_item.description,
+    #             so_item.name,
+    #             so_item.bom_no,  # Ignored below—kept for query compatibility
+    #             so_item.custom_batch_no,
+    #         )
+    #         .distinct()
+    #         .where(
+    #             (so_item.parent.isin(so_list))
+    #             & (so_item.docstatus == 1)
+    #             & (so_item.qty > so_item.work_order_qty)
+    #         )
+    #     )
+    #     if self.item_code and frappe.db.exists("Item", self.item_code):
+    #         items_query = items_query.where(so_item.item_code == self.item_code)
             
-            # FIX: Build the condition properly with correct operator precedence
-            bom_condition = bom.item == so_item.item_code
+    #         # FIX: Build the condition properly with correct operator precedence
+    #         bom_condition = bom.item == so_item.item_code
             
-            # Add batch matching condition if applicable
-            batch_condition = (bom.custom_batch_no == so_item.custom_batch_no)
+    #         # Add batch matching condition if applicable
+    #         batch_condition = (bom.custom_batch_no == so_item.custom_batch_no)
             
-            # Get the BOM item condition if it exists
-            try:
-                bom_item_cond = self.get_bom_item_condition()
-                if bom_item_cond is not None:
-                    # Combine: (batch_match AND bom_item_cond) OR item_match
-                    items_subquery = items_subquery.where(
-                        ((batch_condition & bom_item_cond) | bom_condition)
-                    )
-                else:
-                    # Combine: batch_match OR item_match
-                    items_subquery = items_subquery.where(
-                        (batch_condition | bom_condition)
-                    )
-            except Exception:
-                # Fallback: just use item match
-                items_subquery = items_subquery.where(bom_condition)
+    #         # Get the BOM item condition if it exists
+    #         try:
+    #             bom_item_cond = self.get_bom_item_condition()
+    #             if bom_item_cond is not None:
+    #                 # Combine: (batch_match AND bom_item_cond) OR item_match
+    #                 items_subquery = items_subquery.where(
+    #                     ((batch_condition & bom_item_cond) | bom_condition)
+    #                 )
+    #             else:
+    #                 # Combine: batch_match OR item_match
+    #                 items_subquery = items_subquery.where(
+    #                     (batch_condition | bom_condition)
+    #                 )
+    #         except Exception:
+    #             # Fallback: just use item match
+    #             items_subquery = items_subquery.where(bom_condition)
         
-        items_query = items_query.where(ExistsCriterion(items_subquery))
-        items = items_query.run(as_dict=True)
+    #     items_query = items_query.where(ExistsCriterion(items_subquery))
+    #     items = items_query.run(as_dict=True)
         
-        # NEW: Direct BOM lookup using item, sales_order, and batch (ignore so_item.bom_no entirely)
-        for item in items:
-            # Calc pending_qty first (as it's used for conditional lookup)
-            item.pending_qty = (
-                flt(item.qty) - max(item.work_order_qty, item.delivered_qty, 0)
-            ) * item.conversion_factor
+    #     # NEW: Direct BOM lookup using item, sales_order, and batch (ignore so_item.bom_no entirely)
+    #     for item in items:
+    #         # Calc pending_qty first (as it's used for conditional lookup)
+    #         item.pending_qty = (
+    #             flt(item.qty) - max(item.work_order_qty, item.delivered_qty, 0)
+    #         ) * item.conversion_factor
             
-            if item.pending_qty > 0:
-                # Direct query to BOM doctype with exact references
-                bom_name = frappe.get_value(
-                    "BOM",
-                    {
-                        "item": item.item_code,
-                        "sales_order": item.parent,  # Sales Order reference
-                        "custom_batch_no": item.custom_batch_no,  # Batch reference
-                        "is_active": 1,
-                        "docstatus": 1  # Remove if BOMs are draft (docstatus=0)
-                    },
-                    "name"
-                )
-                if not bom_name:
-                    continue
-                item['bom_no'] = bom_name
-                valid_items.append(item)
+    #         if item.pending_qty > 0:
+    #             # Direct query to BOM doctype with exact references
+    #             bom_name = frappe.get_value(
+    #                 "BOM",
+    #                 {
+    #                     "item": item.item_code,
+    #                     "sales_order": item.parent,  # Sales Order reference
+    #                     "custom_batch_no": item.custom_batch_no,  # Batch reference
+    #                     "is_active": 1,
+    #                     "docstatus": 1  # Remove if BOMs are draft (docstatus=0)
+    #                 },
+    #                 "name"
+    #             )
+    #             if not bom_name:
+    #                 continue
+    #             item['bom_no'] = bom_name
+    #             valid_items.append(item)
                 
         
-        # Existing packed items logic (unchanged, but add similar BOM resolution if needed)
-        pi = frappe.qb.DocType("Packed Item")
-        packed_items_query = (
-            frappe.qb.from_(so_item)
-            .from_(pi)
-            .select(
-                pi.parent,
-                pi.item_code,
-                pi.warehouse.as_("warehouse"),
-                (((so_item.qty - so_item.work_order_qty) * pi.qty) / so_item.qty).as_("pending_qty"),
-                pi.parent_item,
-                pi.description,
-                so_item.name,
-                so_item.custom_batch_no,
-            )
-            .distinct()
-            .where(
-                (so_item.parent == pi.parent)
-                & (so_item.docstatus == 1)
-                & (pi.parent_item == so_item.item_code)
-                & (so_item.parent.isin(so_list))
-                & (so_item.qty > so_item.work_order_qty)
-                & (
-                    ExistsCriterion(
-                        frappe.qb.from_(bom)
-                        .select(bom.name)
-                        .where((bom.item == pi.item_code) & (bom.is_active == 1))
-                    )
-                )
-            )
-        )
-        if self.item_code:
-            packed_items_query = packed_items_query.where(so_item.item_code == self.item_code)
-        packed_items = packed_items_query.run(as_dict=True)
+    #     # Existing packed items logic (unchanged, but add similar BOM resolution if needed)
+    #     pi = frappe.qb.DocType("Packed Item")
+    #     packed_items_query = (
+    #         frappe.qb.from_(so_item)
+    #         .from_(pi)
+    #         .select(
+    #             pi.parent,
+    #             pi.item_code,
+    #             pi.warehouse.as_("warehouse"),
+    #             (((so_item.qty - so_item.work_order_qty) * pi.qty) / so_item.qty).as_("pending_qty"),
+    #             pi.parent_item,
+    #             pi.description,
+    #             so_item.name,
+    #             so_item.custom_batch_no,
+    #         )
+    #         .distinct()
+    #         .where(
+    #             (so_item.parent == pi.parent)
+    #             & (so_item.docstatus == 1)
+    #             & (pi.parent_item == so_item.item_code)
+    #             & (so_item.parent.isin(so_list))
+    #             & (so_item.qty > so_item.work_order_qty)
+    #             & (
+    #                 ExistsCriterion(
+    #                     frappe.qb.from_(bom)
+    #                     .select(bom.name)
+    #                     .where((bom.item == pi.item_code) & (bom.is_active == 1))
+    #                 )
+    #             )
+    #         )
+    #     )
+    #     if self.item_code:
+    #         packed_items_query = packed_items_query.where(so_item.item_code == self.item_code)
+    #     packed_items = packed_items_query.run(as_dict=True)
         
-        # NEW: Direct BOM lookup for packed_items (mirroring above)
-        valid_packed_items = []
-        for packed_item in packed_items:
-            if packed_item.get('pending_qty', 0) > 0:
-                bom_name = frappe.get_value(
-                    "BOM",
-                    {
-                        "item": packed_item.item_code,  # Use packed item's code
-                        "sales_order": packed_item.parent,  # Sales Order
-                        "custom_batch_no": packed_item.custom_batch_no,  # Batch from SO item
-                        "is_active": 1,
-                        "docstatus": 1
-                    },
-                    "name"
-                )
+    #     # NEW: Direct BOM lookup for packed_items (mirroring above)
+    #     valid_packed_items = []
+    #     for packed_item in packed_items:
+    #         if packed_item.get('pending_qty', 0) > 0:
+    #             bom_name = frappe.get_value(
+    #                 "BOM",
+    #                 {
+    #                     "item": packed_item.item_code,  # Use packed item's code
+    #                     "sales_order": packed_item.parent,  # Sales Order
+    #                     "custom_batch_no": packed_item.custom_batch_no,  # Batch from SO item
+    #                     "is_active": 1,
+    #                     "docstatus": 1
+    #                 },
+    #                 "name"
+    #             )
 
-                if not bom_name:
-                    continue
+    #             if not bom_name:
+    #                 continue
 
 
-                if bom_name:
-                    packed_item['bom_no'] = bom_name
-                    valid_packed_items.append(packed_item)
-                else:
-                    packed_item['bom_no'] = ""
-                    frappe.msgprint(
-                        _("No active BOM found for Packed Item '{0}' in Sales Order '{1}' (Batch: '{2}'). Added without BOM.")
-                        .format(packed_item.item_code, packed_item.parent, packed_item.custom_batch_no or "N/A")
-                    )
+    #             if bom_name:
+    #                 packed_item['bom_no'] = bom_name
+    #                 valid_packed_items.append(packed_item)
+    #             else:
+    #                 packed_item['bom_no'] = ""
+    #                 frappe.msgprint(
+    #                     _("No active BOM found for Packed Item '{0}' in Sales Order '{1}' (Batch: '{2}'). Added without BOM.")
+    #                     .format(packed_item.item_code, packed_item.parent, packed_item.custom_batch_no or "N/A")
+    #                 )
         
-        self.add_items(valid_items + valid_packed_items)
-        self.calculate_total_planned_qty()                        
+    #     self.add_items(valid_items + valid_packed_items)
+    #     self.calculate_total_planned_qty()                        
         
-    def add_items(self, items):
-        refs = {}
-        for data in items:
-            if not data.pending_qty:
-                continue
-            item_details = get_item_details(data.item_code, throw=False)
+    # def add_items(self, items):
+    #     refs = {}
+    #     for data in items:
+    #         if not data.pending_qty:
+    #             continue
+    #         item_details = get_item_details(data.item_code, throw=False)
             
-            # UPDATED: Use pre-resolved bom_no from get_so_items (no fallback or SO item check)
-            bom_no = data.get('bom_no') or ""  # Direct from data—empty if no BOM found
+    #         # UPDATED: Use pre-resolved bom_no from get_so_items (no fallback or SO item check)
+    #         bom_no = data.get('bom_no') or ""  # Direct from data—empty if no BOM found
             
-            if self.combine_items:
-                if bom_no in refs:
-                    refs[bom_no]["so_details"].append(
-                        {"sales_order": data.parent, "sales_order_item": data.name, "qty": data.pending_qty}
-                    )
-                    refs[bom_no]["qty"] += data.pending_qty
-                    continue
-                else:
-                    refs[bom_no] = {
-                        "qty": data.pending_qty,
-                        "po_item_ref": data.name,
-                        "so_details": [],
-                    }
-                    refs[bom_no]["so_details"].append(
-                        {"sales_order": data.parent, "sales_order_item": data.name, "qty": data.pending_qty}
-                    )
+    #         if self.combine_items:
+    #             if bom_no in refs:
+    #                 refs[bom_no]["so_details"].append(
+    #                     {"sales_order": data.parent, "sales_order_item": data.name, "qty": data.pending_qty}
+    #                 )
+    #                 refs[bom_no]["qty"] += data.pending_qty
+    #                 continue
+    #             else:
+    #                 refs[bom_no] = {
+    #                     "qty": data.pending_qty,
+    #                     "po_item_ref": data.name,
+    #                     "so_details": [],
+    #                 }
+    #                 refs[bom_no]["so_details"].append(
+    #                     {"sales_order": data.parent, "sales_order_item": data.name, "qty": data.pending_qty}
+    #                 )
             
-            # Append to po_items using the resolved bom_no
-            pi = self.append(
-                "po_items",
-                {
-                    "warehouse": data.warehouse,
-                    "item_code": data.item_code,
-                    "description": data.description or item_details.description,
-                    "stock_uom": item_details and item_details.stock_uom or "",
-                    "bom_no": bom_no,  # Now directly from lookup
-                    "planned_qty": data.pending_qty,
-                    "pending_qty": data.pending_qty,
-                    "planned_start_date": now_datetime(),
-                    "product_bundle_item": data.parent_item,
-                },
-            )
-            pi._set_defaults()
-            if self.get_items_from == "Sales Order":
-                pi.sales_order = data.parent
-                pi.sales_order_item = data.name
-                pi.description = data.description
-                pi.custom_batch_no = data.get("custom_batch_no")
-            elif self.get_items_from == "Material Request":
-                pi.material_request = data.parent
-                pi.material_request_item = data.name
-                pi.description = data.description
+    #         # Append to po_items using the resolved bom_no
+    #         pi = self.append(
+    #             "po_items",
+    #             {
+    #                 "warehouse": data.warehouse,
+    #                 "item_code": data.item_code,
+    #                 "description": data.description or item_details.description,
+    #                 "stock_uom": item_details and item_details.stock_uom or "",
+    #                 "bom_no": bom_no,  # Now directly from lookup
+    #                 "planned_qty": data.pending_qty,
+    #                 "pending_qty": data.pending_qty,
+    #                 "planned_start_date": now_datetime(),
+    #                 "product_bundle_item": data.parent_item,
+    #             },
+    #         )
+    #         pi._set_defaults()
+    #         if self.get_items_from == "Sales Order":
+    #             pi.sales_order = data.parent
+    #             pi.sales_order_item = data.name
+    #             pi.description = data.description
+    #             pi.custom_batch_no = data.get("custom_batch_no")
+    #         elif self.get_items_from == "Material Request":
+    #             pi.material_request = data.parent
+    #             pi.material_request_item = data.name
+    #             pi.description = data.description
         
-        if refs:
-            for po_item in self.po_items:
-                po_item.planned_qty = refs[po_item.bom_no]["qty"]
-                po_item.pending_qty = refs[po_item.bom_no]["qty"]
-                po_item.sales_order = ""
-            self.add_pp_ref(refs)
+    #     if refs:
+    #         for po_item in self.po_items:
+    #             po_item.planned_qty = refs[po_item.bom_no]["qty"]
+    #             po_item.pending_qty = refs[po_item.bom_no]["qty"]
+    #             po_item.sales_order = ""
+    #         self.add_pp_ref(refs)
 
-    def get_mr_items(self):
-        # Check for empty table or empty rows
-        if not self.get("material_requests") or not self.get_so_mr_list(
-            "material_request", "material_requests"
-        ):
-            frappe.throw(_("Please fill the Material Requests table"), title=_("Material Requests Required"))
+    # def get_mr_items(self):
+    #     # Check for empty table or empty rows
+    #     if not self.get("material_requests") or not self.get_so_mr_list(
+    #         "material_request", "material_requests"
+    #     ):
+    #         frappe.throw(_("Please fill the Material Requests table"), title=_("Material Requests Required"))
 
-        mr_list = self.get_so_mr_list("material_request", "material_requests")
+    #     mr_list = self.get_so_mr_list("material_request", "material_requests")
 
-        bom = frappe.qb.DocType("BOM")
-        mr_item = frappe.qb.DocType("Material Request Item")
+    #     bom = frappe.qb.DocType("BOM")
+    #     mr_item = frappe.qb.DocType("Material Request Item")
 
-        items_query = (
-            frappe.qb.from_(mr_item)
-            .select(
-                mr_item.parent,
-                mr_item.name,
-                mr_item.item_code,
-                mr_item.warehouse,
-                mr_item.description,
-                mr_item.bom_no,
-                ((mr_item.qty - mr_item.ordered_qty) * mr_item.conversion_factor).as_("pending_qty"),
-            )
-            .distinct()
-            .where(
-                (mr_item.parent.isin(mr_list))
-                & (mr_item.docstatus == 1)
-                & (mr_item.qty > mr_item.ordered_qty)
-                & (
-                    ExistsCriterion(
-                        frappe.qb.from_(bom)
-                        .select(bom.name)
-                        .where((bom.item == mr_item.item_code) & (bom.is_active == 1))
-                    )
-                )
-            )
-        )
+    #     items_query = (
+    #         frappe.qb.from_(mr_item)
+    #         .select(
+    #             mr_item.parent,
+    #             mr_item.name,
+    #             mr_item.item_code,
+    #             mr_item.warehouse,
+    #             mr_item.description,
+    #             mr_item.bom_no,
+    #             ((mr_item.qty - mr_item.ordered_qty) * mr_item.conversion_factor).as_("pending_qty"),
+    #         )
+    #         .distinct()
+    #         .where(
+    #             (mr_item.parent.isin(mr_list))
+    #             & (mr_item.docstatus == 1)
+    #             & (mr_item.qty > mr_item.ordered_qty)
+    #             & (
+    #                 ExistsCriterion(
+    #                     frappe.qb.from_(bom)
+    #                     .select(bom.name)
+    #                     .where((bom.item == mr_item.item_code) & (bom.is_active == 1))
+    #                 )
+    #             )
+    #         )
+    #     )
 
-        if self.item_code:
-            items_query = items_query.where(mr_item.item_code == self.item_code)
+    #     if self.item_code:
+    #         items_query = items_query.where(mr_item.item_code == self.item_code)
 
-        items = items_query.run(as_dict=True)
+    #     items = items_query.run(as_dict=True)
 
-        self.add_items(items)
-        self.calculate_total_planned_qty()
+    #     self.add_items(items)
+    #     self.calculate_total_planned_qty()
 
 
     @frappe.whitelist()
@@ -391,6 +391,13 @@ class ProductionPlan(_ProductionPlan):
             "Work Order Naming Series - Finished Goods",
             f"Using naming_series={work_order_naming_series} for finished goods work orders"
         )
+
+        # Create a mapping of sales_order -> remark from sales_orders child table
+        sales_order_remarks = {}
+        if hasattr(self, 'sales_orders') and self.sales_orders:
+            for so_row in self.sales_orders:
+                if so_row.sales_order and so_row.remark:
+                    sales_order_remarks[so_row.sales_order] = so_row.remark
         
         # --- Start Re-implementation of Core Logic ---
         # We re-implement this to inject naming series BEFORE creation
@@ -413,24 +420,60 @@ class ProductionPlan(_ProductionPlan):
             
             # 1. Set Naming Series
             item["naming_series"] = work_order_naming_series
-            
-            # 2. Set Branch (try to get from po_items if not on header)
-            branch_value = getattr(self, "branch", None)
-            if not branch_value and getattr(self, "po_items", None):
-                try:
-                    # Try to find matching po_item for this item
-                    po_item_match = next((pi for pi in self.po_items if pi.item_code == item.get("production_item") and pi.warehouse == item.get("fg_warehouse")), None)
-                    if po_item_match and getattr(po_item_match, "branch", None):
-                         branch_value = po_item_match.branch
-                    
-                    if not branch_value:
-                         # Fallback to any branch found
-                         branch_value = next((pi.branch for pi in self.po_items if getattr(pi, "branch", None)), None)
-                except Exception:
-                    branch_value = None
-            
+
+         
+
+
+            # Resolve po_item source once — used for SO, branch, batch, drawing lookups
+            po_item_ref = item.get("production_plan_item")
+            po_source = None
+            if po_item_ref and getattr(self, "po_items", None):
+                po_source = next((pi for pi in self.po_items if pi.name == po_item_ref), None)
+
+            # Sales Order — always from po_items, never from BOM
+            sales_order = None
+            if po_source and getattr(po_source, "sales_order", None):
+                sales_order = po_source.sales_order
+            elif getattr(self, "po_items", None):
+                po_item_match = next(
+                    (pi for pi in self.po_items
+                    if pi.item_code == item.get("production_item")
+                    and pi.warehouse == item.get("fg_warehouse")),
+                    None
+                )
+                if po_item_match:
+                    sales_order = getattr(po_item_match, "sales_order", None)
+
+            if sales_order:
+                item["sales_order"] = sales_order
+                # Map Remark — must run AFTER SO is resolved from po_items
+                if sales_order in sales_order_remarks:
+                    item["remark"] = sales_order_remarks[sales_order]
+                    frappe.log_error(
+                        f"Mapping Remark - Item: {item.get('production_item')}",
+                        f"Sales Order: {sales_order}, Remark: {sales_order_remarks[sales_order]}"
+                    )
+            else:
+                frappe.log_error(
+                    "Work Order SO Not Found",
+                    f"No sales_order found in po_items for production_item={item.get('production_item')}, "
+                    f"production_plan_item={item.get('production_plan_item')}"
+                )
+
+            # Branch — from po_source first, then any po_item, then header
+            branch_value = None
+            if po_source and getattr(po_source, "branch", None):
+                branch_value = po_source.branch
+            elif getattr(self, "po_items", None):
+                branch_value = next((pi.branch for pi in self.po_items if getattr(pi, "branch", None)), None)
+            if not branch_value:
+                branch_value = getattr(self, "branch", None)
+
             if branch_value:
                 item["branch"] = branch_value
+
+            
+           
                 
             # 3. Set Custom Batch No
             # The item dict here is constructed from po_items in get_production_items
@@ -472,7 +515,10 @@ class ProductionPlan(_ProductionPlan):
                          # This shouldn't happen now, but as a safety net
                          wo_doc.db_set("naming_series", work_order_naming_series, update_modified=False)
                          frappe.log_error("Work Order Naming Series Logic Failed", f"Had to force update naming series for {work_order}")
-                         
+                    
+                    # Ensure remark is saved on Work Order
+                    if item.get("remark") :
+                        wo_doc.db_set("remark", item.get("remark"), update_modified=False)  
                     # Backfill required_items child table fields
                     updates_needed = False
                     for req in wo_doc.required_items:
@@ -560,12 +606,36 @@ class ProductionPlan(_ProductionPlan):
             self.get_so_items()
         elif self.get_items_from == "Material Request":
             self.get_mr_items()
+        # Keep only Manufacturing SO Items
+        soi_names = [
+            d.sales_order_item
+            for d in self.po_items
+            if getattr(d, "sales_order_item", None)
+        ]
+
+        if soi_names:
+            manufacturing_soi = frappe.get_all(
+                "Sales Order Item",
+                filters={
+                    "name": ("in", soi_names),
+                    "custom_item_type": "Manufacturing"
+                },
+                pluck="name"
+            )
+
+            self.po_items = [
+                d for d in self.po_items
+                if d.sales_order_item in manufacturing_soi
+            ]
+
         try:
             # Recalculate pending/planned qty on po_items based on existing Production Plans
             self._recalculate_pending_qty_on_po_items()
             
             # Ensure po_items BOM only from same Sales Order as the row
-            self._enforce_bom_matches_sales_order_on_po_items()
+            # self._enforce_bom_matches_sales_order_on_po_items()
+
+            self._set_bom_from_item_code_on_po_items()
 
             if not getattr(self, "po_items", None):
                 return
@@ -673,6 +743,50 @@ class ProductionPlan(_ProductionPlan):
             self.po_items = kept_rows
         except Exception as e:
             frappe.log_error("Production Plan Pending Qty Error", f"Error recalculating pending qty on po_items: {str(e)}")
+
+    def _set_bom_from_item_code_on_po_items(self):
+        """For each po_items row, find and set a BOM where:
+            - BOM.item == row.item_code
+            - BOM.is_active == 1
+            - BOM.is_default == 1
+        If no such BOM is found, log a warning and skip the row.
+        Replaces _enforce_bom_matches_sales_order_on_po_items entirely.
+        """
+        if not getattr(self, "po_items", None):
+            return
+
+        for d in self.po_items:
+            row_item = getattr(d, "item_code", None)
+
+            if not row_item:
+                continue
+
+            try:
+                candidate = frappe.get_all(
+                    "BOM",
+                    filters={
+                        "item": row_item,
+                        "is_active": 1,
+                        "is_default": 1,
+                        "docstatus": 1,
+                    },
+                    fields=["name"],
+                    limit=1,
+                )
+
+                if candidate:
+                    d.bom_no = candidate[0]["name"]
+                else:
+                    frappe.log_error(
+                        "Production Plan BOM Not Found",
+                        f"No active+default BOM found for item '{row_item}' on row {d.idx}. bom_no left unchanged."
+                    )
+
+            except Exception as e:
+                frappe.log_error(
+                    "Production Plan BOM Set Error",
+                    f"Error fetching BOM for item '{row_item}' on row {d.idx}: {str(e)}"
+                )
 
     def _enforce_bom_matches_sales_order_on_po_items(self):
         """For each po_items row, only keep or set BOMs that belong to the same Sales Order.

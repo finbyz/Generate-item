@@ -25,11 +25,15 @@ app_license = "mit"
 # ------------------
 
 # Export/import fixtures for this app
-# fixtures = [
-#     {"doctype": "Custom Field", "filters": [["module", "=", "Generate Item"]]},
-#     {"doctype": "Property Setter", "filters": [["module", "=", "Generate Item"]]},
-# ]
+fixtures = [
+    # {"doctype": "Custom Field", "filters": [["module", "=", "Generate Item"]]},
+    {"doctype": "Property Setter", "filters": [["module", "=", "Generate Item"]]},
+]
 
+doctype_list_js = {
+    "Sales Order": "public/js/sales_order_list.js",
+    "Item Generator" : "public/js/item_generator_list.js"
+}
 # include js, css files in header of desk.html
 # app_include_css = "/assets/generate_item/css/generate_item.css"
 # app_include_js = "/assets/generate_item/js/generate_item.js"
@@ -66,7 +70,6 @@ doctype_js = {"Item" : "public/js/item.js",
               "Work Order" : "public/js/work_order.js",
               }
 
-doctype_list_js = {"Item Generator" : "public/js/item_generator_list.js"}
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 

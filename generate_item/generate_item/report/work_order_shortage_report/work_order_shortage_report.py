@@ -226,6 +226,12 @@ def get_columns():
             "fieldtype": "Link",
             "options": "Supplier",
             "width": 150
+        },
+        {
+            "fieldname": "view",
+            "label": _("View"),
+            "fieldtype": "Data",
+            "width": 200
         }
     ]
 
@@ -890,6 +896,7 @@ def build_final_data(base_data, allocation_map, stock_map):
         row["on_hand_qty"] = stock_qty
         row["shortage_qty"] = shortage
         row["total_req_qty"] = total_req
+        row["view"] = "View"
 
         result.append(row)
 

@@ -23,71 +23,71 @@ function custom_transfer_materials(frm)
 
                     frm.set_value("consider_minimum_order_qty", 0);
 
-                    if (frm.doc.ignore_existing_ordered_qty) {
-                        frm.events.get_items_for_material_requests(frm);
-                    } else {
-                        let warehouses_promise = Promise.resolve([]);
+                    // if (frm.doc.ignore_existing_ordered_qty) {
+                    //     frm.events.get_items_for_material_requests(frm);
+                    // } else {
+                    //     let warehouses_promise = Promise.resolve([]);
 
-                        if (frm.doc.branch) {
-                            warehouses_promise = frappe.db.get_list('Warehouse', {
-                                filters: {
-                                    branch: frm.doc.branch,
-                                    store_warehouse: 1,
-                                    disabled: 0,
-                                    is_group: 0
-                                },
-                                fields: ['name'],
-                                limit: 1
-                            });
-                        }
+                    //     if (frm.doc.branch) {
+                    //         warehouses_promise = frappe.db.get_list('Warehouse', {
+                    //             filters: {
+                    //                 branch: frm.doc.branch,
+                    //                 store_warehouse: 1,
+                    //                 disabled: 0,
+                    //                 is_group: 0
+                    //             },
+                    //             fields: ['name'],
+                    //             limit: 1
+                    //         });
+                    //     }
 
-                        warehouses_promise.then((store_warehouses) => {
-                            const title = __("Transfer Materials For Warehouse {0}", [frm.doc.for_warehouse]);
+                    //     warehouses_promise.then((store_warehouses) => {
+                    //         const title = __("Transfer Materials For Warehouse {0}", [frm.doc.for_warehouse]);
 
-                            let default_transfer_warehouses = [];
-                            if (store_warehouses?.length) {
-                                default_transfer_warehouses = [{ warehouse: store_warehouses[0].name }];
-                            }
+                    //         let default_transfer_warehouses = [];
+                    //         if (store_warehouses?.length) {
+                    //             default_transfer_warehouses = [{ warehouse: store_warehouses[0].name }];
+                    //         }
 
-                            let dialog = new frappe.ui.Dialog({
-                                title: title,
-                                fields: [
-                                    {
-                                        label: __("Transfer From Warehouses"),
-                                        fieldtype: "Table MultiSelect",
-                                        fieldname: "warehouses",
-                                        options: "Production Plan Material Request Warehouse",
-                                        get_query: function () {
-                                            return {
-                                                filters: {
-                                                    company: frm.doc.company,
-                                                },
-                                            };
-                                        },
-                                    },
-                                    {
-                                        label: __("For Warehouse"),
-                                        fieldtype: "Link",
-                                        fieldname: "target_warehouse",
-                                        read_only: true,
-                                        default: frm.doc.for_warehouse,
-                                    },
-                                ],
-                            });
+                    //         let dialog = new frappe.ui.Dialog({
+                    //             title: title,
+                    //             fields: [
+                    //                 {
+                    //                     label: __("Transfer From Warehouses"),
+                    //                     fieldtype: "Table MultiSelect",
+                    //                     fieldname: "warehouses",
+                    //                     options: "Production Plan Material Request Warehouse",
+                    //                     get_query: function () {
+                    //                         return {
+                    //                             filters: {
+                    //                                 company: frm.doc.company,
+                    //                             },
+                    //                         };
+                    //                     },
+                    //                 },
+                    //                 {
+                    //                     label: __("For Warehouse"),
+                    //                     fieldtype: "Link",
+                    //                     fieldname: "target_warehouse",
+                    //                     read_only: true,
+                    //                     default: frm.doc.for_warehouse,
+                    //                 },
+                    //             ],
+                    //         });
 
-                            dialog.show();
+                    //         dialog.show();
 
-                            if (default_transfer_warehouses.length) {
-                                dialog.set_value("warehouses", default_transfer_warehouses);
-                            }
+                    //         if (default_transfer_warehouses.length) {
+                    //             dialog.set_value("warehouses", default_transfer_warehouses);
+                    //         }
 
-                            dialog.set_primary_action(__("Get Items"), () => {
-                                let values = dialog.get_values();
-                                frm.events.get_items_for_material_requests(frm, values?.warehouses);
-                                dialog.hide();
-                            });
-                        });
-                    }
+                    //         dialog.set_primary_action(__("Get Items"), () => {
+                    //             let values = dialog.get_values();
+                    //             frm.events.get_items_for_material_requests(frm, values?.warehouses);
+                    //             dialog.hide();
+                    //         });
+                    //     });
+                    // }
                 });
             } else {
                 console.warn(" Button with data-fieldname='transfer_materials' not found");
@@ -173,19 +173,19 @@ frappe.ui.form.on('Production Plan', {
         });
     },
 
-    setup: function (frm) {
-        frm.set_query('custom_batch_wise_assembly', function () {
-            let batch_nos = (frm.doc.po_items || [])
-                .filter(row => row.custom_batch_no)
-                .map(row => row.custom_batch_no);
+    // setup: function (frm) {
+    //     frm.set_query('custom_batch_wise_assembly', function () {
+    //         let batch_nos = (frm.doc.po_items || [])
+    //             .filter(row => row.custom_batch_no)
+    //             .map(row => row.custom_batch_no);
 
-            return {
-                filters: [
-                    ['Batch', 'name', 'in', batch_nos]
-                ]
-            };
-        });
-    },
+    //         return {
+    //             filters: [
+    //                 ['Batch', 'name', 'in', batch_nos]
+    //             ]
+    //         };
+    //     });
+    // },
     setup_queries(frm) {
         frm.set_query("sales_order", "sales_orders", () => {
             return {
@@ -268,7 +268,7 @@ frappe.ui.form.on('Production Plan', {
         let selected_batch = frm.doc.custom_batch_wise_assembly;
         if (!selected_batch) {
             frm.trigger("get_sales_orders");
-            frm.trigger("get_items");
+            // frm.trigger("get_items");
             return;
         }
 

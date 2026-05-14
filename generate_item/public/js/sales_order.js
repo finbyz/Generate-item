@@ -1,3 +1,821 @@
+let _handling_contacted = false;
+let _skip_qualified_check = false;
+
+
+if (window.erpnext && erpnext.utils.CRMActivities && !erpnext.utils.CRMActivities.prototype._original_update_status) {
+    erpnext.utils.CRMActivities.prototype._original_update_status = erpnext.utils.CRMActivities.prototype.update_status;
+    erpnext.utils.CRMActivities.prototype.update_status = async function (input_field, doctype) {
+        // Run core update (sets field to Closed and refreshes the partial section)
+        await this._original_update_status(input_field, doctype);
+
+        // Then trigger a full form reload to re-run our nexstar_crm refresh logic
+        if (this.frm && this.frm.reload_doc) {
+            this.frm.reload_doc();
+        }
+    };
+}
+
+
+function setup_todo_section(frm) {
+    // Use a short polling loop — the Activities tab renders asynchronously
+    let attempts = 0;
+    const interval = setInterval(function () {
+        attempts++;
+        const $activities = frm.$wrapper.find(".open-activities");
+        if ($activities.length || attempts > 40) {
+            clearInterval(interval);
+            if ($activities.length) {
+                _apply_activity_customizations(frm);
+                _setup_activity_observer(frm);
+            }
+        }
+    }, 200);
+}
+
+
+/**
+ * Apply all customizations to the open-tasks and open-events sections.
+ * Disconnects the observer first so our own DOM changes don't re-trigger it.
+ */
+function _apply_activity_customizations(frm) {
+    if (frm._applying_customizations) return;
+    frm._applying_customizations = true;
+
+    if (frm._activity_observer) {
+        frm._activity_observer.disconnect();
+    }
+
+    const $open_tasks = frm.$wrapper.find(".open-tasks");
+    const $open_events = frm.$wrapper.find(".open-events");
+
+    if ($open_tasks.length) {
+        _bind_todo_clicks(frm, $open_tasks);
+        _inject_completed_toggle(frm, $open_tasks);
+        _hide_default_completed_tasks($open_tasks);
+    }
+    if ($open_events.length) {
+        _bind_event_clicks(frm, $open_events);
+        _inject_completed_events_toggle(frm, $open_events);
+        _hide_default_past_events($open_events);
+    }
+
+    setTimeout(function () {
+        frm._applying_customizations = false;
+        _reconnect_activity_observer(frm);
+    }, 600);
+}
+
+
+/**
+ * Install the MutationObserver on the stable field wrapper.
+ * When CRMActivities.refresh() re-renders the .open-activities content,
+ * the observer re-applies our customizations.
+ */
+function _setup_activity_observer(frm) {
+    const field = frm.fields_dict.open_activities;
+    if (!field || !field.$wrapper) return;
+
+    if (!frm._activity_observer) {
+        frm._activity_observer = new MutationObserver(function () {
+            // Ignore mutations we caused ourselves
+            if (frm._applying_customizations) return;
+
+            clearTimeout(frm._activity_debounce);
+            frm._activity_debounce = setTimeout(function () {
+                _apply_activity_customizations(frm);
+            }, 600);  // ← increased from 400
+        });
+    }
+
+    _reconnect_activity_observer(frm);
+}
+
+
+/**
+ * Re-connect the observer after our own DOM mutations have settled.
+ */
+function _reconnect_activity_observer(frm) {
+    if (!frm._activity_observer) return;
+
+    const field = frm.fields_dict.open_activities;
+    if (!field || !field.$wrapper) return;
+
+    frm._activity_observer.observe(field.$wrapper[0], {
+        childList: true,
+        subtree: true
+    });
+}
+
+
+/**
+ * Hide the default ERPNext "Completed Tasks" section rendered by crm_activities.html.
+ * We already display completed tasks via the custom toggle injected by _inject_completed_toggle.
+ */
+function _hide_default_completed_tasks($open_tasks) {
+    $open_tasks.find(".open-section-head").each(function () {
+        const text = $(this).text().trim();
+        if (text === __("Completed Tasks")) {
+            // The "Completed Tasks" header and its sibling task rows
+            // are wrapped in a parent <div class="mt-4">
+            $(this).closest(".mt-4").hide();
+        }
+    });
+}
+
+
+/**
+ * Hide the default ERPNext "Past Events" section rendered by crm_activities.html.
+ * We already display past events via the custom toggle injected by _inject_completed_events_toggle.
+ */
+function _hide_default_past_events($open_events) {
+    $open_events.find(".open-section-head").each(function () {
+        const text = $(this).text().trim();
+        if (text === __("Past Events")) {
+            $(this).closest(".mt-4").hide();
+        }
+    });
+}
+
+
+/**
+ * Intercept every ToDo row click inside the open-tasks widget
+ * and open the ToDo popup instead of navigating away.
+ */
+function _bind_todo_clicks(frm, $open_tasks) {
+    // Exclude todo-closed-row to prevent double dialogs on completed items
+    $open_tasks.find(".todo-item, .task-item, [data-name]:not(.todo-closed-row)").off("click.todo_popup").on("click.todo_popup", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const todo_name = $(this).attr("data-name") || $(this).closest("[data-name]").attr("data-name");
+        if (todo_name) open_todo_dialog(frm, todo_name);
+    });
+
+    // Also catch direct anchor links that would navigate to the ToDo form
+    $open_tasks.find("a[href*='todo']").off("click.todo_popup").on("click.todo_popup", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const href = $(this).attr("href") || "";
+        const match = href.match(/todo\/([^/?]+)/i);
+        if (match) open_todo_dialog(frm, decodeURIComponent(match[1]));
+    });
+}
+
+
+/**
+ * Intercept every Event row click inside the open-events widget
+ * and open the Event dialog instead of navigating away.
+ */
+function _bind_event_clicks(frm, $open_events) {
+    // Catch anchor links that would navigate to the Event form
+    $open_events.find("a[href*='event']").off("click.event_popup").on("click.event_popup", function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const href = $(this).attr("href") || "";
+        const match = href.match(/event\/([^/?]+)/i);
+        if (match) open_event_dialog(frm, decodeURIComponent(match[1]));
+    });
+
+    // Also catch clicks on the event row (not just the anchor)
+    // Exclude event-closed-row to prevent double dialogs on closed items
+    $open_events.find(".single-activity:not(.event-closed-row)").off("click.event_popup").on("click.event_popup", function (e) {
+        // Only fire if the click wasn't on the checkbox
+        if ($(e.target).is("input[type=checkbox]")) return;
+        const $anchor = $(this).find("a[href*='event']");
+        if (!$anchor.length) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const href = $anchor.attr("href") || "";
+        const match = href.match(/event\/([^/?]+)/i);
+        if (match) open_event_dialog(frm, decodeURIComponent(match[1]));
+    });
+}
+
+
+/**
+ * Append a "Show past events (N)" toggle below the open-events list.
+ * Mirrors _inject_completed_toggle for tasks.
+ */
+function _inject_completed_events_toggle(frm, $open_events) {
+    $open_tasks.find(".completed-todo-toggle").remove();
+    $open_tasks.find(".completed-todo-list").remove();
+
+    // Count closed/past events linked to this Lead
+    frappe.call({
+        method: "frappe.client.get_count",
+        args: {
+            doctype: "Event",
+            filters: [
+                ["Event Participants", "reference_doctype", "=", "Lead"],
+                ["Event Participants", "reference_docname", "=", frm.doc.name],
+                ["Event", "status", "in", ["Closed", "Cancelled"]]
+            ]
+        },
+        callback(r) {
+            const count = r.message || 0;
+            if (count === 0) {
+                // show fallback instead of hiding everything
+                const $msg = $(`
+                    <div style="color:var(--text-muted); font-size:12px; margin-top:8px;">
+                        No completed tasks
+                    </div>
+                `);
+                $open_tasks.append($msg);
+                return;
+            }
+
+            const $toggle = $(`
+                <div class="completed-event-toggle" style="
+                    margin-top: 10px;
+                    padding: 4px 0;
+                    cursor: pointer;
+                    color: var(--text-muted);
+                    font-size: 12px;
+                    user-select: none;
+                ">
+                    <span class="toggle-icon">▶</span>
+                    &nbsp;Show past events (${count})
+                </div>
+            `);
+
+            const $event_list = $(`<div class="completed-event-list" style="display:none; margin-top:6px;"></div>`);
+            $open_events.append($toggle).append($event_list);
+
+            let loaded = false;
+            let expanded = false;
+
+            $toggle.on("click", function () {
+                expanded = !expanded;
+
+                if (expanded) {
+                    $toggle.find(".toggle-icon").text("▼");
+                    $toggle.html($toggle.html().replace("Show past events", "Hide past events"));
+                    $event_list.slideDown(150);
+
+                    if (!loaded) {
+                        loaded = true;
+                        _render_completed_events(frm, $event_list);
+                    }
+                } else {
+                    $toggle.find(".toggle-icon").text("▶");
+                    $toggle.html($toggle.html().replace("Hide past events", "Show past events"));
+                    $event_list.slideUp(150);
+                }
+            });
+        }
+    });
+}
+
+
+/**
+ * Fetch closed/cancelled Events and render them as clickable rows.
+ */
+function _render_completed_events(frm, $container) {
+    frappe.call({
+        method: "frappe.client.get_list",
+        args: {
+            doctype: "Event",
+            filters: [
+                ["Event Participants", "reference_doctype", "=", "Lead"],
+                ["Event Participants", "reference_docname", "=", frm.doc.name],
+                ["Event", "status", "in", ["Closed", "Cancelled"]]
+            ],
+            fields: ["name", "subject", "starts_on", "ends_on", "event_category", "status"],
+            order_by: "starts_on desc",
+            limit_page_length: 50
+        },
+        callback(r) {
+            const events = r.message || [];
+            $container.empty();
+
+            if (!events.length) {
+                $container.html(`<div style="color:var(--text-muted); font-size:12px; padding:4px 0;">No past events.</div>`);
+                return;
+            }
+
+            events.forEach(ev => {
+                const start = ev.starts_on ? frappe.datetime.str_to_user(ev.starts_on) : "\u2013";
+                const category = ev.event_category || "Event";
+                const statusLabel = ev.status === "Cancelled" ? "Cancelled" : "Done";
+                const statusColor = ev.status === "Cancelled" ? "var(--text-muted)" : "var(--green)";
+
+                const $row = $(`
+                    <div class="event-closed-row" data-name="${ev.name}" style="
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        padding: 8px 10px;
+                        margin-bottom: 4px;
+                        border-radius: 6px;
+                        background: var(--fg-color);
+                        cursor: pointer;
+                        opacity: 0.65;
+                        border-left: 3px solid var(--border-color);
+                        transition: opacity 0.15s;
+                    " onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='0.65'">
+                        <div style="flex:1;">
+                            <span style="text-decoration: line-through; font-size:13px; color:var(--text-color);">
+                                ${frappe.utils.escape_html(ev.subject || ev.name)}
+                            </span>
+                            <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">
+                                ${frappe.utils.escape_html(category)} &middot; ${start}
+                            </div>
+                        </div>
+                        <span style="font-size:11px; color:${statusColor}; font-weight:600;">${statusLabel}</span>
+                    </div>
+                `);
+
+                $row.on("click", function () {
+                    open_event_dialog(frm, ev.name);
+                });
+
+                $container.append($row);
+            });
+        }
+    });
+}
+
+
+/**
+ * Append a single "Show completed (N)" toggle link below the open task list.
+ * Count is cached on frm to survive DOM rebuilds by CRMActivities.refresh()
+ */
+function _inject_completed_toggle(frm, $open_tasks) {
+    // Always remove and re-inject — CRM widget wipes DOM on every refresh
+    $open_tasks.find(".completed-todo-toggle").remove();
+    $open_tasks.find(".completed-todo-list").remove();
+
+    const _do_inject = (count) => {
+        if (!count) return;
+        if (!$open_tasks.closest('body').length) return;
+
+        const $toggle = $(`
+            <div class="completed-todo-toggle" style="
+                margin-top: 10px; padding: 4px 0; cursor: pointer;
+                color: var(--text-muted); font-size: 12px; user-select: none;
+            ">
+                <span class="toggle-icon">▼</span>
+                &nbsp;Hide completed (${count})
+            </div>
+        `);
+        const $completed_list = $(`<div class="completed-todo-list" style="margin-top:6px;"></div>`);
+        $open_tasks.append($toggle).append($completed_list);
+
+        let expanded = true;
+        if ($completed_list.length) {
+            _render_completed_todos(frm, $completed_list);
+        }
+        // _render_completed_todos(frm, $completed_list);
+
+        $toggle.on("click", function () {
+            expanded = !expanded;
+            if (expanded) {
+                $toggle.find(".toggle-icon").text("▼");
+                $toggle.html($toggle.html().replace("Show completed", "Hide completed"));
+                $completed_list.slideDown(150);
+            } else {
+                $toggle.find(".toggle-icon").text("▶");
+                $toggle.html($toggle.html().replace("Hide completed", "Show completed"));
+                $completed_list.slideUp(150);
+            }
+        });
+    };
+
+    // Use cached count if available, else fetch and cache
+    if (frm._completed_todo_count !== undefined) {
+        _do_inject(frm._completed_todo_count);
+    } else {
+        frappe.db.count("ToDo", {
+            filters: {
+                reference_type: frm.doc.doctype,
+                reference_name: frm.doc.name,
+                status: "Closed"
+            }
+        }).then(count => {
+            frm._completed_todo_count = count;
+            _do_inject(count);
+        });
+    }
+}
+
+
+function _inject_completed_events_toggle(frm, $open_events) {
+    // Always remove and re-inject — CRM widget wipes DOM on every refresh
+    // ✅ FIXED: was incorrectly using $open_tasks instead of $open_events
+    $open_events.find(".completed-event-toggle").remove();
+    $open_events.find(".completed-event-list").remove();
+
+    const _do_inject = (count) => {
+        if (!count) return;
+        if (!$open_events.closest('body').length) return;
+
+        const $toggle = $(`
+            <div class="completed-event-toggle" style="
+                margin-top: 10px; padding: 4px 0; cursor: pointer;
+                color: var(--text-muted); font-size: 12px; user-select: none;
+            ">
+                <span class="toggle-icon">▶</span>
+                &nbsp;Show past events (${count})
+            </div>
+        `);
+        const $event_list = $(`<div class="completed-event-list" style="display:none; margin-top:6px;"></div>`);
+        $open_events.append($toggle).append($event_list);
+
+        let loaded = false;
+        let expanded = false;
+
+        $toggle.on("click", function () {
+            expanded = !expanded;
+            if (expanded) {
+                $toggle.find(".toggle-icon").text("▼");
+                $toggle.html($toggle.html().replace("Show past events", "Hide past events"));
+                $event_list.slideDown(150);
+                if (!loaded) {
+                    loaded = true;
+                    _render_completed_events(frm, $event_list);
+                }
+            } else {
+                $toggle.find(".toggle-icon").text("▶");
+                $toggle.html($toggle.html().replace("Hide past events", "Show past events"));
+                $event_list.slideUp(150);
+            }
+        });
+    };
+
+    // Use cached count if available, else fetch and cache
+    if (frm._completed_event_count !== undefined) {
+        _do_inject(frm._completed_event_count);
+    } else {
+        frappe.call({
+            method: "frappe.client.get_count",
+            args: {
+                doctype: "Event",
+                filters: [
+                    ["Event Participants", "reference_doctype", "=", "Lead"],
+                    ["Event Participants", "reference_docname", "=", frm.doc.name],
+                    ["Event", "status", "in", ["Closed", "Cancelled"]]
+                ]
+            },
+            callback(r) {
+                const count = r.message || 0;
+                frm._completed_event_count = count;
+                _do_inject(count);
+            }
+        });
+    }
+}
+
+
+/**
+ * Strip HTML tags from a rich-text string → plain text for row display.
+ */
+function _strip_html(html) {
+    return $('<div>').html(html || '').text().trim();
+}
+
+
+/**
+ * Fetch closed ToDos and render them as clickable rows with strikethrough.
+ */
+function _render_completed_todos(frm, $container) {
+    frappe.db.get_list("ToDo", {
+        filters: {
+            reference_type: frm.doc.doctype,
+            reference_name: frm.doc.name,
+            status: "Closed"
+        },
+        fields: ["name", "description", "date", "allocated_to", "priority"],
+        order_by: "date desc",
+        limit: 50
+    }).then(todos => {
+        $container.empty();
+        if (!todos.length) {
+            $container.html(`<div style="color:var(--text-muted); font-size:12px; padding:4px 0;">No completed tasks.</div>`);
+            return;
+        }
+
+        todos.forEach(todo => {
+            const due = todo.date ? frappe.datetime.str_to_user(todo.date) : "\u2013";
+            // Strip Quill HTML → show plain readable text
+            const plain_text = _strip_html(todo.description) || todo.name;
+
+            const $row = $(`
+                <div class="todo-closed-row" data-name="${todo.name}" style="
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 8px 10px;
+                    margin-bottom: 4px;
+                    border-radius: 6px;
+                    background: var(--fg-color);
+                    cursor: pointer;
+                    opacity: 0.65;
+                    border-left: 3px solid var(--border-color);
+                    transition: opacity 0.15s;
+                " onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='0.65'">
+                    <div style="flex:1;">
+                        <span style="text-decoration: line-through; font-size:13px; color:var(--text-color);">
+                            ${frappe.utils.escape_html(plain_text)}
+                        </span>
+                        <div style="font-size:11px; color:var(--text-muted); margin-top:2px;">
+                            Due: ${due} &middot; Assigned: ${todo.allocated_to || "\u2013"}
+                        </div>
+                    </div>
+                    <span style="font-size:11px; color:var(--green); font-weight:600;">&#10003; Done</span>
+                </div>
+            `);
+
+            $row.on("click", function () {
+                open_todo_dialog(frm, todo.name);
+            });
+
+            $container.append($row);
+        });
+    });
+}
+
+
+/**
+ * Open an editable ToDo dialog.
+ * If todo_name is provided → load existing record (edit mode).
+ * If null              → blank form (create mode).
+ */
+function open_todo_dialog(frm, todo_name) {
+    const is_new = !todo_name;
+    const title = is_new ? __("New Task") : __("Edit Task");
+
+    const dialog = new frappe.ui.Dialog({
+        title: title,
+        size: "large",
+        fields: [
+            // ── Row 1: Assign To · Due Date · Priority · Status ──────────────
+            {
+                fieldtype: "Link",
+                fieldname: "allocated_to",
+                label: "Assign To",
+                options: "User",
+                description: "Select a team member"
+            },
+            {
+                fieldtype: "Column Break"
+            },
+            {
+                fieldtype: "Date",
+                fieldname: "date",
+                label: "Due Date"
+            },
+            {
+                fieldtype: "Column Break"
+            },
+            {
+                fieldtype: "Select",
+                fieldname: "priority",
+                label: "Priority",
+                options: "Low\nMedium\nHigh\nUrgent",
+                default: "Medium"
+            },
+            {
+                fieldtype: "Column Break"
+            },
+            {
+                fieldtype: "Select",
+                fieldname: "status",
+                label: "Status",
+                options: "Open\nClosed\nCancelled",
+                default: "Open"
+            },
+            // ── Row 2: Rich-text description ─────────────────────────────────
+            {
+                fieldtype: "Section Break",
+                label: "Task Description"
+            },
+            {
+                fieldtype: "Text Editor",
+                fieldname: "description",
+                label: "",
+                reqd: 1
+            }
+        ],
+        primary_action_label: is_new ? __("Create Task") : __("Save"),
+        primary_action(values) {
+            if (is_new) {
+                frappe.db.insert({
+                    doctype: "ToDo",
+                    description: values.description,
+                    allocated_to: values.allocated_to || frappe.session.user,
+                    date: values.date || null,
+                    priority: values.priority || "Medium",
+                    status: values.status || "Open",
+                    reference_type: frm.doc.doctype,
+                    reference_name: frm.doc.name,
+                    assigned_by: frappe.session.user
+                }).then(() => {
+                    dialog.hide();
+                    frappe.show_alert({ message: __("Task created"), indicator: "green" });
+                    frm.reload_doc();
+                }).catch(err => {
+                    frappe.msgprint({ title: __("Error"), message: err.message, indicator: "red" });
+                });
+            } else {
+                frappe.db.set_value("ToDo", todo_name, {
+                    description: values.description,
+                    allocated_to: values.allocated_to,
+                    date: values.date,
+                    priority: values.priority,
+                    status: values.status
+                }).then(() => {
+                    dialog.hide();
+                    frappe.show_alert({ message: __("Task updated"), indicator: "green" });
+                    delete frm._completed_todo_count;
+                    frm.reload_doc();
+                }).catch(err => {
+                    frappe.msgprint({ title: __("Error"), message: err.message, indicator: "red" });
+                });
+            }
+        }
+    });
+
+    // If editing, prefill values from the database
+    if (!is_new) {
+        frappe.db.get_doc("ToDo", todo_name).then(todo => {
+            dialog.set_values({
+                description: todo.description || "",
+                allocated_to: todo.allocated_to || "",
+                date: todo.date || "",
+                priority: todo.priority || "Medium",
+                status: todo.status || "Open"
+            });
+            dialog.show();
+        });
+    } else {
+        // Pre-fill assigned to current user
+        dialog.set_value("allocated_to", frappe.session.user);
+        dialog.show();
+    }
+}
+
+
+/**
+ * Open an editable Event dialog.
+ * If event_name is provided → load existing record (edit mode).
+ * If null                   → blank form (create mode).
+ */
+function open_event_dialog(frm, event_name) {
+    const is_new = !event_name;
+    const title = is_new ? __("New Event") : __("Edit Event");
+
+    const dialog = new frappe.ui.Dialog({
+        title: title,
+        size: "large",
+        fields: [
+            // ── Row 1: Subject ────────────────────────────────────────────────
+            {
+                fieldtype: "Data",
+                fieldname: "subject",
+                label: "Subject",
+                reqd: 1
+            },
+            // ── Row 2: Category · Status ──────────────────────────────────────
+            {
+                fieldtype: "Section Break"
+            },
+            {
+                fieldtype: "Select",
+                fieldname: "event_category",
+                label: "Event Category",
+                options: "Event\nMeeting\nCall\nSent/Received Email\nOther",
+                default: "Event"
+            },
+            {
+                fieldtype: "Column Break"
+            },
+            {
+                fieldtype: "Select",
+                fieldname: "status",
+                label: "Status",
+                options: "Open\nClosed\nCancelled",
+                default: "Open"
+            },
+            // ── Row 3: Starts On · Ends On ────────────────────────────────────
+            {
+                fieldtype: "Section Break"
+            },
+            {
+                fieldtype: "Datetime",
+                fieldname: "starts_on",
+                label: "Starts On",
+                reqd: 1
+            },
+            {
+                fieldtype: "Column Break"
+            },
+            {
+                fieldtype: "Datetime",
+                fieldname: "ends_on",
+                label: "Ends On"
+            },
+            // ── Row 4: All Day · Color ────────────────────────────────────────
+            {
+                fieldtype: "Section Break"
+            },
+            {
+                fieldtype: "Check",
+                fieldname: "all_day",
+                label: "All Day"
+            },
+            {
+                fieldtype: "Column Break"
+            },
+            {
+                fieldtype: "Color",
+                fieldname: "color",
+                label: "Color"
+            },
+            // ── Row 5: Description ────────────────────────────────────────────
+            {
+                fieldtype: "Section Break",
+                label: "Event Description"
+            },
+            {
+                fieldtype: "Text Editor",
+                fieldname: "description",
+                label: ""
+            }
+        ],
+        primary_action_label: is_new ? __("Create Event") : __("Save"),
+        primary_action(values) {
+            if (is_new) {
+                frappe.call({
+                    method: "frappe.client.insert",
+                    args: {
+                        doc: {
+                            doctype: "Event",
+                            subject: values.subject,
+                            event_category: values.event_category || "Event",
+                            starts_on: values.starts_on,
+                            ends_on: values.ends_on || null,
+                            all_day: values.all_day || 0,
+                            status: values.status || "Open",
+                            color: values.color || "",
+                            description: values.description || "",
+                            event_type: "Public",
+                            event_participants: [{
+                                reference_doctype: "Lead",
+                                reference_docname: frm.doc.name
+                            }]
+                        }
+                    },
+                    }).then(() => {
+                        dialog.hide();
+                        frappe.show_alert({ message: __("Event updated"), indicator: "green" });
+                        delete frm._completed_event_count;  // ← ADD THIS
+                        frm.reload_doc();
+                    }).catch(err => {
+                   {
+                        frappe.msgprint({ title: __("Error"), message: err.message, indicator: "red" });
+                    }
+                });
+            } else {
+                frappe.db.set_value("Event", event_name, {
+                    subject: values.subject,
+                    event_category: values.event_category,
+                    starts_on: values.starts_on,
+                    ends_on: values.ends_on,
+                    all_day: values.all_day,
+                    status: values.status,
+                    color: values.color,
+                    description: values.description
+                }).then(() => {
+                    dialog.hide();
+                    frappe.show_alert({ message: __("Event updated"), indicator: "green" });
+                    frm.reload_doc();
+                }).catch(err => {
+                    frappe.msgprint({ title: __("Error"), message: err.message, indicator: "red" });
+                });
+            }
+        }
+    });
+
+    // If editing, prefill values from the database
+    if (!is_new) {
+        frappe.db.get_doc("Event", event_name).then(event => {
+            dialog.set_values({
+                subject: event.subject || "",
+                event_category: event.event_category || "Event",
+                starts_on: event.starts_on || "",
+                ends_on: event.ends_on || "",
+                all_day: event.all_day || 0,
+                status: event.status || "Open",
+                color: event.color || "",
+                description: event.description || ""
+            });
+            dialog.show();
+        });
+    } else {
+        dialog.show();
+    }
+}
+
+
 (function () {
     if (!erpnext || !erpnext.utils || erpnext.utils.__gi_so_child_update_patched) {
         return;
@@ -433,8 +1251,9 @@
 
 frappe.ui.form.on('Sales Order', {
     refresh: function (frm) {
-
-
+        // FIX: Call show_activities as a standalone function, not as a method
+        show_activities(frm);
+        setup_todo_section(frm);
         frm.fields_dict["items"].grid.get_field("component_of").get_query = function (doc, cdt, cdn) {
 
             let current_row = locals[cdt][cdn];
@@ -740,54 +1559,7 @@ frappe.ui.form.on('Sales Order', {
             frm.refresh_field("items");
         }
     },
-    // before_workflow_action: function (frm) {
-    //     const action = (frm.selected_workflow_action || "").toLowerCase();
-    //     if (action.includes("reject")) {
-    //         return show_rejection_dialog(frm);
-    //     }
-
-    //     // Only enforce for approve-like actions
-    //     if (!action.includes("approve")) {
-    //         return;
-    //     }
-
-    //     // Determine if any item still needs a batch
-    //     const needs_batches = (frm.doc.items || []).some(d => {
-    //         if (!d || !d.item_code) return false;
-    //         // If this is an amended document, only consider custom_batch_no for decision
-    //         if (frm.doc.amended_from) {
-    //             return !d.custom_batch_no;
-    //         }
-    //         return !d.custom_batch_no && !d.batch_no;
-    //     });
-    //     if (!needs_batches) {
-    //         return; // nothing to do
-    //     }
-
-    //     if (frm.__creating_batches) {
-    //         frappe.msgprint({
-    //             title: __("Please Wait"),
-    //             message: __("Batch creation is already in progress."),
-    //             indicator: "orange"
-    //         });
-    //         return Promise.reject("Batch creation already in progress");
-    //     }
-
-    //     try { frappe.dom.freeze(__('Creating batches...')); } catch (e) { }
-    //     return make_batch(frm)
-    //         .then(() => {
-    //             try { frappe.dom.unfreeze(); } catch (e) { }
-    //         })
-    //         .catch(error => {
-    //             try { frappe.dom.unfreeze(); } catch (e) { }
-    //             frappe.msgprint({
-    //                 title: __("Batch Creation Failed"),
-    //                 message: __("Error during batch creation: {0}", [error?.message || error]),
-    //                 indicator: "red"
-    //             });
-    //             return Promise.reject(error);
-    //         });
-    // },
+    
     before_workflow_action: function (frm) {
         const action = (frm.selected_workflow_action || "").toLowerCase();
 
@@ -885,8 +1657,19 @@ frappe.ui.form.on('Sales Order', {
                 }
             };
         });
-    },
+    }
 });
+
+// FIX: Moved show_activities outside of the form event handler
+function show_activities(frm) {
+    const crm_activities = new erpnext.utils.CRMActivities({
+        frm: frm,
+        open_activities_wrapper: $(frm.fields_dict.open_activities_html.wrapper),
+        all_activities_wrapper: $(frm.fields_dict.all_activities.wrapper),
+        form_wrapper: $(frm.wrapper),
+    });
+    crm_activities.refresh();
+}
 
 frappe.ui.form.on('Sales Order Item', {
     component_of: function (frm, cdt, cdn) {
@@ -1720,7 +2503,7 @@ function finalize_batch_process(frm, created_batches, errors) {
         const persist = async (retry = false) => {
             try {
                 if (created_batches.length > 0) {
-                    console.log('� Updating all batch values in Sales Order Items...');
+                    console.log('🔄 Updating all batch values in Sales Order Items...');
 
                     // Prepare batch updates
                     const batch_updates = created_batches.map(b => ({
