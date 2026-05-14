@@ -17,6 +17,22 @@
  },
  {
   "default_value": null,
+  "doc_type": "Purchase Receipt",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocType",
+  "field_name": null,
+  "is_system_generated": 0,
+  "modified": "2026-05-12 10:33:13.656492",
+  "module": "Generate Item",
+  "name": "Purchase Receipt-main-field_order",
+  "property": "field_order",
+  "property_type": "Data",
+  "row_name": null,
+  "value": "[\"supplier_section\", \"column_break0\", \"title\", \"branch\", \"naming_series\", \"supplier\", \"supplier_name\", \"ewaybill\", \"supplier_delivery_note\", \"subcontracting_receipt\", \"column_break1\", \"posting_date\", \"posting_time\", \"set_posting_time\", \"column_break_12\", \"company\", \"apply_putaway_rule\", \"is_return\", \"return_against\", \"section_break_fmajw\", \"bill_no\", \"gate_inward_no\", \"column_break_heilo\", \"bill_date\", \"gate_inward_date\", \"accounting_dimensions_section\", \"cost_center\", \"dimension_col_break\", \"project\", \"currency_and_price_list\", \"currency\", \"conversion_rate\", \"column_break2\", \"buying_price_list\", \"price_list_currency\", \"plc_conversion_rate\", \"ignore_pricing_rule\", \"sec_warehouse\", \"scan_barcode\", \"last_scanned_warehouse\", \"column_break_31\", \"set_warehouse\", \"set_from_warehouse\", \"col_break_warehouse\", \"rejected_warehouse\", \"is_subcontracted\", \"supplier_warehouse\", \"items_section\", \"items\", \"section_break0\", \"total_qty\", \"total_net_weight\", \"column_break_43\", \"base_total\", \"base_net_total\", \"column_break_27\", \"total\", \"net_total\", \"tax_withholding_net_total\", \"base_tax_withholding_net_total\", \"taxes_charges_section\", \"tax_category\", \"taxes_and_charges\", \"shipping_col\", \"shipping_rule\", \"column_break_53\", \"incoterm\", \"named_place\", \"taxes_section\", \"taxes\", \"totals\", \"base_taxes_and_charges_added\", \"base_taxes_and_charges_deducted\", \"base_total_taxes_and_charges\", \"column_break3\", \"taxes_and_charges_added\", \"taxes_and_charges_deducted\", \"total_taxes_and_charges\", \"section_break_46\", \"base_grand_total\", \"base_rounding_adjustment\", \"base_rounded_total\", \"base_in_words\", \"column_break_50\", \"grand_total\", \"rounding_adjustment\", \"rounded_total\", \"in_words\", \"disable_rounded_total\", \"section_break_42\", \"apply_discount_on\", \"base_discount_amount\", \"column_break_44\", \"additional_discount_percentage\", \"discount_amount\", \"sec_tax_breakup\", \"other_charges_calculation\", \"section_gst_breakup\", \"gst_breakup_table\", \"pricing_rule_details\", \"pricing_rules\", \"raw_material_details\", \"get_current_stock\", \"supplied_items\", \"address_and_contact_tab\", \"section_addresses\", \"supplier_address\", \"address_display\", \"supplier_gstin\", \"gst_category\", \"col_break_address\", \"contact_person\", \"contact_display\", \"contact_mobile\", \"contact_email\", \"section_break_98\", \"dispatch_address\", \"dispatch_address_display\", \"column_break_100\", \"shipping_address\", \"shipping_address_display\", \"billing_address_section\", \"billing_address\", \"column_break_104\", \"billing_address_display\", \"company_gstin\", \"place_of_supply\", \"custom_drg_and_pur_spec\", \"custom_ga_drawing_no\", \"column_break_riv3u\", \"custom_ga_drawing_rev_no\", \"terms_tab\", \"payment_schedule_section\", \"payment_terms_template\", \"tc_name\", \"terms\", \"more_info_tab\", \"status_section\", \"status\", \"column_break4\", \"per_billed\", \"per_returned\", \"subscription_detail\", \"auto_repeat\", \"printing_settings\", \"letter_head\", \"group_same_items\", \"column_break_97\", \"select_print_heading\", \"language\", \"column_break_vzhap\", \"format\", \"transporter_info\", \"transporter\", \"gst_transporter_id\", \"transporter_name\", \"vehicle_no\", \"distance\", \"mode_of_transport\", \"column_break5\", \"lr_no\", \"lr_date\", \"driver\", \"driver_name\", \"gst_vehicle_type\", \"gst_section\", \"ineligibility_reason\", \"additional_info_section\", \"instructions\", \"is_internal_supplier\", \"represents_company\", \"inter_company_reference\", \"custom_batch_no\", \"column_break_131\", \"remarks\", \"range\", \"amended_from\", \"is_old_subcontracting_flow\", \"other_details\", \"connections_tab\", \"is_reverse_charge\", \"fiscal\", \"company_series\", \"fiscal_year\", \"payment_schedule\"]"
+ },
+ {
+  "default_value": null,
   "doc_type": "Delivery Note",
   "docstatus": 0,
   "doctype": "Property Setter",
@@ -46,22 +62,6 @@
   "property_type": "Data",
   "row_name": null,
   "value": "[\"batch_no\", \"item\", \"qty\", \"rate\", \"po_line_no\", \"line_status\", \"tag_no\", \"delivery_date\", \"shipping_address\", \"component_of\", \"line_remark\", \"sales_order_item_name\", \"column_break_1eqv\", \"is_free_item\", \"verify_item_detail\", \"rev_is_free_item\", \"rev_item\", \"rev_qty\", \"rev_rate\", \"rev_po_line_no\", \"rev_line_status\", \"rev_tag_no\", \"rev_delivery_date\", \"rev_shipping_address\", \"rev_component_of\", \"rev_line_remark\", \"bom_update_request\"]"
- },
- {
-  "default_value": null,
-  "doc_type": "Purchase Order Item",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocType",
-  "field_name": null,
-  "is_system_generated": 0,
-  "modified": "2026-05-08 11:57:17.999512",
-  "module": "Generate Item",
-  "name": "Purchase Order Item-main-field_order",
-  "property": "field_order",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "[\"fg_item\", \"fg_item_qty\", \"item_code\", \"po_line_no\", \"supplier_part_no\", \"item_name\", \"brand\", \"product_bundle\", \"column_break_4\", \"schedule_date\", \"expected_delivery_date\", \"item_group\", \"custom_pedce_requirement\", \"custom_material_certification\", \"custom_batch_no\", \"remarks\", \"section_break_5\", \"description\", \"gst_hsn_code\", \"is_ineligible_for_itc\", \"col_break1\", \"image\", \"image_view\", \"quantity_and_rate\", \"uom\", \"qty\", \"received_qty\", \"subcontracted_quantity\", \"col_break2\", \"stock_uom\", \"stock_qty\", \"received_qty_in_stock_uom\", \"pending_qty_in_stock_uom\", \"conversion_factor\", \"custom_drg_and_pur_spec\", \"custom_drawing_no\", \"custom_pattern_drawing_no\", \"custom_purchase_specification_no\", \"custom_column_break_njchu\", \"custom_drawing_rev_no\", \"custom_pattern_drawing_rev_no\", \"custom_purchase_specification_rev_no\", \"sec_break1\", \"price_list_rate\", \"last_purchase_rate\", \"col_break3\", \"base_price_list_rate\", \"discount_and_margin_section\", \"margin_type\", \"margin_rate_or_amount\", \"rate_with_margin\", \"column_break_28\", \"discount_percentage\", \"discount_amount\", \"distributed_discount_amount\", \"base_rate_with_margin\", \"sec_break2\", \"rate\", \"amount\", \"item_tax_template\", \"gst_treatment\", \"col_break4\", \"base_rate\", \"base_amount\", \"pricing_rules\", \"stock_uom_rate\", \"is_free_item\", \"apply_tds\", \"section_break_29\", \"net_rate\", \"net_amount\", \"column_break_32\", \"base_net_rate\", \"base_net_amount\", \"taxable_value\", \"gst_details_section\", \"igst_rate\", \"cgst_rate\", \"sgst_rate\", \"cess_rate\", \"cess_non_advol_rate\", \"cb_gst_details\", \"igst_amount\", \"cgst_amount\", \"sgst_amount\", \"cess_amount\", \"cess_non_advol_amount\", \"warehouse_and_reference\", \"from_warehouse\", \"warehouse\", \"column_break_54\", \"actual_qty\", \"company_total_stock\", \"references_section\", \"material_request\", \"material_request_item\", \"sales_order\", \"sales_order_item\", \"sales_order_packed_item\", \"supplier_quotation\", \"supplier_quotation_item\", \"col_break5\", \"delivered_by_supplier\", \"against_blanket_order\", \"blanket_order\", \"blanket_order_rate\", \"section_break_56\", \"returned_qty\", \"column_break_60\", \"billed_amt\", \"accounting_details\", \"expense_account\", \"column_break_fyqr\", \"wip_composite_asset\", \"manufacture_details\", \"manufacturer\", \"manufacturer_part_no\", \"column_break_14\", \"bom\", \"include_exploded_items\", \"item_weight_details\", \"weight_per_unit\", \"total_weight\", \"column_break_40\", \"weight_uom\", \"accounting_dimensions_section\", \"project\", \"dimension_col_break\", \"branch\", \"cost_center\", \"more_info_section_break\", \"is_fixed_asset\", \"item_tax_rate\", \"section_break_72\", \"production_plan\", \"production_plan_item\", \"production_plan_sub_assembly_item\", \"page_break\"]"
  },
  {
   "default_value": null,
@@ -2030,22 +2030,6 @@
   "property_type": "Check",
   "row_name": null,
   "value": "1"
- },
- {
-  "default_value": null,
-  "doc_type": "Purchase Order",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocType",
-  "field_name": null,
-  "is_system_generated": 0,
-  "modified": "2026-04-09 15:50:35.328629",
-  "module": "Generate Item",
-  "name": "Purchase Order-main-field_order",
-  "property": "field_order",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "[\"workflow_state\", \"supplier_section\", \"title\", \"branch\", \"order_type\", \"supplier\", \"supplier_name\", \"naming_series\", \"order_confirmation_no\", \"order_confirmation_date\", \"get_items_from_open_material_requests\", \"column_break_7\", \"transaction_date\", \"schedule_date\", \"supplier_quotation_date\", \"supplier_quotation_no\", \"column_break1\", \"company\", \"apply_tds\", \"is_reverse_charge\", \"tax_withholding_category\", \"is_subcontracted\", \"editable_required_date\", \"has_unit_price_items\", \"supplier_warehouse\", \"amended_from\", \"accounting_dimensions_section\", \"cost_center\", \"dimension_col_break\", \"project\", \"currency_and_price_list\", \"currency\", \"conversion_rate\", \"cb_price_list\", \"buying_price_list\", \"price_list_currency\", \"plc_conversion_rate\", \"ignore_pricing_rule\", \"set_warehouse\", \"before_items_section\", \"scan_barcode\", \"last_scanned_warehouse\", \"items_col_break\", \"set_from_warehouse\", \"items_section\", \"items\", \"sb_last_purchase\", \"total_qty\", \"total_net_weight\", \"column_break_40\", \"base_total\", \"base_net_total\", \"column_break_26\", \"total\", \"net_total\", \"tax_withholding_net_total\", \"base_tax_withholding_net_total\", \"section_break_48\", \"pricing_rules\", \"raw_material_details\", \"set_reserve_warehouse\", \"supplied_items\", \"taxes_section\", \"tax_category\", \"taxes_and_charges\", \"column_break_53\", \"shipping_rule\", \"column_break_50\", \"incoterm\", \"named_place\", \"section_break_52\", \"taxes\", \"totals\", \"base_taxes_and_charges_added\", \"base_taxes_and_charges_deducted\", \"base_total_taxes_and_charges\", \"column_break_39\", \"taxes_and_charges_added\", \"taxes_and_charges_deducted\", \"total_taxes_and_charges\", \"totals_section\", \"base_grand_total\", \"base_rounding_adjustment\", \"base_in_words\", \"base_rounded_total\", \"column_break4\", \"grand_total\", \"rounding_adjustment\", \"rounded_total\", \"disable_rounded_total\", \"in_words\", \"advance_paid\", \"discount_section\", \"apply_discount_on\", \"base_discount_amount\", \"column_break_45\", \"additional_discount_percentage\", \"discount_amount\", \"sec_tax_breakup\", \"other_charges_calculation\", \"section_gst_breakup\", \"gst_breakup_table\", \"address_and_contact_tab\", \"section_addresses\", \"supplier_address\", \"address_display\", \"supplier_gstin\", \"gst_category\", \"col_break_address\", \"contact_person\", \"contact_display\", \"contact_mobile\", \"contact_email\", \"other_contacts_section\", \"other_contacts\", \"email\", \"shipping_address_section\", \"dispatch_address\", \"dispatch_address_display\", \"column_break_99\", \"shipping_address\", \"shipping_address_display\", \"company_billing_address_section\", \"billing_address\", \"column_break_103\", \"billing_address_display\", \"company_gstin\", \"place_of_supply\", \"drop_ship\", \"customer\", \"customer_name\", \"column_break_19\", \"customer_contact_person\", \"customer_contact_display\", \"customer_contact_mobile\", \"customer_contact_email\", \"custom_pattern__drawing\", \"custom_ga_drawing_no\", \"column_break_y9tgm\", \"custom_ga_drawing_rev_no\", \"terms_tab\", \"payment_schedule_section\", \"payment_terms_template\", \"payment_schedule\", \"terms_section_break\", \"tc_name\", \"terms\", \"po_remarks\", \"more_info_tab\", \"tracking_section\", \"status\", \"column_break_75\", \"per_billed\", \"per_received\", \"custom_section_break_3gzhu\", \"custom_insurance\", \"custom_mode_of_dispatch\", \"freight_charges\", \"column_break5\", \"letter_head\", \"group_same_items\", \"column_break_86\", \"select_print_heading\", \"language\", \"column_break_zqkbi\", \"rev_no\", \"format\", \"order_no\", \"order_date\", \"subject_to\", \"subscription_section\", \"from_date\", \"to_date\", \"column_break_97\", \"auto_repeat\", \"update_auto_repeat_reference\", \"additional_info_section\", \"is_internal_supplier\", \"represents_company\", \"ref_sq\", \"column_break_74\", \"custom_batch_no\", \"party_account_currency\", \"inter_company_order_reference\", \"is_old_subcontracting_flow\", \"connections_tab\", \"fiscal\", \"company_series\", \"fiscal_year\", \"workflow_progress\", \"custom_html\", \"state_change\"]"
  },
  {
   "default_value": null,

@@ -273,6 +273,16 @@ class BomModificationRequest(Document):
 				update_data["do_not_explode"] = 1
 				update_data["bom_no"] = ""        
 				needs_explosion_rebuild = True
+				# Clear batch/SO from the orphaned sub-assembly BOM
+				if row.bom_item_name:
+					old_bom_no = frappe.db.get_value("BOM Item", row.bom_item_name, "bom_no")
+					if old_bom_no:
+						frappe.db.set_value(
+							"BOM",
+							old_bom_no,
+							{"custom_batch_no": "", "sales_order": ""},
+							update_modified=False,
+						)
 
 			elif hasattr(row, "rev_bom_no") and row.rev_bom_no:
 	
