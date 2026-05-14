@@ -1,0 +1,226 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-05-07 15:15:37.478899",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_wnvd",
+  "naming_series",
+  "gate_pass_outward",
+  "party_name",
+  "billing_status",
+  "column_break_zkvf",
+  "date",
+  "bill_no",
+  "bill_amount",
+  "stock_entry",
+  "section_break_abep",
+  "supplier_invoice_no",
+  "gate_inward_no",
+  "column_break_xfgo",
+  "bill_date",
+  "gate_inward_date",
+  "section_break_osdg",
+  "column_break_kjqc",
+  "is_stock_item",
+  "default_target_warehouse",
+  "column_break_jxva",
+  "branch",
+  "section_break_6ohg",
+  "items",
+  "item_detail",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_wnvd",
+   "fieldtype": "Section Break",
+   "label": "Inward Details"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Gate Pass Inward",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "gate_pass_outward",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Gate Pass Outward",
+   "no_copy": 1,
+   "options": "Gate Pass Outward",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_zkvf",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "label": "Date"
+  },
+  {
+   "fieldname": "bill_no",
+   "fieldtype": "Data",
+   "label": "Bill No"
+  },
+  {
+   "fieldname": "billing_status",
+   "fieldtype": "Select",
+   "label": "Billing Status",
+   "options": "\nWith Bill\nWithout Bill"
+  },
+  {
+   "fetch_from": "gate_pass_outward.party_name",
+   "fieldname": "party_name",
+   "fieldtype": "Link",
+   "label": "Party Name",
+   "no_copy": 1,
+   "options": "Supplier",
+   "read_only": 1
+  },
+  {
+   "fieldname": "bill_amount",
+   "fieldtype": "Currency",
+   "label": "Bill Amount "
+  },
+  {
+   "fieldname": "section_break_osdg",
+   "fieldtype": "Section Break"
+  },
+  {
+   "depends_on": "eval:doc.is_stock_item == 0",
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items Received",
+   "no_copy": 1,
+   "options": "Gate Pass Inward Item"
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Naming Series",
+   "options": "GPI-.YYYY.-.####",
+   "reqd": 1
+  },
+  {
+   "fieldname": "section_break_abep",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "supplier_invoice_no",
+   "fieldtype": "Data",
+   "label": "Supplier Invoice No"
+  },
+  {
+   "fieldname": "gate_inward_no",
+   "fieldtype": "Data",
+   "label": "Gate Inward No"
+  },
+  {
+   "fieldname": "column_break_xfgo",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "bill_date",
+   "fieldtype": "Date",
+   "label": "Supplier Invoice Date"
+  },
+  {
+   "fieldname": "gate_inward_date",
+   "fieldtype": "Date",
+   "label": "Gate Inward Date"
+  },
+  {
+   "depends_on": "eval:doc.is_stock_item == 1",
+   "fieldname": "item_detail",
+   "fieldtype": "Table",
+   "label": "Items",
+   "no_copy": 1,
+   "options": "Gate Pass Inward Detail"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_stock_item",
+   "fieldtype": "Check",
+   "label": "Is Stock Item"
+  },
+  {
+   "depends_on": "eval:doc.is_stock_item == 1",
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "Branch"
+  },
+  {
+   "depends_on": "eval:doc.is_stock_item == 1",
+   "fieldname": "column_break_kjqc",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_6ohg",
+   "fieldtype": "Section Break",
+   "hide_border": 1
+  },
+  {
+   "fieldname": "column_break_jxva",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.is_stock_item == 1",
+   "description": "Sets 'Target Warehouse' in each row of the items table.",
+   "fieldname": "default_target_warehouse",
+   "fieldtype": "Link",
+   "label": "Default Target Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "stock_entry",
+   "fieldtype": "Link",
+   "label": "Stock Entry",
+   "no_copy": 1,
+   "options": "Stock Entry",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-05-14 17:18:21.498930",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Gate Pass Inward",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "select": 1,
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

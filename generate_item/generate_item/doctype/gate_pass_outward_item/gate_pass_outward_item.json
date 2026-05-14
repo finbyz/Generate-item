@@ -1,0 +1,92 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-05-07 16:49:15.939584",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "sub_component",
+  "qty",
+  "uom",
+  "description",
+  "column_break_rcft",
+  "rate",
+  "sent_qty",
+  "received_qty",
+  "pending_qty"
+ ],
+ "fields": [
+  {
+   "fieldname": "column_break_rcft",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sub_component",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Sub Component",
+   "options": "Asset Sub-Component"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Qty"
+  },
+  {
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "in_list_view": 1,
+   "label": "UOM",
+   "options": "UOM"
+  },
+  {
+   "fieldname": "rate",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Rate"
+  },
+  {
+   "fieldname": "sent_qty",
+   "fieldtype": "Float",
+   "hidden": 1,
+   "in_list_view": 1,
+   "label": "Sent Qty"
+  },
+  {
+   "fieldname": "received_qty",
+   "fieldtype": "Float",
+   "hidden": 1,
+   "in_list_view": 1,
+   "label": "Received Qty"
+  },
+  {
+   "fieldname": "pending_qty",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Pending Qty",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-05-14 11:10:11.325539",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Gate Pass Outward Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

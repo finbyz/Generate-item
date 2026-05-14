@@ -1,0 +1,267 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "naming_series:",
+ "creation": "2026-05-07 16:35:37.801397",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_2ovn",
+  "naming_series",
+  "party_type",
+  "purpose",
+  "stock_entry",
+  "column_break_ldpw",
+  "date",
+  "party_name",
+  "returnable",
+  "transport_details_section",
+  "transporter_name",
+  "lr_no",
+  "column_break_elgh",
+  "vehicle_no",
+  "road_permit_no",
+  "section_break_aegm",
+  "is_stock_item",
+  "default_source_warehouse",
+  "column_break_9zur",
+  "branch",
+  "section_break_kw9h",
+  "items",
+  "item_detail",
+  "additional_information_section",
+  "remarks",
+  "gate_pass_inward",
+  "column_break_idow",
+  "total_value",
+  "gross_weight",
+  "status",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_2ovn",
+   "fieldtype": "Section Break",
+   "label": "Pass Details"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Gate Pass Outward",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Naming Series",
+   "options": "GPO-.YYYY.-.####",
+   "reqd": 1
+  },
+  {
+   "fieldname": "party_type",
+   "fieldtype": "Select",
+   "label": "Party Type",
+   "options": "\nSupplier\nCustomer\nJob Worker",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_ldpw",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "label": "Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "party_name",
+   "fieldtype": "Dynamic Link",
+   "label": "Party Name",
+   "options": "party_type",
+   "reqd": 1
+  },
+  {
+   "fieldname": "purpose",
+   "fieldtype": "Select",
+   "label": "Purpose",
+   "options": "\nRepair\nJob Work\nTesting\nCustomer Complaint\nSales\nConsumption",
+   "reqd": 1
+  },
+  {
+   "fieldname": "returnable",
+   "fieldtype": "Select",
+   "label": "Returnable",
+   "options": "\nYes\nNo",
+   "reqd": 1
+  },
+  {
+   "fieldname": "transport_details_section",
+   "fieldtype": "Section Break",
+   "label": "Transport Details"
+  },
+  {
+   "fieldname": "transporter_name",
+   "fieldtype": "Data",
+   "label": "Transporter Name"
+  },
+  {
+   "fieldname": "lr_no",
+   "fieldtype": "Data",
+   "label": "LR No"
+  },
+  {
+   "fieldname": "column_break_elgh",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "vehicle_no",
+   "fieldtype": "Data",
+   "label": "Vehicle No"
+  },
+  {
+   "fieldname": "road_permit_no",
+   "fieldtype": "Data",
+   "label": "Road Permit No"
+  },
+  {
+   "fieldname": "section_break_aegm",
+   "fieldtype": "Section Break",
+   "hide_border": 1
+  },
+  {
+   "depends_on": "eval:parent.is_stock_item == 0",
+   "fieldname": "items",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "Gate Pass Outward Item"
+  },
+  {
+   "fieldname": "additional_information_section",
+   "fieldtype": "Section Break",
+   "label": "Additional Information"
+  },
+  {
+   "fieldname": "column_break_idow",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_value",
+   "fieldtype": "Currency",
+   "label": "Approx. Total Value"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "gross_weight",
+   "fieldtype": "Float",
+   "label": "Approx. Gross Weight"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "\nDraft\nOpen\nPartially Received\nCompleted\nClosed\nCancelled",
+   "read_only": 1
+  },
+  {
+   "fieldname": "gate_pass_inward",
+   "fieldtype": "Link",
+   "label": "Gate Pass Inward",
+   "no_copy": 1,
+   "options": "Gate Pass Inward",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:parent.is_stock_item == 1",
+   "fieldname": "item_detail",
+   "fieldtype": "Table",
+   "label": "Items",
+   "options": "Gate Pass Outward Detail"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_stock_item",
+   "fieldtype": "Check",
+   "label": "Is Stock Item"
+  },
+  {
+   "depends_on": "eval:doc.is_stock_item == 1",
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "Branch"
+  },
+  {
+   "depends_on": "eval:doc.is_stock_item == 1",
+   "description": "Sets 'Source Warehouse' in each row of the items table.",
+   "fieldname": "default_source_warehouse",
+   "fieldtype": "Link",
+   "label": "Default Source Warehouse",
+   "options": "Warehouse"
+  },
+  {
+   "fieldname": "section_break_kw9h",
+   "fieldtype": "Section Break",
+   "hide_border": 1
+  },
+  {
+   "fieldname": "column_break_9zur",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "stock_entry",
+   "fieldtype": "Link",
+   "label": "Stock Entry",
+   "no_copy": 1,
+   "options": "Stock Entry",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [
+  {
+   "group": "Gate Pass",
+   "link_doctype": "Gate Pass Inward",
+   "link_fieldname": "gate_pass_outward"
+  }
+ ],
+ "modified": "2026-05-14 15:22:43.886565",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Gate Pass Outward",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "amend": 1,
+   "cancel": 1,
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "select": 1,
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
