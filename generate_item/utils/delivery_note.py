@@ -1392,3 +1392,150 @@ def validate_dn_line_status(doc, method=None):
                 f"Row {item.idx}: Item {item.item_code} cannot be delivered "
                 f"because Sales Order line has status '{line_status}'."
             )
+
+def handle_free_issue_item(doc,method=None):
+    mismatch_rows = []
+
+    # ── Step 1: Loop through all DN items ────────────────────────
+    for item in doc.items:
+
+        # Only check free items that have a linked SO child row
+        if not item.is_free_item:
+            continue
+
+        if not item.so_detail:
+            continue
+
+        # ── Step 2: Fetch the linked Sales Order Item row ────────
+        so_item = frappe.db.get_value(
+            "Sales Order Item",
+            item.so_detail,
+            ["name", "parent", "qty", "delivered_qty", "item_code"],
+            as_dict=True
+        )
+
+        if not so_item:
+            # SO row not found — treat as mismatch (safe-fail)
+            mismatch_rows.append({
+                "so_id"         : item.against_sales_order or "—",
+                "item_code"     : item.item_code or item.item_code,
+                "so_qty"        : "—",
+                "so_del_qty"    : "—",
+                "so_remaining"  : "—",
+                "dn_qty"        : flt(item.qty),
+                "error"         : True
+            })
+            continue
+
+        so_qty        = flt(so_item.qty)
+        so_del_qty    = flt(so_item.delivered_qty)
+        so_remaining  = so_qty - so_del_qty
+        dn_qty        = flt(item.qty)
+
+        # ── Step 3: Compare remaining SO qty with DN qty ─────────
+        if so_remaining != dn_qty:
+            mismatch_rows.append({
+                "so_id"         : item.against_sales_order or so_item.parent,
+                "item_code"     : item.item_code or so_item.item_code,
+                "so_qty"        : so_qty,
+                "so_del_qty"    : so_del_qty,
+                "so_remaining"  : so_remaining,
+                "dn_qty"        : dn_qty,
+                "error"         : False
+            })
+
+
+    # ── Step 4: If mismatches found — build table and block submit ──
+    if mismatch_rows:
+
+        # --- Build table rows ---
+        th = "padding:8px 12px; border:1px solid #d1d8dd; background:#f5f7fa; font-weight:600; color:#3d4349;"
+        td = "padding:8px 12px; border:1px solid #d1d8dd;"
+        td_center = td + " text-align:center;"
+
+        header_html = f"""
+            <tr>
+                <th style="{th}">Sales Order</th>
+                <th style="{th}">Item Code</th>
+                <th style="{th} text-align:center;">SO Qty</th>
+                <th style="{th} text-align:center;">SO Delivered Qty</th>
+                <th style="{th} text-align:center;">Remaining<br><small>(SO Qty − Delivered)</small></th>
+                <th style="{th} text-align:center;">DN Qty</th>
+                
+            </tr>
+        """
+
+        rows_html = ""
+        for row in mismatch_rows:
+            rows_html += f"""
+                <tr>
+                    <td style="{td}">{row["so_id"]}</td>
+                    <td style="{td}">{row["item_code"]}</td>
+                    <td style="{td_center}">{row["so_qty"]}</td>
+                    <td style="{td_center}">{row["so_del_qty"]}</td>
+                    <td style="{td_center} font-weight:700; color:#e2401c;">{row["so_remaining"]}</td>
+                    <td style="{td_center}">{row["dn_qty"]}</td>
+                    
+                </tr>
+            """
+
+        # --- Assemble full message ---
+
+        message = f"""
+            <style>
+                .msgprint-dialog .modal-dialog {{
+                    max-width : 90vw  !important;
+                    width     : 90vw  !important;
+                    margin    : 30px auto !important;
+                }}
+                .msgprint-dialog .modal-body {{
+                    max-height : 65vh !important;
+                    overflow-y : auto !important;
+                    padding    : 20px !important;
+                }}
+            </style>
+
+            <p style="color:#e2401c; font-weight:600; font-size:15px; margin-bottom:16px;">
+                Submission Blocked — {len(mismatch_rows)} free item(s) have a quantity mismatch.
+            </p>
+
+            <div style="overflow-x:auto; width:100%;">
+                <table style="
+                    table-layout    : fixed;
+                    width           : 100%;
+                    border-collapse : collapse;
+                    font-size       : 13px;
+                    font-family     : Arial, sans-serif;
+                    word-wrap       : break-word;
+                ">
+                    <colgroup>
+                        <col style="width:20%;">  
+                        <col style="width:30%;">  
+                        <col style="width:10%;">  
+                        <col style="width:15%;">  
+                        <col style="width:15%;">  
+                        <col style="width:10%;">  
+                    </colgroup>
+                    <thead>{header_html}</thead>
+                    <tbody>{rows_html}</tbody>
+                </table>
+            </div>
+
+            <p style="
+                margin-top:16px; background:#fff8e1;
+                border-left:4px solid #f0ad4e;
+                padding:10px 16px; font-size:13px;
+                border-radius:4px; text-align:center;
+            ">
+                <strong>Rule:</strong> For every free item,
+                <code>SO Qty &minus; SO Delivered Qty</code> must equal
+                <code>DN Qty</code> before submission.
+            </p>
+        """
+
+        # ── Step 5: Throw error — blocks submit, shows popup ─────
+        frappe.throw(
+            title = "Free Item Quantity Mismatch — Submit Blocked",
+            msg   = message,
+          
+        )
