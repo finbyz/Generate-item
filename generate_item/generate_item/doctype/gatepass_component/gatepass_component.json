@@ -45,8 +45,7 @@
    "fieldname": "parent_asset",
    "fieldtype": "Link",
    "label": "Parent Asset",
-   "options": "Asset",
-   "reqd": 1
+   "options": "Asset"
   },
   {
    "fieldname": "serial_no",
@@ -61,12 +60,14 @@
   {
    "fieldname": "status",
    "fieldtype": "Select",
+   "hidden": 1,
    "label": "Status",
    "options": "In Service\nSent Out\nScrapped\nSold"
   },
   {
    "fieldname": "current_location",
    "fieldtype": "Data",
+   "hidden": 1,
    "label": "Current Location"
   },
   {
@@ -115,7 +116,7 @@
    "fieldtype": "Link",
    "label": "Amended From",
    "no_copy": 1,
-   "options": "Asset Sub-Component",
+   "options": "Gatepass Component",
    "print_hide": 1,
    "read_only": 1,
    "search_index": 1
@@ -136,10 +137,10 @@
    "link_fieldname": "sub_component"
   }
  ],
- "modified": "2026-05-13 11:41:43.853949",
+ "modified": "2026-05-15 18:17:25.761893",
  "modified_by": "Administrator",
  "module": "Generate Item",
- "name": "Asset Sub-Component",
+ "name": "Gatepass Component",
  "naming_rule": "Expression (old style)",
  "owner": "Administrator",
  "permissions": [

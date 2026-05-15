@@ -343,7 +343,7 @@
   "doctype_or_field": "DocField",
   "field_name": "budget_against",
   "is_system_generated": 0,
-  "modified": "2025-09-24 15:23:41.580509",
+  "modified": "2026-05-14 14:33:16.590924",
   "module": "Generate Item",
   "name": "Budget-budget_against-options",
   "property": "options",

@@ -1,5 +1,5 @@
- // Copyright (c) 2026, Finbyz and contributors
- // For license information, please see license.txt
+// Copyright (c) 2026, Finbyz and contributors
+// For license information, please see license.txt
 
 
 frappe.ui.form.on("Gate Pass Outward", {
@@ -29,6 +29,31 @@ frappe.ui.form.on("Gate Pass Outward", {
             frm.doc.default_source_warehouse
         );
         frm.refresh_field("item_detail");
+    },
+    branch: async function (frm) {
+        if (!frm.doc.branch) return;
+
+        // Get warehouse linked to selected branch
+        let warehouse = await frappe.db.get_value(
+            "Warehouse",
+            {
+                branch: frm.doc.branch,
+                gatepass_warehouse: 1
+            },
+            "name"
+        );
+
+        if (warehouse.message && warehouse.message.name) {
+            let wh = warehouse.message.name;
+
+            // Set warehouse in all child table rows
+            frm.doc.item_detail.forEach(row => {
+                row.target_warehouse
+                    = wh;
+            });
+
+            frm.refresh_field("item_detail");
+        }
     }
 });
 
@@ -55,8 +80,8 @@ frappe.ui.form.on("Gate Pass Outward Detail", {
 // ── Inward creation flow ─────────────────────────────────────────────────────
 
 function _handle_create_inward(frm) {
-    const is_stock   = !!frm.doc.is_stock_item;
-    const all_items  = is_stock
+    const is_stock = !!frm.doc.is_stock_item;
+    const all_items = is_stock
         ? (frm.doc.item_detail || [])
         : (frm.doc.items || []);
 
@@ -65,8 +90,8 @@ function _handle_create_inward(frm) {
 
     if (!pending_items.length) {
         frappe.msgprint({
-            title    : __("Cannot Create Inward"),
-            message  : __(`All items in <b>${frm.doc.name}</b> have been fully 
+            title: __("Cannot Create Inward"),
+            message: __(`All items in <b>${frm.doc.name}</b> have been fully 
                            received. No pending quantity remains.`),
             indicator: "red"
         });
@@ -75,8 +100,8 @@ function _handle_create_inward(frm) {
 
     // Draft-check before showing confirm dialog
     frappe.call({
-        method  : "generate_item.generate_item.doctype.gate_pass_inward.gate_pass_inward.get_draft_inward_info",
-        args    : { gate_pass_outward: frm.doc.name },
+        method: "generate_item.generate_item.doctype.gate_pass_inward.gate_pass_inward.get_draft_inward_info",
+        args: { gate_pass_outward: frm.doc.name },
         callback(res) {
             const info = res.message;
 
@@ -85,8 +110,8 @@ function _handle_create_inward(frm) {
                     .map(n => `<a href="/app/gate-pass-inward/${n}">${n}</a>`)
                     .join(", ");
                 frappe.msgprint({
-                    title    : __("Draft Gate Pass Inward Already Exists"),
-                    message  : `The remaining pending quantity of <b>${info.total_pending}</b>
+                    title: __("Draft Gate Pass Inward Already Exists"),
+                    message: `The remaining pending quantity of <b>${info.total_pending}</b>
                                 is already covered by:<br><br>${links}<br><br>
                                 Please <b>submit the existing draft</b> instead.`,
                     indicator: "orange"
@@ -106,32 +131,32 @@ function _build_inward_doc(frm, pending_items, is_stock) {
     frappe.model.with_doctype("Gate Pass Inward", () => {
 
         const new_name = frappe.model.make_new_doc_and_get_name("Gate Pass Inward");
-        const doc      = frappe.get_doc("Gate Pass Inward", new_name);
+        const doc = frappe.get_doc("Gate Pass Inward", new_name);
 
         // ── Header ───────────────────────────────────────────────────────────
         doc.gate_pass_outward = frm.doc.name;
-        doc.party_name        = frm.doc.party_name;
-        doc.date              = frm.doc.date;
-        doc.billing_status    = "Without Bill";
-        doc.is_stock_item     = frm.doc.is_stock_item;  // carry flag to inward
+        doc.party_name = frm.doc.party_name;
+        doc.date = frm.doc.date;
+        doc.billing_status = "Without Bill";
+        doc.is_stock_item = frm.doc.is_stock_item;  // carry flag to inward
         doc.branch = frm.doc.branch;
 
         // ── Clear default empty row ───────────────────────────────────────────
         doc.item_detail = [];
-        doc.items       = [];
+        doc.items = [];
 
         if (is_stock) {
             // ── Stock items → populate item_detail child ──────────────────────
             pending_items.forEach(item => {
                 const pending = item.pending_qty || 0;
                 const row = frappe.model.add_child(doc, "Gate Pass Inward Detail", "item_detail");
-                row.item              = item.item;
-               
-                row.sent_qty          = pending;
-                row.pending_qty       = pending;
-                row.qty               = pending;
-                row.rate              = item.rate || 0;
-                row.quality           = "Good";
+                row.item = item.item;
+
+                row.sent_qty = pending;
+                row.pending_qty = pending;
+                row.qty = pending;
+                row.rate = item.rate || 0;
+                row.quality = "Good";
             });
         } else {
             // ── Non-stock items → populate items child ────────────────────────
@@ -139,9 +164,9 @@ function _build_inward_doc(frm, pending_items, is_stock) {
                 const pending = item.pending_qty || 0;
                 const row = frappe.model.add_child(doc, "Gate Pass Inward Item", "items");
                 row.sub_component = item.sub_component;
-                row.sent_qty      = pending;
-                row.pending_qty   = pending;
-                row.quality       = "Good";
+                row.sent_qty = pending;
+                row.pending_qty = pending;
+                row.quality = "Good";
             });
         }
 
@@ -156,12 +181,12 @@ function open_service_item_picker(frm) {
     frappe.call({
         method: "frappe.client.get_list",
         args: {
-            doctype          : "Item",
-            filters          : [["is_stock_item", "=", 0]],
-            fields           : ["name", "item_name", "item_group", "stock_uom", "description"],
+            doctype: "Item",
+            filters: [["is_stock_item", "=", 0]],
+            fields: ["name", "item_name", "item_group", "stock_uom", "description"],
             limit_page_length: 500
         },
-        freeze        : true,
+        freeze: true,
         freeze_message: __("Fetching service items…"),
         callback(r) {
             if (!r.message || !r.message.length) {
@@ -190,12 +215,12 @@ function show_item_picker_dialog(frm, service_items) {
     `).join("");
 
     const dialog = new frappe.ui.Dialog({
-        title : __("Select Service Items for Purchase Order"),
-        size  : "large",
+        title: __("Select Service Items for Purchase Order"),
+        size: "large",
         fields: [{
             fieldtype: "HTML",
             fieldname: "item_list",
-            options  : `
+            options: `
                 <input id="gpo-search" type="text" class="form-control"
                        placeholder="Search…" style="margin-bottom:8px;">
                 <div style="display:flex;gap:8px;margin-bottom:8px;">
@@ -248,23 +273,23 @@ function create_purchase_order(frm, selected_items, sub_components, all_service_
 
     frappe.model.with_doctype("Purchase Order", () => {
         const new_name = frappe.model.make_new_doc_and_get_name("Purchase Order");
-        const doc      = frappe.get_doc("Purchase Order", new_name);
+        const doc = frappe.get_doc("Purchase Order", new_name);
 
-        doc.supplier           = frm.doc.party_name;
-        doc.gate_pass_outword  = frm.doc.name;
-        doc.items              = [];
+        doc.supplier = frm.doc.party_name;
+        doc.gate_pass_outword = frm.doc.name;
+        doc.items = [];
 
         selected_items.forEach((item_code, idx) => {
             const row = frappe.model.add_child(doc, "Purchase Order Item", "items");
-            row.item_code             = item_code;
-            row.item_name             = item_map[item_code]?.item_name || item_code;
-            row.description           = item_map[item_code]?.description || "";
-            row.qty                   = 1;
-            row.uom                   = item_map[item_code]?.stock_uom || "Nos";
-            row.stock_uom             = item_map[item_code]?.stock_uom || "Nos";
-            row.conversion_factor     = 1;
-            row.rate                  = 0;
-            row.asset_subcomponent    = sub_components[idx] || sub_components[0] || "";
+            row.item_code = item_code;
+            row.item_name = item_map[item_code]?.item_name || item_code;
+            row.description = item_map[item_code]?.description || "";
+            row.qty = 1;
+            row.uom = item_map[item_code]?.stock_uom || "Nos";
+            row.stock_uom = item_map[item_code]?.stock_uom || "Nos";
+            row.conversion_factor = 1;
+            row.rate = 0;
+            row.asset_subcomponent = sub_components[idx] || sub_components[0] || "";
         });
 
         frappe.set_route("Form", "Purchase Order", new_name);
