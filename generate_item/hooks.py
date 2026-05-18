@@ -407,6 +407,15 @@ fixtures = [
         "filters": [
             ["module", "in", ["Generate Item"]]
         ]
+    },
+    {
+        "dt": "Workflow",
+        "filters": [
+            ["name", "in", [
+                "PO Modification Request",
+                "BOM Modification"
+            ]]
+        ]
     }
     
 ]
