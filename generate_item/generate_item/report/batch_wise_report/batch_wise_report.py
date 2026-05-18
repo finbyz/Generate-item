@@ -24,7 +24,7 @@ def get_columns():
 		{"label": "Item Description", "fieldname": "description", "fieldtype": "Data", "width": 250},
 		{"label": "Tag No.", "fieldname": "tag_no", "fieldtype": "Data", "width": 120},
 		{"label": "SO Qty", "fieldname": "so_qty", "fieldtype": "Int", "width": 100},
-		
+		{"label": "Line Status", "fieldname": "line_status", "fieldtype": "Data", "width": 140},
 
 		{"label": "BOM Number", "fieldname": "bom", "fieldtype": "Link", "options": "BOM", "width": 140},
 		{"label": "BOM Submitted On", "fieldname": "bom_submitted_on", "fieldtype": "Date", "width": 170},
@@ -95,6 +95,7 @@ def get_data(filters):
 			so.transaction_date,
 			(SELECT MAX(modification_time) FROM `tabState Change Items` WHERE parent = so.name AND workflow_state = 'Approved') AS so_approval_date,
 			so.custom_repeat_order_ref AS repeat_order_ref,
+			soi.line_status
 			soi.tag_no ,
 			so.customer_name,
 			(
@@ -176,7 +177,13 @@ def get_data(filters):
 			soi.qty AS so_qty
 		FROM `tabSales Order` so 
 		JOIN `tabSales Order Item` soi ON soi.parent = so.name
-		WHERE {conditions_sql}
+		JOIN `tabItem` i ON i.name = soi.item_code
+		WHERE 
+		IFNULL(i.is_stock_item, 0) = 1
+		AND (soi.line_status IS NULL OR soi.line_status = '')
+		AND IFNULL(soi.delivered_qty, 0) < IFNULL(soi.qty, 0)
+		AND IFNULL(so.status, '') NOT IN ('On Hold', 'Closed', 'Cancelled', 'Completed')
+  		AND {conditions_sql}
 		ORDER BY so.transaction_date DESC, so.name DESC, soi.idx ASC
 	"""
 	

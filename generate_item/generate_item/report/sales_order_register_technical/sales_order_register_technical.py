@@ -36,6 +36,7 @@ def get_columns():
         {"label": _("Batch No Ref"), "fieldname": "custom_batch_no", "fieldtype": "Link", "options": "Batch", "width": 100},
         {"label": _("Item Code"), "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 150},
         {"label": _("Item Name"), "fieldname": "item_name", "fieldtype": "Data", "width": 150},
+        {"label": _("Line Status"), "fieldname": "line_status", "fieldtype": "Data", "width": 120},
         {"label": _("Item Description"), "fieldname": "item_description", "fieldtype": "Text", "width": 200},
         {"label": _("Item Group"), "fieldname": "item_group", "fieldtype": "Data", "width": 100},
         {"label": _("Order Qty"), "fieldname": "order_qty", "fieldtype": "Float", "width": 80},
@@ -220,7 +221,8 @@ def get_data(filters):
             "igst_amount",
             "tag_no",             # ✔ Correct Tag No
             "po_line_no",         # ✔ Correct PO Sr No
-            "custom_shipping_address"
+            "custom_shipping_address",
+            "line_status" 
         ]
 
         items = frappe.get_all("Sales Order Item", filters=so_item_filters, fields=item_fields,order_by="parent asc, idx asc")
@@ -294,6 +296,7 @@ def get_data(filters):
                 so.customer_po_date,
                 so.custom_liquidate_damage,
                 so.order_status,
+                item.line_status or "", 
                 # so.approved_on,
                 # so.approved_by or "",
                 approval_details.get("approved_on"),
