@@ -210,6 +210,7 @@ def get_data(filters):
             "idx as order_line_index",
             "item_code",
             "item_name",
+            "line_status" ,
             "description as item_description",
             "item_group",
             "qty as order_qty",
@@ -222,7 +223,7 @@ def get_data(filters):
             "tag_no",             # ✔ Correct Tag No
             "po_line_no",         # ✔ Correct PO Sr No
             "custom_shipping_address",
-            "line_status" 
+            
         ]
 
         items = frappe.get_all("Sales Order Item", filters=so_item_filters, fields=item_fields,order_by="parent asc, idx asc")
@@ -296,7 +297,6 @@ def get_data(filters):
                 so.customer_po_date,
                 so.custom_liquidate_damage,
                 so.order_status,
-                item.line_status or "", 
                 # so.approved_on,
                 # so.approved_by or "",
                 approval_details.get("approved_on"),
@@ -310,6 +310,7 @@ def get_data(filters):
                 item.custom_batch_no or "",
                 item.item_code,
                 item.item_name,
+                item.line_status or "", 
                 item.item_description,
                 item.item_group,
                 item.order_qty,
