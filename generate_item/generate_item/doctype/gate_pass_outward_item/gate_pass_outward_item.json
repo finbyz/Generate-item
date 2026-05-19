@@ -14,7 +14,8 @@
   "rate",
   "sent_qty",
   "received_qty",
-  "pending_qty"
+  "pending_qty",
+  "remarks"
  ],
  "fields": [
   {
@@ -73,13 +74,18 @@
    "in_list_view": 1,
    "label": "Pending Qty",
    "read_only": 1
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-05-15 17:59:56.334592",
+ "modified": "2026-05-19 12:56:10.205343",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Outward Item",

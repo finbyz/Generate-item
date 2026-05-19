@@ -74,6 +74,28 @@ frappe.ui.form.on("Gate Pass Outward Detail", {
         if (row.qty) {
             frappe.model.set_value(cdt, cdn, "pending_qty", row.qty);
         }
+    },
+    item(frm, cdt, cdn) {
+        const row = locals[cdt][cdn];
+        if(!row.item)return;
+
+         frappe.db.get_value(
+            "Item",
+            row.item,
+           [ "valuation_rate",  "description",]
+        ).then((r) => {
+
+            if (r.message) {
+                frappe.model.set_value(
+                    cdt,
+                    cdn,
+                   {
+                    description: r.message.description,
+                    rate: r.message.valuation_rate,
+                   }
+                );
+            }
+        });
     }
 });
 

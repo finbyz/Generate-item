@@ -15,6 +15,7 @@
   "date",
   "party_name",
   "returnable",
+  "branch",
   "transport_details_section",
   "transporter_name",
   "lr_no",
@@ -25,7 +26,6 @@
   "is_stock_item",
   "default_source_warehouse",
   "column_break_9zur",
-  "branch",
   "section_break_kw9h",
   "items",
   "item_detail",
@@ -158,6 +158,7 @@
   {
    "fieldname": "remarks",
    "fieldtype": "Small Text",
+   "hidden": 1,
    "label": "Remarks"
   },
   {
@@ -198,6 +199,7 @@
    "fieldname": "branch",
    "fieldtype": "Link",
    "label": "Branch",
+   "mandatory_depends_on": "eval:doc.is_stock_item == 1",
    "options": "Branch"
   },
   {
@@ -236,7 +238,7 @@
    "link_fieldname": "gate_pass_outward"
   }
  ],
- "modified": "2026-05-14 15:22:43.886565",
+ "modified": "2026-05-19 12:55:34.723513",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Outward",

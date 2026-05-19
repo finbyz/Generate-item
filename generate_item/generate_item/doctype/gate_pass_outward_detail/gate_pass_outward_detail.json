@@ -18,7 +18,8 @@
   "pending_qty",
   "source_warehouse",
   "target_warehouse",
-  "batch_no"
+  "batch_no",
+  "remarks"
  ],
  "fields": [
   {
@@ -103,13 +104,18 @@
    "fieldtype": "Link",
    "label": "Batch No",
    "options": "Batch"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-05-14 16:16:01.541657",
+ "modified": "2026-05-19 12:54:06.372252",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Outward Detail",
