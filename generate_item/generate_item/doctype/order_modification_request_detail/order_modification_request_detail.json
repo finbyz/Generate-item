@@ -237,14 +237,15 @@
   {
    "fieldname": "rev_item_description",
    "fieldtype": "Small Text",
-   "label": "Rev Item Description"
+   "label": "Rev Item Description",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-05-06 10:20:31.593916",
+ "modified": "2026-05-19 12:50:57.094952",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request Detail",
