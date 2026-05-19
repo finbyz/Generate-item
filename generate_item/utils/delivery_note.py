@@ -1185,7 +1185,7 @@ def validate_free_items(doc):
         free_items = [
             so_item
             for so_item in so.items
-            if so_item.is_free_item and so_item.component_of
+            if so_item.is_free_item and so_item.component_of and so_item.delivered_qty < so_item.qty
         ]
 
         for free_item in free_items:
