@@ -162,27 +162,28 @@ def get_columns():
         {"fieldname": "batch_no",       "label": _("Batch No"), "fieldtype": "Link",  "options": "Batch",        "width": 160},
         {"fieldname": "sales_order",    "label": _("Sales Order"),        "fieldtype": "Link",  "options": "Sales Order",  "width": 150},
         {"fieldname": "order_status",   "label": _("Order Status"),       "fieldtype": "Data",  "width": 130},
-        {"fieldname": "so_line_status", "label": _("SO Line Status"),     "fieldtype": "Data",  "width": 110},
+        {"fieldname": "so_line_status", "label": _("SO Line Status"),     "fieldtype": "Data",  "width": 170},
         {"fieldname": "customer_name",  "label": _("Customer Name"),      "fieldtype": "Data",  "width": 200},
 
         # ─── F–Q : Serial Number editable ────────────────────────────────────
-        {"fieldname": "mds_status",    "label": _("MDS Status"),   "fieldtype": "Select", "options": "\nYES\nNO\nNA",         "width": 100, "editable": 1, "sn_field": 1},
+        {"fieldname": "mds_status",    "label": _("MDS Status"),   "fieldtype": "Select", "options": "\nYES\nNO\nNA",         "width": 170, "editable": 1, "sn_field": 1},
         {"fieldname": "mds_no",        "label": _("MDS No."),      "fieldtype": "Data",                                       "width": 120, "editable": 1, "sn_field": 1},
         {"fieldname": "mds_rev",       "label": _("MDS Rev."),     "fieldtype": "Select", "options": "\nNA\n00\n01\n02\n03\n04\n05\n06", "width": 90,  "editable": 1, "sn_field": 1},
         {"fieldname": "mds_date",      "label": _("MDS Date"),     "fieldtype": "Date",                                       "width": 110, "editable": 1, "sn_field": 1},
-        {"fieldname": "gad_required",  "label": _("GAD Required"), "fieldtype": "Select", "options": "\nYES\nNO\nNA",         "width": 110, "editable": 1, "sn_field": 1},
+        {"fieldname": "gad_required",  "label": _("GAD Required"), "fieldtype": "Select", "options": "\nYES\nNO\nNA",         "width": 150, "editable": 1, "sn_field": 1},
         {"fieldname": "gad_status",    "label": _("GAD Status"),   "fieldtype": "Select", "options": "\nSSV STD GAD\nNO\nNA\nApproved\nSubmitted\nInprocess", "width": 130, "editable": 1, "sn_field": 1},
         {"fieldname": "gad_rev",       "label": _("GAD Rev."),     "fieldtype": "Select", "options": "\n00\n01\n02\n03\n04\n05\n06\nNO", "width": 90, "editable": 1, "sn_field": 1},
-        {"fieldname": "gad_receive_date",                   "label": _("GAD Receive Date"),                   "fieldtype": "Date",   "width": 130, "editable": 1, "sn_field": 1},
-        {"fieldname": "after_gad_change_bom_change_required","label": _("AFTER GAD CHANGE BOM CHANGE REQUIRED"),      "fieldtype": "Select", "options": "\nYES\nNO",        "width": 230, "editable": 1, "sn_field": 1},
+        {"fieldname": "gad_receive_date",                   "label": _("GAD Receive Date"),                   "fieldtype": "Date",   "width": 170, "editable": 1, "sn_field": 1},
+        {"fieldname": "after_gad_change_bom_change_required","label": _("AFTER GAD CHANGE BOM CHANGE REQUIRED"),      "fieldtype": "Select", "options": "\nYES\nNO",        "width": 360, "editable": 1, "sn_field": 1},
         {"fieldname": "itpqap",                             "label": _("ITP/QAP"),                            "fieldtype": "Select", "options": "\nYES\nNO",        "width": 90,  "editable": 1, "sn_field": 1},
-        {"fieldname": "itpqap_rev",                         "label": _("ITP/QAP Rev."),                       "fieldtype": "Select", "options": "\n00\n01\n02\n03\n04\n05\n06", "width": 100, "editable": 1, "sn_field": 1},
-        {"fieldname": "itpqap_receive_date",                "label": _("ITP/QAP Receive Date"),               "fieldtype": "Date",   "width": 150, "editable": 1, "sn_field": 1},
+        {"fieldname": "itpqap_rev",                         "label": _("ITP/QAP Rev."),                       "fieldtype": "Select", "options": "\n00\n01\n02\n03\n04\n05\n06", "width": 130, "editable": 1, "sn_field": 1},
+        {"fieldname": "itpqap_receive_date",                "label": _("ITP/QAP Receive Date"),               "fieldtype": "Date",   "width": 180, "editable": 1, "sn_field": 1},
 
         # ─── R–T : SO Item read-only ──────────────────────────────────────────
         {"fieldname": "item_code",       "label": _("Item Code"),       "fieldtype": "Link", "options": "Item", "width": 180},
         {"fieldname": "main_description","label": _("Main Description"),"fieldtype": "Small Text",              "width": 300},
-        {"fieldname": "valve_qty",       "label": _("Valve Qty"),       "fieldtype": "Int",                     "width": 80},
+        {"fieldname": "valve_qty",       "label": _("Valve Qty"),       "fieldtype": "Int",                     "width": 100},
+        {"fieldname": "is_free_item",    "label": _("Free Issue Item"),"fieldtype": "Check",                   "width": 130},
 
         # ─── U : Mfg Type ─────────────────────────────────────────────────────
         {"fieldname": "mfg_type", "label": _("Mfg Type"), "fieldtype": "Select", "options": "\nIN-HOUSE\nOUTSOURCE", "width": 120,  "sn_field": 1},
@@ -191,34 +192,34 @@ def get_columns():
         {"fieldname": "bom_status", "label": _("BOM Status"), "fieldtype": "Data", "width": 110},
 
         # ─── W–X ──────────────────────────────────────────────────────────────
-        {"fieldname": "after_gad_change_bom_update_or_not", "label": _("AFTER GAD CHANGE BOM Update or NOT"), "fieldtype": "Select", "options": "\nUpdated\nNot Updated", "width": 210, "editable": 1, "sn_field": 1},
-        {"fieldname": "after_gad_rev_bom_released",         "label": _("After GAD Rev – BOM Released"), "fieldtype": "Data", "width": 190},
+        {"fieldname": "after_gad_change_bom_update_or_not", "label": _("AFTER GAD CHANGE BOM Update or NOT"), "fieldtype": "Select", "options": "\nUpdated\nNot Updated", "width": 320, "editable": 1, "sn_field": 1},
+        {"fieldname": "after_gad_rev_bom_released",         "label": _("After GAD Rev – BOM Released"), "fieldtype": "Data", "width": 260},
 
         # ─── Y–AB : dates ─────────────────────────────────────────────────────
         {"fieldname": "so_approved_date",   "label": _("SO Approved Date"),    "fieldtype": "Datetime", "width": 160},
-        {"fieldname": "bom_released_date",  "label": _("BOM Released Date"),   "fieldtype": "Date",     "width": 140},
-        {"fieldname": "so_amendment_date",  "label": _("SO Amendment Date"),   "fieldtype": "Date",     "width": 150},
-        {"fieldname": "bom_amendment_date", "label": _("BOM Amendment Date"),  "fieldtype": "Date",     "width": 150},
+        {"fieldname": "bom_released_date",  "label": _("BOM Released Date"),   "fieldtype": "Date",     "width": 160},
+        {"fieldname": "so_amendment_date",  "label": _("SO Amendment Date"),   "fieldtype": "Date",     "width": 170},
+        {"fieldname": "bom_amendment_date", "label": _("BOM Amendment Date"),  "fieldtype": "Date",     "width": 180},
 
         # ─── AC–AD : computed delay ───────────────────────────────────────────
-        {"fieldname": "bom_delay_days",  "label": _("BOM Delay Days"),  "fieldtype": "Data",  "width": 120},
-        {"fieldname": "bom_delay_weeks", "label": _("BOM Delay Weeks"), "fieldtype": "Data", "width": 130},
+        {"fieldname": "bom_delay_days",  "label": _("BOM Delay Days"),  "fieldtype": "Data",  "width": 150},
+        {"fieldname": "bom_delay_weeks", "label": _("BOM Delay Weeks"), "fieldtype": "Data", "width": 150},
 
         # ─── AE–AH : SN editable ─────────────────────────────────────────────
         {"fieldname": "design_remarks",          "label": _("Design Remarks"),         "fieldtype": "Small Text", "width": 180, "editable": 1, "sn_field": 1},
-        {"fieldname": "pattern_status",          "label": _("Pattern Status"),         "fieldtype": "Select", "options": "\nAvailable\nNew Development",           "width": 150, "editable": 1, "sn_field": 1},
-        {"fieldname": "advance_action_casting",  "label": _("Advance Action Casting"), "fieldtype": "Select", "options": "\nYES\nNO",                               "width": 160, "editable": 1, "sn_field": 1},
-        {"fieldname": "advance_action_trim",     "label": _("Advance Action Trim"),    "fieldtype": "Select", "options": "\nYES\nNO",                               "width": 150, "editable": 1, "sn_field": 1},
+        {"fieldname": "pattern_status",          "label": _("Pattern Status"),         "fieldtype": "Select", "options": "\nAvailable\nNew Development\nModification",           "width": 150, "editable": 1, "sn_field": 1},
+        {"fieldname": "advance_action_casting",  "label": _("Advance Action Casting"), "fieldtype": "Select", "options": "\nYES\nNO",                               "width": 210, "editable": 1, "sn_field": 1},
+        {"fieldname": "advance_action_trim",     "label": _("Advance Action Trim"),    "fieldtype": "Select", "options": "\nYES\nNO",                               "width": 180, "editable": 1, "sn_field": 1},
 
         # ─── AI : BOM owner (read-only) ───────────────────────────────────────
-        {"fieldname": "erp_bom_created_by", "label": _("ERP BOM Created By"), "fieldtype": "Data", "width": 150},
+        {"fieldname": "erp_bom_created_by", "label": _("ERP BOM Created By"), "fieldtype": "Data", "width": 170},
 
         # ─── AJ–AM : SN editable ─────────────────────────────────────────────
-        {"fieldname": "engg_bom_created_by",              "label": _("Engg. BOM Created By"),           "fieldtype": "Data",       "width": 160, "editable": 1, "sn_field": 1},
-        {"fieldname": "release_date_expected",            "label": _("Release Date (Expected)"),        "fieldtype": "Date",       "width": 160, "editable": 1, "sn_field": 1},
-        {"fieldname": "expected_based_delay_days",        "label": _("Expected Based Delay Days"),      "fieldtype": "Data",       "width": 180},
-        {"fieldname": "expected_based_delay_week",        "label": _("Expected Based Delay Week"),      "fieldtype": "Data", "width": 180, },
-        {"fieldname": "bom_released_in_which_gad_revision","label": _("BOM Released In Which GAD Rev."),"fieldtype": "Select", "options": "\n00\n01\n02\n03\n04\n05\n06", "width": 220, "editable": 1, "sn_field": 1},
+        {"fieldname": "engg_bom_created_by",              "label": _("Engg. BOM Created By"),           "fieldtype": "Data",       "width": 180, "editable": 1, "sn_field": 1},
+        {"fieldname": "release_date_expected",            "label": _("Release Date (Expected)"),        "fieldtype": "Date",       "width": 190, "editable": 1, "sn_field": 1},
+        {"fieldname": "expected_based_delay_days",        "label": _("Expected Based Delay Days"),      "fieldtype": "Data",       "width": 210},
+        {"fieldname": "expected_based_delay_week",        "label": _("Expected Based Delay Week"),      "fieldtype": "Data", "width": 220, },
+        {"fieldname": "bom_released_in_which_gad_revision","label": _("BOM Released In Which GAD Rev."),"fieldtype": "Select", "options": "\n00\n01\n02\n03\n04\n05\n06", "width": 260, "editable": 1, "sn_field": 1},
         {"fieldname": "other_remarks",   "label": _("Other Remarks"),   "fieldtype": "Small Text", "width": 180, "editable": 1, "sn_field": 1},
         {"fieldname": "reason_for_delay","label": _("Reason For Delay"),"fieldtype": "Small Text", "width": 180, "editable": 1, "sn_field": 1},
     ]
@@ -230,7 +231,14 @@ def get_columns():
 
 def get_data(filters):
     raw  = _fetch_rows(filters)
-    return _post_process(raw)
+    processed = _post_process(raw)
+    
+    # Apply BOM Status filter (computed field)
+    if filters.get("bom_status_filter"):
+        bom_status_filter = filters.bom_status_filter
+        processed = [row for row in processed if row.get("bom_status") == bom_status_filter]
+    
+    return processed
 
 
 # ---------------------------------------------------------------------------
@@ -276,6 +284,7 @@ def _fetch_rows(filters):
             soi.item_code,
             soi.description                                     AS main_description,
             soi.qty                                             AS valve_qty,
+            soi.is_free_item                                    AS is_free_item,
 
             /*── U : Mfg Type ─────────────────────────────────────────────────*/
             rep_sn.mfg_type,
@@ -558,6 +567,11 @@ def _build_conditions(filters):
     if filters.get("to_date"):
         parts.append("AND so.transaction_date <= %(to_date)s")
         values["to_date"] = filters.to_date
+
+    # Fiscal Year filter
+    if filters.get("fiscal_year"):
+        parts.append("AND so.fiscal_year = %(fiscal_year)s")
+        values["fiscal_year"] = filters.fiscal_year
 
     return "\n          ".join(parts), values
 

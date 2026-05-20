@@ -63,6 +63,20 @@ frappe.query_reports["Daily Review Sales Order"] = {
             fieldtype: "Select",
             options:   "\nSSV STD GAD\nNO\nNA\nApproved\nSubmitted\nInprocess",
         },
+        {
+            fieldname: "fiscal_year",
+            label:     __("Fiscal Year"),
+            fieldtype: "Link",
+            options:   "Fiscal Year",
+           
+            
+        },
+        {
+            fieldname: "bom_status_filter",
+            label:     __("BOM Status"),
+            fieldtype: "Select",
+            options:   "\nBOM Pending\nBOM In Draft\nBOM Released",
+        },
     ],
 
     // ─── STATE ────────────────────────────────────────────────────────────────
