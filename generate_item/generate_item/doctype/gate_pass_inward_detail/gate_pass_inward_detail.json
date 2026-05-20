@@ -90,8 +90,7 @@
    "fieldname": "source_warehouse",
    "fieldtype": "Link",
    "label": "Source Warehouse",
-   "options": "Warehouse",
-   "read_only": 1
+   "options": "Warehouse"
   },
   {
    "fieldname": "serial_no",
@@ -109,7 +108,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-05-14 17:17:28.953554",
+ "modified": "2026-05-20 13:29:50.076400",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Inward Detail",

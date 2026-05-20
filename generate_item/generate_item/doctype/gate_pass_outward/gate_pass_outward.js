@@ -33,6 +33,10 @@ frappe.ui.form.on("Gate Pass Outward", {
     branch: async function (frm) {
         if (!frm.doc.branch) return;
 
+        if (frm.is_new() && frm.doc.branch) {
+            set_naming_series_by_branch(frm);
+        }
+
         // Get warehouse linked to selected branch
         let warehouse = await frappe.db.get_value(
             "Warehouse",
@@ -53,7 +57,7 @@ frappe.ui.form.on("Gate Pass Outward", {
             });
 
             frm.refresh_field("item_detail");
-        }
+        }       
     }
 });
 
@@ -96,8 +100,54 @@ frappe.ui.form.on("Gate Pass Outward Detail", {
                 );
             }
         });
+    },
+    item_detail_add: async function(frm, cdt, cdn) {
+        if (!frm.doc.branch) return;
+
+        try {
+            let warehouse = await frappe.db.get_value(
+                "Warehouse",
+                {
+                    branch: frm.doc.branch,
+                    gatepass_warehouse: 1
+                },
+                "name"
+            );
+
+            if (warehouse.message?.name) {
+                // Use frappe.model.set_value instead of direct assignment
+                await frappe.model.set_value(
+                    cdt, 
+                    cdn, 
+                    "target_warehouse", 
+                    warehouse.message.name
+                );
+            }
+        } catch (error) {
+            console.error("Error setting warehouse:", error);
+        }
     }
 });
+
+// set naming series
+
+
+function set_naming_series_by_branch(frm) {
+    const branch_series_map = {
+        "Rabale": "GPOR.fiscal.####",
+        "Sanand": "GPOS.fiscal.####",
+        "Nandikoor": "GPON.fiscal.####"
+    };
+    
+    // Get the naming series for the selected branch
+    const naming_series = branch_series_map[frm.doc.branch];
+    console.log("nameing series---", naming_series)
+    
+    if (naming_series) {
+        frm.set_value("naming_series", naming_series);
+    }
+    frm.refresh_field("naming_series");
+}
 
 // ── Inward creation flow ─────────────────────────────────────────────────────
 

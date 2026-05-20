@@ -7,6 +7,7 @@
  "engine": "InnoDB",
  "field_order": [
   "section_break_2ovn",
+  "branch",
   "naming_series",
   "party_type",
   "purpose",
@@ -15,7 +16,6 @@
   "date",
   "party_name",
   "returnable",
-  "branch",
   "transport_details_section",
   "transporter_name",
   "lr_no",
@@ -55,11 +55,12 @@
    "search_index": 1
   },
   {
+   "default": "GPOS.fiscal.####",
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Naming Series",
-   "options": "GPO-.YYYY.-.####",
+   "options": "GPOS.fiscal.####\nGPOR.fiscal.####\nGPON.fiscal.####",
    "reqd": 1
   },
   {
@@ -74,6 +75,7 @@
    "fieldtype": "Column Break"
   },
   {
+   "default": "Today",
    "fieldname": "date",
    "fieldtype": "Date",
    "label": "Date",
@@ -195,12 +197,12 @@
    "label": "Is Stock Item"
   },
   {
-   "depends_on": "eval:doc.is_stock_item == 1",
    "fieldname": "branch",
    "fieldtype": "Link",
    "label": "Branch",
    "mandatory_depends_on": "eval:doc.is_stock_item == 1",
-   "options": "Branch"
+   "options": "Branch",
+   "reqd": 1
   },
   {
    "depends_on": "eval:doc.is_stock_item == 1",
@@ -238,7 +240,7 @@
    "link_fieldname": "gate_pass_outward"
   }
  ],
- "modified": "2026-05-19 12:55:34.723513",
+ "modified": "2026-05-20 12:45:11.404975",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Outward",
