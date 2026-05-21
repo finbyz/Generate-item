@@ -607,13 +607,13 @@ def build_tree(mr_items, po_map, pr_map):
 
 		if not po_rows:
 			no_po = _blank()
-			no_po.update({
-				"row_type": "PO",
-				"indent":   1,
-				"po_no":    "— No PO Created —",
-				"company":  mr_row.get("company"),
-			})
-			output.append(no_po)
+			# no_po.update({
+			# 	"row_type": "PO",
+			# 	"indent":   1,
+			# 	"po_no":    "— No PO Created —",
+			# 	"company":  mr_row.get("company"),
+			# })
+			# output.append(no_po)
 			continue
 
 		
@@ -672,13 +672,13 @@ def build_tree(mr_items, po_map, pr_map):
 			# ── PR rows ───────────────────────────────────────────────────────
 			if not pr_rows:
 				no_pr = _blank()
-				no_pr.update({
-					"row_type":   "PR",
-					"indent":     2,
-					"receipt_no": "— No Receipt —",
-					"company":    mr_row.get("company"),
-				})
-				output.append(no_pr)
+				# no_pr.update({
+				# 	"row_type":   "PR",
+				# 	"indent":     2,
+				# 	"receipt_no": "— No Receipt —",
+				# 	"company":    mr_row.get("company"),
+				# })
+				# output.append(no_pr)
 				continue
 
 			
@@ -750,6 +750,21 @@ def get_data(filters):
 			if kept:
 				filtered_po_map[key] = kept
 		po_map = filtered_po_map
+
+		# ── FIX: Filter MR items to show only those associated with matching POs ──
+		# When PO or supplier filter is applied, keep only MR items that have
+		# at least one matching PO in the filtered po_map
+		mr_items_with_pos = set()
+		for (mr_name, mr_item_name) in po_map.keys():
+			mr_items_with_pos.add((mr_name, mr_item_name))
+		
+		mr_items = [
+			item for item in mr_items
+			if (item["material_request"], item["mr_item_name"]) in mr_items_with_pos
+		]
+		
+		if not mr_items:
+			return []
 
 	# 3. Fetch PR items for all PO item names (bulk — one query)
 	all_po_item_names = [
