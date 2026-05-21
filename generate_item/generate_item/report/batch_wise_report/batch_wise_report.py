@@ -95,7 +95,7 @@ def get_data(filters):
 			so.transaction_date,
 			(SELECT MAX(modification_time) FROM `tabState Change Items` WHERE parent = so.name AND workflow_state = 'Approved') AS so_approval_date,
 			so.custom_repeat_order_ref AS repeat_order_ref,
-			soi.line_status
+			soi.line_status,
 			soi.tag_no ,
 			so.customer_name,
 			(
