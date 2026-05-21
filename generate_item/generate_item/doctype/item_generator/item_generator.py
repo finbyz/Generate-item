@@ -177,3 +177,54 @@ class ItemGenerator(Document):
         """Auto-close Item Generator when created from Sales Order"""
         if self.is_create_with_sales_order == 1 and self.is_closed != 1:
             self.db_set("is_closed", 1, update_modified=False)
+
+
+import frappe
+from frappe import _
+
+
+@frappe.whitelist()
+def update_item_master(item_generator_name):
+    try:
+        item_gen = frappe.get_doc("Item Generator", item_generator_name)
+
+        if not item_gen.created_item:
+            return {
+                "success": False,
+                "error": _("No item code found")
+            }
+
+        item_code = item_gen.created_item
+
+        if not frappe.db.exists("Item", item_code):
+            return {
+                "success": False,
+                "error": _("Item {0} not found").format(item_code)
+            }
+
+        item = frappe.get_doc("Item", item_code)
+
+        item.item_name = (
+            item_gen.short_description
+            
+        )
+
+        item.description = item_gen.description
+
+        item.save(ignore_permissions=True)
+
+        return {
+            "success": True,
+            "message": _("Item updated successfully")
+        }
+
+    except Exception as e:
+        frappe.log_error(
+            frappe.get_traceback(),
+            "Update Item Master Error"
+        )
+
+        return {
+            "success": False,
+            "error": str(e)
+        }
