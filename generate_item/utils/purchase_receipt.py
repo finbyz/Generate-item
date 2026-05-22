@@ -134,7 +134,22 @@ def get_po_items(purchase_order):
 
 def validate(doc, method):
     validate_duplicate_po(doc, method)
+    validate_is_return(doc,method)
    
+
+
+
+def validate_is_return(self,method):
+    if self.is_return:
+        for item in self.items:
+            # If stock_qty is positive, make it negative
+            if item.stock_qty > 0:
+                item.stock_qty = -item.stock_qty
+            
+            # If qty_in_stock_uom is positive, make it negative
+            if item.qty_in_stock_uom > 0:
+                item.qty_in_stock_uom = -item.qty_in_stock_uom
+
 
 def validate_duplicate_po(doc, method):
     """Prevent duplicate draft Purchase Orders for same supplier, item, and qty."""
