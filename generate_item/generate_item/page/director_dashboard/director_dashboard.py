@@ -168,3 +168,91 @@ def get_pending_pr(branch=None, from_date=None, to_date=None):
     """, params, as_dict=True)
 
     return _build_buckets(rows, date_field="posting_date")
+
+
+@frappe.whitelist()
+def get_item_wise_data(branch=None, from_date=None, to_date=None):
+    """
+    Item-wise variant: counts distinct items (rows) instead of documents.
+    """
+    data = {}
+    data["pending_mr"] = get_pending_mr_item_wise(branch, from_date, to_date)
+    data["pending_po"] = get_pending_po_item_wise(branch, from_date, to_date)
+    data["pending_pr"] = get_pending_pr_item_wise(branch, from_date, to_date)
+    return data
+
+
+def get_pending_mr_item_wise(branch=None, from_date=None, to_date=None):
+    conditions = ["mr.status NOT IN ('Ordered', 'Cancelled')"]
+    params = {}
+
+    if branch:
+        conditions.append("mr.branch = %(branch)s")
+        params["branch"] = branch
+
+    if from_date and to_date:
+        conditions.append("mr.transaction_date BETWEEN %(from_date)s AND %(to_date)s")
+        params["from_date"] = from_date
+        params["to_date"]   = to_date
+
+    where = " AND ".join(conditions)
+
+    # Each child row = one pending item line
+    rows = frappe.db.sql(f"""
+        SELECT mr.transaction_date
+        FROM   `tabMaterial Request Item` mri
+        JOIN   `tabMaterial Request` mr ON mr.name = mri.parent
+        WHERE  {where}
+    """, params, as_dict=True)
+
+    return _build_buckets(rows, date_field="transaction_date")
+
+
+def get_pending_po_item_wise(branch=None, from_date=None, to_date=None):
+    conditions = ["po.status NOT IN ('To Receive and Bill', 'Cancelled')"]
+    params = {}
+
+    if branch:
+        conditions.append("po.branch = %(branch)s")
+        params["branch"] = branch
+
+    if from_date and to_date:
+        conditions.append("po.transaction_date BETWEEN %(from_date)s AND %(to_date)s")
+        params["from_date"] = from_date
+        params["to_date"]   = to_date
+
+    where = " AND ".join(conditions)
+
+    rows = frappe.db.sql(f"""
+        SELECT po.transaction_date
+        FROM   `tabPurchase Order Item` poi
+        JOIN   `tabPurchase Order` po ON po.name = poi.parent
+        WHERE  {where}
+    """, params, as_dict=True)
+
+    return _build_buckets(rows, date_field="transaction_date")
+
+
+def get_pending_pr_item_wise(branch=None, from_date=None, to_date=None):
+    conditions = ["pr.status NOT IN ('To Bill', 'Completed', 'Cancelled')"]
+    params = {}
+
+    if branch:
+        conditions.append("pr.branch = %(branch)s")
+        params["branch"] = branch
+
+    if from_date and to_date:
+        conditions.append("pr.posting_date BETWEEN %(from_date)s AND %(to_date)s")
+        params["from_date"] = from_date
+        params["to_date"]   = to_date
+
+    where = " AND ".join(conditions)
+
+    rows = frappe.db.sql(f"""
+        SELECT pr.posting_date
+        FROM   `tabPurchase Receipt Item` pri
+        JOIN   `tabPurchase Receipt` pr ON pr.name = pri.parent
+        WHERE  {where}
+    """, params, as_dict=True)
+
+    return _build_buckets(rows, date_field="posting_date")

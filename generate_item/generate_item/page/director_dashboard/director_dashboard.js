@@ -53,6 +53,16 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper)
         change: load_data
     });
 
+     // Add type
+    let type_selector = page.add_field({
+        fieldtype: 'Select',
+        fieldname: '',
+        options: ['Order Wise', 'Item Wise'],
+        default: 'Order Wise',
+        change: load_data
+        
+    });
+
     // ── Styles ───────────────────────────────────────────────────────
     const styles = `<style>
         .dir-dashboard { padding: 20px; }
@@ -280,26 +290,79 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper)
     ];
 
     // ── Data load ─────────────────────────────────────────────────────
-    function load_data() {
-        frappe.call({
-            method: "generate_item.generate_item.page.director_dashboard.director_dashboard.get_dashboard_data",
-            args: {
-                from_date: from_date.get_value() || '',
-                to_date:   to_date.get_value()   || '',
-                branch:    branch.get_value()    || ''
-            },
-            callback(r) {
-                if (r.message) render_dashboard(r.message);
-            }
-        });
-    }
+    // function load_data() {
+    //     frappe.call({
+    //         method: "generate_item.generate_item.page.director_dashboard.director_dashboard.get_dashboard_data",
+    //         args: {
+    //             from_date: from_date.get_value() || '',
+    //             to_date:   to_date.get_value()   || '',
+    //             branch:    branch.get_value()    || ''
+    //         },
+    //         callback(r) {
+    //             if (r.message) render_dashboard(r.message);
+    //         }
+    //     });
+    // }
 
-    function render_dashboard(data) {
-        if (!window.Chart) { setTimeout(() => render_dashboard(data), 100); return; }
-        render_section('mr', data.pending_mr, 'MRs', 'mrPendingChart');
-        render_section('po', data.pending_po, 'POs', 'poPendingChart');
-		render_section('pr', data.pending_pr, 'PRs', 'prPendingChart');
+    // function render_dashboard(data) {
+    //     if (!window.Chart) { setTimeout(() => render_dashboard(data), 100); return; }
+    //     render_section('mr', data.pending_mr, 'MRs', 'mrPendingChart');
+    //     render_section('po', data.pending_po, 'POs', 'poPendingChart');
+	// 	render_section('pr', data.pending_pr, 'PRs', 'prPendingChart');
+    // }
+
+    function load_data() {
+    const mode = type_selector.get_value() || 'Order Wise';
+    if (mode === 'Item Wise') {
+        load_item_wise();
+    } else {
+        load_order_wise();
     }
+}
+
+// ── Existing logic untouched, just renamed ────────────────────────────────
+function load_order_wise() {
+    frappe.call({
+        method: "generate_item.generate_item.page.director_dashboard.director_dashboard.get_dashboard_data",
+        args: {
+            from_date: from_date.get_value() || '',
+            to_date:   to_date.get_value()   || '',
+            branch:    branch.get_value()    || ''
+        },
+        callback(r) {
+            if (r.message) render_order_wise(r.message);
+        }
+    });
+}
+
+function render_order_wise(data) {
+    if (!window.Chart) { setTimeout(() => render_order_wise(data), 100); return; }
+    render_section('mr', data.pending_mr, 'MRs', 'mrPendingChart');
+    render_section('po', data.pending_po, 'POs', 'poPendingChart');
+    render_section('pr', data.pending_pr, 'PRs', 'prPendingChart');
+}
+
+// ── New Item Wise logic ───────────────────────────────────────────────────
+function load_item_wise() {
+    frappe.call({
+        method: "generate_item.generate_item.page.director_dashboard.director_dashboard.get_item_wise_data",
+        args: {
+            from_date: from_date.get_value() || '',
+            to_date:   to_date.get_value()   || '',
+            branch:    branch.get_value()    || ''
+        },
+        callback(r) {
+            if (r.message) render_item_wise(r.message);
+        }
+    });
+}
+
+function render_item_wise(data) {
+    if (!window.Chart) { setTimeout(() => render_item_wise(data), 100); return; }
+    render_section('mr', data.pending_mr, 'Items', 'mrPendingChart');
+    render_section('po', data.pending_po, 'Items', 'poPendingChart');
+    render_section('pr', data.pending_pr, 'Items', 'prPendingChart');
+}
 
     // ── Generic section renderer ──────────────────────────────────────
     function render_section(prefix, data, unit, chartId) {
