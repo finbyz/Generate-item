@@ -175,6 +175,9 @@ doc_events = {
         "validate": "generate_item.utils.purchase_order.validate",
         "before_save": "generate_item.utils.purchase_order.before_save"
     },
+    "Address":{
+        "validate":"generate_item.utils.address.validate",
+    },
     "Batch":{
         "before_save":"generate_item.utils.batch.before_save",
     },
