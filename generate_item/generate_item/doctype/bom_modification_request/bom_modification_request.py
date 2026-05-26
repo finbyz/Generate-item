@@ -5,465 +5,432 @@ from frappe import _
 from frappe.model.naming import make_autoname
 from frappe.model.document import Document
 from frappe.desk.form.linked_with import (
-    get_linked_doctypes,
-    get_linked_docs,
+	get_linked_doctypes,
+	get_linked_docs,
 )
-
 from frappe.utils import today, now, flt
 
 
-
-
-
 class BomModificationRequest(Document):
-	def autoname(self):
 
-		if self.bom:
-			self.name = make_autoname(f"{self.bom}-.##")
+    def autoname(self):
+        if self.bom:
+            self.name = make_autoname(f"{self.bom}-.##")
 
-	def on_submit(self):
-		if self.bom:
-			self.update_bom_items_using_db_set()
-			self.update_bom_item_revision()
+    def validate(self):
+        self.validate_qty_and_rev_qty()
 
-	def validate(self):
-		self.validate_qty_and_rev_qty()
+    def on_submit(self):
+        if self.bom:
+            self.update_bom_items_using_db_set()  # step 1: apply changes
+            self.update_bom_item_revision()        # step 2: stamp + heal zeros
+
+    
+    def validate_qty_and_rev_qty(self):
+        for row in (self.items or []):
+            if not self.bom:
+                continue
+            if flt(row.qty) == 0 and flt(row.rev_qty) == 0:
+                frappe.throw(
+                    f"Row {row.idx}: Rev Qty cannot be 0 when Qty is 0",
+                    title="Invalid Quantity",
+                )
+
+  
+    def _qty_fields(self, qty):
+       
+        q = flt(qty)
+        return {
+            "qty":                   q,
+            # "qty_consumed_per_unit": q,  # ← WO required_qty source
+            "conversion_factor":     1,  # ← must be 1 for stock items
+            # "stock_qty":             q,  # ← BOM cost calculation source
+        }
+
+    
+    def _resolve_bom_item_name(self, row):
+        
+        # PRIMARY: exact PK stored on the BMR child row by the form
+        bom_item_name = getattr(row, "bom_item_name", None)
+        if bom_item_name:
+            if frappe.db.exists("BOM Item", bom_item_name):
+                return bom_item_name
+            # bom_item_name present but stale (row was deleted externally)
+            return None
+
+        # FALLBACK: item_code query — only safe when item_code is unique in BOM
+        item_code = getattr(row, "item", None)
+        if not item_code:
+            return None
+
+        return frappe.db.get_value(
+            "BOM Item",
+            {"parent": self.bom, "parenttype": "BOM", "item_code": item_code},
+            "name",
+        )
+
+   
+    def update_bom_item_revision(self):
+        
+        if not self.bom:
+            return
+
+        frappe.db.sql("""
+            UPDATE `tabBOM Item`
+            SET
+                rev_no      = %s,
+                rev_date    = %s,
+                modified    = %s,
+                modified_by = %s,
+
+                conversion_factor = CASE
+                    WHEN conversion_factor = 0
+                      OR conversion_factor IS NULL
+                    THEN 1
+                    ELSE conversion_factor
+                END,
+
+                qty_consumed_per_unit = CASE
+                    WHEN qty_consumed_per_unit = 0
+                      OR qty_consumed_per_unit IS NULL
+                    THEN qty
+                    ELSE qty_consumed_per_unit
+                END,
+
+                stock_qty = CASE
+                    WHEN stock_qty = 0
+                      OR stock_qty IS NULL
+                    THEN qty
+                    ELSE stock_qty
+                END
+
+            WHERE parent = %s
+        """, (self.name, today(), now(), frappe.session.user, self.bom))
 
 
-	def validate_qty_and_rev_qty(self):
-		table_items = []
-		if self.bom:
-			table_items = self.items or []
+    def _sync_batch_so_to_rev_bom(self, row):
+        """
+        Two cases:
+          1. Row has NO existing bom_no → source is the root BOM (self.bom)
+             Fetch batch_no_ref & so_ref from root BOM and write to rev_bom_no.
+             Root BOM is NOT cleared.
+
+          2. Row HAS an existing bom_no → source is that child bom_no.
+             Clear batch/SO from the existing child BOM, write to rev_bom_no.
+        """
+        rev_bom_no = getattr(row, "rev_bom_no", None)
+        if not rev_bom_no:
+            return
+
+        bom_no     = getattr(row, "bom_no", None)
+        source_bom = bom_no if bom_no else self.bom
+
+        if source_bom == rev_bom_no:
+            return
+
+        source_values = frappe.db.get_value(
+            "BOM", source_bom, ["custom_batch_no", "sales_order"], as_dict=True
+        )
+        if not source_values:
+            frappe.log_error(
+                f"BMR {self.name}: source BOM '{source_bom}' not found "
+                f"while syncing batch/SO to '{rev_bom_no}'.",
+                "BMR: Source BOM Missing",
+            )
+            return
+
+        if bom_no:
+            frappe.db.set_value(
+                "BOM", bom_no,
+                {"custom_batch_no": "", "sales_order": ""},
+                update_modified=False,
+            )
+
+        frappe.db.set_value(
+            "BOM", rev_bom_no,
+            {
+                "custom_batch_no": source_values.get("custom_batch_no") or "",
+                "sales_order":     source_values.get("sales_order") or "",
+            },
+            update_modified=False,
+        )
+
+    def _get_sub_assembly_bom(self, row):
+        """
+        Return the sub-assembly BOM name linked to this row, or None.
+        Uses DB truth (bom_item_name → bom_no), not form data.
+        """
+        bom_item_name = getattr(row, "bom_item_name", None)
+        if not bom_item_name:
+            return None
+        return frappe.db.get_value("BOM Item", bom_item_name, "bom_no") or None
+
+    def _clear_batch_so_on_sub_assembly_delete(self, row):
+        """
+        When a sub-assembly row is deleted (is_delete=1), clear
+        custom_batch_no and sales_order from that sub-assembly BOM.
+        Does nothing for regular component rows.
+        """
+        sub_assembly_bom = self._get_sub_assembly_bom(row)
+        if not sub_assembly_bom:
+            return
+        frappe.db.set_value(
+            "BOM", sub_assembly_bom,
+            {"custom_batch_no": "", "sales_order": ""},
+            update_modified=False,
+        )
+
+   
+    def update_bom_items_using_db_set(self):
+        if not self.bom:
+            return
+
+        current_max_idx = (
+            frappe.db.get_value("BOM Item", {"parent": self.bom}, "max(idx)") or 0
+        )
+        needs_explosion_rebuild = False
+        branch = self.branch
+
+        for row in self.items:
+
+            # ── DELETE ────────────────────────────────────────────────────────
+            if row.is_delete and row.bom_item_name:
+                self._clear_batch_so_on_sub_assembly_delete(row)
+                frappe.db.delete("BOM Item", row.bom_item_name)
+                needs_explosion_rebuild = True
+                continue
+
+            update_data = {}
+
+            # ── Qty / Rate / Amount ───────────────────────────────────────────
+            orig_qty  = flt(row.qty)
+            orig_rate = flt(row.rate)
+            rev_qty   = flt(row.rev_qty)
+            rev_rate  = flt(row.rev_rate)
+
+            final_qty  = rev_qty  if rev_qty  > 0 else orig_qty
+            final_rate = rev_rate if rev_rate > 0 else orig_rate
+
+            if row.rev_qty:
+                # LAYER 2: use _qty_fields() — never set qty alone
+                update_data.update(self._qty_fields(row.rev_qty))
+
+            if row.rev_rate:
+                update_data["rate"]      = row.rev_rate
+                update_data["base_rate"] = final_rate
+
+            if final_qty or final_rate:
+                update_data["amount"]      = final_qty * final_rate
+                update_data["base_amount"] = final_qty * final_rate
+
+            # ── Custom drawing / spec fields ──────────────────────────────────
+            if row.rev_drawing_no:
+                update_data["custom_drawing_no"] = row.rev_drawing_no
+            if row.rev_drawing_rev_no:
+                update_data["custom_drawing_rev_no"] = row.rev_drawing_rev_no
+            if row.rev_pattern_drawing_no:
+                update_data["custom_pattern_drawing_no"] = row.rev_pattern_drawing_no
+            if row.rev_pattern_drawing_rev_no:
+                update_data["custom_pattern_drawing_rev_no"] = row.rev_pattern_drawing_rev_no
+            if row.rev_purchase_specification_no:
+                update_data["custom_purchase_specification_no"] = row.rev_purchase_specification_no
+            if row.rev_purchase_specification_rev_no:
+                update_data["custom_purchase_specification_rev_no"] = row.rev_purchase_specification_rev_no
+
+            # ── BOM No / Do Not Explode ───────────────────────────────────────
+            if getattr(row, "rev_do_not_explode", None):
+                update_data["do_not_explode"] = 1
+                update_data["bom_no"]         = ""
+                needs_explosion_rebuild       = True
+                if row.bom_item_name:
+                    old_bom_no = frappe.db.get_value("BOM Item", row.bom_item_name, "bom_no")
+                    if old_bom_no:
+                        frappe.db.set_value(
+                            "BOM", old_bom_no,
+                            {"custom_batch_no": "", "sales_order": ""},
+                            update_modified=False,
+                        )
+
+            elif getattr(row, "rev_bom_no", None):
+                update_data["bom_no"]         = row.rev_bom_no
+                update_data["do_not_explode"] = 0
+                needs_explosion_rebuild       = True
+                self._sync_batch_so_to_rev_bom(row)
+
+            # ── Item replacement ──────────────────────────────────────────────
+            if row.rev_item and row.rev_item != getattr(row, "item", None):
+                (
+                    item_name, description, stock_uom,
+                    is_stock_item, allow_alternative_item,
+                    has_variants, include_item_in_manufacturing,
+                ) = frappe.db.get_value(
+                    "Item", row.rev_item,
+                    [
+                        "item_name", "description", "stock_uom",
+                        "is_stock_item", "allow_alternative_item",
+                        "has_variants", "include_item_in_manufacturing",
+                    ],
+                )
+                update_data.update({
+                    "item_code":                     row.rev_item,
+                    "item_name":                     item_name,
+                    "description":                   description,
+                    "uom":                           stock_uom,
+                    "stock_uom":                     stock_uom,
+                    "branch":                        branch,
+                    "is_stock_item":                 is_stock_item,
+                    "allow_alternative_item":        allow_alternative_item,
+                    "has_variants":                  has_variants,
+                    "include_item_in_manufacturing": include_item_in_manufacturing,
+                })
+                needs_explosion_rebuild = True
+
+            # ── LAYER 1: resolve existing vs new using exact PK ───────────────
+            resolved_bom_item_name = self._resolve_bom_item_name(row)
+
+            if resolved_bom_item_name:
+                # Existing BOM Item — update only changed fields
+                if update_data:
+                    frappe.db.set_value(
+                        "BOM Item", resolved_bom_item_name,
+                        update_data, update_modified=False,
+                    )
+
+            else:
+                # ── NEW ITEM INSERT ───────────────────────────────────────────
+                effective_item = getattr(row, "rev_item", None) or getattr(row, "item", None)
+                if not effective_item:
+                    continue
+
+                has_any_rev_data = (
+                    row.rev_item
+                    or flt(row.rev_qty) > 0
+                    or flt(row.rev_rate) > 0
+                    or row.rev_drawing_no
+                    or row.rev_drawing_rev_no
+                    or row.rev_pattern_drawing_no
+                    or row.rev_pattern_drawing_rev_no
+                    or row.rev_purchase_specification_no
+                    or row.rev_purchase_specification_rev_no
+                    or getattr(row, "rev_bom_no", None)
+                )
+                if not has_any_rev_data:
+                    continue
+
+                current_max_idx += 1
+
+                # Fetch item master defaults for the new row
+                (
+                    new_item_name, new_description, new_stock_uom,
+                    new_is_stock_item, new_allow_alt,
+                    new_has_variants, new_include_mfg,
+                ) = frappe.db.get_value(
+                    "Item", effective_item,
+                    [
+                        "item_name", "description", "stock_uom",
+                        "is_stock_item", "allow_alternative_item",
+                        "has_variants", "include_item_in_manufacturing",
+                    ],
+                )
+
+                # LAYER 2: seed all WO-facing fields via _qty_fields()
+                new_item_defaults = {
+                    "item_name":                     new_item_name,
+                    "description":                   new_description,
+                    "uom":                           new_stock_uom,
+                    "stock_uom":                     new_stock_uom,
+                    "is_stock_item":                 new_is_stock_item,
+                    "allow_alternative_item":        new_allow_alt,
+                    "has_variants":                  new_has_variants,
+                    "include_item_in_manufacturing": new_include_mfg,
+                    "branch":                        branch,
+                }
+                new_item_defaults.update(self._qty_fields(flt(row.rev_qty)))
+
+                new_item_dict = {
+                    "doctype":     "BOM Item",
+                    "parent":      self.bom,
+                    "parenttype":  "BOM",
+                    "parentfield": "items",
+                    "item_code":   effective_item,
+                    "idx":         current_max_idx,
+                }
+                # defaults first, then rev_ fields win on any overlap
+                new_item_dict.update(new_item_defaults)
+                new_item_dict.update(update_data)
+
+                new_bom_item = frappe.get_doc(new_item_dict)
+                new_bom_item.db_insert()
+                needs_explosion_rebuild = True
+
+        # ── REINDEX ───────────────────────────────────────────────────────────
+        bom_items = frappe.get_all(
+            "BOM Item",
+            filters={"parent": self.bom, "parenttype": "BOM"},
+            fields=["name"],
+            order_by="idx asc",
+        )
+        for i, d in enumerate(bom_items, start=1):
+            frappe.db.set_value("BOM Item", d.name, "idx", i, update_modified=False)
+
+        # ── Rebuild explosion + recalculate cost ──────────────────────────────
+        bom_doc = frappe.get_doc("BOM", self.bom)
+        bom_doc.flags.ignore_validate_update_after_submit = True
+        bom_doc.flags.ignore_permissions = True
+        bom_doc.reload()
+
+        bom_doc.update_stock_qty()
+        # if needs_explosion_rebuild:
+           
+        bom_doc.update_exploded_items(save=True)
+
+        bom_doc.calculate_cost()
+        bom_doc.update_cost(update_parent=True, from_child_bom=False, update_hour_rate=True, save=True)
 		
-
-		for row in table_items:
-			qty = frappe.utils.flt(row.qty)
-			rev_qty = frappe.utils.flt(row.rev_qty)
-
-			if qty == 0 and rev_qty == 0:
-				frappe.throw(
-					f"Row {row.idx}: Rev Qty cannot be 0 when Qty is 0",
-					title="Invalid Quantity",
-				)
-
-	def update_bom_item_revision(self):
-		if not self.bom:
-			return
-
-		frappe.db.sql("""
-			UPDATE `tabBOM Item`
-			SET
-				rev_no = %s,
-				rev_date = %s,
-				modified = %s,
-				modified_by = %s
-			WHERE parent = %s
-		""", (
-			self.name,          # BMR reference
-			today(),
-			now(),
-			frappe.session.user,
-			self.bom           # BOM name
-		))
-
-	# Sync batch_no_ref & so_ref to rev_bom_no ────────────────────
-	def _sync_batch_so_to_rev_bom(self, row):
-		"""
-		
-		Two cases:
-		  1. Row has NO existing bom_no  → source is the root BOM (self.bom)
-		     • Fetch batch_no_ref & so_ref from root BOM
-		     • Write them into rev_bom_no BOM  (root BOM is NOT cleared)
- 
-		  2. Row HAS an existing bom_no  → source is that child bom_no
-		     • Fetch batch_no_ref & so_ref from the existing  BOM
-		     • Clear those fields on the existing  BOM
-		     • Write them into rev_bom_no BOM
- 
-		Does nothing if rev_bom_no is blank or matches the source BOM.
-		"""
-		rev_bom_no = row.get("rev_bom_no") if hasattr(row, "get") else getattr(row, "rev_bom_no", None)
-		if not rev_bom_no:
-			return
- 
-		# ── Check actual bom_no stored in tabBOM Item (DB truth, not form data) ─
-		bom_no = row.get("bom_no") if hasattr(row, "get") else getattr(row, "bom_no", None)			
- 
-		# ── Determine source BOM ────────────────────────────────────────────────
-		if bom_no:
-			# Case 2: existing BOM Item has a bom_no in DB → source is that child BOM
-			source_bom = bom_no
-		else:
-			# Case 1: bom_no is blank in DB → source is the root BOM
-			source_bom = self.bom
- 
-		# Avoid self-referential no-op
-		if source_bom == rev_bom_no:
-			return
- 
-		# ── Fetch batch & SO from source BOM ────────────────────────────────────
-		source_values = frappe.db.get_value(
-			"BOM",
-			source_bom,
-			["custom_batch_no", "sales_order"],  
-			as_dict=True,
-		)
- 
-		if not source_values:
-			frappe.log_error(
-				f"BOM Modification Request {self.name}: source BOM '{source_bom}' not found "
-				f"while syncing batch/SO to '{rev_bom_no}'.",
-				"BMR: Source BOM Missing",
-			)
-			return
- 
-		batch_no_ref = source_values.get("custom_batch_no") or ""
-		so_ref       = source_values.get("sales_order") or ""
- 
-		# ── Case 2 only: clear source child BOM ─────────────────────────────────
-		if bom_no:
-			frappe.db.set_value(
-				"BOM",
-				bom_no,
-				{
-					"custom_batch_no": "",
-					"sales_order": "",
-				},
-				update_modified=False,
-			)
-			
- 
-		# ── Write batch & SO to rev_bom_no BOM ──────────────────────────────────
-		frappe.db.set_value(
-			"BOM",
-			rev_bom_no,
-			{
-				"custom_batch_no": batch_no_ref,
-				"sales_order": so_ref,
-			},
-			update_modified=False,
-		)
-		
- 
-	# ── END HELPER ───────────────────────────────────────────────────────────────
-				
-
-	# HELPER: Identify if a child row is a sub-assembly
-	# ────────────────────────────────────────────────────────────────────────────
-	def _get_sub_assembly_bom(self, row):
-		"""
-		Returns the sub-assembly BOM name if this child row is linked to one,
-		otherwise returns None.
- 
-		Identification logic (DB-based, not form data):
-		  - Read bom_no from tabBOM Item using bom_item_name (DB truth)
-		  - If bom_no is present → this row IS a sub-assembly
-		  - If bom_no is blank   → this row is a regular component
- 
-		Using DB lookup (not row.bom_no) because form data can be stale.
-		"""
-		bom_item_name = getattr(row, "bom_item_name", None)
-		if not bom_item_name:
-			return None
- 
-		bom_no = frappe.db.get_value("BOM Item", bom_item_name, "bom_no") or None
-		return bom_no 
-
-	# ────────────────────────────────────────────────────────────────────────────
-	#  Clear batch & SO from a sub-assembly BOM when it is deleted
-	# ────────────────────────────────────────────────────────────────────────────
-	def _clear_batch_so_on_sub_assembly_delete(self, row):
-		"""
-		Called only when is_delete=1 on a child row.
- 
-		If the deleted row is a sub-assembly (has a bom_no in DB),
-		clears custom_batch_no and sales_order from that sub-assembly BOM.
- 
-		Does nothing for regular component rows (no bom_no).
-		Does NOT touch any other logic — purely additive.
-		"""
-		sub_assembly_bom = self._get_sub_assembly_bom(row)
- 
-		if not sub_assembly_bom:
-			
-			return
- 
-		frappe.db.set_value(
-			"BOM",
-			sub_assembly_bom,
-			{
-				"custom_batch_no": "",
-				"sales_order":     "",
-			},
-			update_modified=False,
-		)
-		
-
-	def update_bom_items_using_db_set(self):
-		if not self.bom:
-			return
-
-		# Collect OMR item codes (use rev_item if set, else item)
-		omr_items = {
-			row.rev_item if row.rev_item else row.item
-			for row in self.items
-			if row.item or row.rev_item
-		}
-
-		current_max_idx = (
-			frappe.db.get_value("BOM Item", {"parent": self.bom}, "max(idx)") or 0
-		)
-		 # Track whether any bom_no change happened — to decide explosion rebuild
-		needs_explosion_rebuild = False
-		branch = self.branch
-
-		for row in self.items:
-
-			# ── DELETE LOGIC ─────────────────────────────────────────────
-			if row.is_delete and row.bom_item_name:
-				self._clear_batch_so_on_sub_assembly_delete(row)
-				frappe.db.delete("BOM Item", row.bom_item_name)
-				needs_explosion_rebuild = True
-
-				continue
-
-			update_data = {}
-				# ── Qty, Rate, Amount ────────────────────────────────────────────────────
-			orig_qty  = frappe.utils.flt(row.qty)
-			orig_rate = frappe.utils.flt(row.rate)
-			rev_qty   = frappe.utils.flt(row.rev_qty)
-			rev_rate  = frappe.utils.flt(row.rev_rate)
-
-			# Use rev value if provided, else fall back to original
-			final_qty  = rev_qty  if rev_qty  > 0 else orig_qty
-			final_rate  = rev_rate if  rev_rate > 0 else orig_rate
-
-			# ── Qty ─────────────────────────────────────────────────────────────
-			if row.rev_qty:
-				update_data["qty"] = row.rev_qty
-			
-			if row.rev_rate:
-				update_data["rate"] = row.rev_rate
-				update_data["base_rate"] =   final_rate
-
-			
-
-			if final_qty or final_rate :
-				
-				update_data["amount"] = final_qty * final_rate
-				update_data["base_amount"] = final_qty * final_rate
-
-			# ── Custom fields ────────────────────────────────────────────────────
-			if row.rev_drawing_no:
-				update_data["custom_drawing_no"] = row.rev_drawing_no
-			if row.rev_drawing_rev_no:
-				update_data["custom_drawing_rev_no"] = row.rev_drawing_rev_no
-			if row.rev_pattern_drawing_no:
-				update_data["custom_pattern_drawing_no"] = row.rev_pattern_drawing_no
-			if row.rev_pattern_drawing_rev_no:
-				update_data["custom_pattern_drawing_rev_no"] = row.rev_pattern_drawing_rev_no
-			if row.rev_purchase_specification_no:
-				update_data["custom_purchase_specification_no"] = row.rev_purchase_specification_no
-			if row.rev_purchase_specification_rev_no:
-				update_data["custom_purchase_specification_rev_no"] = row.rev_purchase_specification_rev_no
-
-			# ── BOM No & Do Not Explode ───────────────────────────────────────────
-			# Mirrors ERPNext core: do_not_explode clears bom_no
-			if hasattr(row, "rev_do_not_explode") and row.rev_do_not_explode:
-				update_data["do_not_explode"] = 1
-				update_data["bom_no"] = ""        
-				needs_explosion_rebuild = True
-				# Clear batch/SO from the orphaned sub-assembly BOM
-				if row.bom_item_name:
-					old_bom_no = frappe.db.get_value("BOM Item", row.bom_item_name, "bom_no")
-					if old_bom_no:
-						frappe.db.set_value(
-							"BOM",
-							old_bom_no,
-							{"custom_batch_no": "", "sales_order": ""},
-							update_modified=False,
-						)
-
-			elif hasattr(row, "rev_bom_no") and row.rev_bom_no:
-	
-				update_data["bom_no"]         = row.rev_bom_no
-				update_data["do_not_explode"] = 0
-				needs_explosion_rebuild = True
-
-				# Sync batch_no_ref & so_ref to the revised sub-BOM 
-				self._sync_batch_so_to_rev_bom(row)
-
-			# ── Item replacement ─────────────────────────────────────────────────
-			if row.rev_item and row.rev_item != row.item:
-				item_name, description,stock_uom,is_stock_item,allow_alternative_item,has_variants,include_item_in_manufacturing = frappe.db.get_value(
-					"Item", row.rev_item, ["item_name", "description","stock_uom","is_stock_item","allow_alternative_item","has_variants","include_item_in_manufacturing"]
-				)
-				update_data["item_code"] = row.rev_item
-				update_data["item_name"] = item_name
-				update_data["branch"] = branch
-				update_data["is_stock_item"] = is_stock_item
-				update_data["allow_alternative_item"] = allow_alternative_item
-				update_data["has_variants"] = has_variants
-				update_data["include_item_in_manufacturing"] = include_item_in_manufacturing
-
-				update_data["uom"] = stock_uom
-				update_data["stock_uom"] = stock_uom
-				update_data["description"] = description
-				needs_explosion_rebuild = True
-
-			# ── Resolve existing BOM item by original item_code ──────────────────
-			bom_item_name = frappe.db.get_value(
-				"BOM Item",
-				{"parent": self.bom, "parenttype": "BOM", "item_code": row.item},
-				"name",
-			)
-
-			if bom_item_name:
-				# Existing item — update only if there is something to update
-				if update_data:
-					frappe.db.set_value(
-						"BOM Item", bom_item_name, update_data, update_modified=False
-					)
-
-			else:
-				# New item — insert only if update_data has meaningful content
-				# (rev_item or rev_qty or any other rev field must be set)
-				effective_item = row.rev_item or row.item
-				if not effective_item:
-					continue
-
-				has_any_rev_data = (
-					row.rev_item
-					or frappe.utils.flt(row.rev_qty) > 0
-					or frappe.utils.flt(row.rev_rate) > 0
-					or row.rev_drawing_no
-					or row.rev_drawing_rev_no
-					or row.rev_pattern_drawing_no
-					or row.rev_pattern_drawing_rev_no
-					or row.rev_purchase_specification_no
-					or row.rev_purchase_specification_rev_no
-					or (hasattr(row, "rev_bom_no") and row.rev_bom_no)
-				)
-
-				if not has_any_rev_data:
-					continue
-				
-
-				current_max_idx += 1
-
-				new_item_dict = {
-					"doctype": "BOM Item",
-					"parent": self.bom,
-					"parenttype": "BOM",
-					"parentfield": "items",
-					"item_code": effective_item,
-					"idx": current_max_idx,
-					
-				}
-				new_item_dict.update(update_data)
-
-				new_bom_item = frappe.get_doc(new_item_dict)
-				new_bom_item.db_insert()
-				needs_explosion_rebuild = True
-
-	
-		# ── REINDEX ─────────────────────────────────────────────
-		bom_items = frappe.get_all(
-			"BOM Item",
-			filters={"parent": self.bom, "parenttype": "BOM"},
-			fields=["name"],
-			order_by="idx asc"
-		)
-
-		for i, d in enumerate(bom_items, start=1):
-			frappe.db.set_value(
-				"BOM Item",
-				d.name,
-				"idx",
-				i,
-				update_modified=False
-			)
-
-			# ── Finalize ──────────────────────────────────────────────────────────────
-		bom_doc = frappe.get_doc("BOM", self.bom)
-		bom_doc.reload()
-		# ── Rebuild explosion table only when needed ──────────────────────────────
-
-		if needs_explosion_rebuild:
-			bom_doc.flags.ignore_validate_update_after_submit = True
-			bom_doc.flags.ignore_permissions = True
-			bom_doc.update_exploded_items(save=True)
-		bom_doc.calculate_cost()
-		bom_doc.db_update()
-
-
+        # bom_doc.db_update()
+        bom_doc.save(ignore_permissions=True)
+        frappe.db.commit()
 
 
 
 def get_all_linked_documents(source_doctype, source_name):
-    """
-    Wrapper around ERPNext core Linked-With logic.
-    Returns linked documents for a given document.
-    """
-
     frappe.has_permission(source_doctype, doc=source_name, throw=True)
-
     linkinfo = get_linked_doctypes(source_doctype)
-
     if not linkinfo:
         return []
-
     linked_docs = get_linked_docs(
         doctype=source_doctype, name=source_name, linkinfo=linkinfo
     )
-
     result = []
-
     for ref_doctype, docs in linked_docs.items():
         for doc in docs:
-            # Ignore cancelled documents
             if doc.get("docstatus") == 2:
                 continue
-
-            result.append(
-                {
-                    "ref_doctype": ref_doctype,
-                    "document_no": doc.get("name"),
-                }
-            )
-
+            result.append({
+                "ref_doctype": ref_doctype,
+                "document_no": doc.get("name"),
+            })
     return result
 
 
 @frappe.whitelist()
 def get_linked_documents(items):
-    """
-    items → frm.doc.items (list of dicts)
-    """
     if isinstance(items, str):
         items = frappe.parse_json(items)
 
-    EXCLUDED_DOCTYPES = {"Bin", "Order Modification Request","BOM Modification Request"}
-
+    EXCLUDED_DOCTYPES = {"Bin", "Order Modification Request", "BOM Modification Request"}
     result = []
 
     for row in items:
         if not row.get("item"):
             continue
-
-        linked_docs = get_all_linked_documents("Item", row.get("item"))
-
-        for d in linked_docs:
-            #  Exclude unwanted doctypes
+        for d in get_all_linked_documents("Item", row.get("item")):
             if d.get("ref_doctype") in EXCLUDED_DOCTYPES:
                 continue
-
-            result.append(
-                {
-                    "ref_doctype": d.get("ref_doctype"),
-                    "document_no": d.get("document_no"),
-                    "line_item": row.get("idx"),
-                }
-            )
+            result.append({
+                "ref_doctype": d.get("ref_doctype"),
+                "document_no": d.get("document_no"),
+                "line_item":   row.get("idx"),
+            })
 
     return result
