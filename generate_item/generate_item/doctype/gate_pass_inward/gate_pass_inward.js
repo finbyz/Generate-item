@@ -98,7 +98,8 @@ frappe.ui.form.on("Gate Pass Inward", {
                             date          : outward.date,
                             billing_status: "Without Bill",
                             is_stock_item : outward.is_stock_item,  // mirror flag
-                            branch        : outward.branch
+                            branch        : outward.branch,
+                            default_target_warehouse : outward.default_source_warehouse
                         });
 
                         // ── Clear both child tables ───────────────────────────
@@ -116,7 +117,8 @@ frappe.ui.form.on("Gate Pass Inward", {
                                 row.sent_qty          = item.pending_qty || 0;
                                 row.pending_qty       = item.pending_qty || 0;
                                 row.rate              = item.rate || 0;
-                                row.quality           = "Good";
+                                row.source_warehouse = item.target_warehouse || "";
+                                row.target_warehouse = item.source_warehouse || "" ;
                             });
                             frm.refresh_field("item_detail");
 
@@ -152,3 +154,37 @@ frappe.ui.form.on("Gate Pass Inward", {
     }
 });
 
+
+
+
+frappe.ui.form.on("Gate Pass Inward Detail", {
+    qty(frm, cdt, cdn) {
+        const row = locals[cdt][cdn];
+        if (row.qty) {
+            frappe.model.set_value(cdt, cdn, "pending_qty", row.qty);
+        }
+    },
+    item(frm, cdt, cdn) {
+        const row = locals[cdt][cdn];
+        if(!row.item)return;
+
+         frappe.db.get_value(
+            "Item",
+            row.item,
+           [ "valuation_rate",  "description",]
+        ).then((r) => {
+
+            if (r.message) {
+                frappe.model.set_value(
+                    cdt,
+                    cdn,
+                   {
+                    description: r.message.description,
+                    rate: r.message.valuation_rate,
+                   }
+                );
+            }
+        });
+    },
+   
+});

@@ -30,6 +30,8 @@
   "items",
   "item_detail",
   "additional_information_section",
+  "total_gp_qty",
+  "total_gp_amount",
   "remarks",
   "gate_pass_inward",
   "column_break_idow",
@@ -141,6 +143,7 @@
    "fieldname": "items",
    "fieldtype": "Table",
    "label": "Items",
+   "no_copy": 1,
    "options": "Gate Pass Outward Item"
   },
   {
@@ -188,6 +191,7 @@
    "fieldname": "item_detail",
    "fieldtype": "Table",
    "label": "Items",
+   "no_copy": 1,
    "options": "Gate Pass Outward Detail"
   },
   {
@@ -228,6 +232,18 @@
    "no_copy": 1,
    "options": "Stock Entry",
    "read_only": 1
+  },
+  {
+   "fieldname": "total_gp_amount",
+   "fieldtype": "Currency",
+   "label": "Total GP Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_gp_qty",
+   "fieldtype": "Float",
+   "label": "Total GP Qty",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
@@ -240,7 +256,7 @@
    "link_fieldname": "gate_pass_outward"
   }
  ],
- "modified": "2026-05-20 12:45:11.404975",
+ "modified": "2026-05-26 10:03:55.824981",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Outward",

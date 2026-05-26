@@ -5,6 +5,8 @@ import frappe
 from frappe import _
 from frappe.model.document import Document
 from frappe.utils import nowdate
+from frappe.utils import flt
+
 
 
 
@@ -15,6 +17,32 @@ class GatePassOutward(Document):
 
     def before_cancel(self):
         _on_gpo_before_cancel(self)
+
+    def validate(self):
+
+        self.calculate_totals()
+
+    def calculate_totals(self):
+
+        total_qty = 0
+        total_amount = 0
+
+        #  table
+        item_table = self.item_detail if self.is_stock_item else self.items
+        for row in item_table:
+
+            row.amount = flt(row.qty) * flt(row.rate)
+
+            total_qty += flt(row.qty)
+            total_amount += flt(row.amount)
+
+        self.total_gp_qty = total_qty
+        self.total_gp_amount = total_amount
+
+
+
+
+
 
 
 

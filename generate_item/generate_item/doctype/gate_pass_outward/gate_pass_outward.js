@@ -69,7 +69,17 @@ frappe.ui.form.on("Gate Pass Outward Item", {
         if (row.qty) {
             frappe.model.set_value(cdt, cdn, "pending_qty", row.qty);
         }
-    }
+        calculate_row_amount(frm, cdt, cdn);
+        calculate_totals(frm);
+    },
+     rate(frm, cdt, cdn) {
+        calculate_row_amount(frm, cdt, cdn);
+        calculate_totals(frm);
+    },
+
+    items_remove(frm) {
+        calculate_totals(frm);
+    },
 });
 
 frappe.ui.form.on("Gate Pass Outward Detail", {
@@ -78,6 +88,17 @@ frappe.ui.form.on("Gate Pass Outward Detail", {
         if (row.qty) {
             frappe.model.set_value(cdt, cdn, "pending_qty", row.qty);
         }
+
+        calculate_row_amount(frm, cdt, cdn);
+        calculate_totals(frm);
+    },
+    rate(frm, cdt, cdn) {
+        calculate_row_amount(frm, cdt, cdn);
+        calculate_totals(frm);
+    },
+
+    item_detail_remove(frm) {
+        calculate_totals(frm);
     },
     item(frm, cdt, cdn) {
         const row = locals[cdt][cdn];
@@ -129,6 +150,49 @@ frappe.ui.form.on("Gate Pass Outward Detail", {
     }
 });
 
+
+
+
+function calculate_row_amount(frm, cdt, cdn) {
+    let row = locals[cdt][cdn];
+
+    row.amount = (flt(row.qty) || 0) * (flt(row.rate) || 0);
+
+    if(frm.doc.item_detail){
+        frm.refresh_field("item_detail");
+    }
+    if(frm.doc.items){
+        frm.refresh_field("items");
+    }
+}
+
+function calculate_totals(frm) {
+
+    let total_qty = 0;
+    let total_amount = 0;
+    if(frm.doc.item_detail && frm.doc.item_detail.length > 0){
+         (frm.doc.item_detail || []).forEach(row => {
+
+        total_qty += flt(row.qty);
+        total_amount += flt(row.amount);
+
+    });
+
+    }
+    else if(frm.doc.items && frm.doc.items.length > 0){
+         (frm.doc.items || []).forEach(row => {
+
+        total_qty += flt(row.qty);
+        total_amount += flt(row.amount);
+
+    });
+    }
+
+   
+
+    frm.set_value("total_gp_qty", total_qty);
+    frm.set_value("total_gp_amount", total_amount);
+}
 // set naming series
 
 
@@ -212,6 +276,7 @@ function _build_inward_doc(frm, pending_items, is_stock) {
         doc.billing_status = "Without Bill";
         doc.is_stock_item = frm.doc.is_stock_item;  // carry flag to inward
         doc.branch = frm.doc.branch;
+        doc.default_target_warehouse = frm.doc.default_source_warehouse;
 
         // ── Clear default empty row ───────────────────────────────────────────
         doc.item_detail = [];
@@ -228,7 +293,9 @@ function _build_inward_doc(frm, pending_items, is_stock) {
                 row.pending_qty = pending;
                 row.qty = pending;
                 row.rate = item.rate || 0;
-                row.quality = "Good";
+
+                row.source_warehouse = item.target_warehouse || "";
+                row.target_warehouse = item.source_warehouse || "" ;
             });
         } else {
             // ── Non-stock items → populate items child ────────────────────────

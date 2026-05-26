@@ -7,15 +7,16 @@
  "engine": "InnoDB",
  "field_order": [
   "section_break_wnvd",
+  "branch",
   "naming_series",
   "gate_pass_outward",
   "party_name",
-  "billing_status",
   "column_break_zkvf",
   "date",
   "bill_no",
   "bill_amount",
   "stock_entry",
+  "billing_status",
   "section_break_abep",
   "supplier_invoice_no",
   "gate_inward_no",
@@ -27,7 +28,6 @@
   "is_stock_item",
   "default_target_warehouse",
   "column_break_jxva",
-  "branch",
   "section_break_6ohg",
   "items",
   "item_detail",
@@ -70,6 +70,7 @@
   {
    "fieldname": "bill_no",
    "fieldtype": "Data",
+   "hidden": 1,
    "label": "Bill No"
   },
   {
@@ -155,10 +156,10 @@
    "label": "Is Stock Item"
   },
   {
-   "depends_on": "eval:doc.is_stock_item == 1",
    "fieldname": "branch",
    "fieldtype": "Link",
    "label": "Branch",
+   "mandatory_depends_on": "eval:doc.is_stock_item == 1",
    "options": "Branch"
   },
   {
@@ -196,7 +197,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-05-20 13:26:40.536642",
+ "modified": "2026-05-25 09:52:28.577497",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Inward",
