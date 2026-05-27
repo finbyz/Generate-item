@@ -1,6 +1,3 @@
-# Copyright (c) 2026, Finbyz and contributors
-# For license information, please see license.txt
-
 import frappe
 import json
 
@@ -13,17 +10,9 @@ from erpnext.controllers.accounts_controller import update_child_qty_rate
 
 class PurchaseOrderModificationRequest(Document):
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # Naming
-    # ──────────────────────────────────────────────────────────────────────────
-
     def autoname(self):
         if self.purchase_order_no:
             self.name = make_autoname(f"{self.purchase_order_no}-.##")
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # Lifecycle hooks
-    # ──────────────────────────────────────────────────────────────────────────
 
     def validate(self):
         self.validate_purchase_order()
@@ -33,10 +22,6 @@ class PurchaseOrderModificationRequest(Document):
         if self.purchase_order_no and self.modification_type == "Order Item Change":
             self.update_purchase_order_values()
             self.create_history_records()
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # Validation helpers
-    # ──────────────────────────────────────────────────────────────────────────
 
     def validate_purchase_order(self):
         if not self.purchase_order_no:
@@ -62,6 +47,9 @@ class PurchaseOrderModificationRequest(Document):
 
     def validate_qty_and_rev_qty(self):
         for row in self.items or []:
+            if row.is_delete:
+                continue
+
             qty     = flt(row.qty)
             rev_qty = flt(row.rev_qty)
 
@@ -70,10 +58,6 @@ class PurchaseOrderModificationRequest(Document):
                     _("Row {0}: Rev Qty cannot be 0 when Qty is also 0.").format(row.idx),
                     title=_("Invalid Quantity"),
                 )
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # Revision stamp
-    # ──────────────────────────────────────────────────────────────────────────
 
     def update_purchase_order_revision(self):
         if not self.purchase_order_no:
@@ -89,75 +73,90 @@ class PurchaseOrderModificationRequest(Document):
             WHERE name = %s
         """, (self.name, today(), now(), frappe.session.user, self.purchase_order_no))
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # Core item-change update
-    # ──────────────────────────────────────────────────────────────────────────
     def update_purchase_order_values(self):
-        """
-        Full execution order:
-
-        Step 0 — _compute_delta_and_update_mrs
-                • For every PMR row where rev_qty > original PO qty:
-                    - Compute delta = rev_qty - original_po_qty
-                    - Add new row to existing MR for delta qty using SQL INSERT
-                    - Insert a delta audit row into this PMR's items table
-                • Returns delta_map keyed by PMR row name
-
-        Step 1 — Build trans_items list:
-                • Rows WITH delta  → original PO qty unchanged + __islocal delta line
-                • Rows WITHOUT delta → normal qty/rate update
-                • User-added new lines (no purchase_order_item_name) → __islocal
-
-        Step 2 — Snapshot existing PO item names (before update_child_qty_rate)
-
-        Step 3 — po.save() + update_child_qty_rate
-                (adds new PO lines for each __islocal delta entry)
-
-        Step 4 — _link_new_po_lines_to_mrs
-                • Diff snapshot → find brand-new PO item rows
-                • Match by (item_code, qty) → link material_request / material_request_item
-
-        Step 5 — Custom / line fields via direct SQL
-                (schedule_date, po_line_no, is_free_item, branch)
-
-        Step 6 — _apply_item_replacements
-                (item_code / item_name / description where rev_item differs)
-
-        Step 7 — frappe.db.commit()
-        """
         _now  = now()
         _user = frappe.session.user
 
         CUSTOM_FIELD_MAP = [
-            ("rev_required_by",  "schedule_date"),
-            ("rev_po_line_no",   "po_line_no"),
-            ("rev_is_free_item", "is_free_item"),
+            ("rev_required_by",             "schedule_date"),
+            ("rev_expected_delivery_date",  "expected_delivery_date"),
+            ("rev_remarks",                 "remarks"),
+            ("rev_stock_qty",               "stock_qty"),
+            ("rev_conversion_factor",       "conversion_factor"),
+            ("rev_price_list_rate",         "price_list_rate"),
+            ("rev_target_warehouse", "warehouse"),
+            ("rev_item_tax_template",       "item_tax_template"),
         ]
-        ALLOW_FALSY_FIELDS = {"rev_is_free_item"}
+        ALLOW_FALSY_FIELDS = set()
 
-        # ── Step 0 ─────────────────────────────────────────────────────────────
         delta_map = self._compute_delta_and_update_mrs(_now, _user)
 
-        # ── Step 1 ─────────────────────────────────────────────────────────────
-        # Get the branch to use for new items
-        branch = self._get_branch_for_new_item()
-        
-        trans_items = []
-        
         for row in self.items:
+            if not row.is_delete:
+                continue
+
+            po_item_to_delete = row.purchase_order_item_name
+
+            if not po_item_to_delete:
+                filters = {
+                    "parent":     self.purchase_order_no,
+                    "parenttype": "Purchase Order",
+                    "item_code":  row.item,
+                }
+                if row.po_line_no:
+                    filters["po_line_no"] = row.po_line_no
+
+                po_item_to_delete = frappe.db.get_value(
+                    "Purchase Order Item",
+                    filters,
+                    "name",
+                    order_by="idx asc",
+                )
+
+            if not po_item_to_delete:
+                frappe.log_error(
+                    title="PMR - is_delete: PO item not found, skipping",
+                    message=(
+                        f"pmr={self.name}, row.idx={row.idx}, "
+                        f"item={row.item}, po_line_no={row.po_line_no}, "
+                        f"purchase_order_item_name='{row.purchase_order_item_name}'"
+                    ),
+                )
+                continue
+
+            self._clear_mr_link_on_po_item_delete_by_name(po_item_to_delete, row)
+            frappe.db.delete("Purchase Order Item", po_item_to_delete)
+            frappe.logger().info(
+                f"PMR {self.name} | Deleted PO Item {po_item_to_delete} "
+                f"(item={row.item}, row.idx={row.idx})"
+            )
+
+        po_items_ordered = frappe.get_all(
+            "Purchase Order Item",
+            filters={"parent": self.purchase_order_no, "parenttype": "Purchase Order"},
+            fields=["name"],
+            order_by="idx asc",
+        )
+        for i, d in enumerate(po_items_ordered, start=1):
+            frappe.db.set_value("Purchase Order Item", d.name, "idx", i, update_modified=False)
+
+        branch = self._get_branch_for_new_item()
+        trans_items = []
+
+        for row in self.items:
+            if row.is_delete:
+                continue
+
             rev_qty  = flt(row.rev_qty)  if (row.rev_qty  and row.rev_qty  > 0) else flt(row.qty)
             rev_rate = flt(row.rev_rate) if (row.rev_rate and row.rev_rate > 0) else flt(row.rate)
 
             if row.purchase_order_item_name:
                 if row.name in delta_map:
-                    # Qty increased — keep original PO qty on the existing line.
-                    # The delta is added as a brand-new PO line via __islocal.
                     original_po_qty = delta_map[row.name]["original_po_qty"]
-                    
                     trans_items.append({
                         "docname":   row.purchase_order_item_name,
                         "item_code": row.item,
-                        "qty":       original_po_qty,   # intentionally unchanged
+                        "qty":       original_po_qty,
                         "rate":      rev_rate,
                     })
                     trans_items.append({
@@ -165,10 +164,9 @@ class PurchaseOrderModificationRequest(Document):
                         "item_code": delta_map[row.name]["item_code"],
                         "qty":       delta_map[row.name]["delta_qty"],
                         "rate":      rev_rate,
-                        "branch":    branch,  # Set branch from PMR
+                        "branch":    branch,
                     })
                 else:
-                    # Normal update: qty decrease, rate-only change, or no MR link
                     trans_items.append({
                         "docname":   row.purchase_order_item_name,
                         "item_code": row.item,
@@ -176,23 +174,20 @@ class PurchaseOrderModificationRequest(Document):
                         "rate":      rev_rate,
                     })
             else:
-                # Genuinely new line added by the user in the PMR form
                 rev_item = getattr(row, "rev_item", None)
                 if not rev_item:
                     continue
-                
+
                 trans_items.append({
                     "__islocal": True,
                     "item_code": rev_item,
                     "qty":       rev_qty,
                     "rate":      rev_rate,
-                    "branch":    branch,  # Set branch from PMR
+                    "branch":    branch,
                 })
 
-        # ── Step 2 ─────────────────────────────────────────────────────────────
         po_items_before = self._snapshot_po_item_names()
 
-        # ── Step 3 ─────────────────────────────────────────────────────────────
         po = frappe.get_doc("Purchase Order", self.purchase_order_no)
         po.save(ignore_permissions=True)
 
@@ -203,16 +198,16 @@ class PurchaseOrderModificationRequest(Document):
                 self.purchase_order_no,
             )
 
-        # ── Step 4: After update_child_qty_rate, ensure branch is set on all new PO items ──
-        if delta_map or any(not row.purchase_order_item_name for row in self.items):
+        if delta_map or any(not row.purchase_order_item_name for row in self.items if not row.is_delete):
             self._ensure_branch_on_new_po_items(po_items_before, branch, _now, _user)
 
-        # ── Step 5 ─────────────────────────────────────────────────────────────
         if delta_map:
             self._link_new_po_lines_to_mrs(delta_map, po_items_before, _now, _user)
 
-        # ── Step 6 ─────────────────────────────────────────────────────────────
         for row in self.items:
+            if row.is_delete:
+                continue
+
             po_item_name = self._find_po_item_name(row)
             if not po_item_name:
                 continue
@@ -229,135 +224,120 @@ class PurchaseOrderModificationRequest(Document):
                 if pmr_field in ALLOW_FALSY_FIELDS:
                     update_fields[po_field] = rev_value
                 else:
-                    if rev_value is not None and rev_value != "":
-                        if po_field == "po_line_no":
-                            try:
-                                update_fields[po_field] = int(rev_value)
-                            except (ValueError, TypeError):
-                                frappe.log_error(
-                                    title="Invalid PO Line No - Skipped",
-                                    message=f"Row {row.idx}: Rev PO Line No '{rev_value}' is not a valid integer and was not saved. Please enter a plain number.",
-                                )
-                              
-                            continue
+                    if rev_value is not None and rev_value != "" and rev_value != 0:
                         update_fields[po_field] = rev_value
 
-            if not update_fields:
-                continue
+            if update_fields:
+                set_clause = ", ".join([f"`{f}` = %({f})s" for f in update_fields])
+                frappe.db.sql(
+                    f"""
+                    UPDATE `tabPurchase Order Item`
+                    SET
+                        {set_clause},
+                        `modified`    = %(modified)s,
+                        `modified_by` = %(modified_by)s
+                    WHERE
+                        `name`   = %(name)s
+                        AND `parent` = %(parent)s
+                    """,
+                    {
+                        **update_fields,
+                        "name":        po_item_name,
+                        "parent":      self.purchase_order_no,
+                        "modified":    _now,
+                        "modified_by": _user,
+                    },
+                )
 
-            set_clause = ", ".join([f"`{f}` = %({f})s" for f in update_fields])
-            frappe.db.sql(
-                f"""
-                UPDATE `tabPurchase Order Item`
-                SET
-                    {set_clause},
-                    `modified`    = %(modified)s,
-                    `modified_by` = %(modified_by)s
-                WHERE
-                    `name`   = %(name)s
-                    AND `parent` = %(parent)s
-                """,
-                {
-                    **update_fields,
-                    "name":        po_item_name,
-                    "parent":      self.purchase_order_no,
-                    "modified":    _now,
-                    "modified_by": _user,
-                },
-            )
+            if getattr(row, "line_status", None):
+                frappe.db.sql(
+                    """
+                    UPDATE `tabPurchase Order Item`
+                    SET
+                        `custom_line_status` = %s,
+                        `modified`           = %s,
+                        `modified_by`        = %s
+                    WHERE
+                        `name`   = %s
+                        AND `parent` = %s
+                    """,
+                    (row.line_status, _now, _user, po_item_name, self.purchase_order_no),
+                )
 
-        # ── Step 7 ─────────────────────────────────────────────────────────────
         self._apply_item_replacements(_now, _user)
-
-        # update  mr item's ordered qty 
         self.update_order_qty()
-
-        # ── Step 8 ─────────────────────────────────────────────────────────────
         frappe.db.commit()
 
+    def _clear_mr_link_on_po_item_delete_by_name(self, po_item_name, row):
+        po_item_data = frappe.db.get_value(
+            "Purchase Order Item",
+            po_item_name,
+            ["material_request", "material_request_item", "qty"],
+            as_dict=True,
+        )
+        if not po_item_data:
+            return
+
+        if po_item_data.material_request_item:
+            frappe.db.set_value(
+                "Material Request Item",
+                po_item_data.material_request_item,
+                "ordered_qty",
+                0,
+                update_modified=False,
+            )
+            frappe.logger().info(
+                f"PMR {self.name} | Cleared ordered_qty on MR Item "
+                f"{po_item_data.material_request_item} due to PO item delete "
+                f"(item={row.item}, qty={po_item_data.qty})"
+            )
+
+    def _clear_mr_link_on_po_item_delete(self, row):
+        if not row.purchase_order_item_name:
+            return
+        self._clear_mr_link_on_po_item_delete_by_name(row.purchase_order_item_name, row)
+
     def _ensure_branch_on_new_po_items(self, po_items_before, branch, _now, _user):
-        """
-        After update_child_qty_rate creates new PO items, ensure branch is set.
-        This handles cases where update_child_qty_rate doesn't pass branch correctly.
-        """
         if not branch:
             return
-        
-        # Get all current PO items
+
         all_po_items = frappe.db.get_all(
             "Purchase Order Item",
             filters={
-                "parent": self.purchase_order_no,
+                "parent":     self.purchase_order_no,
                 "parenttype": "Purchase Order",
             },
             fields=["name", "branch"]
         )
-        
-        # Find new items and items without branch
+
         for item in all_po_items:
             if item.name not in po_items_before or not item.branch:
                 frappe.db.sql(
                     """
                     UPDATE `tabPurchase Order Item`
-                    SET 
-                        `branch` = %s,
-                        `modified` = %s,
+                    SET
+                        `branch`      = %s,
+                        `modified`    = %s,
                         `modified_by` = %s
                     WHERE `name` = %s
                     """,
                     (branch, _now, _user, item.name)
                 )
-                frappe.logger().info(
-                    f"PMR {self.name} | Set branch={branch} on PO Item {item.name}"
-                )
+
     def _get_branch_for_new_item(self):
-        """
-        Get branch for new items being added to PO.
-        Priority: PO's branch > First PO item's branch > PMR's branch
-        """
-        # Try to get branch from the Purchase Order
         branch = frappe.db.get_value("Purchase Order", self.purchase_order_no, "branch")
-        
+
         if not branch:
-            # Try to get branch from any existing PO item
             branch = frappe.db.get_value(
                 "Purchase Order Item",
                 {"parent": self.purchase_order_no},
                 "branch",
                 order_by="idx asc"
             )
-        
-        if not branch:
-            # Use PMR's branch as last resort
-            branch = self.branch
-        
-        return branch
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # Delta computation + MR update
-    # ──────────────────────────────────────────────────────────────────────────
-
-    def _get_branch_for_new_item(self):
-        """
-        Get branch for new items being added to PO.
-        Priority: PO's branch > First PO item's branch > PMR's branch
-        """
-        # Try to get branch from the Purchase Order
-        branch = frappe.db.get_value("Purchase Order", self.purchase_order_no, "branch")
-        
         if not branch:
-            # Try to get branch from any existing PO item
-            branch = frappe.db.get_value(
-                "Purchase Order Item",
-                {"parent": self.purchase_order_no},
-                "branch",
-                order_by="idx asc"
-            )
-        
-        if not branch:
-            # Use PMR's branch as last resort
             branch = self.branch
-        
+
         return branch
 
     def update_order_qty(self):
@@ -374,36 +354,15 @@ class PurchaseOrderModificationRequest(Document):
                 po_item.qty,
                 update_modified=False
             )
-            frappe.log_error("update order qty in mr  ",f"{po_item.material_request_item} - {po_item.qty}")
-
-    
-
 
     def _compute_delta_and_update_mrs(self, _now, _user):
-        """
-        Iterates over PMR rows that have an existing PO item reference.
-        When rev_qty > original PO qty:
-        1. delta = rev_qty - original_po_qty
-        2. Add new row to existing MR for delta qty using SQL INSERT
-        3. Insert a delta child row into this PMR (audit / visibility in the form)
-
-        Returns delta_map:
-            {
-                pmr_row_name: {
-                    "mr_name":         str,
-                    "mr_item_name":    str,
-                    "delta_qty":       float,
-                    "item_code":       str,
-                    "original_po_qty": float,
-                }
-            }
-        """
-        delta_map  = {}
-        # next_idx used to assign sequential idx to new child rows
-        next_idx = max((r.idx for r in self.items), default=0)
+        delta_map = {}
+        next_idx  = max((r.idx for r in self.items), default=0)
 
         for row in self.items:
-            # Only process rows that reference an existing PO item
+            if row.is_delete:
+                continue
+
             if not row.purchase_order_item_name:
                 continue
 
@@ -424,7 +383,6 @@ class PurchaseOrderModificationRequest(Document):
             )
             delta = rev_qty - original_po_qty
 
-            # Only act when qty is genuinely increasing
             if delta <= 0:
                 continue
 
@@ -440,27 +398,23 @@ class PurchaseOrderModificationRequest(Document):
                 else flt(row.rate)
             )
 
-            # ── Add new row to existing MR for delta qty ───────────────────────────
-            mr_name = None
+            mr_name      = None
             mr_item_name = None
-            
+
             if po_item_data.material_request:
-                # Generate a unique name for the new MR item
                 new_mr_item_name = frappe.generate_hash(length=10)
-                
-                # Get the next idx for the MR items
+
                 last_idx = frappe.db.sql(
                     """
-                    SELECT MAX(idx) 
+                    SELECT MAX(idx)
                     FROM `tabMaterial Request Item`
                     WHERE parent = %s
                     """,
                     po_item_data.material_request
                 )[0][0] or 0
-                
+
                 new_idx = last_idx + 1
-                
-                # Insert new row in MR items for delta qty
+
                 frappe.db.sql(
                     """
                     INSERT INTO `tabMaterial Request Item`
@@ -489,25 +443,10 @@ class PurchaseOrderModificationRequest(Document):
                         item_code
                     )
                 )
-                
-                # Update the parent MR's modified timestamp
-                # frappe.db.sql(
-                #     """
-                #     UPDATE `tabMaterial Request`
-                #     SET 
-                #         `modified` = %s,
-                #         `modified_by` = %s
-                #     WHERE `name` = %s
-                #     """,
-                #     (_now, _user, po_item_data.material_request)
-                # )
-                
-                mr_name = po_item_data.material_request
+
+                mr_name      = po_item_data.material_request
                 mr_item_name = new_mr_item_name
-                
-               
-               
-            
+
             if mr_name and mr_item_name:
                 delta_map[row.name] = {
                     "mr_name":         mr_name,
@@ -517,7 +456,6 @@ class PurchaseOrderModificationRequest(Document):
                     "original_po_qty": original_po_qty,
                 }
 
-                # ── Insert delta row into PMR items child table (audit trail) ──────
                 next_idx += 1
                 child_doctype = "Purchase Order Modification Request Detail"
 
@@ -545,21 +483,10 @@ class PurchaseOrderModificationRequest(Document):
                         rate,
                     ),
                 )
-            else:
-               
-                pass
 
         return delta_map
-    # ──────────────────────────────────────────────────────────────────────────
-    # PO item snapshot (pre update_child_qty_rate)
-    # ──────────────────────────────────────────────────────────────────────────
 
     def _snapshot_po_item_names(self):
-        """
-        Returns the set of tabPurchase Order Item names that exist RIGHT NOW
-        for this PO, before update_child_qty_rate adds any new lines.
-        Used to identify brand-new PO items after the call.
-        """
         rows = frappe.db.sql(
             """
             SELECT name
@@ -570,24 +497,7 @@ class PurchaseOrderModificationRequest(Document):
         )
         return {r[0] for r in rows}
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # Link new PO lines → their delta MRs
-    # ──────────────────────────────────────────────────────────────────────────
-
     def _link_new_po_lines_to_mrs(self, delta_map, po_items_before, _now, _user):
-        """
-        After update_child_qty_rate has run and new PO items exist in the DB:
-
-        1. Fetch all current PO items.
-        2. Diff against snapshot → isolate brand-new rows.
-        3. Match each new row to its delta_map entry via (item_code, qty).
-        4. Write material_request + material_request_item on the new PO item.
-
-        Matching strategy:
-          - Build a dict: (item_code, qty) → [list of new PO item names]
-          - Pop one candidate per delta entry (handles multiple rows of same item+qty)
-          - Log + warn if no match found (manual linking required)
-        """
         all_po_items = frappe.db.get_all(
             "Purchase Order Item",
             filters={
@@ -597,7 +507,6 @@ class PurchaseOrderModificationRequest(Document):
             fields=["name", "item_code", "qty"],
         )
 
-        # Brand-new lines only
         new_po_items = [
             item for item in all_po_items
             if item.name not in po_items_before
@@ -613,7 +522,6 @@ class PurchaseOrderModificationRequest(Document):
             )
             return
 
-        # (item_code, qty) → [po_item_name, ...]
         new_po_lookup = {}
         for item in new_po_items:
             key = (item.item_code, flt(item.qty))
@@ -631,10 +539,8 @@ class PurchaseOrderModificationRequest(Document):
                         f"delta_qty={di['delta_qty']}, MR={di['mr_name']}"
                     ),
                 )
-               
                 continue
 
-            # Pop first candidate — safe for multiple rows of the same item+qty
             po_item_name = candidates.pop(0)
 
             frappe.db.sql(
@@ -659,24 +565,13 @@ class PurchaseOrderModificationRequest(Document):
                 ),
             )
 
-            frappe.logger().info(
-                f"PMR {self.name} | linked new PO Item {po_item_name} "
-                f"→ MR {di['mr_name']} / MR Item {di['mr_item_name']}"
-            )
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # Item replacement helper
-    # ──────────────────────────────────────────────────────────────────────────
-
     def _apply_item_replacements(self, _now, _user):
-        """
-        For every PMR row where rev_item is set and differs from the current
-        item_code on the PO item, update item_code / item_name / description
-        on tabPurchase Order Item via direct SQL.
-        """
         errors = []
 
         for row in self.items:
+            if row.is_delete:
+                continue
+
             rev_item = getattr(row, "rev_item", None)
             if not rev_item:
                 continue
@@ -685,12 +580,11 @@ class PurchaseOrderModificationRequest(Document):
             if not po_item_name:
                 continue
 
-            # Re-read from DB after update_child_qty_rate has run
             current_item_code = frappe.db.get_value(
                 "Purchase Order Item", po_item_name, "item_code"
             )
             if current_item_code == rev_item:
-                continue  # already correct — nothing to do
+                continue
 
             item_data = frappe.db.get_value(
                 "Item",
@@ -699,9 +593,7 @@ class PurchaseOrderModificationRequest(Document):
                 as_dict=True,
             )
             if not item_data:
-                errors.append(
-                    f"Row {row.idx}: Item '{rev_item}' not found in Item master."
-                )
+                errors.append(f"Row {row.idx}: Item '{rev_item}' not found in Item master.")
                 frappe.log_error(
                     title="PMR - item replacement failed: item not found",
                     message=f"pmr={self.name}, row={row.idx}, rev_item={rev_item}",
@@ -736,22 +628,14 @@ class PurchaseOrderModificationRequest(Document):
                 errors.append(f"Row {row.idx}: {e}")
                 frappe.log_error(
                     title="PMR - item replacement SQL error",
-                    message=(
-                        f"pmr={self.name}, row={row.idx}, "
-                        f"po_item={po_item_name}, rev_item={rev_item}\n{e}"
-                    ),
+                    message=f"pmr={self.name}, row={row.idx}, po_item={po_item_name}, rev_item={rev_item}\n{e}",
                 )
 
         if errors:
             frappe.log_error(
                 title="PMR - item replacement had errors",
-                message=(f"pmr={self.name}, errors={errors}"),
+                message=f"pmr={self.name}, errors={errors}",
             )
-           
-
-    # ──────────────────────────────────────────────────────────────────────────
-    # PO item resolver
-    # ──────────────────────────────────────────────────────────────────────────
 
     def _find_po_item_name(self, row):
         if row.purchase_order_item_name:
@@ -763,10 +647,7 @@ class PurchaseOrderModificationRequest(Document):
         if not lookup_item:
             frappe.log_error(
                 title="PMR - cannot resolve item for PO lookup",
-                message=(
-                    f"Both row.item and row.rev_item are empty. "
-                    f"pmr={self.name}, row={row.idx}"
-                ),
+                message=f"Both row.item and row.rev_item are empty. pmr={self.name}, row={row.idx}",
             )
             return None
 
@@ -788,24 +669,12 @@ class PurchaseOrderModificationRequest(Document):
         if not po_item_name:
             frappe.log_error(
                 title="PMR - PO item not found for custom field update",
-                message=(
-                    f"item={lookup_item}, is_new={is_new_item}, "
-                    f"po_line_no={row.po_line_no}, pmr={self.name}"
-                ),
+                message=f"item={lookup_item}, is_new={is_new_item}, po_line_no={row.po_line_no}, pmr={self.name}",
             )
 
         return po_item_name
 
-    # ──────────────────────────────────────────────────────────────────────────
-    # History / audit trail
-    # ──────────────────────────────────────────────────────────────────────────
-
     def create_history_records(self):
-        """
-        Compare items with original_record.
-        Only keeps rows in original_record where something actually changed
-        (item / qty / rate). Clears unchanged rows.
-        """
         if not self.items or not self.original_record:
             self.set("original_record", [])
             return
@@ -821,19 +690,52 @@ class PurchaseOrderModificationRequest(Document):
             changed  = False
             old_data = old_row.as_dict()
 
-            # Item changed?
             if old_row.item != current_row.rev_item:
                 old_data["new_item"] = current_row.rev_item
                 changed = True
 
-            # Qty changed?
-            if old_row.rev_qty != current_row.rev_qty:
+            if flt(old_row.qty) != flt(current_row.rev_qty) and flt(current_row.rev_qty) > 0:
                 old_data["rev_qty"] = current_row.rev_qty
                 changed = True
 
-            # Rate changed?
-            if old_row.rev_rate != current_row.rev_rate:
+            if flt(old_row.rate) != flt(current_row.rev_rate) and flt(current_row.rev_rate) > 0:
                 old_data["rev_rate"] = current_row.rev_rate
+                changed = True
+
+            if old_row.required_by != current_row.rev_required_by and current_row.rev_required_by:
+                old_data["rev_required_by"] = current_row.rev_required_by
+                changed = True
+
+            if old_row.expected_delivery_date != current_row.rev_expected_delivery_date and current_row.rev_expected_delivery_date:
+                old_data["rev_expected_delivery_date"] = current_row.rev_expected_delivery_date
+                changed = True
+
+            if old_row.remarks != current_row.rev_remarks and current_row.rev_remarks:
+                old_data["rev_remarks"] = current_row.rev_remarks
+                changed = True
+
+            if flt(old_row.stock_qty) != flt(current_row.rev_stock_qty) and flt(current_row.rev_stock_qty) > 0:
+                old_data["rev_stock_qty"] = current_row.rev_stock_qty
+                changed = True
+
+            if flt(old_row.conversion_factor) != flt(current_row.rev_conversion_factor) and flt(current_row.rev_conversion_factor) > 0:
+                old_data["rev_conversion_factor"] = current_row.rev_conversion_factor
+                changed = True
+
+            if flt(old_row.price_list_rate) != flt(current_row.rev_price_list_rate) and flt(current_row.rev_price_list_rate) > 0:
+                old_data["rev_price_list_rate"] = current_row.rev_price_list_rate
+                changed = True
+
+            if old_row.target_warehouse != current_row.rev_target_warehouse and current_row.rev_target_warehouse:
+                old_data["rev_target_warehouse"] = current_row.rev_target_warehouse
+                changed = True
+
+            if old_row.item_tax_template != current_row.rev_item_tax_template and current_row.rev_item_tax_template:
+                old_data["rev_item_tax_template"] = current_row.rev_item_tax_template
+                changed = True
+
+            if current_row.is_delete:
+                old_data["is_delete"] = 1
                 changed = True
 
             if changed:
