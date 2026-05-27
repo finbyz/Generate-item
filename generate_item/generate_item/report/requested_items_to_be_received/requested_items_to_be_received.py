@@ -353,6 +353,8 @@ def create_purchase_receipt_by_supplier(grouped_items, company, pr_series=None, 
 
             po_doc = frappe.get_doc("Purchase Order", po_name)
 
+            pr.currency = po_doc.currency
+
     
        
             pr.place_of_supply        = po_doc.place_of_supply
