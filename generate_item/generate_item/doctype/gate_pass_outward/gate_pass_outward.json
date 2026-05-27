@@ -163,7 +163,6 @@
   {
    "fieldname": "remarks",
    "fieldtype": "Small Text",
-   "hidden": 1,
    "label": "Remarks"
   },
   {
@@ -256,7 +255,7 @@
    "link_fieldname": "gate_pass_outward"
   }
  ],
- "modified": "2026-05-26 10:03:55.824981",
+ "modified": "2026-05-27 12:05:02.202889",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Outward",
