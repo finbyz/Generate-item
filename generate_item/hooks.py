@@ -55,6 +55,7 @@ doctype_list_js = {
 # include js in doctype views
 doctype_js = {"Item" : "public/js/item.js",
               "Sales Order" : "public/js/sales_order.js",
+              "Sales Order": "public/js/sales_order_previous_rate.js",
               "BOM" : "public/js/bom.js",
               "BOM Creator" : "public/js/bom_creator.js",
               "Material Request" : "public/js/material_request.js",
