@@ -165,6 +165,7 @@ def get_data(filters):
             ON ig.created_item = soi.item_code
 
         WHERE 1=1
+        AND sn.docstatus != 2
         {conditions}
 
         ORDER BY sn.creation DESC

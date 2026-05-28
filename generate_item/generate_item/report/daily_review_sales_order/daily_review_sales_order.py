@@ -692,10 +692,17 @@ def bulk_update_batch(batch_name, fieldname, value):
     value = _clean_value(value)
 
     # Count before update (for response)
-    count = frappe.db.count("Serial Number", filters={"batch": batch_name})
+    count = frappe.db.count("Serial Number", filters={"batch": batch_name,"docstatus": ["!=", 2]})
 
     if count == 0:
-        frappe.throw(_("No Serial Numbers found for batch {0}").format(batch_name))
+
+        # frappe.throw(_("No Serial Numbers found for batch {0}").format(batch_name))
+        return {
+            "updated":          0,
+            "batches_resolved": 0,
+            "chunks":           0,
+            "skipped":          True,
+        }
 
     # Single UPDATE — fastest possible for any batch size.
     # frappe.db.sql uses parameterised queries; fieldname is validated above.
@@ -706,6 +713,7 @@ def bulk_update_batch(batch_name, fieldname, value):
                `modified`   = %(now)s,
                `modified_by`= %(user)s
         WHERE  `batch`      = %(batch)s
+                AND `docstatus` != 2
         """,
         {
             "value": value,
@@ -754,9 +762,15 @@ def bulk_update_batch_multifield(batch_name, field_value_map):
     for fn in field_value_map:
         _validate_field(fn)
 
-    count = frappe.db.count("Serial Number", filters={"batch": batch_name})
+    count = frappe.db.count("Serial Number", filters={"batch": batch_name,"docstatus": ["!=", 2]})
     if count == 0:
-        frappe.throw(_("No Serial Numbers found for batch {0}").format(batch_name))
+        return {
+            "updated":          0,
+            "batches_resolved": 0,
+            "chunks":           0,
+            "skipped":          True,
+        }
+        # frappe.throw(_("No Serial Numbers found for batch {0}").format(batch_name))
 
     # Build SET clause dynamically from validated field names
     set_parts  = [f"`{fn}` = %({fn}_val)s" for fn in field_value_map]
@@ -774,6 +788,7 @@ def bulk_update_batch_multifield(batch_name, field_value_map):
         UPDATE `tabSerial Number`
         SET    {', '.join(set_parts)}
         WHERE  `batch` = %(batch)s
+                AND  `docstatus` != 2  
         """,
         params,
     )
@@ -839,6 +854,7 @@ def row_update_and_propagate(sn_name, fieldname, value, propagate_to_batch=True)
                     `modified`   = %(now)s,
                     `modified_by`= %(user)s
                 WHERE  `name`       = %(sn_name)s
+                    AND  `docstatus`  != 2  
                 """,
                 {
                     "value":   value,
@@ -1039,9 +1055,15 @@ def bulk_update_by_reference(select_type, reference, field_value_map):
         frappe.throw(_("Invalid select_type '{0}'. Expected 'Sales Order' or 'Batch'.").format(select_type))
 
     if not sn_names:
-        frappe.throw(
-            _("No Serial Numbers found for {0}: {1}.").format(select_type, reference)
-        )
+        # frappe.throw(
+        #     _("No Serial Numbers found for {0}: {1}.").format(select_type, reference)
+        # )
+        return {
+            "updated":          0,
+            "batches_resolved": 0,
+            "chunks":           0,
+            "skipped":          True,
+        }
 
     # ── 3. Build the SET clause once 
     #       All fieldnames already validated → safe to interpolate
@@ -1089,18 +1111,7 @@ def bulk_update_by_reference(select_type, reference, field_value_map):
         total_updated += len(chunk)
         chunks        += 1
 
-    # ── 5. Audit log — one entry per call (not per SN) ────────────────────
-    # frappe.log_error(
-    #     title=f"Bulk SN Update — {select_type}: {reference}",
-    #     message=(
-    #         f"User      : {frappe.session.user}\n"
-    #         f"Reference : {select_type} = {reference}\n"
-    #         f"Batches   : {batches_resolved}\n"
-    #         f"SNs updated : {total_updated}\n"
-    #         f"Fields    : {list(clean_map.keys())}\n"
-    #         f"Values    : {list(clean_map.values())}"
-    #     ),
-    # )
+   
 
     return {
         "updated":          total_updated,
@@ -1135,6 +1146,7 @@ def _sn_names_for_sales_order(so_name):
            AND docstatus     = 1
            AND custom_batch_no IS NOT NULL
            AND custom_batch_no != ''
+           AND (line_status IS NULL OR line_status != 'Cancelled') 
         """,
         (so_name,),
         as_list=True,
@@ -1162,18 +1174,28 @@ def _sn_names_for_sales_order(so_name):
     sn_names = [row[0] for row in sn_rows]
 
     return sn_names, len(batches)
-
-
 def _sn_names_for_batch(batch_name):
-    """
-    Return all Serial Number names for a single batch, ordered by name.
-    """
+    # ── NEW: skip if the SO line for this batch is cancelled ─────────────
+    cancelled = frappe.db.sql(
+        """
+        SELECT COUNT(*) FROM `tabSales Order Item`
+         WHERE custom_batch_no = %s
+           AND docstatus       = 1
+           AND line_status     = 'Cancelled'
+        """,
+        (batch_name,),
+        as_list=True,
+    )
+    if cancelled and cancelled[0][0] > 0:
+        return []   # ← caller receives empty list, batch silently skipped
+    # ─────────────────────────────────────────────────────────────────────
+
     rows = frappe.db.sql(
         """
         SELECT name
           FROM `tabSerial Number`
-         WHERE batch = %s
-            AND docstatus = 1
+         WHERE batch      = %s
+           AND docstatus != 2
          ORDER BY name
         """,
         (batch_name,),
