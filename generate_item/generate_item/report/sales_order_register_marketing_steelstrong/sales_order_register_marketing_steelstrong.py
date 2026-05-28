@@ -48,6 +48,8 @@ def get_columns():
         {"label": _("Mode Of Dispatch"), "fieldname": "mode_of_dispatch", "fieldtype": "Data", "width": 120},
         {"label": _("Freight Charges"), "fieldname": "custom_freight_charges", "fieldtype": "Data", "width": 100},
         {"label": _("Price Basis"), "fieldname": "price_basis", "fieldtype": "Data", "width": 100},
+        {"label": "Line Status", "fieldname": "line_status", "fieldtype": "Data", "width": 140},
+
         {"label": _("Batch No Ref"), "fieldname": "custom_batch_no", "fieldtype": "Link", "options": "Batch", "width": 100},
         {"label": _("Item Code"), "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 150},
         {"label": _("Item Name"), "fieldname": "item_name", "fieldtype": "Data", "width": 150},
@@ -246,6 +248,7 @@ def get_data(filters):
             "custom_batch_no",
             "line_remark",        # ✔ Correct Item Remarks
             "igst_amount",
+            "line_status",
             "tag_no",             # ✔ Correct Tag No
             "po_line_no",         # ✔ Correct PO Sr No
             "custom_shipping_address"
@@ -359,6 +362,7 @@ def get_data(filters):
                 so.custom_mode_of_dispatch or "",
                 so.custom_freight_charges or "",
                 so.custom_price_basis or "",
+                item.line_status or "",
                 item.custom_batch_no or "",
                 item.item_code,
                 item.item_name,
