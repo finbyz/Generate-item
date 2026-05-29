@@ -363,8 +363,10 @@ frappe.query_reports["Daily Review Sales Order"] = {
             me._pending_changes = {};
             me._update_save_button();
             frappe.show_alert({
-                message:   __("Saved — {0} batch(es), {1} Serial Number(s) updated.", [total_batches, total_sns]),
-                indicator: "green",
+                message: total_sns == 0
+                    ? __("No Serial Numbers were updated.")
+                    : __("Saved — {0} batch(es), {1} Serial Number(s) updated.", [total_batches, total_sns]),
+                indicator: total_sns == 0 ? "orange" : "green",
             }, 5);
             me._report.refresh();   // single refresh only after explicit save
 

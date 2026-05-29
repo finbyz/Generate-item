@@ -648,6 +648,7 @@ def build_tree(mr_items, po_map, pr_map):
 			po_out.update({
 				"row_type":       "PO",
 				"indent":         1,
+				"custom_batch_no":  mr_row.get("custom_batch_no"),
 				"po_no":          po_row["po_no"],
 				"po_date":        po_row.get("po_date"),
 				"po_required_by": po_row.get("po_required_by"),
@@ -700,6 +701,7 @@ def build_tree(mr_items, po_map, pr_map):
 				pr_out.update({
 					"row_type":           "PR",
 					"indent":             2,
+					"custom_batch_no":  mr_row.get("custom_batch_no"),
 					"receipt_no":         pr_row["receipt_no"],
 					"received_date":      pr_row.get("received_date"),
 

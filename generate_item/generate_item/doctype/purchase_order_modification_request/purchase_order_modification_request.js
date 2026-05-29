@@ -20,7 +20,58 @@ frappe.ui.form.on("Purchase Order Modification Request", {
         frm.clear_table("original_record");
         fetch_items_dynamic(frm);
     },
+    get_detail(frm) {
+        if (!frm.doc.purchase_order_no) {
+            frappe.msgprint(__("Please select Purchase Order first"));
+            return;
+        }
+        get_detail_from_po(frm);
+    }
 });
+
+
+
+function get_detail_from_po(frm) {
+    if (!frm.doc.purchase_order_no) return;
+
+    frappe.call({
+        method: "frappe.client.get",
+        freeze: true,
+        freeze_message: __("Fetching order details..."),
+        args: {
+            doctype: "Purchase Order",
+            name: frm.doc.purchase_order_no,
+        },
+        callback(r) {
+            if (!r.message) return;
+
+            const po = r.message;
+
+            // --- Populate current (editable) fields ---
+            frm.set_value("incoterm",                po.incoterm                  || null);
+            frm.set_value("payment_terms_template",  po.payment_terms_template    || null);
+            frm.set_value("terms",                   po.tc_name                   || null);
+            frm.set_value("insurance",               po.custom_insurance          || null);
+            frm.set_value("mode_of_dispatch",        po.custom_mode_of_dispatch   || null);
+            frm.set_value("freight_charges",         po.freight_charges           || null);
+            frm.set_value("po_remarks",              po.po_remarks                   || null);
+            frm.set_value("group_same_items",        po.group_same_items          || null);
+
+            // --- Populate history (read-only snapshot) fields ---
+            frm.set_value("history_incoterm",                po.incoterm                  || null);
+            frm.set_value("history_payment_terms_template",  po.payment_terms_template    || null);
+            frm.set_value("history_terms",                   po.tc_name                   || null);
+            frm.set_value("history_insurance",               po.custom_insurance          || null);
+            frm.set_value("history_mode_of_dispatch",        po.custom_mode_of_dispatch   || null);
+            frm.set_value("history_freight_charges",         po.freight_charges           || null);
+            frm.set_value("history_po_remarks",              po.po_remarks                   || null);
+            frm.set_value("history_group_same_items",        po.group_same_items          || null);
+
+
+            frm.refresh();
+        }
+    });
+}
 
 
 function fetch_items_dynamic(frm) {

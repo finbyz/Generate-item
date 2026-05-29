@@ -16,10 +16,47 @@
   "purchase_order_date",
   "supplier_name",
   "reason_for_change",
+  "section_break_bmry",
+  "incoterm",
+  "payment_terms_template",
+  "terms",
+  "insurance",
+  "mode_of_dispatch",
+  "freight_charges",
+  "po_remarks",
+  "group_same_items",
+  "column_break_tagd",
+  "rev_incoterm",
+  "rev_payment_terms_template",
+  "rev_terms",
+  "rev_insurance",
+  "rev_mode_of_dispatch",
+  "rev_freight_charges",
+  "rev_po_remarks",
+  "rev_group_same_items",
   "section_break_pbll",
   "items",
   "amended_from",
   "history_tab",
+  "section_break_ctdh",
+  "history_incoterm",
+  "history_payment_terms_template",
+  "history_terms",
+  "history_insurance",
+  "history_mode_of_dispatch",
+  "history_freight_charges",
+  "history_po_remarks",
+  "history_group_same_items",
+  "column_break_rcte",
+  "history_rev_incoterm",
+  "history_rev_payment_terms_template",
+  "history_rev_terms",
+  "history_rev_insurance",
+  "history_rev_mode_of_dispatch",
+  "history_rev_freight_charges",
+  "history_rev_po_remarks",
+  "history_rev_group_same_items",
+  "section_break_be8h",
   "original_record"
  ],
  "fields": [
@@ -128,13 +165,267 @@
    "label": "Original Record",
    "no_copy": 1,
    "options": "Purchase Order Modification Request Detail History"
+  },
+  {
+   "depends_on": "eval:doc.modification_type == \"Order Change\"",
+   "fieldname": "section_break_bmry",
+   "fieldtype": "Section Break",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "po_remarks",
+   "fieldtype": "Text Editor",
+   "label": "PO Remarks",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_tagd",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "rev_po_remarks",
+   "fieldtype": "Text Editor",
+   "label": "Rev PO Remarks",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "incoterm",
+   "fieldtype": "Link",
+   "label": "Incoterm",
+   "no_copy": 1,
+   "options": "Incoterm",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_incoterm",
+   "fieldtype": "Link",
+   "label": "Rev Incoterm",
+   "no_copy": 1,
+   "options": "Incoterm"
+  },
+  {
+   "fieldname": "payment_terms_template",
+   "fieldtype": "Link",
+   "label": "Payment Terms Template",
+   "no_copy": 1,
+   "options": "Payment Terms Template",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_payment_terms_template",
+   "fieldtype": "Link",
+   "label": "Rev Payment Terms Template",
+   "no_copy": 1,
+   "options": "Payment Terms Template"
+  },
+  {
+   "fieldname": "terms",
+   "fieldtype": "Link",
+   "label": "Terms",
+   "no_copy": 1,
+   "options": "Terms and Conditions",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_terms",
+   "fieldtype": "Link",
+   "label": "Rev Terms",
+   "no_copy": 1,
+   "options": "Terms and Conditions"
+  },
+  {
+   "fieldname": "insurance",
+   "fieldtype": "Data",
+   "label": "Insurance",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_insurance",
+   "fieldtype": "Data",
+   "label": "Rev Insurance",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "mode_of_dispatch",
+   "fieldtype": "Select",
+   "label": "Mode of Dispatch",
+   "no_copy": 1,
+   "options": "\nRoad Transportation\nCourier\nSea Mode\nAir Mode",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_mode_of_dispatch",
+   "fieldtype": "Select",
+   "label": "Rev Mode of Dispatch",
+   "no_copy": 1,
+   "options": "\nRoad Transportation\nCourier\nSea Mode\nAir Mode"
+  },
+  {
+   "fieldname": "freight_charges",
+   "fieldtype": "Data",
+   "label": "Freight Charges",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_freight_charges",
+   "fieldtype": "Data",
+   "label": "Rev Freight Charges",
+   "no_copy": 1
+  },
+  {
+   "depends_on": "eval:doc.modification_type == \"Order Change\"",
+   "fieldname": "section_break_ctdh",
+   "fieldtype": "Section Break",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "history_incoterm",
+   "fieldtype": "Link",
+   "label": "Incoterm",
+   "no_copy": 1,
+   "options": "Incoterm",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_rcte",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "history_rev_incoterm",
+   "fieldtype": "Link",
+   "label": "Rev Incoterm",
+   "no_copy": 1,
+   "options": "Incoterm"
+  },
+  {
+   "fieldname": "history_payment_terms_template",
+   "fieldtype": "Link",
+   "label": "Payment Terms Template",
+   "no_copy": 1,
+   "options": "Payment Terms Template",
+   "read_only": 1
+  },
+  {
+   "fieldname": "history_rev_payment_terms_template",
+   "fieldtype": "Link",
+   "label": "Rev Payment Terms Template",
+   "no_copy": 1,
+   "options": "Payment Terms Template"
+  },
+  {
+   "fieldname": "history_terms",
+   "fieldtype": "Link",
+   "label": "Terms",
+   "no_copy": 1,
+   "options": "Terms and Conditions",
+   "read_only": 1
+  },
+  {
+   "fieldname": "history_rev_terms",
+   "fieldtype": "Link",
+   "label": "Rev Terms",
+   "no_copy": 1,
+   "options": "Terms and Conditions"
+  },
+  {
+   "fieldname": "history_insurance",
+   "fieldtype": "Data",
+   "label": "Insurance",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "history_rev_insurance",
+   "fieldtype": "Data",
+   "label": "Rev Insurance ",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "history_mode_of_dispatch",
+   "fieldtype": "Select",
+   "label": "Mode of Dispatch",
+   "no_copy": 1,
+   "options": "\nRoad Transportation\nCourier\nSea Mode\nAir Mode",
+   "read_only": 1
+  },
+  {
+   "fieldname": "history_rev_mode_of_dispatch",
+   "fieldtype": "Select",
+   "label": "Rev Mode of Dispatch",
+   "no_copy": 1,
+   "options": "\nRoad Transportation\nCourier\nSea Mode\nAir Mode"
+  },
+  {
+   "fieldname": "history_freight_charges",
+   "fieldtype": "Data",
+   "label": "Freight Charges",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "history_po_remarks",
+   "fieldtype": "Text Editor",
+   "label": "PO Remarks",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "fieldname": "history_rev_freight_charges",
+   "fieldtype": "Data",
+   "label": "Rev Freight Charges",
+   "no_copy": 1
+  },
+  {
+   "fieldname": "history_rev_po_remarks",
+   "fieldtype": "Text Editor",
+   "label": "Rev PO Remarks",
+   "no_copy": 1
+  },
+  {
+   "depends_on": "eval:doc.modification_type != \"Order Change\"",
+   "fieldname": "section_break_be8h",
+   "fieldtype": "Section Break",
+   "hide_border": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "group_same_items",
+   "fieldtype": "Check",
+   "label": "Group same items",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "rev_group_same_items",
+   "fieldtype": "Check",
+   "label": "Rev Group same items",
+   "no_copy": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "history_group_same_items",
+   "fieldtype": "Check",
+   "label": "Group same items",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "history_rev_group_same_items",
+   "fieldtype": "Check",
+   "label": "Rev Group same items",
+   "no_copy": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-05-18 11:59:11.338374",
+ "modified": "2026-05-28 17:08:51.701320",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Purchase Order Modification Request",
