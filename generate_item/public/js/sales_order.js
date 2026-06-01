@@ -764,13 +764,13 @@ function open_event_dialog(frm, event_name) {
                             }]
                         }
                     },
-                    }).then(() => {
-                        dialog.hide();
-                        frappe.show_alert({ message: __("Event updated"), indicator: "green" });
-                        delete frm._completed_event_count;  // ← ADD THIS
-                        frm.reload_doc();
-                    }).catch(err => {
-                   {
+                }).then(() => {
+                    dialog.hide();
+                    frappe.show_alert({ message: __("Event updated"), indicator: "green" });
+                    delete frm._completed_event_count;  // ← ADD THIS
+                    frm.reload_doc();
+                }).catch(err => {
+                    {
                         frappe.msgprint({ title: __("Error"), message: err.message, indicator: "red" });
                     }
                 });
@@ -1252,7 +1252,11 @@ function open_event_dialog(frm, event_name) {
 frappe.ui.form.on('Sales Order', {
     refresh: function (frm) {
 
-        
+        if (typeof jsPlumb !== "undefined") {
+            initializeJsPlumb();
+        } else {
+            console.warn("jsPlumb library not loaded");
+        }
         // FIX: Call show_activities as a standalone function, not as a method
         show_activities(frm);
         setup_todo_section(frm);
@@ -1561,7 +1565,7 @@ frappe.ui.form.on('Sales Order', {
             frm.refresh_field("items");
         }
     },
-    
+
     before_workflow_action: function (frm) {
         const action = (frm.selected_workflow_action || "").toLowerCase();
 
