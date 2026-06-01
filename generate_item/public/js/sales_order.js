@@ -1251,6 +1251,8 @@ function open_event_dialog(frm, event_name) {
 
 frappe.ui.form.on('Sales Order', {
     refresh: function (frm) {
+
+        
         // FIX: Call show_activities as a standalone function, not as a method
         show_activities(frm);
         setup_todo_section(frm);
