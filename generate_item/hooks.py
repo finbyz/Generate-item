@@ -426,6 +426,9 @@ fixtures = [
 
  
 
+fields_for_group_similar_items = [
+    "stock_qty"  
+]
 
 # Authentication and authorization
 # --------------------------------
