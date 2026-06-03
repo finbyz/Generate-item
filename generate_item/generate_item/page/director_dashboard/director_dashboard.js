@@ -1,6 +1,4 @@
-
-frappe.pages['director-dashboard'].on_page_load = function (wrapper) 
-{
+frappe.pages['director-dashboard'].on_page_load = function (wrapper) {
 
     const page = frappe.ui.make_app_page({
         parent: wrapper,
@@ -8,74 +6,77 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper)
         single_column: true
     });
 
-    
-
-    // ── Chart.js CDN ─────────────────────────────────────────────────
+    // ── Chart.js CDN ──────────────────────────────────────────────────────────
     if (!window.Chart) {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+        const script       = document.createElement('script');
+        script.src         = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
         document.head.appendChild(script);
     }
 
-     // Add dropdown
-    let selector = page.add_field({
-        label: 'Select View',
+    // ── Page-level dropdown (Purchase / Sales) ────────────────────────────────
+    const view_selector = page.add_field({
+        label:     'Select View',
         fieldtype: 'Select',
         fieldname: 'view_type',
-        options: ['Purchase', 'Sales'],
-        default: 'Purchase',
-        change: function () {
-            handle_dashboard_switch(selector.get_value());
-        }
+        options:   ['Purchase', 'Sales'],
+        default:   'Purchase',
+        change() { handle_dashboard_switch(view_selector.get_value()); }
     });
 
-    
-
-    // ── Filters ──────────────────────────────────────────────────────
+    // ── Filters ───────────────────────────────────────────────────────────────
     const from_date = page.add_field({
-        label: 'From Date',
+        label:    'From Date',
         fieldtype: 'Date',
-        default: frappe.datetime.month_start(),
-        change: load_data
+        default:  frappe.datetime.month_start(),
+        change:   load_data
     });
 
     const to_date = page.add_field({
-        label: 'To Date',
+        label:    'To Date',
         fieldtype: 'Date',
-        default: frappe.datetime.get_today(),
-        change: load_data
+        default:  frappe.datetime.get_today(),
+        change:   load_data
     });
 
     const branch = page.add_field({
-        label: 'Branch',
+        label:    'Branch',
         fieldtype: 'Link',
-        options: 'Branch',
-        change: load_data
+        options:  'Branch',
+        change:   load_data
     });
 
-     // Add type
-    let type_selector = page.add_field({
+    const type_selector = page.add_field({
         fieldtype: 'Select',
-        fieldname: '',
-        options: ['Order Wise', 'Item Wise'],
-        default: 'Order Wise',
-        change: load_data
-        
+        fieldname: 'count_type',
+        options:   ['Order Wise', 'Item Wise'],
+        default:   'Order Wise',
+        change:    load_data
     });
 
-    // ── Styles ───────────────────────────────────────────────────────
+    // ── Bucket / colour definitions (5 buckets now) ───────────────────────────
+    const BUCKETS = [
+        { key: '0-7',   label: '0–7 d',   cls: 'bucket-0-7'   },
+        { key: '8-14',  label: '8–14 d',  cls: 'bucket-8-14'  },
+        { key: '15-21', label: '15–21 d', cls: 'bucket-15-21' },
+        { key: '22-28', label: '22–28 d', cls: 'bucket-22-28' },
+        { key: '28+',   label: '28+ d',   cls: 'bucket-28plus'},
+    ];
+
+    const BUCKET_COLORS = [
+        'rgba(76,175,80,0.82)',    // 0-7   green
+        'rgba(33,150,243,0.82)',   // 8-14  blue
+        'rgba(255,152,0,0.82)',    // 15-21 orange
+        'rgba(244,67,54,0.82)',    // 22-28 red
+        'rgba(156,39,176,0.82)',   // 28+   purple
+    ];
+
+    // ── Styles ────────────────────────────────────────────────────────────────
     const styles = `<style>
         .dir-dashboard { padding: 20px; }
 
         /*
-         * 3-column grid per section row:
-         *   col-1  310px  →  bucket count cards  (fixed, no stretch)
-         *   col-2  130px  →  doc-type label      (compact, no gap bloat)
-         *   col-3  1fr    →  bar chart           (fills remaining space)
-         *
-         * Previously col-2 was "1fr" which ballooned and pushed
-         * the left cards and right chart far apart. Now it is
-         * a fixed 130px so nothing stretches unexpectedly.
+         * Grid: 5-card bucket area | doc-type label | bar chart
+         * Bucket area is wider (380px) to accommodate the 5th card cleanly.
          */
         .dir-section-card {
             background: var(--card-bg);
@@ -84,24 +85,31 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper)
             box-shadow: 0 2px 8px rgba(0,0,0,0.07);
             margin-bottom: 24px;
             display: grid;
-            grid-template-columns: 310px 130px 1fr;
+            grid-template-columns: 380px 130px 1fr;
             align-items: center;
             min-height: 210px;
             overflow: hidden;
         }
 
-        /* ── Left: 2×2 (+ 1 overflow) bucket grid ─────────────── */
+        /* ── Left: bucket cards in a responsive grid ──────────────── */
         .dir-bucket-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            padding: 16px;
+            /*
+             * 5 cards: first row 3 cards, second row 2 centred.
+             * auto-fit lets the grid reflow on narrow screens.
+             */
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            padding: 14px;
         }
+        /* Centre the last two cards when they form a second row alone */
+        .dir-bucket-grid .dir-bucket-card:nth-child(4) { grid-column: 1; }
+        .dir-bucket-grid .dir-bucket-card:nth-child(5) { grid-column: 2; }
 
         .dir-bucket-card {
             background: var(--control-bg, #f5f5f5);
             border-radius: 8px;
-            padding: 16px 8px;          /* taller → larger feel */
+            padding: 14px 6px;
             text-align: center;
             border: 1px solid var(--border-color);
             transition: transform 0.15s, box-shadow 0.15s;
@@ -117,11 +125,10 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper)
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.4px;
-            margin-bottom: 6px;
+            margin-bottom: 5px;
         }
-        /* Bigger count number than before (was 26px → now 32px) */
         .dir-bucket-card .bucket-count {
-            font-size: 32px;
+            font-size: 28px;
             font-weight: 700;
             line-height: 1;
         }
@@ -131,7 +138,7 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper)
             margin-top: 4px;
         }
 
-        /* Colour accents per age bucket */
+        /* Colour accents */
         .bucket-0-7    { border-top: 3px solid #4CAF50; }
         .bucket-0-7    .bucket-count { color: #2E7D32; }
         .bucket-8-14   { border-top: 3px solid #2196F3; }
@@ -140,14 +147,10 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper)
         .bucket-15-21  .bucket-count { color: #E65100; }
         .bucket-22-28  { border-top: 3px solid #F44336; }
         .bucket-22-28  .bucket-count { color: #B71C1C; }
-       
+        .bucket-28plus { border-top: 3px solid #9C27B0; }
+        .bucket-28plus .bucket-count { color: #6A1B9A; }
 
-        /*
-         * Centre label column
-         * ─ padding removed (was "0 8px") so no gap between cards and chart
-         * ─ border-left / border-right act as dividers instead
-         * ─ align-self: stretch so dividers run the full card height
-         */
+        /* ── Centre label ─────────────────────────────────────────── */
         .dir-section-label {
             align-self: stretch;
             display: flex;
@@ -181,7 +184,7 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper)
             white-space: nowrap;
         }
 
-        /* ── Right: chart column ───────────────────────────────── */
+        /* ── Right: chart ─────────────────────────────────────────── */
         .dir-chart-col {
             padding: 16px 20px;
             height: 220px;
@@ -189,7 +192,7 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper)
             box-sizing: border-box;
         }
 
-        /* ── Loading placeholder ───────────────────────────────── */
+        /* ── Loading ──────────────────────────────────────────────── */
         .dir-loading {
             display: flex;
             align-items: center;
@@ -205,22 +208,24 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper)
                 grid-template-columns: 1fr;
             }
             .dir-section-label {
-                border-left: none;
-                border-right: none;
+                border-left: none; border-right: none;
                 border-top: 1px solid var(--border-color);
                 border-bottom: 1px solid var(--border-color);
                 padding: 12px 0;
             }
             .dir-chart-col { height: 200px; }
+            .dir-bucket-grid { grid-template-columns: repeat(3, 1fr); }
+            .dir-bucket-grid .dir-bucket-card:nth-child(4),
+            .dir-bucket-grid .dir-bucket-card:nth-child(5) { grid-column: auto; }
         }
     </style>`;
 
-    // ── DOM ───────────────────────────────────────────────────────────
+    // ── DOM ───────────────────────────────────────────────────────────────────
     $(`
         ${styles}
         <div class="dir-dashboard">
 
-            <!-- ── MR ── -->
+            <!-- MR -->
             <div class="dir-section-card" id="mr-section">
                 <div class="dir-bucket-grid" id="mr-bucket-grid">
                     <div class="dir-loading">Loading…</div>
@@ -235,7 +240,7 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper)
                 </div>
             </div>
 
-            <!-- ── PO ── -->
+            <!-- PO -->
             <div class="dir-section-card" id="po-section">
                 <div class="dir-bucket-grid" id="po-bucket-grid">
                     <div class="dir-loading">Loading…</div>
@@ -250,8 +255,8 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper)
                 </div>
             </div>
 
-            <!-- PR:  -->
-			<div class="dir-section-card" id="pr-section">
+            <!-- PR -->
+            <div class="dir-section-card" id="pr-section">
                 <div class="dir-bucket-grid" id="pr-bucket-grid">
                     <div class="dir-loading">Loading…</div>
                 </div>
@@ -265,110 +270,66 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper)
                 </div>
             </div>
 
-
-
         </div>
     `).appendTo(page.body);
 
+    // ── Chart registry (for clean destroy-before-recreate) ────────────────────
     const charts = {};
 
-    // ── Shared bucket definitions ─────────────────────────────────────
-    const BUCKETS = [
-        { key: '0-7',   label: '0–7 d',   cls: 'bucket-0-7'    },
-        { key: '8-14',  label: '8–14 d',  cls: 'bucket-8-14'   },
-        { key: '15-21', label: '15–21 d', cls: 'bucket-15-21'  },
-        { key: '22-28', label: '22–28 d', cls: 'bucket-22-28'  },
-       
-    ];
-
-    const BUCKET_COLORS = [
-        'rgba(76,175,80,0.82)',    // 0-7   green
-        'rgba(33,150,243,0.82)',   // 8-14  blue
-        'rgba(255,152,0,0.82)',    // 15-21 orange
-        'rgba(244,67,54,0.82)',    // 22-28 red
-       
-    ];
-
-    // ── Data load ─────────────────────────────────────────────────────
-    // function load_data() {
-    //     frappe.call({
-    //         method: "generate_item.generate_item.page.director_dashboard.director_dashboard.get_dashboard_data",
-    //         args: {
-    //             from_date: from_date.get_value() || '',
-    //             to_date:   to_date.get_value()   || '',
-    //             branch:    branch.get_value()    || ''
-    //         },
-    //         callback(r) {
-    //             if (r.message) render_dashboard(r.message);
-    //         }
-    //     });
-    // }
-
-    // function render_dashboard(data) {
-    //     if (!window.Chart) { setTimeout(() => render_dashboard(data), 100); return; }
-    //     render_section('mr', data.pending_mr, 'MRs', 'mrPendingChart');
-    //     render_section('po', data.pending_po, 'POs', 'poPendingChart');
-	// 	render_section('pr', data.pending_pr, 'PRs', 'prPendingChart');
-    // }
-
+    // ── Data loading ──────────────────────────────────────────────────────────
     function load_data() {
-    const mode = type_selector.get_value() || 'Order Wise';
-    if (mode === 'Item Wise') {
-        load_item_wise();
-    } else {
-        load_order_wise();
+        const mode = (type_selector.get_value() || 'Order Wise');
+        if (mode === 'Item Wise') {
+            _call_api(
+                'generate_item.generate_item.page.director_dashboard.director_dashboard.get_item_wise_data',
+                render_item_wise
+            );
+        } else {
+            _call_api(
+                'generate_item.generate_item.page.director_dashboard.director_dashboard.get_dashboard_data',
+                render_order_wise
+            );
+        }
     }
-}
 
-// ── Existing logic untouched, just renamed ────────────────────────────────
-function load_order_wise() {
-    frappe.call({
-        method: "generate_item.generate_item.page.director_dashboard.director_dashboard.get_dashboard_data",
-        args: {
-            from_date: from_date.get_value() || '',
-            to_date:   to_date.get_value()   || '',
-            branch:    branch.get_value()    || ''
-        },
-        callback(r) {
-            if (r.message) render_order_wise(r.message);
-        }
-    });
-}
+    function _call_api(method, cb) {
+        frappe.call({
+            method,
+            args: {
+                from_date: from_date.get_value() || '',
+                to_date:   to_date.get_value()   || '',
+                branch:    branch.get_value()     || '',
+            },
+            callback(r) { if (r.message) cb(r.message); }
+        });
+    }
 
-function render_order_wise(data) {
-    if (!window.Chart) { setTimeout(() => render_order_wise(data), 100); return; }
-    render_section('mr', data.pending_mr, 'MRs', 'mrPendingChart');
-    render_section('po', data.pending_po, 'POs', 'poPendingChart');
-    render_section('pr', data.pending_pr, 'PRs', 'prPendingChart');
-}
+    // ── Render helpers ────────────────────────────────────────────────────────
+    function render_order_wise(data) {
+        _wait_for_chart(() => {
+            render_section('mr', data.pending_mr, 'MRs', 'mrPendingChart');
+            render_section('po', data.pending_po, 'POs', 'poPendingChart');
+            render_section('pr', data.pending_pr, 'PRs', 'prPendingChart');
+        });
+    }
 
-// ── New Item Wise logic ───────────────────────────────────────────────────
-function load_item_wise() {
-    frappe.call({
-        method: "generate_item.generate_item.page.director_dashboard.director_dashboard.get_item_wise_data",
-        args: {
-            from_date: from_date.get_value() || '',
-            to_date:   to_date.get_value()   || '',
-            branch:    branch.get_value()    || ''
-        },
-        callback(r) {
-            if (r.message) render_item_wise(r.message);
-        }
-    });
-}
+    function render_item_wise(data) {
+        _wait_for_chart(() => {
+            render_section('mr', data.pending_mr, 'Items', 'mrPendingChart');
+            render_section('po', data.pending_po, 'Items', 'poPendingChart');
+            render_section('pr', data.pending_pr, 'Items', 'prPendingChart');
+        });
+    }
 
-function render_item_wise(data) {
-    if (!window.Chart) { setTimeout(() => render_item_wise(data), 100); return; }
-    render_section('mr', data.pending_mr, 'Items', 'mrPendingChart');
-    render_section('po', data.pending_po, 'Items', 'poPendingChart');
-    render_section('pr', data.pending_pr, 'Items', 'prPendingChart');
-}
+    /** Poll until Chart.js is available, then run callback. */
+    function _wait_for_chart(fn) {
+        if (window.Chart) { fn(); } else { setTimeout(() => _wait_for_chart(fn), 100); }
+    }
 
-    // ── Generic section renderer ──────────────────────────────────────
+    // ── Section renderer ──────────────────────────────────────────────────────
     function render_section(prefix, data, unit, chartId) {
         if (!data) return;
 
-        // Count cards
         const cardHtml = BUCKETS.map(b => {
             const count = (data[b.key] || {}).count || 0;
             return `
@@ -378,19 +339,17 @@ function render_item_wise(data) {
                     <div class="bucket-unit">${unit}</div>
                 </div>`;
         }).join('');
+
         $(`#${prefix}-bucket-grid`).html(cardHtml);
 
-        // Total badge
         const total = BUCKETS.reduce((s, b) => s + ((data[b.key] || {}).count || 0), 0);
         $(`#${prefix}-total-badge`).text(`${total} Pending`);
 
-        // Chart
-        render_bar_chart(chartId, data, unit);
+        _render_bar_chart(chartId, data, unit);
     }
 
-    // ── Shared bar-chart renderer ─────────────────────────────────────
-    
-    function render_bar_chart(chartId, data, unit) {
+    // ── Bar chart renderer ────────────────────────────────────────────────────
+    function _render_bar_chart(chartId, data, unit) {
         const el = document.getElementById(chartId);
         if (!el) return;
 
@@ -405,46 +364,34 @@ function render_item_wise(data) {
             data: {
                 labels: BUCKETS.map(b => b.key),
                 datasets: [{
-                    label: `Pending ${unit}`,
-                    data: counts,
+                    label:           `Pending ${unit}`,
+                    data:            counts,
                     backgroundColor: BUCKET_COLORS,
-                    borderRadius: 6,
-                    borderWidth: 0,
-                    barThickness: 38
+                    borderRadius:    6,
+                    borderWidth:     0,
+                    barThickness:    32,
                 }]
             },
             options: {
-                responsive: true,
+                responsive:          true,
                 maintainAspectRatio: false,
-                // ── tooltip hover fix ──
-                interaction: {
-                    mode: 'index',       // whole column, not just bar pixel
-                    intersect: false     // fires even when cursor is in whitespace
-                },
+                interaction: { mode: 'index', intersect: false },
                 scales: {
                     y: {
                         beginAtZero: true,
                         ticks: { precision: 0, stepSize: 1 },
-                        title: {
-                            display: true,
-                            text: `Count of ${unit}`,
-                            font: { size: 10 }
-                        }
+                        title: { display: true, text: `Count of ${unit}`, font: { size: 10 } }
                     },
                     x: {
-                        title: {
-                            display: true,
-                            text: 'Pending Days Bucket',
-                            font: { size: 10 }
-                        }
+                        title: { display: true, text: 'Pending Days Bucket', font: { size: 10 } }
                     }
                 },
                 plugins: {
                     legend: { display: false },
                     tooltip: {
                         callbacks: {
-                            title: (items) => `${items[0].label} days pending`,
-                            label: (ctx)   => `  ${ctx.raw} ${unit}`
+                            title: items  => `${items[0].label} days pending`,
+                            label: ctx    => `  ${ctx.raw} ${unit}`,
                         }
                     }
                 }
@@ -452,18 +399,12 @@ function render_item_wise(data) {
         });
     }
 
-    // ── Boot ──────────────────────────────────────────────────────────
+    // ── Boot ──────────────────────────────────────────────────────────────────
     setTimeout(load_data, 200);
 };
 
-
+// ── Top-level: switch between Purchase and Sales dashboards ──────────────────
 function handle_dashboard_switch(value) {
-
-    if (value === 'Sales') {
-        frappe.set_route('sales-performance-da');
-    }
-
-    else if (value === 'Purchase') {
-        frappe.set_route('director-dashboard');
-    }
+    if      (value === 'Sales')    frappe.set_route('sales-performance-da');
+    else if (value === 'Purchase') frappe.set_route('director-dashboard');
 }
