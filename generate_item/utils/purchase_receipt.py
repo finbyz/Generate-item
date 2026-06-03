@@ -182,7 +182,7 @@ def make_qc(doctype, docname, items):
         "Rabale":    "MQIR.fiscal.#####",
         "Nandikoor": "MQIN.fiscal.#####",
     }
-    branch = frappe.db.get_value(doctype, docname, "branch")
+    # branch = frappe.db.get_value(doctype, docname, "branch")
 
 
     inspections = []
@@ -205,8 +205,8 @@ def make_qc(doctype, docname, items):
                 "inspected_by": frappe.session.user,
                 "reference_type": doctype,
                 "reference_name": docname,
-                "branch":branch,
-                "naming_series": SERIES_MAP.get(branch),
+                # "branch":branch,
+                # "naming_series": SERIES_MAP.get(branch),
                 "item_code": item.get("item_code"),
                 "description": item.get("description"),
                 "sample_size": flt(item.get("sample_size")),
