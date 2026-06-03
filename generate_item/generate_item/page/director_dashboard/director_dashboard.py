@@ -22,6 +22,7 @@ PO_EXCLUDED_STATUSES = ("Completed", "Closed", "To Bill", "Cancelled")
 PR_EXCLUDED_STATUSES = ("To Bill", "Completed", "Cancelled")
 
 
+
 # ─────────────────────────────────────────────────────────────────────────────
 # PUBLIC API
 # ─────────────────────────────────────────────────────────────────────────────
@@ -33,6 +34,7 @@ def get_dashboard_data(branch=None, from_date=None, to_date=None):
         "pending_mr": _get_pending_mr_doc(branch, from_date, to_date),
         "pending_po": _get_pending_po_doc(branch, from_date, to_date),
         "pending_pr": _get_pending_pr_doc(branch, from_date, to_date),
+        "pending_pi": _get_pending_pi_doc(branch, from_date, to_date)
     }
 
 
@@ -43,6 +45,7 @@ def get_item_wise_data(branch=None, from_date=None, to_date=None):
         "pending_mr": _get_pending_mr_line(branch, from_date, to_date),
         "pending_po": _get_pending_po_line(branch, from_date, to_date),
         "pending_pr": _get_pending_pr_line(branch, from_date, to_date),
+        "pending_pi": _get_pending_pi_line(branch, from_date, to_date),
     }
 
 
@@ -271,12 +274,12 @@ def _get_pending_po_line(branch=None, from_date=None, to_date=None):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _get_pending_pr_doc(branch=None, from_date=None, to_date=None):
-    ph, exc = _in_clause(PR_EXCLUDED_STATUSES)
+    # ph, exc = _in_clause(PR_INCLUDED_STATUSES)
     br_sql, br_p = _branch_clause("", branch)
     dt_sql, dt_p = _date_range_clause("", "posting_date", from_date, to_date)
 
     where, params = _build_where([
-        (f"status NOT IN {ph}", exc),
+      
         (br_sql,                br_p),
         (dt_sql,                dt_p),
     ])
@@ -285,7 +288,8 @@ def _get_pending_pr_doc(branch=None, from_date=None, to_date=None):
         f"""
         SELECT posting_date
         FROM   `tabPurchase Receipt`
-        WHERE  {where}
+        WHERE status = 'Draft' AND  
+        {where}
         """,
         params, as_dict=True,
     )
@@ -300,12 +304,12 @@ def _get_pending_pr_doc(branch=None, from_date=None, to_date=None):
 # Filter  : pr.status NOT IN PR_EXCLUDED_STATUSES
 
 def _get_pending_pr_line(branch=None, from_date=None, to_date=None):
-    ph, exc = _in_clause(PR_EXCLUDED_STATUSES)
+    # ph, exc = _in_clause(PR_INCLUDED_STATUSES)
     br_sql, br_p = _branch_clause("pr", branch)
     dt_sql, dt_p = _date_range_clause("pr", "posting_date", from_date, to_date)
 
     where, params = _build_where([
-        (f"pr.status NOT IN {ph}", exc),
+        
         (br_sql,                   br_p),
         (dt_sql,                   dt_p),
     ])
@@ -315,8 +319,72 @@ def _get_pending_pr_line(branch=None, from_date=None, to_date=None):
         SELECT pr.posting_date
         FROM   `tabPurchase Receipt Item` pri
         INNER JOIN `tabPurchase Receipt` pr ON pr.name = pri.parent
-        WHERE  {where}
+        WHERE  status = 'Draft' AND 
+        {where}
         """,
         params, as_dict=True,
     )
     return _build_buckets(rows, "posting_date")
+
+
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PURCHASE Invoice – doc WISE
+
+
+def _get_pending_pi_doc(branch=None, from_date=None, to_date=None):
+   
+    br_sql, br_p = _branch_clause("", branch)
+    dt_sql, dt_p = _date_range_clause("", "posting_date", from_date, to_date)
+
+    where, params = _build_where([
+        
+        ("docstatus = %s",   [1]),
+        (br_sql,                br_p),
+        (dt_sql,                dt_p),
+    ])
+
+    rows = frappe.db.sql(
+        f"""
+        SELECT posting_date
+        FROM   `tabPurchase Receipt`
+        WHERE status IN ('To Bill', 'Partly Billed') AND  
+        {where}
+        """,
+        params, as_dict=True,
+    )
+    return _build_buckets(rows, "posting_date")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PURCHASE Invoice – LINE WISE
+
+# ───────────────────────────────────────────────────────────────────────────
+
+def _get_pending_pi_line(branch=None, from_date=None, to_date=None):
+   
+    br_sql, br_p = _branch_clause("pr", branch)
+    dt_sql, dt_p = _date_range_clause("pr", "posting_date", from_date, to_date)
+
+    where, params = _build_where([
+        
+        ("pr.docstatus = %s",  [1]),
+        (br_sql,                   br_p),
+        (dt_sql,                   dt_p),
+    ])
+
+    rows = frappe.db.sql(
+        f"""
+        SELECT pr.posting_date
+        FROM   `tabPurchase Receipt Item` pri
+        INNER JOIN `tabPurchase Receipt` pr ON pr.name = pri.parent
+        WHERE  status IN ('To Bill', 'Partly Billed') AND
+        {where}
+        """,
+        params, as_dict=True,
+    )
+    return _build_buckets(rows, "posting_date")
+
+

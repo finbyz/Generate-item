@@ -270,6 +270,22 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper) {
                 </div>
             </div>
 
+          
+            <!-- PI -->
+            <div class="dir-section-card" id="pi-section">
+                <div class="dir-bucket-grid" id="pi-bucket-grid">
+                    <div class="dir-loading">Loading…</div>
+                </div>
+                <div class="dir-section-label">
+                    <div class="doc-type">PI</div>
+                    <div class="doc-subtitle">Purchase Invoices</div>
+                    <div class="total-badge" id="pi-total-badge">—</div>
+                </div>
+                <div class="dir-chart-col">
+                    <canvas id="piPendingChart"></canvas>
+                </div>
+            </div>
+
         </div>
     `).appendTo(page.body);
 
@@ -310,6 +326,7 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper) {
             render_section('mr', data.pending_mr, 'MRs', 'mrPendingChart');
             render_section('po', data.pending_po, 'POs', 'poPendingChart');
             render_section('pr', data.pending_pr, 'PRs', 'prPendingChart');
+            render_section('pi', data.pending_pi, 'PIs',  'piPendingChart');
         });
     }
 
@@ -318,6 +335,7 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper) {
             render_section('mr', data.pending_mr, 'Items', 'mrPendingChart');
             render_section('po', data.pending_po, 'Items', 'poPendingChart');
             render_section('pr', data.pending_pr, 'Items', 'prPendingChart');
+            render_section('pi', data.pending_pi, 'Items', 'piPendingChart'); 
         });
     }
 
