@@ -10,39 +10,40 @@ def get_reference_name(reference_name, reference_type):
 
 
 def on_submit(doc, method):
+    pass
 
-    if doc.reference_type != "Purchase Receipt":
-        return
+    # if doc.reference_type != "Purchase Receipt":
+    #     return
 
-    if not doc.reference_name or not doc.child_row_reference:
-        return
+    # if not doc.reference_name or not doc.child_row_reference:
+    #     return
 
-    pr = frappe.get_doc("Purchase Receipt", doc.reference_name)
+    # pr = frappe.get_doc("Purchase Receipt", doc.reference_name)
 
-    # Set rejected warehouse based on branch
-    if pr.branch == "Nandikoor":
-        pr.rejected_warehouse = "Nandikoor Stores - SVIPL"
-    elif pr.branch == "Sanand":
-        pr.rejected_warehouse = "Sanand Stores - SVIPL"
-    elif pr.branch == "Rabale":
-        pr.rejected_warehouse = "Rabale Stores - SVIPL"
+    # # Set rejected warehouse based on branch
+    # if pr.branch == "Nandikoor":
+    #     pr.rejected_warehouse = "Nandikoor Stores - SVIPL"
+    # elif pr.branch == "Sanand":
+    #     pr.rejected_warehouse = "Sanand Stores - SVIPL"
+    # elif pr.branch == "Rabale":
+    #     pr.rejected_warehouse = "Rabale Stores - SVIPL"
 
-    # rejected_qty = doc.rejected_qty or 0
-    # rejected_qty_stock = doc.rejected_qty_in_stock_uom or 0
+    # # rejected_qty = doc.rejected_qty or 0
+    # # rejected_qty_stock = doc.rejected_qty_in_stock_uom or 0
 
-    # for item in pr.items:
-    #     if item.name == doc.child_row_reference:
+    # # for item in pr.items:
+    # #     if item.name == doc.child_row_reference:
 
-    #         # Transaction UOM update
-    #         item.qty = (item.qty or 0) - rejected_qty
-    #         item.rejected_qty = rejected_qty
+    # #         # Transaction UOM update
+    # #         item.qty = (item.qty or 0) - rejected_qty
+    # #         item.rejected_qty = rejected_qty
 
-    # Stock UOM update
+    # # Stock UOM update
 
-    # item.rejected_stock_qty = rejected_qty_stock
+    # # item.rejected_stock_qty = rejected_qty_stock
 
-    pr.save()
-    update_accepted_qty(doc)
+    # pr.save()
+    # update_accepted_qty(doc)
 
 
 def before_save(doc, method):
