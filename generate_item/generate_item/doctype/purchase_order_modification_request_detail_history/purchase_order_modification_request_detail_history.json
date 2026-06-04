@@ -12,6 +12,7 @@
   "batch_no",
   "rate",
   "required_by",
+  "line_status",
   "expected_delivery_date",
   "stock_qty",
   "conversion_factor",
@@ -26,6 +27,7 @@
   "rev_qty",
   "rev_rate",
   "rev_required_by",
+  "rev_line_status",
   "rev_expected_delivery_date",
   "rev_stock_qty",
   "rev_conversion_factor",
@@ -81,7 +83,8 @@
    "bold": 1,
    "fieldname": "expected_delivery_date",
    "fieldtype": "Date",
-   "label": "Expected Delivery Date"
+   "label": "Expected Delivery Date",
+   "read_only": 1
   },
   {
    "allow_on_submit": 1,
@@ -93,7 +96,8 @@
   {
    "fieldname": "remarks",
    "fieldtype": "Small Text",
-   "label": "Remarks"
+   "label": "Remarks",
+   "read_only": 1
   },
   {
    "fieldname": "rev_remarks",
@@ -103,7 +107,9 @@
   {
    "fieldname": "stock_qty",
    "fieldtype": "Float",
-   "label": "Qty in Stock UOM"
+   "label": "Qty in Stock UOM",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "fieldname": "rev_stock_qty",
@@ -113,7 +119,8 @@
   {
    "fieldname": "conversion_factor",
    "fieldtype": "Float",
-   "label": "UOM Conversion Factor"
+   "label": "UOM Conversion Factor",
+   "read_only": 1
   },
   {
    "fieldname": "rev_conversion_factor",
@@ -124,7 +131,8 @@
    "fieldname": "price_list_rate",
    "fieldtype": "Currency",
    "label": "Price List Rate",
-   "options": "currency"
+   "options": "currency",
+   "read_only": 1
   },
   {
    "fieldname": "rev_price_list_rate",
@@ -136,7 +144,8 @@
    "fieldname": "target_warehouse",
    "fieldtype": "Link",
    "label": "Target Warehouse",
-   "options": "Warehouse"
+   "options": "Warehouse",
+   "read_only": 1
   },
   {
    "fieldname": "rev_target_warehouse",
@@ -148,7 +157,8 @@
    "fieldname": "item_tax_template",
    "fieldtype": "Link",
    "label": "Item Tax Template",
-   "options": "Item Tax Template"
+   "options": "Item Tax Template",
+   "read_only": 1
   },
   {
    "fieldname": "rev_item_tax_template",
@@ -212,13 +222,28 @@
    "fieldtype": "Check",
    "hidden": 1,
    "label": "Rev Is Free Item"
+  },
+  {
+   "fieldname": "line_status",
+   "fieldtype": "Select",
+   "label": "Line Status",
+   "no_copy": 1,
+   "options": "\nLive\nHold\nClose\nCancelled",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_line_status",
+   "fieldtype": "Select",
+   "label": "Rev Line Status",
+   "no_copy": 1,
+   "options": "\nLive\nHold\nClose\nCancelled"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-05-28 16:47:36.250382",
+ "modified": "2026-06-04 10:29:18.454932",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Purchase Order Modification Request Detail History",

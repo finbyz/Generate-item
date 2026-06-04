@@ -97,6 +97,7 @@ function fetch_items_dynamic(frm) {
                 row.po_line_no                  = item.po_line_no || null;
                 row.rate                        = item.rate;
                 row.required_by                 = item.schedule_date || null;
+                row.line_status                   = item.line_status || null;
                 row.expected_delivery_date      = item.expected_delivery_date || null;
                 row.remarks                     = item.remarks || null;
                 row.stock_qty                   = item.stock_qty || 0;
@@ -114,6 +115,7 @@ function fetch_items_dynamic(frm) {
                 history_row.po_line_no                  = item.po_line_no || null;
                 history_row.rate                        = item.rate;
                 history_row.required_by                 = item.schedule_date || null;
+                history_row.line_status                   = item.line_status || null;
                 history_row.expected_delivery_date      = item.expected_delivery_date || null;
                 history_row.remarks                     = item.remarks || null;
                 history_row.stock_qty                   = item.stock_qty || 0;

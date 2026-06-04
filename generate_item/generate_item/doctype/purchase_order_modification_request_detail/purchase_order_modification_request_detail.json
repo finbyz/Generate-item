@@ -11,6 +11,7 @@
   "qty",
   "rate",
   "po_line_no",
+  "line_status",
   "required_by",
   "expected_delivery_date",
   "remarks",
@@ -29,6 +30,7 @@
   "rev_qty",
   "rev_rate",
   "rev_po_line_no",
+  "rev_line_status",
   "rev_required_by",
   "rev_expected_delivery_date",
   "rev_remarks",
@@ -52,6 +54,7 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Item",
+   "no_copy": 1,
    "options": "Item",
    "read_only": 1
   },
@@ -60,12 +63,14 @@
    "fieldtype": "Float",
    "in_list_view": 1,
    "label": "Quantity",
+   "no_copy": 1,
    "read_only": 1
   },
   {
    "fieldname": "rate",
    "fieldtype": "Float",
    "label": "Rate",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -128,6 +133,7 @@
    "fieldname": "required_by",
    "fieldtype": "Date",
    "label": "Required By",
+   "no_copy": 1,
    "read_only": 1
   },
   {
@@ -140,7 +146,8 @@
    "fieldtype": "Data",
    "hidden": 1,
    "label": "Purchase Order Item Name",
-   "no_copy": 1
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "default": "0",
@@ -153,7 +160,9 @@
    "bold": 1,
    "fieldname": "expected_delivery_date",
    "fieldtype": "Date",
-   "label": "Expected Delivery Date"
+   "label": "Expected Delivery Date",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "allow_on_submit": 1,
@@ -165,7 +174,9 @@
   {
    "fieldname": "remarks",
    "fieldtype": "Small Text",
-   "label": "Remarks"
+   "label": "Remarks",
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "fieldname": "rev_remarks",
@@ -173,27 +184,25 @@
    "label": "Rev Remarks"
   },
   {
-   "depends_on": "eval:doc.uom != doc.stock_uom",
    "fieldname": "stock_qty",
    "fieldtype": "Float",
    "label": "Qty in Stock UOM",
-   "no_copy": 1
+   "no_copy": 1,
+   "read_only": 1
   },
   {
-   "depends_on": "eval:doc.uom != doc.stock_uom",
    "fieldname": "rev_stock_qty",
    "fieldtype": "Float",
    "label": "Rev Qty in Stock UOM",
    "no_copy": 1
   },
   {
-   "depends_on": "eval:doc.uom != doc.stock_uom",
    "fieldname": "conversion_factor",
    "fieldtype": "Float",
-   "label": "UOM Conversion Factor"
+   "label": "UOM Conversion Factor",
+   "read_only": 1
   },
   {
-   "depends_on": "eval:doc.uom != doc.stock_uom",
    "fieldname": "rev_conversion_factor",
    "fieldtype": "Float",
    "label": "Rev UOM Conversion Factor"
@@ -202,7 +211,8 @@
    "fieldname": "price_list_rate",
    "fieldtype": "Currency",
    "label": "Price List Rate",
-   "options": "currency"
+   "options": "currency",
+   "read_only": 1
   },
   {
    "fieldname": "rev_price_list_rate",
@@ -214,7 +224,8 @@
    "fieldname": "target_warehouse",
    "fieldtype": "Link",
    "label": "Target Warehouse",
-   "options": "Warehouse"
+   "options": "Warehouse",
+   "read_only": 1
   },
   {
    "fieldname": "rev_target_warehouse",
@@ -226,20 +237,35 @@
    "fieldname": "item_tax_template",
    "fieldtype": "Link",
    "label": "Item Tax Template",
-   "options": "Item Tax Template"
+   "options": "Item Tax Template",
+   "read_only": 1
   },
   {
    "fieldname": "rev_item_tax_template",
    "fieldtype": "Link",
    "label": "Rev Item Tax Template",
    "options": "Item Tax Template"
+  },
+  {
+   "fieldname": "line_status",
+   "fieldtype": "Select",
+   "label": "Line Status",
+   "no_copy": 1,
+   "options": "\nLive\nHold\nClose\nCancelled",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rev_line_status",
+   "fieldtype": "Select",
+   "label": "Rev Line Status",
+   "options": "\nLive\nHold\nClose\nCancelled"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-05-27 18:15:43.157458",
+ "modified": "2026-06-04 10:28:11.858219",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Purchase Order Modification Request Detail",

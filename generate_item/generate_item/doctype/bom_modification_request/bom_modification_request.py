@@ -218,6 +218,11 @@ class BomModificationRequest(Document):
             if row.rev_rate:
                 update_data["rate"]      = row.rev_rate
                 update_data["base_rate"] = final_rate
+                
+            # ── UOM Change ──────────────────────────────────────────────
+            if row.rev_uom:
+                update_data["uom"] = row.rev_uom
+                update_data["stock_uom"] = row.rev_uom
 
             if final_qty or final_rate:
                 update_data["amount"]      = final_qty * final_rate
@@ -271,12 +276,13 @@ class BomModificationRequest(Document):
                         "has_variants", "include_item_in_manufacturing",
                     ],
                 )
+                effective_uom = row.rev_uom or stock_uom
                 update_data.update({
                     "item_code":                     row.rev_item,
                     "item_name":                     item_name,
                     "description":                   description,
-                    "uom":                           stock_uom,
-                    "stock_uom":                     stock_uom,
+                    "uom":                           effective_uom,
+                    "stock_uom":                     effective_uom,
                     "branch":                        branch,
                     "is_stock_item":                 is_stock_item,
                     "allow_alternative_item":        allow_alternative_item,
@@ -306,6 +312,7 @@ class BomModificationRequest(Document):
                     row.rev_item
                     or flt(row.rev_qty) > 0
                     or flt(row.rev_rate) > 0
+                    or  row.rev_uom
                     or row.rev_drawing_no
                     or row.rev_drawing_rev_no
                     or row.rev_pattern_drawing_no
@@ -334,11 +341,12 @@ class BomModificationRequest(Document):
                 )
 
                 # LAYER 2: seed all WO-facing fields via _qty_fields()
+                effective_uom = row.rev_uom or new_stock_uom
                 new_item_defaults = {
                     "item_name":                     new_item_name,
                     "description":                   new_description,
-                    "uom":                           new_stock_uom,
-                    "stock_uom":                     new_stock_uom,
+                    "uom":                           effective_uom,
+                    "stock_uom":                     effective_uom,
                     "is_stock_item":                 new_is_stock_item,
                     "allow_alternative_item":        new_allow_alt,
                     "has_variants":                  new_has_variants,

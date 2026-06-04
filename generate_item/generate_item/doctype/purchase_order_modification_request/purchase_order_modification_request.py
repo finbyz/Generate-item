@@ -5,7 +5,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.model.naming import make_autoname
 from frappe.utils import today, now, flt
-from erpnext.controllers.accounts_controller import update_child_qty_rate
+from erpnext.controllers.accounts_controller import get_payment_terms, update_child_qty_rate
 
 
 class PurchaseOrderModificationRequest(Document):
@@ -120,13 +120,58 @@ class PurchaseOrderModificationRequest(Document):
             self.set(hist_orig_field, orig_value)
             self.set(hist_rev_field,  rev_value)
 
+    # def update_purchase_order_commercial_details(self):
+    #     """Update only the changed Order Change fields back onto the Purchase Order"""
+
+    #     ORDER_CHANGE_MAP = [
+    #         # (pmr_rev_field, po_field)
+    #         ("rev_incoterm",               "incoterm"),
+    #         ("rev_payment_terms_template", "payment_terms_template"),
+    #         ("rev_terms",                  "tc_name"),
+    #         ("rev_insurance",              "custom_insurance"),
+    #         ("rev_mode_of_dispatch",       "custom_mode_of_dispatch"),
+    #         ("rev_freight_charges",        "freight_charges"),
+    #         ("rev_po_remarks",             "po_remarks"),
+    #         ("rev_group_same_items",       "group_same_items"),
+    #     ]
+
+    #     updates = []
+    #     params  = {"po_name": self.purchase_order_no}
+
+    #     for pmr_field, po_field in ORDER_CHANGE_MAP:
+    #         val = self.get(pmr_field)
+    #         if val is not None and val != "":
+    #             orig_val = self.get(pmr_field.replace("rev_", ""))
+    #             # Only update if the value actually changed
+    #             if str(val) != str(orig_val if orig_val is not None else ""):
+    #                 updates.append(f"`{po_field}` = %({pmr_field})s")
+    #                 params[pmr_field] = val
+
+    #     if updates:
+    #         frappe.db.sql(f"""
+    #             UPDATE `tabPurchase Order`
+    #             SET {", ".join(updates)}
+    #             WHERE name = %(po_name)s
+    #         """, params)
+
+    #         frappe.db.set_value(
+    #             "Purchase Order",
+    #             self.purchase_order_no,
+    #             "modified",
+    #             frappe.utils.now(),
+    #             update_modified=False,
+    #         )
+    #         frappe.db.commit()
+
+    
+
     def update_purchase_order_commercial_details(self):
         """Update only the changed Order Change fields back onto the Purchase Order"""
 
         ORDER_CHANGE_MAP = [
             # (pmr_rev_field, po_field)
             ("rev_incoterm",               "incoterm"),
-            # ("rev_payment_terms_template", "payment_terms_template"),
+            ("rev_payment_terms_template", "payment_terms_template"),
             ("rev_terms",                  "tc_name"),
             ("rev_insurance",              "custom_insurance"),
             ("rev_mode_of_dispatch",       "custom_mode_of_dispatch"),
@@ -137,6 +182,7 @@ class PurchaseOrderModificationRequest(Document):
 
         updates = []
         params  = {"po_name": self.purchase_order_no}
+        payment_terms_changed = False
 
         for pmr_field, po_field in ORDER_CHANGE_MAP:
             val = self.get(pmr_field)
@@ -146,6 +192,9 @@ class PurchaseOrderModificationRequest(Document):
                 if str(val) != str(orig_val if orig_val is not None else ""):
                     updates.append(f"`{po_field}` = %({pmr_field})s")
                     params[pmr_field] = val
+
+                    if pmr_field == "rev_payment_terms_template":
+                        payment_terms_changed = True
 
         if updates:
             frappe.db.sql(f"""
@@ -163,7 +212,61 @@ class PurchaseOrderModificationRequest(Document):
             )
             frappe.db.commit()
 
-    
+        # ── Payment Schedule Sync ──────────────────────────────────────────────
+        if payment_terms_changed:
+            self._sync_payment_schedule_to_po()
+
+
+    def _sync_payment_schedule_to_po(self):
+        """
+        Mirrors the JS payment_terms_template() logic:
+        calls get_payment_terms and rewrites the PO's payment_schedule child table.
+        """
+        po = frappe.get_doc("Purchase Order", self.purchase_order_no)
+
+        new_terms_template = self.rev_payment_terms_template
+        posting_date = po.get("transaction_date") or po.get("posting_date")
+
+        grand_total      = po.get("rounded_total") or po.get("grand_total")
+        base_grand_total = po.get("base_rounded_total") or po.get("base_grand_total")
+        bill_date        = po.get("bill_date")
+
+        # Fetch the new schedule — same server call the JS front-end makes
+        new_schedule = get_payment_terms(
+            terms_template   = new_terms_template,
+            posting_date     = posting_date,
+            grand_total      = grand_total,
+            base_grand_total = base_grand_total,
+            bill_date        = bill_date,
+        )
+
+        if not new_schedule:
+            return
+
+        # Delete the existing child rows from the DB
+        frappe.db.delete("Payment Schedule", {"parent": po.name, "parenttype": "Purchase Order"})
+
+        # Insert the fresh rows
+        for idx, term in enumerate(new_schedule, start=1):
+            row = frappe.new_doc("Payment Schedule")
+            row.update(term)
+            row.update({
+                "parent":      po.name,
+                "parenttype":  "Purchase Order",
+                "parentfield": "payment_schedule",
+                "idx":         idx,
+            })
+            row.db_insert()
+
+        # Bump the PO's modified timestamp so the UI knows to reload
+        frappe.db.set_value(
+            "Purchase Order",
+            po.name,
+            "modified",
+            frappe.utils.now(),
+            update_modified=False,
+        )
+        frappe.db.commit()
 
 
     def update_purchase_order_values(self):
@@ -342,20 +445,33 @@ class PurchaseOrderModificationRequest(Document):
                     },
                 )
 
-            if getattr(row, "line_status", None):
+           
+            
+            # ── Line Status (mirrors OMR CLEARABLE_FIELDS logic) ────────────────────
+            rev_line_status = getattr(row, "rev_line_status", None)
+
+            if rev_line_status is not None and rev_line_status != "":
+                if rev_line_status == "Live":
+                    # "Live" means clear the field on PO item
+                    so_line_status_value = ""
+                else:
+                    # "Cancelled" or any other value → write it
+                    so_line_status_value = rev_line_status
+
                 frappe.db.sql(
                     """
                     UPDATE `tabPurchase Order Item`
                     SET
-                        `custom_line_status` = %s,
+                        `line_status` = %s,
                         `modified`           = %s,
                         `modified_by`        = %s
                     WHERE
                         `name`   = %s
                         AND `parent` = %s
                     """,
-                    (row.line_status, _now, _user, po_item_name, self.purchase_order_no),
+                    (so_line_status_value, _now, _user, po_item_name, self.purchase_order_no),
                 )
+           
 
         self._apply_item_replacements(_now, _user)
         self.update_order_qty()
@@ -797,6 +913,9 @@ class PurchaseOrderModificationRequest(Document):
 
             if old_row.required_by != current_row.rev_required_by and current_row.rev_required_by:
                 old_data["rev_required_by"] = current_row.rev_required_by
+                changed = True
+            if old_row.rev_line_status != current_row.rev_line_status and current_row.rev_line_status:
+                old_data["rev_line_status"] = current_row.rev_line_status
                 changed = True
 
             if old_row.expected_delivery_date != current_row.rev_expected_delivery_date and current_row.rev_expected_delivery_date:

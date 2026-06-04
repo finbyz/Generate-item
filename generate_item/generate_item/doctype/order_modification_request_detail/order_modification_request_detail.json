@@ -22,6 +22,7 @@
   "rev_qty",
   "rev_rate",
   "bom_update_request",
+  "rev_uom",
   "item_description",
   "rev_do_not_explode",
   "rev_bom_no",
@@ -239,13 +240,20 @@
    "fieldtype": "Small Text",
    "label": "Rev Item Description",
    "read_only": 1
+  },
+  {
+   "fieldname": "rev_uom",
+   "fieldtype": "Link",
+   "label": "Rev UOM",
+   "no_copy": 1,
+   "options": "UOM"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-05-19 12:50:57.094952",
+ "modified": "2026-06-03 17:49:24.824031",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request Detail",
