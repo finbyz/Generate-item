@@ -127,6 +127,9 @@ frappe.ui.form.on("Gate Pass Inward", {
                             pending_items.forEach(item => {
                                 const row         = frm.add_child("items");
                                 row.sub_component = item.sub_component;
+                                row.description = item.description || "";
+                                row.remarks = item.remarks || "";
+
                                 row.sent_qty      = item.pending_qty || 0;
                                 row.pending_qty   = item.pending_qty || 0;
                                 row.quality       = "Good";
@@ -186,5 +189,37 @@ frappe.ui.form.on("Gate Pass Inward Detail", {
             }
         });
     },
+   
+});
+
+
+
+
+frappe.ui.form.on("Gate Pass Inward Item", {
+   sub_component: function(frm, cdt, cdn) {
+        let row = locals[cdt][cdn];
+
+        if (!row.sub_component) {
+            return;
+        }
+        if (row.sub_component) {
+            frappe.db.get_value(
+                "Gatepass Component",
+                row.sub_component,
+                ["description", "remarks"]
+            ).then(r => {
+                if (r.message) {
+                    frappe.model.set_value(
+                        cdt,
+                        cdn,
+                        "description",
+                        r.message.description || ""
+                    );
+
+                   
+                }
+            });
+        }
+    }
    
 });

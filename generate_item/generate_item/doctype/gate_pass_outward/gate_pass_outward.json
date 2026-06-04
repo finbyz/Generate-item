@@ -69,7 +69,7 @@
    "fieldname": "party_type",
    "fieldtype": "Select",
    "label": "Party Type",
-   "options": "\nSupplier\nCustomer\nJob Worker",
+   "options": "\nSupplier\nCustomer",
    "reqd": 1
   },
   {
@@ -94,7 +94,7 @@
    "fieldname": "purpose",
    "fieldtype": "Select",
    "label": "Purpose",
-   "options": "\nRepair\nJob Work\nTesting\nCustomer Complaint\nSales\nConsumption",
+   "options": "\nRepair\nJob Work\nBranch Transfer\nTesting\nCustomer Complaint\nSales\nConsumption",
    "reqd": 1
   },
   {
@@ -255,7 +255,7 @@
    "link_fieldname": "gate_pass_outward"
   }
  ],
- "modified": "2026-05-27 12:05:02.202889",
+ "modified": "2026-06-04 14:56:19.021267",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Outward",

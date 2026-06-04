@@ -80,7 +80,39 @@ frappe.ui.form.on("Gate Pass Outward Item", {
     items_remove(frm) {
         calculate_totals(frm);
     },
+    sub_component: function(frm, cdt, cdn) {
+        let row = locals[cdt][cdn];
+
+        if (!row.sub_component) {
+            return;
+        }
+        if (row.sub_component) {
+            frappe.db.get_value(
+                "Gatepass Component",
+                row.sub_component,
+                ["description", "remarks"]
+            ).then(r => {
+                if (r.message) {
+                    frappe.model.set_value(
+                        cdt,
+                        cdn,
+                        "description",
+                        r.message.description || ""
+                    );
+
+                    frappe.model.set_value(
+                        cdt,
+                        cdn,
+                        "remarks",
+                        r.message.remarks || ""
+                    );
+                }
+            });
+        }
+    }
 });
+
+
 
 frappe.ui.form.on("Gate Pass Outward Detail", {
     qty(frm, cdt, cdn) {
@@ -303,6 +335,9 @@ function _build_inward_doc(frm, pending_items, is_stock) {
                 const pending = item.pending_qty || 0;
                 const row = frappe.model.add_child(doc, "Gate Pass Inward Item", "items");
                 row.sub_component = item.sub_component;
+                row.description = item.description || "";
+                row.remarks = item.remarks || "";
+
                 row.sent_qty = pending;
                 row.pending_qty = pending;
                 row.quality = "Good";
