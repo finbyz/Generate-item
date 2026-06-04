@@ -827,8 +827,8 @@ def before_cancel_stock_entry(doc, method=None):
     Clear the stock_entry reference ONLY on Serial Numbers that are
     explicitly listed in the child rows' serial_no field.
     """
-    if doc.stock_entry_type != "Manufacture":
-        return
+    # if doc.stock_entry_type != "Manufacture":
+    #     return
 
     # ── Collect all serial numbers from child rows ────────────────────────
     serial_nos = []
