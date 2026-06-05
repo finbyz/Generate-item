@@ -1153,60 +1153,92 @@ def fetch_po_line_no_from_sales_order(doc, method=None):
 
     except Exception as e:
         frappe.log_error('DN Fetch PO Line No', f'Error populating po_line_no on DN {getattr(doc, "name", "Unsaved")}: {str(e)}')
-
-
-
+        
 
 def validate_free_items(doc):
     """
-    Ensure that if SO has free items (component_of),
-    those free items must be present in Delivery Note.
+    Validation Rules:
+
+    1. If parent item is not being delivered in DN:
+       -> Ignore its free items.
+
+    2. If parent item is being delivered in DN:
+       -> All corresponding free items from SO must be present in DN.
+       -> DN free item qty must exactly match SO free item qty.
+
+    3. Free items linked to other parent items should not affect validation.
     """
 
-    # Collect all linked Sales Orders from DN items
-    so_names = set(
+    errors = []
+
+    # All item codes present in Delivery Note
+    dn_item_codes = {d.item_code for d in doc.items}
+
+    # Map DN free items
+    # {(SO, item_code): qty}
+    dn_free_qty_map = {
+        (d.against_sales_order, d.item_code): flt(d.qty)
+        for d in doc.items
+        if d.is_free_item and d.component_of
+    }
+
+    # Sales Orders referenced in DN
+    so_names = {
         d.against_sales_order
         for d in doc.items
         if d.against_sales_order
-    )
-
-    if not so_names:
-        return
-
-    # DN item codes for quick lookup
-    dn_item_codes = {d.item_code for d in doc.items}
-
-    missing_items = []
+    }
 
     for so_name in so_names:
+
         so = frappe.get_doc("Sales Order", so_name)
 
-        # Find free items in SO
-        free_items = [
-            so_item
-            for so_item in so.items
-            if so_item.is_free_item and so_item.component_of and so_item.delivered_qty < so_item.qty
-        ]
+        for so_item in so.items:
+            
 
-        for free_item in free_items:
-            # If free item not present in DN
-            if free_item.item_code not in dn_item_codes:
-                missing_items.append({
-                    "free_item": free_item.item_code,
-                    "parent_item": free_item.component_of,
-                    "so": so_name
-                })
+            # Only free items
+            if not (so_item.is_free_item and so_item.component_of):
+                continue
 
-    if missing_items:
-        message = "<b>Missing Free Items in Delivery Note</b><br><br>"
-        for m in missing_items:
-            message += (
-                f"• Free Item <b>{m['free_item']}</b> "
-                f"linked with <b>{m['parent_item']}</b> "
-                f"in Sales Order <b>{m['so']}</b><br>"
+            parent_item = so_item.component_of
+
+            # Parent item not present in DN
+            # Skip validation completely
+            if parent_item not in dn_item_codes:
+                continue
+
+            # Free item should exist in DN
+            so_qty        = flt(so_item.qty)
+            so_del_qty    = flt(so_item.delivered_qty)
+            so_remaining  = so_qty - so_del_qty
+            # Free item already fully delivered
+            if so_remaining <= 0:
+                continue
+            dn_qty = dn_free_qty_map.get(
+                (so_name, so_item.item_code)
             )
 
-        frappe.throw(_(message), title=_("Free Item Validation Failed"))
+            if dn_qty is None:
+                errors.append(
+                    f"• Free Item <b>{so_item.item_code}</b> is required with "
+                    f"<b>{parent_item}</b>"
+                )
+                continue
+
+            # Quantity must exactly match SO
+            if flt(dn_qty) != flt(so_remaining):
+                errors.append(
+                    f"• Free Item <b>{so_item.item_code}</b> linked with "
+                    f"<b>{parent_item}</b> has quantity <b>{dn_qty}</b> in "
+                    f"Delivery Note but should be <b>{so_item.qty}</b> as per "
+                    f"Sales Order <b>{so_name}</b>."
+                )
+
+    if errors:
+        frappe.throw(
+            "<br>".join(errors),
+            title=_("Free Item Validation Failed")
+        )
 
 
 @frappe.whitelist()
@@ -1393,63 +1425,91 @@ def validate_dn_line_status(doc, method=None):
                 f"because Sales Order line has status '{line_status}'."
             )
 
-def handle_free_issue_item(doc,method=None):
+
+def handle_free_issue_item(doc, method=None):
+
     mismatch_rows = []
 
-    # ── Step 1: Loop through all DN items ────────────────────────
+    # All item codes present in current DN
+    dn_item_codes = {d.item_code for d in doc.items}
+
+    # ── Step 1: Loop through DN items ────────────────────────────
     for item in doc.items:
 
-        # Only check free items that have a linked SO child row
         if not item.is_free_item:
             continue
 
         if not item.so_detail:
             continue
 
-        # ── Step 2: Fetch the linked Sales Order Item row ────────
+        # ── Step 2: Fetch linked SO Item ─────────────────────────
         so_item = frappe.db.get_value(
             "Sales Order Item",
             item.so_detail,
-            ["name", "parent", "qty", "delivered_qty", "item_code"],
+            [
+                "name",
+                "parent",
+                "qty",
+                "delivered_qty",
+                "item_code",
+                "component_of"
+            ],
             as_dict=True
         )
 
         if not so_item:
-            # SO row not found — treat as mismatch (safe-fail)
             mismatch_rows.append({
-                "so_id"         : item.against_sales_order or "—",
-                "item_code"     : item.item_code or item.item_code,
-                "so_qty"        : "—",
-                "so_del_qty"    : "—",
-                "so_remaining"  : "—",
-                "dn_qty"        : flt(item.qty),
-                "error"         : True
+                "so_id": item.against_sales_order or "—",
+                "item_code": item.item_code,
+                "so_qty": "—",
+                "so_del_qty": "—",
+                "so_remaining": "—",
+                "dn_qty": flt(item.qty),
             })
             continue
 
-        so_qty        = flt(so_item.qty)
-        so_del_qty    = flt(so_item.delivered_qty)
-        so_remaining  = so_qty - so_del_qty
-        dn_qty        = flt(item.qty)
+        # ── Step 3: Parent item validation ───────────────────────
+        parent_item = so_item.component_of
 
-        # ── Step 3: Compare remaining SO qty with DN qty ─────────
-        if so_remaining != dn_qty:
+        # Not linked to any parent item
+        if not parent_item:
+            continue
+
+        # Parent item not being delivered in current DN
+        # Skip validation
+        if parent_item not in dn_item_codes:
+            continue
+
+        # ── Step 4: Remaining quantity calculation ───────────────
+        so_qty = flt(so_item.qty)
+        so_del_qty = flt(so_item.delivered_qty)
+        so_remaining = so_qty - so_del_qty
+
+        # Already fully delivered
+        if so_remaining <= 0:
+            continue
+
+        dn_qty = flt(item.qty)
+
+        # ── Step 5: Validate qty ─────────────────────────────────
+        if flt(so_remaining) != flt(dn_qty):
             mismatch_rows.append({
-                "so_id"         : item.against_sales_order or so_item.parent,
-                "item_code"     : item.item_code or so_item.item_code,
-                "so_qty"        : so_qty,
-                "so_del_qty"    : so_del_qty,
-                "so_remaining"  : so_remaining,
-                "dn_qty"        : dn_qty,
-                "error"         : False
+                "so_id": item.against_sales_order or so_item.parent,
+                "item_code": item.item_code or so_item.item_code,
+                "so_qty": so_qty,
+                "so_del_qty": so_del_qty,
+                "so_remaining": so_remaining,
+                "dn_qty": dn_qty,
             })
 
-
-    # ── Step 4: If mismatches found — build table and block submit ──
+    # ── Step 6: Show mismatch popup ──────────────────────────────
     if mismatch_rows:
 
-        # --- Build table rows ---
-        th = "padding:8px 12px; border:1px solid #d1d8dd; background:#f5f7fa; font-weight:600; color:#3d4349;"
+        th = (
+            "padding:8px 12px; border:1px solid #d1d8dd;"
+            "background:#f5f7fa; font-weight:600; color:#3d4349;"
+        )
+
         td = "padding:8px 12px; border:1px solid #d1d8dd;"
         td_center = td + " text-align:center;"
 
@@ -1458,84 +1518,89 @@ def handle_free_issue_item(doc,method=None):
                 <th style="{th}">Sales Order</th>
                 <th style="{th}">Item Code</th>
                 <th style="{th} text-align:center;">SO Qty</th>
-                <th style="{th} text-align:center;">SO Delivered Qty</th>
-                <th style="{th} text-align:center;">Remaining<br><small>(SO Qty − Delivered)</small></th>
+                <th style="{th} text-align:center;">Delivered Qty</th>
+                <th style="{th} text-align:center;">
+                    Remaining<br>
+                    <small>(SO Qty − Delivered)</small>
+                </th>
                 <th style="{th} text-align:center;">DN Qty</th>
-                
             </tr>
         """
 
         rows_html = ""
+
         for row in mismatch_rows:
             rows_html += f"""
                 <tr>
-                    <td style="{td}">{row["so_id"]}</td>
-                    <td style="{td}">{row["item_code"]}</td>
-                    <td style="{td_center}">{row["so_qty"]}</td>
-                    <td style="{td_center}">{row["so_del_qty"]}</td>
-                    <td style="{td_center} font-weight:700; color:#e2401c;">{row["so_remaining"]}</td>
-                    <td style="{td_center}">{row["dn_qty"]}</td>
-                    
+                    <td style="{td}">{row['so_id']}</td>
+                    <td style="{td}">{row['item_code']}</td>
+                    <td style="{td_center}">{row['so_qty']}</td>
+                    <td style="{td_center}">{row['so_del_qty']}</td>
+                    <td style="{td_center}; font-weight:700; color:#e2401c;">
+                        {row['so_remaining']}
+                    </td>
+                    <td style="{td_center}">
+                        {row['dn_qty']}
+                    </td>
                 </tr>
             """
-
-        # --- Assemble full message ---
 
         message = f"""
             <style>
                 .msgprint-dialog .modal-dialog {{
-                    max-width : 90vw  !important;
-                    width     : 90vw  !important;
-                    margin    : 30px auto !important;
+                    max-width: 90vw !important;
+                    width: 90vw !important;
                 }}
+
                 .msgprint-dialog .modal-body {{
-                    max-height : 65vh !important;
-                    overflow-y : auto !important;
-                    padding    : 20px !important;
+                    max-height: 65vh !important;
+                    overflow-y: auto !important;
                 }}
             </style>
 
-            <p style="color:#e2401c; font-weight:600; font-size:15px; margin-bottom:16px;">
-                Submission Blocked — {len(mismatch_rows)} free item(s) have a quantity mismatch.
+            <p style="
+                color:#e2401c;
+                font-weight:600;
+                font-size:15px;
+                margin-bottom:16px;
+            ">
+                Submission Blocked —
+                {len(mismatch_rows)} free item(s) have quantity mismatch.
             </p>
 
-            <div style="overflow-x:auto; width:100%;">
+            <div style="overflow-x:auto;">
                 <table style="
-                    table-layout    : fixed;
-                    width           : 100%;
-                    border-collapse : collapse;
-                    font-size       : 13px;
-                    font-family     : Arial, sans-serif;
-                    word-wrap       : break-word;
+                    width:100%;
+                    border-collapse:collapse;
+                    font-size:13px;
+                    table-layout:fixed;
                 ">
-                    <colgroup>
-                        <col style="width:20%;">  
-                        <col style="width:30%;">  
-                        <col style="width:10%;">  
-                        <col style="width:15%;">  
-                        <col style="width:15%;">  
-                        <col style="width:10%;">  
-                    </colgroup>
-                    <thead>{header_html}</thead>
-                    <tbody>{rows_html}</tbody>
+                    <thead>
+                        {header_html}
+                    </thead>
+                    <tbody>
+                        {rows_html}
+                    </tbody>
                 </table>
             </div>
 
             <p style="
-                margin-top:16px; background:#fff8e1;
+                margin-top:16px;
+                background:#fff8e1;
                 border-left:4px solid #f0ad4e;
-                padding:10px 16px; font-size:13px;
-                border-radius:4px; text-align:center;
+                padding:10px 16px;
+                border-radius:4px;
+                text-align:center;
             ">
-                <strong>Rule:</strong> For every free item,
-                <code>SO Qty &minus; SO Delivered Qty</code> must equal
-                <code>DN Qty</code> before submission.
+                <b>Rule:</b>
+                For free items whose parent item is present in the Delivery Note,
+                <code>SO Qty − Delivered Qty</code>
+                must equal
+                <code>DN Qty</code>.
             </p>
         """
 
-        # ── Step 5: Throw error — blocks submit, shows popup ─────
         frappe.throw(
-            title = "Free Item Quantity Mismatch — Submit Blocked",
-            msg   = message,
-          
+            msg=message,
+            title=_("Free Item Quantity Mismatch — Submit Blocked")
         )
