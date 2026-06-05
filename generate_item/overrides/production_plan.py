@@ -357,14 +357,18 @@ class ProductionPlan(_ProductionPlan):
     @frappe.whitelist()
     def make_work_order(self):
         from erpnext.manufacturing.doctype.work_order.work_order import get_default_warehouse
-        doc = frappe.get_all("Work Order", filters={"production_plan": self.name}, fields=["name"])
-        if doc:
-            frappe.throw("Work Order already exists")
+
+        # Count existing WOs vs needed
+        existing_wo = frappe.db.count('Work Order', filters={'production_plan': self.name})
+        total_needed = len(self.po_items or []) + len(self.sub_assembly_items or [])
+
+        if existing_wo >= total_needed:
+            frappe.throw("All Work Orders already exist for this Production Plan")
+
         wo_list, po_list = [], []
         subcontracted_po = {}
         default_warehouses = get_default_warehouse()
 
-        # Run cleanup before creating work orders
         if hasattr(self, 'po_items') and self.po_items:
             try:
                 cleanup_all_orphaned_references(self)

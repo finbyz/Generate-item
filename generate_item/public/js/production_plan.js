@@ -127,51 +127,50 @@ frappe.ui.form.on('Production Plan', {
         if (!frm.doc.name) return;
 
         // Check if Work Order exists for the current Production Plan
-        frappe.db.get_list('Work Order', {
-            filters: { 'production_plan': frm.doc.name },
-            fields: ['name'],
-            limit: 1
-        }).then(result => {
-            // Check if the "Work Order / Subcontract PO" button exists in the Create menu
-            const button_label = 'Work Order / Subcontract PO';
+        const button_label = 'Work Order / Subcontract PO';
 
-            // Remove the button if a Work Order exists
-            if (result.length > 0) {
-                try {
-                    frm.remove_custom_button(button_label, 'Create');
-                } catch (e) {
-                    console.warn(`Could not remove button "${button_label}" from Create menu:`, e);
+// Only show button on submitted Production Plan
+if (frm.doc.docstatus !== 1) {
+    try { frm.remove_custom_button(button_label, 'Create'); } catch(e) {}
+    return;
+}
+
+// Count existing Work Orders vs total needed
+frappe.db.get_list('Work Order', {
+    filters: { 'production_plan': frm.doc.name },
+    fields: ['name']
+}).then(wo_results => {
+    const existing_wo_count = wo_results.length;
+    const po_items_count = (frm.doc.po_items || []).length;
+    const sub_items_count = (frm.doc.sub_assembly_items || []).length;
+    const total_needed = po_items_count + sub_items_count;
+
+    // Remove button first to avoid duplicates
+    try { frm.remove_custom_button(button_label, 'Create'); } catch(e) {}
+
+    // Show button if any work order is still missing
+    if (existing_wo_count < total_needed) {
+        frm.add_custom_button(__(button_label), function () {
+            frappe.call({
+                method: 'run_doc_method',
+                args: {
+                    dt: frm.doctype,
+                    dn: frm.doc.name,
+                    method: 'make_work_order'
+                },
+                callback: function(r) {
+                    frm.reload_doc();
                 }
-            } else {
-                // Add the button if no Work Order exists
-                try {
-                    if (frm.docstatus == 0) {
-                        frm.add_custom_button(__(button_label), function () {
-                            frappe.call({
-                                method: 'erpnext.manufacturing.doctype.production_plan.production_plan.ProductionPlan.make_work_order',
-                                args: { name: frm.doc.name },
-                                callback: function (r) {
-                                    if (r.message) {
-                                        frappe.msgprint(__('Work Order(s) and/or Purchase Order(s) created successfully.'));
-                                        frm.reload_doc();
-                                    }
-                                }
-                            });
-                        }, __('Create'));
-                    }
-                } catch (e) {
-                    console.warn(`Could not add button "${button_label}" to Create menu:`, e);
-                }
-            }
-        }).catch(err => {
-            console.error('Error checking Work Order existence:', err);
-            frappe.msgprint({
-                title: __('Error'),
-                message: __('Failed to check Work Order existence. Please try again or contact the administrator.'),
-                indicator: 'red'
             });
+        }, __('Create'));
+    }
+}).catch(err => {
+    console.error('Error checking Work Order count:', err);
+
         });
     },
+
+  
 
     setup: function (frm) {
         frm.set_query('custom_batch_wise_assembly', function () {
