@@ -297,8 +297,8 @@ frappe.ui.form.on('Purchase Receipt', {
 
 
                                         row.project = item.project;
-
-                                        row.qty_in_stock_uom = item.qty_in_stock_uom;
+                                        // console.log(item.stock_qty);
+                                        row.qty_in_stock_uom = item.stock_qty ;
                                         row.expense_account = item.expense_account;
 
                                         row.custom_drg_and_pur_spec = item.custom_drg_and_pur_spec;

@@ -367,7 +367,8 @@ class ProductionPlan(_ProductionPlan):
 
         wo_list, po_list = [], []
         subcontracted_po = {}
-        default_warehouses = get_default_warehouse()
+        
+        default_warehouses = get_default_warehouse(self.company)
 
         if hasattr(self, 'po_items') and self.po_items:
             try:

@@ -185,8 +185,14 @@ class BomModificationRequest(Document):
         if not self.bom:
             return
 
+        # current_max_idx = (
+        #     frappe.db.get_value("BOM Item", {"parent": self.bom}, "max(idx)") or 0
+        # )
         current_max_idx = (
-            frappe.db.get_value("BOM Item", {"parent": self.bom}, "max(idx)") or 0
+            frappe.db.sql(
+                "SELECT COALESCE(MAX(idx), 0) FROM `tabBOM Item` WHERE parent = %s",
+                (self.bom,),
+            )[0][0] or 0
         )
         needs_explosion_rebuild = False
         branch = self.branch
