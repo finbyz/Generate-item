@@ -117,7 +117,10 @@ class CustomPurchaseReceipt(CustomBuyingController, PurchaseReceipt):
         self.validate_cwip_accounts()
         self.validate_provisional_expense_account()
 
-        self.check_on_hold_or_closed_status()
+        self.check_for_on_hold_or_closed_status(
+             "Purchase Order",
+             "purchase_order"
+        )
 
         if getdate(self.posting_date) > getdate(nowdate()):
             throw(_("Posting Date cannot be future date"))

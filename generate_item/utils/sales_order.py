@@ -435,3 +435,30 @@ def validate_free_items_component(doc, method=None):
                     _("Row {0}: Free item <b>{1}</b> cannot be linked to another free item <b>{2}</b>.")
                     .format(item.idx, item.item_code, parent_item.item_code)
                 )
+
+
+
+
+
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def get_linked_addresses(doctype, txt, searchfield, start, page_len, filters):
+
+    return frappe.db.sql("""
+        SELECT DISTINCT addr.name
+        FROM `tabAddress` addr
+        INNER JOIN `tabDynamic Link` dl
+            ON dl.parent = addr.name
+        WHERE dl.parenttype = 'Address'
+            AND dl.link_doctype = %(link_doctype)s
+            AND dl.link_name = %(link_name)s
+            AND addr.name LIKE %(txt)s
+        ORDER BY addr.name
+        LIMIT %(start)s, %(page_len)s
+    """, {
+        "link_doctype": filters.get("link_doctype"),
+        "link_name": filters.get("link_name"),
+        "txt": f"%{txt}%",
+        "start": start,
+        "page_len": page_len,
+    })

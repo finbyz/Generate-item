@@ -206,11 +206,17 @@
                 label: __("Custom Shipping Address"),
                 in_list_view: 1,
                 get_query: () => {
+                    
                     return {
-                        filters: [
-                            ['Address', 'link_doctype', '=', 'Customer'],
-                            ['Address', 'link_name', '=', frm.doc.customer]
-                        ]
+                         query: "generate_item.utils.sales_order.get_linked_addresses",
+                filters: {
+                    link_doctype: "Customer",
+                    link_name: frm.doc.customer
+                }
+                        // filters: [
+                        //     ['Address', 'link_doctype', '=', 'Customer'],
+                        //     ['Address', 'link_name', '=', frm.doc.customer]
+                        // ]
                     };
                 },
             },
@@ -591,20 +597,23 @@ frappe.ui.form.on('Sales Order', {
 
         frm.set_query("company_address", () => {
             return {
-                filters: [
-                    ["Address", "link_doctype", "=", "Company"],
-                    ["Address", "link_name", "=", frm.doc.company]
-                ]
+                 query: "generate_item.utils.sales_order.get_linked_addresses",
+                filters: {
+                    link_doctype: "Company",
+                    link_name: frm.doc.company
+                }
             };
         });
-        frm.set_query('shipping_address_name', () => {
+        
+        frm.set_query('shipping_address_name', function() {
             return {
-                filters: [
-                    ['Address', 'link_doctype', '=', 'Customer'],
-                    ['Address', 'link_name', '=', frm.doc.customer]
-                ]
+                query: "generate_item.utils.sales_order.get_linked_addresses",
+                filters: {
+                    link_doctype: "Customer",
+                    link_name: frm.doc.customer
+                }
             };
-        });
+});
 
         frm.add_custom_button("Open Item Generator List", function () {
             try {
@@ -629,10 +638,11 @@ frappe.ui.form.on('Sales Order', {
 
         frm.fields_dict["items"].grid.get_field("custom_shipping_address").get_query = function (doc, cdt, cdn) {
             return {
-                filters: [
-                    ['Address', 'link_doctype', '=', 'Customer'],
-                    ['Address', 'link_name', '=', frm.doc.customer]
-                ]
+                 query: "generate_item.utils.sales_order.get_linked_addresses",
+                filters: {
+                    link_doctype: "Customer",
+                    link_name: frm.doc.customer
+                }
             };
         };
 
@@ -865,10 +875,15 @@ frappe.ui.form.on('Sales Order', {
     customer: function (frm) {
         frm.set_query('shipping_address_name', function () {
             return {
-                filters: [
-                    ['Address', 'link_doctype', '=', 'Customer'],
-                    ['Address', 'link_name', '=', frm.doc.customer],
-                ]
+                 query: "generate_item.utils.sales_order.get_linked_addresses",
+                filters: {
+                    link_doctype: "Customer",
+                    link_name: frm.doc.customer
+                }
+                // filters: [
+                //     ['Address', 'link_doctype', '=', 'Customer'],
+                //     ['Address', 'link_name', '=', frm.doc.customer],
+                // ]
             };
         });
     },
