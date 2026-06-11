@@ -356,14 +356,44 @@ class ProductionPlan(_ProductionPlan):
 
     @frappe.whitelist()
     def make_work_order(self):
+        
         from erpnext.manufacturing.doctype.work_order.work_order import get_default_warehouse
 
-        # Count existing WOs vs needed
-        existing_wo = frappe.db.count('Work Order', filters={'production_plan': self.name})
-        total_needed = len(self.po_items or []) + len(self.sub_assembly_items or [])
+        # # Count existing WOs vs needed
+        # existing_wo = frappe.db.count('Work Order', filters={'production_plan': self.name})
+        # total_needed = len(self.po_items or []) + len(self.sub_assembly_items or [])
 
-        if existing_wo >= total_needed:
+        # if existing_wo >= total_needed:
+        #     frappe.throw("All Work Orders already exist for this Production Plan")
+        
+        existing_wo = frappe.get_all(
+            'Work Order',
+            filters={
+                'production_plan': self.name,
+                'docstatus': ['in', [0, 1]]
+            },
+            fields=['name', 'production_plan_item', 'production_plan_sub_assembly_item']
+        )
+
+        # Collect existing references for both finished goods and sub-assemblies
+        existing_fg_refs = {wo['production_plan_item'] for wo in existing_wo if wo.get('production_plan_item')}
+        existing_sa_refs = {wo['production_plan_sub_assembly_item'] for wo in existing_wo if wo.get('production_plan_sub_assembly_item')}
+
+        # Check each po_item (finished goods)
+        fg_covered = all(
+            getattr(item, 'name', None) in existing_fg_refs
+            for item in (self.po_items or [])
+        )
+
+        # Check each sub_assembly_item
+        sa_covered = all(
+            getattr(item, 'name', None) in existing_sa_refs
+            for item in (self.sub_assembly_items or [])
+        )
+
+        if fg_covered and sa_covered:
             frappe.throw("All Work Orders already exist for this Production Plan")
+            return
 
         wo_list, po_list = [], []
         subcontracted_po = {}
@@ -465,6 +495,14 @@ class ProductionPlan(_ProductionPlan):
                              item["custom_ga_drawing_rev_no"] = po_source.custom_drawing_rev_no
 
             # --- End Custom Logic Injection ---
+            
+            ppi_ref = item.get("production_plan_item")
+            if ppi_ref and frappe.db.exists("Work Order", {
+                "production_plan": self.name,
+                "production_plan_item": ppi_ref,
+                "docstatus": ["in", [0, 1]]
+            }):
+                continue  # WO already exists in draft or submitted, skip
 
             work_order = self.create_work_order(item)
             if work_order:
@@ -920,9 +958,18 @@ class ProductionPlan(_ProductionPlan):
 
     def make_work_order_for_subassembly_items(self, wo_list, subcontracted_po, default_warehouses):
         """Override to ensure sub_assembly_items get correct values from Sales Order Items"""
+        
+
         for row in self.sub_assembly_items:
             sub_item_name = getattr(row, "name", "Unknown")
             self._populate_subassembly_item_from_sales_order(row)
+            # SKIP if WO already exists in draft or submitted state
+            if frappe.db.exists("Work Order", {
+                "production_plan": self.name,
+                "production_plan_sub_assembly_item": row.name,
+                "docstatus": ["in", [0, 1]]
+            }):
+                continue
             
             if row.type_of_manufacturing == "Subcontract":
                 subcontracted_po.setdefault(row.supplier, []).append(row)
