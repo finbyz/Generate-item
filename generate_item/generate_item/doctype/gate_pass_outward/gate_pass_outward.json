@@ -1,5 +1,6 @@
 {
  "actions": [],
+ "allow_bulk_edit": 1,
  "allow_rename": 1,
  "autoname": "naming_series:",
  "creation": "2026-05-07 16:35:37.801397",
@@ -16,6 +17,8 @@
   "date",
   "party_name",
   "returnable",
+  "po_no",
+  "email_by",
   "transport_details_section",
   "transporter_name",
   "lr_no",
@@ -26,6 +29,7 @@
   "is_stock_item",
   "default_source_warehouse",
   "column_break_9zur",
+  "address",
   "section_break_kw9h",
   "items",
   "item_detail",
@@ -37,8 +41,10 @@
   "column_break_idow",
   "total_value",
   "gross_weight",
+  "note",
   "status",
-  "amended_from"
+  "amended_from",
+  "format"
  ],
  "fields": [
   {
@@ -243,6 +249,38 @@
    "fieldtype": "Float",
    "label": "Total GP Qty",
    "read_only": 1
+  },
+  {
+   "fieldname": "po_no",
+   "fieldtype": "Link",
+   "label": "PO No.",
+   "options": "Purchase Order"
+  },
+  {
+   "fieldname": "email_by",
+   "fieldtype": "Link",
+   "label": "Email By",
+   "options": "User"
+  },
+  {
+   "default": "FORMAT NO: F-P-20-07 REV NO.: 00 REV DATE: 01.04.2026",
+   "fieldname": "format",
+   "fieldtype": "Data",
+   "label": "FORMAT",
+   "read_only": 1,
+   "translatable": 1
+  },
+  {
+   "fieldname": "address",
+   "fieldtype": "Link",
+   "label": "Address",
+   "options": "Address"
+  },
+  {
+   "fieldname": "note",
+   "fieldtype": "Select",
+   "label": "Note",
+   "options": "\nNOTE FOR SALE\nNO COMMERCIAL VALUE"
   }
  ],
  "grid_page_length": 50,
@@ -255,7 +293,7 @@
    "link_fieldname": "gate_pass_outward"
   }
  ],
- "modified": "2026-06-04 14:56:19.021267",
+ "modified": "2026-06-12 13:04:34.668688",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Outward",
