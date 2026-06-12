@@ -51,7 +51,7 @@ frappe.ui.form.on('BOM', {
             if (!frm.doc.custom_batch_no) {
                 return {
                     filters: {
-                        name: ["is", "set to", null]  // Always false condition
+                        name: ["is", "not set"]  // Always false condition
                     }
                 };
             }

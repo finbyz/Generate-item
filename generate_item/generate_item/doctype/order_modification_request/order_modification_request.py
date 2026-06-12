@@ -405,6 +405,19 @@ class OrderModificationRequest(Document):
             # - Existing item: use row.item
             is_new_item    = bool(not row.sales_order_item_name and getattr(row, "rev_item", None))
             effective_item = row.rev_item if is_new_item else row.item
+            # ── Always carry forward the existing SO item description ────────────
+            existing_description = ""
+            if row.sales_order_item_name:
+                existing_description = frappe.db.get_value(
+                    "Sales Order Item", row.sales_order_item_name, "description"
+                ) or ""
+            # Fallback to Item master if SO description is empty
+            if not existing_description:
+                lookup_item = row.rev_item or row.item
+                if lookup_item:
+                    existing_description = frappe.db.get_value(
+                        "Item", lookup_item, "description"
+                    ) or ""
 
             if row.sales_order_item_name:
                 # Existing SO item — update in place
@@ -413,6 +426,7 @@ class OrderModificationRequest(Document):
                     "item_code": effective_item,
                     "qty":       qty,
                     "rate":      rate,
+                    "description": existing_description,
                 })
             else:
                 # New item — insert into SO
@@ -421,6 +435,7 @@ class OrderModificationRequest(Document):
                     "item_code": effective_item,  
                     "qty":       qty,
                     "rate":      rate,
+                    "description": existing_description,
                 })
 
         so.save(ignore_permissions=True)

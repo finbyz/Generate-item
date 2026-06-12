@@ -1,5 +1,6 @@
 {
  "actions": [],
+ "allow_bulk_edit": 1,
  "allow_rename": 1,
  "autoname": "BMR-.YYYY.-.MM.-.####",
  "creation": "2026-03-26 11:56:05.465611",
@@ -77,6 +78,7 @@
   {
    "fieldname": "date",
    "fieldtype": "Date",
+   "hidden": 1,
    "label": "Date"
   },
   {
@@ -132,11 +134,11 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-04-20 10:55:15.464330",
+ "modified": "2026-06-12 17:50:25.767607",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Bom Modification Request",
- "naming_rule": "Expression (old style)",
+ "naming_rule": "Expression",
  "owner": "Administrator",
  "permissions": [
   {
