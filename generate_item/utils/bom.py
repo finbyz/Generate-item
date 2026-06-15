@@ -538,3 +538,31 @@ def validate_bom_batch_reference(self,method):
                     """,
                     title="Invalid BOM Reference"
                 )
+@frappe.whitelist()
+def get_sub_assembly_boms(doctype, txt, searchfield, start, page_len, filters):
+    item_code = filters.get("item_code")
+    branch = filters.get("branch")
+
+    return frappe.db.sql("""
+        SELECT
+            b.name,
+            b.item,
+            b.branch
+        FROM
+            `tabBOM` b
+        WHERE
+            b.item = %(item_code)s
+            AND b.is_active = 1
+            AND b.docstatus IN (0, 1)
+            AND (b.branch = %(branch)s OR b.branch IS NULL OR b.branch = '')
+            AND (b.custom_batch_no IS NULL OR b.custom_batch_no = '')
+            AND b.name LIKE %(txt)s
+        ORDER BY b.creation DESC
+        LIMIT %(start)s, %(page_len)s
+    """, {
+        "item_code": item_code,
+        "branch": branch,
+        "txt": f"%{txt}%",
+        "start": start,
+        "page_len": page_len
+    })                

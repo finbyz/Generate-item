@@ -47,14 +47,13 @@ frappe.ui.form.on('BOM', {
         //     };
         // });
         frm.set_query("sales_order", function() {
-            // If no batch is selected → return an empty filter (no results)
-            if (!frm.doc.custom_batch_no) {
-                return {
-                    filters: {
-                        name: ["is", "not set"]  // Always false condition
-                    }
-                };
+    if (!frm.doc.custom_batch_no) {
+        return {
+            filters: {
+                name: ["=", "__invalid__"]
             }
+        };
+    }
 
             // When batch is selected → apply real filters
             return {
@@ -70,30 +69,15 @@ frappe.ui.form.on('BOM', {
         }, __('Create'));
         
         frm.set_query('bom_no', 'items', function(doc, cdt, cdn) {
-            let row = locals[cdt][cdn];
-            let filters = [
-                ['item', '=', row.item_code],
-                ['is_active', '=', 1],
-                ['docstatus', 'in', [0, 1]],
-                ['custom_batch_no', 'is', 'not set']
-            ];
-            
-            // Add branch filter from parent BOM
-            if (doc.branch) {   
-                filters.push(['branch', '=', doc.branch]);
-            }
-            
-            // Add batch_no_ref filter from BOM Item row if available
-            // Check batch_no_ref first, fallback to custom_batch_no if batch_no_ref doesn't exist
-            let batch_ref = row.batch_no_ref || row.custom_batch_no;
-            if (batch_ref) {
-                filters.push(['custom_batch_no', '=', batch_ref]);
-            }
-            
-            return {
-                filters: filters
-            };
-        });
+    let row = locals[cdt][cdn];
+    return {
+        query: "generate_item.utils.bom.get_sub_assembly_boms",
+        filters: {
+            item_code: row.item_code,
+            branch: doc.branch || ""
+        }
+    };
+});
         frm.set_query("custom_batch_no", () => {
     if (!frm.doc.item || !frm.doc.branch) {
         return {
