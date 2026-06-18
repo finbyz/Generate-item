@@ -11,6 +11,7 @@
   "branch",
   "naming_series",
   "party_type",
+  "address",
   "purpose",
   "stock_entry",
   "column_break_ldpw",
@@ -29,7 +30,6 @@
   "is_stock_item",
   "default_source_warehouse",
   "column_break_9zur",
-  "address",
   "section_break_kw9h",
   "items",
   "item_detail",
@@ -293,7 +293,7 @@
    "link_fieldname": "gate_pass_outward"
   }
  ],
- "modified": "2026-06-12 13:04:34.668688",
+ "modified": "2026-06-18 10:41:47.673907",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Outward",

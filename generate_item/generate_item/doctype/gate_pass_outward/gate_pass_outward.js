@@ -3,7 +3,25 @@
 
 
 frappe.ui.form.on("Gate Pass Outward", {
+    setup(frm) {
+        frm.set_query("address", function () {
+        return {
+            query: "generate_item.utils.sales_order.get_linked_addresses",
+            filters: {
+                link_doctype: frm.doc.party_type,
+                link_name: frm.doc.party_name
+            }
+        };
+});
+    },
+    party_type(frm) {
+        frm.set_value("party_name", "");
+        frm.set_value("address", "");
+    },
 
+    party_name(frm) {
+        frm.set_value("address", "");
+    },
     onload(frm) {
         frm.set_query("item", "item_detail", () => ({
             filters: { is_stock_item: 1 }
