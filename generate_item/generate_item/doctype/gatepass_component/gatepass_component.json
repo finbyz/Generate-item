@@ -1,5 +1,6 @@
 {
  "actions": [],
+ "allow_bulk_edit": 1,
  "allow_rename": 1,
  "autoname": "SC-.####",
  "creation": "2026-05-07 16:09:55.748882",
@@ -32,6 +33,7 @@
    "label": "Component Details"
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "sub_component_name",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -143,11 +145,11 @@
    "link_fieldname": "sub_component"
   }
  ],
- "modified": "2026-06-04 15:06:14.423756",
+ "modified": "2026-06-18 16:53:29.165519",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gatepass Component",
- "naming_rule": "Expression (old style)",
+ "naming_rule": "Expression",
  "owner": "Administrator",
  "permissions": [
   {

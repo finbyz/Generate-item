@@ -49,8 +49,6 @@ def get_conditions(filters):
 
 def get_data(conditions, filters):
 
-	
-
 	query = f"""
 		SELECT
 			pr.branch,
@@ -60,7 +58,7 @@ def get_data(conditions, filters):
 			pri.po_line_no as po_line,
 			po.transaction_date as po_date,
 			pr.supplier ,
-			hn.heat_no as heat_no,
+			GROUP_CONCAT(DISTINCT hn.heat_no ORDER BY hn.idx SEPARATOR ', ') as heat_no,
 			pri.custom_batch_no,
 			pri.description,
 			pr.bill_no,
@@ -82,7 +80,7 @@ def get_data(conditions, filters):
 			qi.creation as inspection_date
 		FROM
 			`tabQuality Inspection` qi
-		INNER JOIN 
+		LEFT JOIN 
 			`tabQuality Inspection Heat No` hn ON hn.parent = qi.name
 		INNER JOIN
 			`tabPurchase Receipt Item` pri ON pri.parent = qi.reference_name 
@@ -96,6 +94,9 @@ def get_data(conditions, filters):
 			qi.docstatus != 2
 			AND pr.docstatus != 2
 			AND {conditions}
+
+		GROUP BY
+			qi.name
 
 		ORDER BY
 			pr.posting_date DESC,

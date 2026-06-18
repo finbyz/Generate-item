@@ -19,9 +19,7 @@ frappe.ui.form.on("Gate Pass Outward", {
         frm.set_value("address", "");
     },
 
-    party_name(frm) {
-        frm.set_value("address", "");
-    },
+    
     onload(frm) {
         frm.set_query("item", "item_detail", () => ({
             filters: { is_stock_item: 1 }
