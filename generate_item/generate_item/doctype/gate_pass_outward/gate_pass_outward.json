@@ -69,6 +69,7 @@
    "in_list_view": 1,
    "label": "Naming Series",
    "options": "GPOS.fiscal.####\nGPOR.fiscal.####\nGPON.fiscal.####",
+   "read_only": 1,
    "reqd": 1
   },
   {
@@ -293,7 +294,7 @@
    "link_fieldname": "gate_pass_outward"
   }
  ],
- "modified": "2026-06-19 10:55:32.278414",
+ "modified": "2026-06-19 11:09:14.583439",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Outward",
