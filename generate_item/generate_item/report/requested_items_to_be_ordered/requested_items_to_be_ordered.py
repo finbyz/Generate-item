@@ -21,6 +21,7 @@ def get_columns():
     return [
         {"label": "Material Request", "fieldname": "name", "fieldtype": "Link", "options": "Material Request", "width": 160},
 		{"label": "Batch No Ref", "fieldname": "custom_batch_no", "fieldtype": "Link", "options": "Batch", "width": 160},
+  {"label": "Branch", "fieldname": "branch", "fieldtype": "Link", "options": "Branch", "width": 140},
         {"label": "MR Type", "fieldname": "material_request_type", "width": 120},
         {"label": "Status", "fieldname": "status", "width": 120},
         {"label": "Posting Date", "fieldname": "transaction_date", "fieldtype": "Date", "width": 100},
@@ -58,17 +59,43 @@ def get_columns():
 		{"label": "121+", "fieldname": "range_121_above", "fieldtype": "Float", "width": 100},
 
         {"label": "Warehouse", "fieldname": "warehouse", "fieldtype": "Link", "options": "Warehouse", "width": 160},
-        {"label": "Company", "fieldname": "company", "width": 200},
+		
+		{"label": "Company", "fieldname": "company", "width": 200},
     ]
 
+def get_user_branches():
+    """Return allowed branches for logged in user"""
+
+
+    branches = frappe.get_all(
+        "User Permission",
+        filters={
+            "user": frappe.session.user,
+            "allow": "Branch"
+        },
+        pluck="for_value"
+    )
+
+    return branches
 
 def get_data(filters):
 	conditions = []
 	values = {}
+	# Branch permission control
+	allowed_branches = get_user_branches()
+
+	if allowed_branches:
+		conditions.append("mr.branch IN %(allowed_branches)s")
+		values["allowed_branches"] = tuple(allowed_branches)
 
 	if filters.get("company"):
 		conditions.append("mr.company = %(company)s")
 		values["company"] = filters.get("company")
+
+	# Branch filter
+	if filters.get("branch"):
+		conditions.append("mr.branch = %(branch)s")
+		values["branch"] = filters.get("branch")
 
 	# filter by created by (multi or single)
 	created_by = filters.get("created_by")

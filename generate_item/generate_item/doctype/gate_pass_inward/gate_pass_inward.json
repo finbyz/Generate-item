@@ -1,5 +1,6 @@
 {
  "actions": [],
+ "allow_bulk_edit": 1,
  "allow_rename": 1,
  "autoname": "naming_series:",
  "creation": "2026-05-07 15:15:37.478899",
@@ -111,6 +112,7 @@
    "fieldtype": "Select",
    "label": "Naming Series",
    "options": "GPIS.fiscal.####\nGPIR.fiscal.####\nGPIN.fiscal.####",
+   "read_only": 1,
    "reqd": 1
   },
   {
@@ -197,7 +199,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-05-25 09:52:28.577497",
+ "modified": "2026-06-19 16:36:47.624322",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Inward",

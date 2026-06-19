@@ -3,12 +3,38 @@
 // // For license information, please see license.txt
 
 
+
+
+function set_naming_series_by_branch(frm) {
+    const branch_series_map = {
+        "Rabale": "GPIR.fiscal.####",
+        "Sanand": "GPIS.fiscal.####",
+        "Nandikoor": "GPIN.fiscal.####"
+    };
+
+    if (frm.doc.branch && branch_series_map[frm.doc.branch]) {
+        frm.set_value(
+            "naming_series",
+            branch_series_map[frm.doc.branch]
+        );
+    }
+}
+
+
 frappe.ui.form.on("Gate Pass Inward", {
 
     onload(frm) {
         frm.set_query("gate_pass_outward", () => ({
             filters: { returnable: "Yes", docstatus: 1 }
         }));
+        if (frm.is_new() && frm.doc.branch) {
+            set_naming_series_by_branch(frm);
+        }
+    },
+    branch(frm) {
+        if (frm.is_new() && frm.doc.branch) {
+            set_naming_series_by_branch(frm);
+        }
     },
 
     gate_pass_outward(frm) {

@@ -75,6 +75,17 @@ frappe.query_reports["Requested Items To Be Ordered"] = {
             },
         },
         {
+            fieldname: "branch",
+            label: __("Branch"),
+            fieldtype: "Link",
+            options: "Branch",
+            on_change: function () {
+                frappe.query_report.refresh().then(() => {
+                    unchecked_all_checkbox();
+                });
+            },
+        },
+        {
             fieldname: "from_date",
             label: __("From Date"),
             fieldtype: "Date",
