@@ -9,15 +9,15 @@
  "field_order": [
   "section_break_2ovn",
   "branch",
-  "naming_series",
-  "party_type",
-  "address",
   "purpose",
+  "party_type",
+  "naming_series",
   "stock_entry",
   "column_break_ldpw",
   "date",
-  "party_name",
   "returnable",
+  "party_name",
+  "address",
   "po_no",
   "email_by",
   "transport_details_section",
@@ -273,7 +273,7 @@
   {
    "fieldname": "address",
    "fieldtype": "Link",
-   "label": "Address",
+   "label": "Party Address",
    "options": "Address"
   },
   {
@@ -293,7 +293,7 @@
    "link_fieldname": "gate_pass_outward"
   }
  ],
- "modified": "2026-06-18 10:41:47.673907",
+ "modified": "2026-06-19 10:55:32.278414",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Outward",
