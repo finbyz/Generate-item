@@ -6,7 +6,7 @@ function custom_transfer_materials(frm)
   
             // let $btn = frm.page.body.find('button[data-fieldname="transfer_materials"]');
             let $btn = frm.fields_dict['transfer_materials'].$input;
-            // console.log("transfer_materials btn ref",$btn)
+            console.log("transfer_materials btn ref",$btn)
             
             if ($btn.length) {
                 console.log(" Button found via data-fieldname");
@@ -23,7 +23,7 @@ function custom_transfer_materials(frm)
 
                     frm.set_value("consider_minimum_order_qty", 0);
 
-                    if (frm.doc.ignore_existing_ordered_qty) {
+                    if (!frm.doc.ignore_existing_ordered_qty) {
                         frm.events.get_items_for_material_requests(frm);
                     } else {
                         let warehouses_promise = Promise.resolve([]);
@@ -101,13 +101,13 @@ frappe.ui.form.on('Production Plan', {
             update_actual_qty_for_items(frm);
         }
         custom_transfer_materials(frm)
-
+    
 
     },
 
     refresh: function (frm) {
-
-        custom_transfer_materials(frm)
+         
+         custom_transfer_materials(frm)
 
 
         if (frm.doc.docstatus === 0) {
@@ -222,13 +222,32 @@ frappe.db.get_list('Work Order', {
             "Nandikoor": "PPON.fiscal.####"
         };
 
+        const sub_assembly_warehouse_map = {
+            "Sanand": "Sanand Semi Finished - SVIPL",
+            "Rabale": "Rabale Semi Finished - SVIPL",
+            "Nandikoor": "Nandikoor Semi Finished - SVIPL"
+        };
+
         let naming_series = branch_series_map[frm.doc.branch];
 
         if (naming_series && frm.doc.naming_series !== naming_series) {
             frm.set_value("naming_series", naming_series);
         }
 
-        // Your existing logic
+        // Sub Assembly Warehouse
+        const sub_assembly_warehouse =
+            sub_assembly_warehouse_map[frm.doc.branch];
+
+        if (sub_assembly_warehouse) {
+            frm.set_value(
+                "sub_assembly_warehouse",
+                sub_assembly_warehouse
+            );
+        } else {
+            frm.set_value("sub_assembly_warehouse", "");
+        }
+
+       
         if (frm.doc.sales_orders && frm.doc.sales_orders.length > 0) {
             frm.trigger("get_sales_orders");
         }
