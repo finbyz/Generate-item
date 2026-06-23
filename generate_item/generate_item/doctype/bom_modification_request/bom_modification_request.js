@@ -2,17 +2,17 @@
 // For license information, please see license.txt
 
 frappe.ui.form.on("Bom Modification Request", {
-	refresh(frm) {
+    refresh(frm) {
 
-	},
-     setup(frm) {
+    },
+    setup(frm) {
 
         frm.set_query("bom", function () {
             let filters = {
                 docstatus: 1,
                 is_active: 1,
-                
-                
+
+
             };
             if (frm.doc.branch) {
                 filters["branch"] = frm.doc.branch;
@@ -31,7 +31,7 @@ frappe.ui.form.on("Bom Modification Request", {
                 doctype: "BOM",
                 name: frm.doc.bom
             },
-            callback: function(r) {
+            callback: function (r) {
                 if (!r.message) return;
 
                 let bom = r.message;
@@ -43,31 +43,31 @@ frappe.ui.form.on("Bom Modification Request", {
                 frm.set_value("item_description", bom.description);
                 frm.set_value("batch_no_ref", bom.custom_batch_no || "");
 
-               
+
             }
         });
 
-       
+
     },
     get_item(frm) {
-        
-        if ( !frm.doc.bom ) {
+
+        if (!frm.doc.bom) {
             frappe.msgprint(`Please select BOM No first`);
             return;
         }
-        
+
 
         fetch_items_dynamic(frm);
     },
-   
+
     get_link_documents(frm) {
-       
+
         if (!frm.doc.items || !frm.doc.items.length) {
             frappe.msgprint("Please add BOM Items first");
             return;
         }
 
-        
+
 
         // Clear existing rows
         frm.clear_table("link_documents");
@@ -77,7 +77,7 @@ frappe.ui.form.on("Bom Modification Request", {
             freeze: true,
             freeze_message: __("Fetching Linked Documents..."),
             args: {
-                items:  frm.doc.items
+                items: frm.doc.items
             },
             callback: function (r) {
                 if (!r.message) return;
@@ -101,7 +101,7 @@ frappe.ui.form.on("Bom Modification Request", {
 
 function fetch_items_dynamic(frm) {
     let ref_name;
-   
+
     if (frm.doc.bom) {
         ref_name = frm.doc.bom;
     }
@@ -117,10 +117,10 @@ function fetch_items_dynamic(frm) {
             if (!r.message) return;
             // BOM
             frm.clear_table("items");
-            if (r.message.items ) {
+            if (r.message.items) {
                 (r.message.items || []).forEach(item => {
                     let row = frm.add_child("items");
-                    row.bom_item_name = item.name ;
+                    row.bom_item_name = item.name;
                     row.item = item.item_code;
                     row.description = item.description;
                     row.uom = item.uom;
@@ -203,7 +203,7 @@ frappe.ui.form.on('Order Modification Request Detail', {
 
                 frappe.model.set_value(cdt, cdn, {
                     "rev_uom": d.stock_uom || "",
-                    "rev_item_description": d.description || "",
+                    "rev_item_description": (d.description || "").replace(/<[^>]*>/g, ''),
                     "rev_drawing_no": d.custom_drawing_no || "",
                     "rev_drawing_rev_no": d.custom_drawing_rev_no || "",
                     "rev_pattern_drawing_no": d.custom_pattern_drawing_no || "",
