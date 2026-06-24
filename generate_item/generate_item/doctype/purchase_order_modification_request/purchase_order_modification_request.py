@@ -24,11 +24,8 @@ class PurchaseOrderModificationRequest(Document):
         if self.modification_type == "Order Change":
             self.update_purchase_order_commercial_details()
             
-            
-
         if self.purchase_order_no and self.modification_type == "Order Item Change":
             self.update_purchase_order_values()
-            
 
     def validate_purchase_order(self):
         if not self.purchase_order_no:
@@ -120,51 +117,6 @@ class PurchaseOrderModificationRequest(Document):
             self.set(hist_orig_field, orig_value)
             self.set(hist_rev_field,  rev_value)
 
-    # def update_purchase_order_commercial_details(self):
-    #     """Update only the changed Order Change fields back onto the Purchase Order"""
-
-    #     ORDER_CHANGE_MAP = [
-    #         # (pmr_rev_field, po_field)
-    #         ("rev_incoterm",               "incoterm"),
-    #         ("rev_payment_terms_template", "payment_terms_template"),
-    #         ("rev_terms",                  "tc_name"),
-    #         ("rev_insurance",              "custom_insurance"),
-    #         ("rev_mode_of_dispatch",       "custom_mode_of_dispatch"),
-    #         ("rev_freight_charges",        "freight_charges"),
-    #         ("rev_po_remarks",             "po_remarks"),
-    #         ("rev_group_same_items",       "group_same_items"),
-    #     ]
-
-    #     updates = []
-    #     params  = {"po_name": self.purchase_order_no}
-
-    #     for pmr_field, po_field in ORDER_CHANGE_MAP:
-    #         val = self.get(pmr_field)
-    #         if val is not None and val != "":
-    #             orig_val = self.get(pmr_field.replace("rev_", ""))
-    #             # Only update if the value actually changed
-    #             if str(val) != str(orig_val if orig_val is not None else ""):
-    #                 updates.append(f"`{po_field}` = %({pmr_field})s")
-    #                 params[pmr_field] = val
-
-    #     if updates:
-    #         frappe.db.sql(f"""
-    #             UPDATE `tabPurchase Order`
-    #             SET {", ".join(updates)}
-    #             WHERE name = %(po_name)s
-    #         """, params)
-
-    #         frappe.db.set_value(
-    #             "Purchase Order",
-    #             self.purchase_order_no,
-    #             "modified",
-    #             frappe.utils.now(),
-    #             update_modified=False,
-    #         )
-    #         frappe.db.commit()
-
-    
-
     def update_purchase_order_commercial_details(self):
         """Update only the changed Order Change fields back onto the Purchase Order"""
 
@@ -215,7 +167,6 @@ class PurchaseOrderModificationRequest(Document):
         # ── Payment Schedule Sync ──────────────────────────────────────────────
         if payment_terms_changed:
             self._sync_payment_schedule_to_po()
-
 
     def _sync_payment_schedule_to_po(self):
         """
@@ -268,7 +219,6 @@ class PurchaseOrderModificationRequest(Document):
         )
         frappe.db.commit()
 
-
     def update_purchase_order_values(self):
         _now  = now()
         _user = frappe.session.user
@@ -280,7 +230,7 @@ class PurchaseOrderModificationRequest(Document):
             ("rev_stock_qty",               "stock_qty"),
             ("rev_conversion_factor",       "conversion_factor"),
             ("rev_price_list_rate",         "price_list_rate"),
-            ("rev_target_warehouse", "warehouse"),
+            ("rev_target_warehouse",        "warehouse"),
             ("rev_item_tax_template",       "item_tax_template"),
         ]
         ALLOW_FALSY_FIELDS = set()
@@ -445,17 +395,13 @@ class PurchaseOrderModificationRequest(Document):
                     },
                 )
 
-           
-            
             # ── Line Status (mirrors OMR CLEARABLE_FIELDS logic) ────────────────────
             rev_line_status = getattr(row, "rev_line_status", None)
 
             if rev_line_status is not None and rev_line_status != "":
                 if rev_line_status == "Live":
-                    # "Live" means clear the field on PO item
                     so_line_status_value = ""
                 else:
-                    # "Cancelled" or any other value → write it
                     so_line_status_value = rev_line_status
 
                 frappe.db.sql(
@@ -471,11 +417,81 @@ class PurchaseOrderModificationRequest(Document):
                     """,
                     (so_line_status_value, _now, _user, po_item_name, self.purchase_order_no),
                 )
-           
 
+        # ── FIX: Apply item replacements (updates item_code/item_name/description) ──
         self._apply_item_replacements(_now, _user)
+
+        # ── FIX: Sync item_name + description from Item master for ALL rows ──────────
+        # This covers rows where no item replacement happened but the Item master
+        # description may have changed, or the description was never pushed to the PO.
+        self._sync_item_description_from_master(_now, _user)
+
         self.update_order_qty()
         frappe.db.commit()
+
+    # ── NEW METHOD ────────────────────────────────────────────────────────────────
+    def _sync_item_description_from_master(self, _now, _user):
+        """
+        For every non-deleted PMR row, fetch item_name and description from the
+        Item master and write them onto the corresponding PO Item row.
+
+        This ensures:
+          1. Rows that had no item replacement (rev_item is empty) still get the
+             latest description from the Item master.
+          2. Rows that DID have an item replacement are already handled by
+             _apply_item_replacements, but an extra write here is harmless
+             (idempotent) because _apply_item_replacements runs first.
+        """
+        for row in self.items:
+            if row.is_delete:
+                continue
+
+            # Determine which item code to pull description for.
+            # If a replacement was requested use rev_item, otherwise use the
+            # original item.
+            effective_item = getattr(row, "rev_item", None) or row.item
+            if not effective_item:
+                continue
+
+            po_item_name = self._find_po_item_name(row)
+            if not po_item_name:
+                continue
+
+            item_data = frappe.db.get_value(
+                "Item",
+                effective_item,
+                ["item_name", "description"],
+                as_dict=True,
+            )
+            if not item_data:
+                frappe.log_error(
+                    title="PMR - _sync_item_description_from_master: item not found",
+                    message=f"pmr={self.name}, row={row.idx}, item={effective_item}",
+                )
+                continue
+
+            frappe.db.sql(
+                """
+                UPDATE `tabPurchase Order Item`
+                SET
+                    `item_name`   = %s,
+                    `description` = %s,
+                    `modified`    = %s,
+                    `modified_by` = %s
+                WHERE
+                    `name`   = %s
+                    AND `parent` = %s
+                """,
+                (
+                    item_data.item_name,
+                    item_data.description,
+                    _now,
+                    _user,
+                    po_item_name,
+                    self.purchase_order_no,
+                ),
+            )
+    # ── END NEW METHOD ────────────────────────────────────────────────────────────
 
     def _clear_mr_link_on_po_item_delete_by_name(self, po_item_name, row):
         po_item_data = frappe.db.get_value(
@@ -775,6 +791,12 @@ class PurchaseOrderModificationRequest(Document):
             )
 
     def _apply_item_replacements(self, _now, _user):
+        """
+        Handles rows where rev_item differs from the current item_code on the PO.
+        Writes item_code, item_name, and description from the Item master.
+        Note: _sync_item_description_from_master() runs after this and is
+        intentionally idempotent for replaced rows.
+        """
         errors = []
 
         for row in self.items:
@@ -793,6 +815,8 @@ class PurchaseOrderModificationRequest(Document):
                 "Purchase Order Item", po_item_name, "item_code"
             )
             if current_item_code == rev_item:
+                # No item code change — description sync is handled by
+                # _sync_item_description_from_master; nothing to do here.
                 continue
 
             item_data = frappe.db.get_value(
@@ -956,6 +980,3 @@ class PurchaseOrderModificationRequest(Document):
         self.set("original_record", [])
         for row in rows_to_keep:
             self.append("original_record", row)
-
-
-        
