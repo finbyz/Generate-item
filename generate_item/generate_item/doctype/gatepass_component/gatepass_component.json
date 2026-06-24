@@ -145,7 +145,7 @@
    "link_fieldname": "sub_component"
   }
  ],
- "modified": "2026-06-18 16:53:29.165519",
+ "modified": "2026-06-24 16:34:24.063397",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gatepass Component",
@@ -170,6 +170,7 @@
   }
  ],
  "row_format": "Dynamic",
+ "search_fields": "sub_component_name ",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": []
