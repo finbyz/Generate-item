@@ -126,7 +126,7 @@ frappe.ui.form.on('Purchase Receipt', {
                 get_query_filters: {
                     docstatus: 1,
                     status: ['not in', ['Closed', 'On Hold']],
-                    per_received: ['<', 99.99],
+                    per_received: ['<', 99.9999],
                     company: frm.doc.company,
                 },
                 allow_child_item_selection: true,
