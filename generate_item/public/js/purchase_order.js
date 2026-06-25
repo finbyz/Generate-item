@@ -288,13 +288,32 @@ function update_date_field_readonly(frm) {
 
 
 frappe.ui.form.on('Purchase Order Item', {
-	stock_qty: function (frm, cdt, cdn) {
-		let row = locals[cdt][cdn];
-
-		// Set pending_qty_in_stock_uom equal to stock_qty
-		frappe.model.set_value(cdt, cdn, 'pending_qty_in_stock_uom', row.stock_qty);
-	}
+	qty: update_pending_qty,
+	uom: update_pending_qty,
+	stock_qty: update_pending_qty
 });
+
+function update_pending_qty(frm, cdt, cdn) {
+	let row = locals[cdt][cdn];
+
+	if (row.uom && row.stock_uom) {
+		if (row.uom === row.stock_uom) {
+			frappe.model.set_value(
+				cdt,
+				cdn,
+				'pending_qty_in_stock_uom',
+				row.qty || 0
+			);
+		} else {
+			frappe.model.set_value(
+				cdt,
+				cdn,
+				'pending_qty_in_stock_uom',
+				row.stock_qty || 0
+			);
+		}
+	}
+}
 
 
 
