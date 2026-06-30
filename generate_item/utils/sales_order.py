@@ -68,6 +68,7 @@ def validate(doc, method):
         if i.bom_no:
             i.bom_no = ""
     # validate_duplicate_so(doc, method)
+    check_warranty(doc)
 
 def on_update(doc, method):
     for i in doc.items:
@@ -462,3 +463,11 @@ def get_linked_addresses(doctype, txt, searchfield, start, page_len, filters):
         "start": start,
         "page_len": page_len,
     })
+    
+def check_warranty(doc):
+    for item in doc.items:
+        
+        wp = frappe.db.get_value("Item",item.item_code,"warranty_period")
+        if not wp:
+            wp = 0
+        item.warranty_period = wp 

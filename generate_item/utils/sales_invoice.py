@@ -402,6 +402,8 @@ def validate(doc, method=None):
         sales_orders = list(set([item.sales_order for item in doc.items if item.sales_order]))
         if sales_orders:
             _validate_taxes_from_so(doc, sales_orders)
+    check_warranty(doc)
+    update_serial_no_warranty(doc)
 
 
 def _validate_taxes_from_dn(doc, delivery_notes):
@@ -776,3 +778,34 @@ def make_sales_invoice(source_name, target_doc=None, args=None):
 	return si
 
 
+
+def check_warranty(doc):
+    for item in doc.items:
+            if item.so_detail:
+                so_wp = frappe.db.get_value("Sales Order Item", item.so_detail, "warranty_period")
+            if not so_wp:
+                so_wp = frappe.db.get_value("Item", item.item_code, "warranty_period")
+            if so_wp:
+                item.warranty_period = so_wp
+
+
+def update_serial_no_warranty(doc):
+    for item in doc.items:
+        if not item.warranty_period or not item.serial_no:
+            continue
+
+        serial_nos = [s.strip() for s in item.serial_no.split("\n") if s.strip()]
+        if not serial_nos:
+            continue
+
+        for serial_no in serial_nos:
+
+            frappe.db.set_value(
+                "Serial No",
+                serial_no,
+                {
+                    "warranty_period": item.warranty_period,
+                   
+                },
+                update_modified=False
+            )
