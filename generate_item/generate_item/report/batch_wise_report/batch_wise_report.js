@@ -16,14 +16,13 @@ frappe.query_reports["Batch Wise Report"] = {
 			default: frappe.datetime.get_today()
 		},
 		{
-            "label": __("Branch"),
-            "fieldname": "branch",
-            "fieldtype": "Link",
-            "options": "Branch",
-            "default": "Sanand",
-            "reqd":1,
-            "placeholder":"Branch"
-        },
+			"label": __("Branch"),
+			"fieldname": "branch",
+			"fieldtype": "Link",
+			"options": "Branch",
+			"reqd": 1,
+			"placeholder": "Branch"
+		},
 		{
 			fieldname: "bom",
 			label: "BOM",
@@ -48,18 +47,18 @@ frappe.query_reports["Batch Wise Report"] = {
 			fieldtype: "Link",
 			options: "Item"
 		}],
-		"formatter": function(value, row, column, data, default_formatter) {
-        value = default_formatter(value, row, column, data);
+	"formatter": function (value, row, column, data, default_formatter) {
+		value = default_formatter(value, row, column, data);
 		if (column.fieldname == "production_plan_status") {
-            if (value == "Submitted") {
-                value = `<span style="color: green; font-weight: bold;">${value}</span>`;
-            } else if (value == "Draft") {
-                value = `<span style="color: orange; font-weight: bold;">${value}</span>`;
-            } else if (value == "Not Created") {
-                value = `<span style="color: gray; font-style: italic;">${value}</span>`;
-            }
-        }
+			if (value == "Submitted") {
+				value = `<span style="color: green; font-weight: bold;">${value}</span>`;
+			} else if (value == "Draft") {
+				value = `<span style="color: orange; font-weight: bold;">${value}</span>`;
+			} else if (value == "Not Created") {
+				value = `<span style="color: gray; font-style: italic;">${value}</span>`;
+			}
+		}
 		return value;
-    },
-	
+	},
+
 };
