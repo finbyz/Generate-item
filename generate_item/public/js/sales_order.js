@@ -206,13 +206,13 @@
                 label: __("Custom Shipping Address"),
                 in_list_view: 1,
                 get_query: () => {
-                    
+
                     return {
-                         query: "generate_item.utils.sales_order.get_linked_addresses",
-                filters: {
-                    link_doctype: "Customer",
-                    link_name: frm.doc.customer
-                }
+                        query: "generate_item.utils.sales_order.get_linked_addresses",
+                        filters: {
+                            link_doctype: "Customer",
+                            link_name: frm.doc.customer
+                        }
                         // filters: [
                         //     ['Address', 'link_doctype', '=', 'Customer'],
                         //     ['Address', 'link_name', '=', frm.doc.customer]
@@ -436,6 +436,54 @@
     erpnext.utils.__gi_so_child_update_patched = true;
 })();
 
+function refresh_row_warranty_field(frm, cdn) {
+    const grid = frm.fields_dict.items && frm.fields_dict.items.grid;
+    if (!grid || !grid.grid_rows_by_docname) {
+        return;
+    }
+
+    const grid_row = grid.grid_rows_by_docname[cdn];
+    if (grid_row && grid_row.grid_form) {
+        grid_row.grid_form.refresh_field("warranty_period");
+    }
+}
+
+function sync_row_warranty_period(frm, cdt, cdn, force_from_parent) {
+    const row = locals[cdt][cdn];
+    if (!row) {
+        return;
+    }
+
+    const parent_warranty = cint(frm.doc.warranty_period);
+
+    if (force_from_parent || parent_warranty) {
+        row.warranty_period = parent_warranty;
+        frappe.model.set_value(cdt, cdn, "warranty_period", parent_warranty).then(() => {
+            refresh_row_warranty_field(frm, cdn);
+        });
+        return;
+    }
+
+    if (cint(row.warranty_period)) {
+        return;
+    }
+
+    if (row.item_code) {
+        frappe.db.get_value("Item", row.item_code, "warranty_period").then((r) => {
+            const warranty = cint(r.message && r.message.warranty_period) || 0;
+            frappe.model.set_value(cdt, cdn, "warranty_period", warranty).then(() => {
+                refresh_row_warranty_field(frm, cdn);
+            });
+        });
+        return;
+    }
+
+    row.warranty_period = 0;
+    frappe.model.set_value(cdt, cdn, "warranty_period", 0).then(() => {
+        refresh_row_warranty_field(frm, cdn);
+    });
+}
+
 frappe.ui.form.on('Sales Order', {
     refresh: function (frm) {
 
@@ -597,15 +645,15 @@ frappe.ui.form.on('Sales Order', {
 
         frm.set_query("company_address", () => {
             return {
-                 query: "generate_item.utils.sales_order.get_linked_addresses",
+                query: "generate_item.utils.sales_order.get_linked_addresses",
                 filters: {
                     link_doctype: "Company",
                     link_name: frm.doc.company
                 }
             };
         });
-        
-        frm.set_query('shipping_address_name', function() {
+
+        frm.set_query('shipping_address_name', function () {
             return {
                 query: "generate_item.utils.sales_order.get_linked_addresses",
                 filters: {
@@ -613,7 +661,7 @@ frappe.ui.form.on('Sales Order', {
                     link_name: frm.doc.customer
                 }
             };
-});
+        });
 
         frm.add_custom_button("Open Item Generator List", function () {
             try {
@@ -638,7 +686,7 @@ frappe.ui.form.on('Sales Order', {
 
         frm.fields_dict["items"].grid.get_field("custom_shipping_address").get_query = function (doc, cdt, cdn) {
             return {
-                 query: "generate_item.utils.sales_order.get_linked_addresses",
+                query: "generate_item.utils.sales_order.get_linked_addresses",
                 filters: {
                     link_doctype: "Customer",
                     link_name: frm.doc.customer
@@ -696,6 +744,23 @@ frappe.ui.form.on('Sales Order', {
         });
         frm.refresh_field('items');
     },
+    warranty_period: function (frm) {
+        if (frm.doc.warranty_period) {
+            (frm.doc.items || []).forEach((row) => {
+                sync_row_warranty_period(frm, row.doctype, row.name, true);
+            });
+        }
+    },
+    items_add: function (frm, cdt, cdn) {
+        if (frm.doc.warranty_period) {
+            sync_row_warranty_period(frm, cdt, cdn, true);
+        }
+        setTimeout(() => refresh_row_warranty_field(frm, cdn), 0);
+    },
+    // items_on_form_rendered: function (frm, cdt, cdn) {
+    //     sync_row_warranty_period(frm, cdt, cdn, true);
+    //     refresh_row_warranty_field(frm, cdn);
+    // },
     after_save: function (frm) {
         if (frm.doc.amended_from) {
             update_batch_links(frm);
@@ -875,7 +940,7 @@ frappe.ui.form.on('Sales Order', {
     customer: function (frm) {
         frm.set_query('shipping_address_name', function () {
             return {
-                 query: "generate_item.utils.sales_order.get_linked_addresses",
+                query: "generate_item.utils.sales_order.get_linked_addresses",
                 filters: {
                     link_doctype: "Customer",
                     link_name: frm.doc.customer
@@ -1283,7 +1348,7 @@ function _call_generate(frm, total_qty) {
     // Server call — synchronous on server side, result has timing stats
     frappe.call({
         method: "generate_item.generate_item.doctype.serial_number.serial_number.create_serial_numbers_for_sales_order",
-        
+
         args: { sales_order_name: frm.doc.name },
 
         callback(r) {
