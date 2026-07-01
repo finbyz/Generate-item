@@ -1,5 +1,6 @@
 import frappe
 from frappe.model.document import Document
+from frappe import _
 
 
 class ItemGenerator(Document):
@@ -74,12 +75,13 @@ class ItemGenerator(Document):
                 short_desc_values.append(val)
 
         cus_description = " ".join(short_desc_values)
-
         if cus_description:
+            item_code = self.created_item or self.item_code or ""
+
             suffix = ""
-            if getattr(self, "duplicated_subassembly", 0) == 1:
+            if item_code.endswith("A4"):
                 suffix = " SUB ASSY KIT"
-            elif getattr(self, "duplicated_machining_kit", 0) == 1:
+            elif item_code.endswith("M4"):
                 suffix = " M/C KIT"
 
             final_desc = cus_description.strip()
@@ -102,6 +104,34 @@ class ItemGenerator(Document):
             if not self.is_new():
                 self.db_set("short_description", final_desc, update_modified=False)
                 self.db_set("custom_conditional_description", final_desc, update_modified=False)
+
+        # if cus_description:
+        #     suffix = ""
+        #     if getattr(self, "duplicated_subassembly", 0) == 1:
+        #         suffix = " SUB ASSY KIT"
+        #     elif getattr(self, "duplicated_machining_kit", 0) == 1:
+        #         suffix = " M/C KIT"
+
+        #     final_desc = cus_description.strip()
+        #     if suffix:
+        #         room = 140 - len(suffix)
+        #         final_desc = (final_desc[:room].rstrip() + suffix).strip()
+        #     else:
+        #         final_desc = final_desc[:140]
+
+        #     self.short_description = final_desc
+        #     self.custom_conditional_description = final_desc
+
+        #     # Prevent validation issues
+        #     self.flags.ignore_validate = True
+        #     if not hasattr(self.flags, "ignore_validate_fields") or self.flags.ignore_validate_fields is None:
+        #         self.flags.ignore_validate_fields = []
+        #     if "short_description" not in self.flags.ignore_validate_fields:
+        #         self.flags.ignore_validate_fields.append("short_description")
+
+        #     if not self.is_new():
+        #         self.db_set("short_description", final_desc, update_modified=False)
+        #         self.db_set("custom_conditional_description", final_desc, update_modified=False)
 
 
     def after_insert(self):
@@ -179,8 +209,7 @@ class ItemGenerator(Document):
             self.db_set("is_closed", 1, update_modified=False)
 
 
-import frappe
-from frappe import _
+
 
 
 @frappe.whitelist()
@@ -202,16 +231,18 @@ def update_item_master(item_generator_name):
                 "error": _("Item {0} not found").format(item_code)
             }
 
-        item = frappe.get_doc("Item", item_code)
-
-        item.item_name = (
-            item_gen.short_description
-            
+        # Fast direct update - no full doc load, no validations, no hooks
+        frappe.db.set_value(
+            "Item",
+            item_code,
+            {
+                "item_name": item_gen.short_description,
+                "description": item_gen.description
+            },
+            update_modified=True
         )
 
-        item.description = item_gen.description
-
-        item.save(ignore_permissions=True)
+        frappe.db.commit()
 
         return {
             "success": True,

@@ -242,6 +242,49 @@ frappe.listview_settings['Item Generator'] = {
 
             let success = [];
             let failed = [];
+            function apply_kit_suffix(frm) {
+
+                let item_code = frm.doc.created_item || frm.doc.item_code  || '';
+
+                let desc_suffix = null;
+                let short_desc_suffix = null;
+
+                if (item_code.endsWith('A4')) {
+                    desc_suffix = 'SUB ASSEMBLY KIT';
+                    short_desc_suffix = 'SUB ASSY KIT';
+                } else if (item_code.endsWith('M4')) {
+                    desc_suffix = 'SUB MACHINING KIT';
+                    short_desc_suffix = 'M/C KIT';
+                }
+
+                if (!desc_suffix) {
+                    console.log("No matching suffix rule for:", item_code);
+                    return;
+                }
+
+                let current_desc = frm.doc.description || '';
+                if (!current_desc.includes(desc_suffix)) {
+                    frm.doc.description = current_desc
+                        ? `${current_desc} ${desc_suffix}`
+                        : desc_suffix;
+                }
+
+                let current_short_desc = frm.doc.short_description || '';
+                if (!current_short_desc.includes(short_desc_suffix)) {
+                    frm.doc.short_description = current_short_desc
+                        ? `${current_short_desc} ${short_desc_suffix}`
+                        : short_desc_suffix;
+                }
+
+                let current_ccd = frm.doc.custom_conditional_description || '';
+                if (!current_ccd.includes(short_desc_suffix)) {
+                    frm.doc.custom_conditional_description = current_ccd
+                        ? `${current_ccd} ${short_desc_suffix}`
+                        : short_desc_suffix;
+                }
+
+                console.log(`Applied suffix for ${item_code} =>`, desc_suffix, short_desc_suffix);
+            }
 
             // LOOP START
             for (let i = 0; i < selected_items.length; i++) {
@@ -315,6 +358,14 @@ frappe.listview_settings['Item Generator'] = {
                                 console.log("STEP 9 => refill_data Completed");
 
                                 console.log("DOCUMENT AFTER REFILL");
+                                console.log(JSON.parse(JSON.stringify(frm.doc)));
+
+                                 // STEP 9.5 => Apply KIT suffix logic
+                                console.log("STEP 9.5 => Applying KIT suffix logic");
+
+                                // apply_kit_suffix(frm);
+
+                                console.log("DOCUMENT AFTER KIT SUFFIX");
                                 console.log(JSON.parse(JSON.stringify(frm.doc)));
 
                                 // STEP 10
@@ -439,6 +490,7 @@ frappe.listview_settings['Item Generator'] = {
 });
     }
 };
+
 
 
 
