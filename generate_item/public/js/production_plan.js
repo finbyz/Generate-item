@@ -106,7 +106,29 @@ frappe.ui.form.on('Production Plan', {
     },
 
     refresh: function (frm) {
-         
+        
+         if (frm.doc.docstatus === 1) {
+            frm.add_custom_button(__("Get Update"), () => {
+                frappe.confirm(
+                    __("This will sync planned qty from the Sales Order, regenerate sub-assembly items and material request items. Continue?"),
+                    () => {
+                        frappe.call({
+                            method: 
+                            "generate_item.utils.production_plan.get_update_for_submitted_pp",
+                            args: { docname: frm.doc.name },
+                            freeze: true,
+                            freeze_message: __("Updating Production Plan..."),
+                            callback: (r) => {
+                                if (!r.exc) {
+                                    frappe.show_alert({ message: __("Production Plan updated"), indicator: "green" });
+                                    frm.reload_doc();
+                                }
+                            },
+                        });
+                    }
+                );
+            });
+        }
          custom_transfer_materials(frm)
 
 

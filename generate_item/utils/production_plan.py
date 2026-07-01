@@ -164,3 +164,73 @@ def set_actual_qty_for_child_row(cdt, cdn):
     if not actual_qty:
         frappe.db.set_value(cdt, cdn, 'actual_qty', planned_qty)
         frappe.db.commit()
+
+
+
+import frappe
+from erpnext.manufacturing.doctype.production_plan.production_plan import (
+    get_items_for_material_requests,
+)
+
+@frappe.whitelist()
+def get_update_for_submitted_pp(docname):
+    pp = frappe.get_doc("Production Plan", docname)
+    was_submitted = pp.docstatus == 1
+
+    # --- Step 0: temporarily un-submit ---
+    if was_submitted:
+        pp.db_set("docstatus", 0, update_modified=False)
+        pp.reload()
+        pp.flags.ignore_validate = True
+        pp.flags.ignore_validate_update_after_submit = True
+        pp.flags.ignore_permissions = True
+
+    # --- Step 1: sync planned_qty from linked Sales Order Item qty ---
+    changed = False
+    for item in pp.po_items:
+        if not item.sales_order_item:
+            continue
+        so_qty = frappe.db.get_value("Sales Order Item", item.sales_order_item, "qty")
+        if so_qty and so_qty > (item.planned_qty or 0):
+            item.planned_qty = so_qty
+            changed = True
+
+    if changed:
+        pp.save(ignore_permissions=True)
+
+    # --- Step 2: regenerate sub-assembly items against the new planned_qty ---
+    pp.get_sub_assembly_items()   # same method the "Get Items for Sub Assembly" button calls
+    pp.save(ignore_permissions=True)
+
+    # --- Step 3: regenerate mr_items, same as "Get Items" in the Transfer Materials dialog ---
+    def get_default_transfer_warehouses(pp):
+        if not pp.branch:
+            return []
+        store_wh = frappe.db.get_value(
+            "Warehouse",
+            {
+                "branch": pp.branch,
+                "store_warehouse": 1,
+                "disabled": 0,
+                "is_group": 0,
+            },
+            "name",
+        )
+        return [{"warehouse": store_wh}] if store_wh else []
+
+    warehouses = get_default_transfer_warehouses(pp)
+    items = get_items_for_material_requests(pp.as_json(), warehouses=warehouses or None)
+    # warehouses = [{"warehouse": pp.for_warehouse}] if pp.for_warehouse else None
+    # items = get_items_for_material_requests(pp.as_json(), warehouses=warehouses)
+
+    pp.set("mr_items", [])
+    for d in items:
+        pp.append("mr_items", d)
+    pp.save(ignore_permissions=True)
+
+    # --- Step 4: re-submit ---
+    if was_submitted:
+        pp.db_set("docstatus", 1, update_modified=False)
+
+    frappe.db.commit()
+    return {"success": True, "planned_qty_updated": changed}
