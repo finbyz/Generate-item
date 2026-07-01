@@ -232,6 +232,8 @@ class PurchaseOrderModificationRequest(Document):
             ("rev_price_list_rate",         "price_list_rate"),
             ("rev_target_warehouse",        "warehouse"),
             ("rev_item_tax_template",       "item_tax_template"),
+            ("rev_uom",                     "uom"),          
+            ("rev_stock_uom",                "stock_uom"),
         ]
         ALLOW_FALSY_FIELDS = set()
 
@@ -469,6 +471,7 @@ class PurchaseOrderModificationRequest(Document):
                     message=f"pmr={self.name}, row={row.idx}, item={effective_item}",
                 )
                 continue
+            description = getattr(row, "rev_description", None) or item_data.description
 
             frappe.db.sql(
                 """
@@ -484,7 +487,7 @@ class PurchaseOrderModificationRequest(Document):
                 """,
                 (
                     item_data.item_name,
-                    item_data.description,
+                    description,
                     _now,
                     _user,
                     po_item_name,
@@ -832,6 +835,7 @@ class PurchaseOrderModificationRequest(Document):
                     message=f"pmr={self.name}, row={row.idx}, rev_item={rev_item}",
                 )
                 continue
+            description = getattr(row, "rev_description", None) or item_data.description
 
             try:
                 frappe.db.sql(
@@ -850,7 +854,7 @@ class PurchaseOrderModificationRequest(Document):
                     (
                         rev_item,
                         item_data.item_name,
-                        item_data.description,
+                        description,
                         _now,
                         _user,
                         po_item_name,
