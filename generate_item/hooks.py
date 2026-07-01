@@ -5,6 +5,9 @@ app_description = "Item"
 app_email = "info@finbyz.tech"
 app_license = "mit"
 
+
+from erpnext.stock.report.stock_balance import stock_balance
+
 # Apps
 # ------------------
 
@@ -345,6 +348,12 @@ override_whitelisted_methods = {
 # override_doctype_dashboards = {
 # 	"Task": "generate_item.task.get_dashboard_data"
 # }
+
+
+from generate_item.override_report.stock_balance import (
+    execute as stock_balance_execute,
+)
+stock_balance.execute = stock_balance_execute
 
 # exempt linked doctypes from being automatically cancelled
 #
