@@ -260,6 +260,7 @@ function fetch_items_dynamic(frm) {
                     row.delivery_date = item.delivery_date || null;
                     row.tag_no = item.tag_no || null;
                     row.line_remark = item.line_remark || null;
+                    row.description = item.description;
                     row.shipping_address = item.custom_shipping_address || null;
                     row.is_free_item = item.is_free_item || 0;
                     row.component_of = item.component_of || null;
@@ -386,6 +387,14 @@ frappe.ui.form.on('Sales Order Item For OMR', {
     // ── Fires when the rev_item Link field resolves (or fails) ──
     rev_item: function (frm, cdt, cdn) {
         const row = locals[cdt][cdn];
+
+         frappe.db.get_value('Item', row.rev_item, ['description'], (r) => {
+        if (r) {
+            frappe.model.set_value(cdt, cdn, 'rev_description', (r.description || "").replace(/<[^>]*>/g, ''));
+            
+        }
+    });
+
 
         // frm.__omr_rev_typed[cdn] holds exactly what the user typed
         const entered = (frm.__omr_rev_typed && frm.__omr_rev_typed[cdn])

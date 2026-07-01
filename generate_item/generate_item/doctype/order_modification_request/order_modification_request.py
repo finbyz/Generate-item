@@ -17,6 +17,8 @@ from frappe.model.naming import make_autoname
 from frappe.utils import get_url_to_form
 
 
+# from generate_item.generate_item.modification_task_utils.modification_task import create_modification_task
+
 class OrderModificationRequest(Document):
     
     
@@ -52,6 +54,8 @@ class OrderModificationRequest(Document):
                 self.update_sales_order_revision()
                 create_batches_for_omr(self)
                 get_change(self)
+        
+        # create_modification_task(self)
 
     def update_sales_order_commercial_details(self):
         """Updates Commercial T&C + Details + Reference Data + Terms & Conditions in Sales Order"""
@@ -407,17 +411,37 @@ class OrderModificationRequest(Document):
             effective_item = row.rev_item if is_new_item else row.item
             # ── Always carry forward the existing SO item description ────────────
             existing_description = ""
-            if row.sales_order_item_name:
-                existing_description = frappe.db.get_value(
-                    "Sales Order Item", row.sales_order_item_name, "description"
-                ) or ""
+            # if row.sales_order_item_name:
+            #     existing_description = frappe.db.get_value(
+            #         "Sales Order Item", row.sales_order_item_name, "description"
+            #     ) or ""
             # Fallback to Item master if SO description is empty
-            if not existing_description:
-                lookup_item = row.rev_item or row.item
-                if lookup_item:
+            # if not existing_description:
+            lookup_item = row.rev_item or row.item
+            is_item_changed = bool(row.rev_item and row.rev_item != row.item)
+
+            if getattr(row, "rev_description", None):
+                # 1st priority: explicit reviewer-entered/edited description
+                existing_description = row.rev_description
+
+            elif is_item_changed:
+                # 2nd priority: item changed but no rev_description given → pull fresh from new Item
+                existing_description = frappe.db.get_value("Item", lookup_item, "description") or ""
+
+            else:
+                # 3rd priority: unchanged item → keep existing SO description, fallback to Item master
+                existing_description = ""
+                if row.sales_order_item_name:
                     existing_description = frappe.db.get_value(
-                        "Item", lookup_item, "description"
+                        "Sales Order Item", row.sales_order_item_name, "description"
                     ) or ""
+                if not existing_description and lookup_item:
+                    existing_description = frappe.db.get_value("Item", lookup_item, "description") or ""
+                # lookup_item = row.rev_item or row.item
+                # if lookup_item:
+                #     existing_description = frappe.db.get_value(
+                #         "Item", lookup_item, "description"
+                #     ) or ""
 
             if row.sales_order_item_name:
                 # Existing SO item — update in place
@@ -910,9 +934,11 @@ def update_sales_order_items(self, mismatched_rows):
 
         if row:
             # item_name = frappe.db.get_value("Item", row.rev_item, "item_name")
-            item_name, description = frappe.db.get_value(
+            item_name, item_description = frappe.db.get_value(
                 "Item", row.rev_item, ["item_name", "description"]
             )
+            description = getattr(row, "rev_description", None) or item_description
+            
 
             # 1️⃣ Update Sales Order Item
             frappe.db.sql(
@@ -1271,11 +1297,16 @@ def create_history_records(self):
             "line_remark": row.line_remark,  # Original line remark
             "is_free_item": row.is_free_item,  # Original is_free_item
             "component_of": row.component_of,  # Original component_of
+            "description": row.get("description") if row.get("description") else None,  
         }
 
         # Check item change
         if row.rev_item and row.rev_item != row.item:
             history_data["new_item"] = row.rev_item
+            changed = True
+        # Check description change
+        if getattr(row, "rev_description", None) and row.rev_description != getattr(row, "description", None):
+            history_data["rev_description"] = row.rev_description
             changed = True
 
         # Check qty change (only if rev_qty is provided and different)
