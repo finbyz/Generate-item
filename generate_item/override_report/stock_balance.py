@@ -23,5 +23,6 @@ def execute(filters=None):
 
     for row in data:
         row["description"] = descriptions.get(row.get("item_code"))
+        
 
     return columns, data
