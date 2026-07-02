@@ -29,7 +29,7 @@ def execute(filters=None):
     # Ensure columns and data are lists
     columns = list(columns)
     data = list(data)
-
+    frappe.error_log(f"Columns: {columns}", "Stock Balance Override")
     # Add description column if missing
     columns = _add_description_column(columns)
 
