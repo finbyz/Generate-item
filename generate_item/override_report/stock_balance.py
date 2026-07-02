@@ -1,45 +1,75 @@
 import frappe
-from erpnext.stock.report.stock_balance.stock_balance import execute as original_execute
+from erpnext.stock.report.stock_balance import stock_balance as stock_balance_module
+from erpnext.stock.report.stock_balance.stock_balance import execute as stock_balance_execute
+from frappe.desk.query_report import normalize_result
+
+STOCK_BALANCE_REPORT = "Stock Balance"
+
 
 def _get_item_descriptions(item_codes):
     if not item_codes:
         return {}
-    items = frappe.get_all("Item", filters={"name": ["in", item_codes]}, fields=["name", "description"])
-    return {d.name: d.description for d in items}
+    items = frappe.get_all(
+        "Item",
+        filters={"name": ["in", item_codes]},
+        fields=["name", "description"],
+        as_list=True,
+    )
+    return frappe._dict(items)
+
 
 def _add_description_column(columns):
-    if any(col.get("fieldname") == "description" for col in columns if isinstance(col, dict)):
+    if not columns:
         return columns
-    # Insert after "item_code" (or at position 5)
-    insert_at = 5
-    for i, col in enumerate(columns):
-        if isinstance(col, dict) and col.get("fieldname") == "item_code":
-            insert_at = i + 3
+    if any(column.get("fieldname") == "description" for column in columns):
+        return columns
+
+    insert_at = None
+    for index, column in enumerate(columns):
+        if column.get("fieldname") == "item_code":
+            insert_at = index + 1  # right after Item Code, not +3
             break
-    columns.insert(insert_at, {
-        "label": "Item Description",
-        "fieldname": "description",
-        "fieldtype": "Data",
-        "width": 250
-    })
+    if insert_at is None:
+        insert_at = len(columns)
+
+    columns.insert(
+        insert_at,
+        {
+            "label": "Item Description",
+            "fieldname": "description",
+            "fieldtype": "Data",
+            "width": 250,
+        },
+    )
     return columns
 
-def execute(filters=None):
-    columns, data = original_execute(filters) or ([], [])
-    # Ensure columns and data are lists
-    columns = list(columns)
-    data = list(data)
-    frappe.error_log(f"Columns: {columns}", "Stock Balance Override")
-    # Add description column if missing
+
+def _enrich_stock_balance(columns, data):
+    columns = list(columns or [])
+    data = list(data or [])
+
+    data = normalize_result(data, columns)
     columns = _add_description_column(columns)
 
-    # Fetch descriptions for all item codes
-    item_codes = [row.get("item_code") for row in data if isinstance(row, dict) and row.get("item_code")]
-    descriptions = _get_item_descriptions(item_codes)
-
-    # Enrich rows
+    descriptions = _get_item_descriptions(
+        [row.get("item_code") for row in data if isinstance(row, dict) and row.get("item_code")]
+    )
     for row in data:
         if isinstance(row, dict):
             row["description"] = descriptions.get(row.get("item_code"))
 
     return columns, data
+
+
+def execute(filters=None):
+    try:
+        columns, data = stock_balance_execute(filters) or ([], [])
+        columns, data = _enrich_stock_balance(columns, data)
+        return columns, data
+    except Exception:
+        # Writes to Error Log doctype — visible on FC via Desk, unlike file logging
+        frappe.log_error(
+            title="Custom Stock Balance execute failed",
+            message=frappe.get_traceback(),
+        )
+        raise

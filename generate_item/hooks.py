@@ -348,10 +348,10 @@ override_whitelisted_methods = {
 # }
 
 
-from generate_item.override_report.stock_balance import execute as stock_balance_execute
 from erpnext.stock.report.stock_balance import stock_balance
+from generate_item.override_report.stock_balance import execute as custom_stock_balance_execute
 
-stock_balance.execute = stock_balance_execute
+stock_balance.execute = custom_stock_balance_execute
 
 # #endregion
 
