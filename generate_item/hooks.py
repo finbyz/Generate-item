@@ -6,8 +6,6 @@ app_email = "info@finbyz.tech"
 app_license = "mit"
 
 
-from erpnext.stock.report.stock_balance import stock_balance
-
 # Apps
 # ------------------
 
@@ -350,10 +348,12 @@ override_whitelisted_methods = {
 # }
 
 
-from generate_item.override_report.stock_balance import (
-    execute as stock_balance_execute,
-)
+from generate_item.override_report.stock_balance import execute as stock_balance_execute
+from erpnext.stock.report.stock_balance import stock_balance
+
 stock_balance.execute = stock_balance_execute
+
+# #endregion
 
 # exempt linked doctypes from being automatically cancelled
 #
