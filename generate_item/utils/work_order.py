@@ -247,3 +247,109 @@ def _reset_production_plan_status(production_plan_name, logger=None):
     except Exception as e:
         logger.error(f"Error in _reset_production_plan_status: {e}")
         frappe.log_error(frappe.get_traceback(), "_reset_production_plan_status")
+
+
+
+from frappe import _
+from frappe.utils import flt
+from erpnext.manufacturing.doctype.bom.bom import get_bom_items_as_dict
+
+
+@frappe.whitelist()
+def get_update_for_work_order(docname):
+    wo = frappe.get_doc("Work Order", docname)
+
+    if wo.docstatus == 2:
+        frappe.throw(_("Cannot update a cancelled Work Order."))
+
+    if wo.status in ("Started", "In Process", "Completed"):
+        frappe.throw(
+            _("Work Order cannot be updated because it is already in <b>{0}</b> status.").format(wo.status),
+            title=_("Update Not Allowed"),
+        )
+
+    if not wo.bom_no:
+        frappe.throw(_("Work Order {0} does not have a BOM linked.").format(wo.name))
+
+    bom = frappe.get_doc("BOM", wo.bom_no)
+
+    # Update Item to Manufacture directly via db_set — bypasses the core
+    # production_item field trigger (which would wipe sales_order).
+    if bom.item and bom.item != wo.production_item:
+        wo.db_set("production_item", bom.item, update_modified=False)
+        wo.db_set("item_name", bom.item_name, update_modified=False)
+        wo.db_set("description", bom.description, update_modified=False)
+
+    _sync_required_items_from_bom(wo, bom)
+
+    wo.db_set("modification_status", "No", update_modified=False)
+
+    frappe.db.commit()
+    return {"success": True}
+
+
+def _sync_required_items_from_bom(wo, bom):
+    """
+    Sync required_items with the current BOM, without losing history.
+
+    - Items still in the BOM: qty/rate updated in place (preserves
+      custom fields like sales_order, custom_batch_no, branch, drawing no.).
+    - Items already transferred/consumed but removed from the BOM:
+      kept and flagged, never silently deleted.
+    - New items introduced by the BOM: appended fresh.
+    """
+    bom_items = get_bom_items_as_dict(
+        bom.name,
+        wo.company,
+        qty=wo.qty,
+        fetch_exploded=wo.use_multi_level_bom,
+        fetch_secondary_items=0,
+    )
+    bom_item_codes = set(bom_items.keys())
+    existing_rows = {row.item_code: row for row in wo.required_items}
+
+    rows_to_keep = []
+    blocked_removals = []
+
+    for item_code, row in existing_rows.items():
+        if item_code in bom_item_codes:
+            bi = bom_items[item_code]
+            row.required_qty = bi.qty
+            row.rate = bi.rate
+            row.amount = flt(bi.qty) * flt(bi.rate)
+            rows_to_keep.append(row)
+        elif flt(row.transferred_qty) or flt(row.consumed_qty):
+            blocked_removals.append(row.item_code)
+            rows_to_keep.append(row)
+        # else: item dropped from BOM and nothing moved against it — safe to drop
+
+    if blocked_removals:
+        frappe.msgprint(
+            _("Items {0} were removed from the BOM but kept because material "
+              "has already been transferred or consumed against them.").format(
+                ", ".join(blocked_removals)
+            ),
+            indicator="orange",
+            alert=True,
+        )
+
+    for item_code, bi in bom_items.items():
+        if item_code not in existing_rows:
+            rows_to_keep.append(frappe._dict({
+                "item_code": item_code,
+                "item_name": bi.item_name,
+                "description": bi.description,
+                "stock_uom": bi.stock_uom,
+                "required_qty": bi.qty,
+                "rate": bi.rate,
+                "amount": flt(bi.qty) * flt(bi.rate),
+                "source_warehouse": bi.source_warehouse or wo.source_warehouse,
+                "allow_alternative_item": bi.allow_alternative_item,
+                "include_item_in_manufacturing": bi.include_item_in_manufacturing,
+                "branch": wo.get("branch"),
+                "sales_order": wo.get("sales_order"),
+                "custom_batch_no": wo.get("custom_batch_no"),
+            }))
+
+    wo.set("required_items", rows_to_keep)
+    wo.save(ignore_permissions=True)

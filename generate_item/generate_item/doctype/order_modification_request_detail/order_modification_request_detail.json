@@ -195,8 +195,8 @@
   {
    "fieldname": "item_description",
    "fieldtype": "Small Text",
-   "label": "Item Description",
-   "read_only": 1
+   "hidden": 1,
+   "label": "Item Description"
   },
   {
    "default": "0",
@@ -258,7 +258,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-06-12 18:03:23.490820",
+ "modified": "2026-07-07 17:23:26.234874",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request Detail",

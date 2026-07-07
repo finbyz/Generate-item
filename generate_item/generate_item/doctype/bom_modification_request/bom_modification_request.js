@@ -3,7 +3,25 @@
 
 frappe.ui.form.on("Bom Modification Request", {
     refresh(frm) {
+  frm.fields_dict.items.grid.get_field("rev_bom_no").get_query = function(doc, cdt, cdn) {
+            let row = locals[cdt][cdn];
 
+            let filters = {
+                docstatus: 1,
+                is_default: 1,
+                is_active: 1,
+                item: row.rev_item,
+
+
+            };
+            if (frm.doc.branch) {
+                filters["branch"] = frm.doc.branch;
+            }
+
+            return {
+                filters
+            };
+        };
     },
     setup(frm) {
 
@@ -11,6 +29,8 @@ frappe.ui.form.on("Bom Modification Request", {
             let filters = {
                 docstatus: 1,
                 is_active: 1,
+                is_default: 1,
+
 
 
             };
@@ -51,7 +71,21 @@ frappe.ui.form.on("Bom Modification Request", {
     },
     get_item(frm) {
 
-        if (!frm.doc.bom) {
+        if (!frm.doc.bom) {frappe.ui.form.on("Bom Modification Request", {
+    refresh(frm) {
+        frm.fields_dict.items.grid.get_field("bom").get_query = function(doc, cdt, cdn) {
+            let row = locals[cdt][cdn];
+
+            return {
+                filters: {
+                    item: row.revised_item,
+                    is_active: 1,
+                    docstatus: 1
+                }
+            };
+        };
+    }
+});
             frappe.msgprint(`Please select BOM No first`);
             return;
         }

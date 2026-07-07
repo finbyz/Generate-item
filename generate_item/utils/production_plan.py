@@ -265,6 +265,59 @@ def _get_default_transfer_warehouses(pp):
     return [{"warehouse": store_wh}] if store_wh else []
 
 
+# @frappe.whitelist()
+# def get_update_for_submitted_pp(docname):
+#     pp = frappe.get_doc("Production Plan", docname)
+#     validate_work_orders_before_update(pp.name)
+#     was_submitted = pp.docstatus == 1
+
+#     if was_submitted:
+#         pp.db_set("docstatus", 0, update_modified=False)
+#         pp.reload()
+#         pp.flags.ignore_validate = True
+#         pp.flags.ignore_validate_update_after_submit = True
+#         pp.flags.ignore_permissions = True
+
+#     # All in-memory mutations happen first — nothing is written to DB yet.
+#     captured = _capture_original_data_if_needed(pp)
+#     changed = _sync_planned_qty_from_sales_orders(pp)
+
+#     # get_sub_assembly_items() reads pp.po_items in memory — no save needed first.
+#     pp.get_sub_assembly_items()
+
+#     # Clear both modification flags in a single UPDATE instead of two.
+#     frappe.db.set_value(
+#         "Production Plan", pp.name,
+#         {"bom_modification": "", "sales_order_modification": ""},
+#         update_modified=False,
+#     )
+#     pp.bom_modification = ""
+#     pp.sales_order_modification = ""
+
+#     warehouses = _get_default_transfer_warehouses(pp)
+#     items = get_items_for_material_requests(pp.as_json(), warehouses=warehouses or None)
+#     pp.set("mr_items", [])
+#     for d in items:
+#         pp.append("mr_items", d)
+
+#     # Single save for everything accumulated above.
+#     pp.save(ignore_permissions=True)
+#     # flag all non-cancelled linked Work Orders for update ---
+#     _flag_work_orders_for_update(pp.name)
+
+#     if was_submitted:
+#         pp.submit()
+#         create_wo_po_tasks_on_gate_update(pp)
+    
+
+#     frappe.db.commit()
+#     return {
+#         "success": True,
+#         "planned_qty_updated": changed,
+#         "original_data_captured_now": captured,
+#     }
+
+
 @frappe.whitelist()
 def get_update_for_submitted_pp(docname):
     pp = frappe.get_doc("Production Plan", docname)
@@ -278,7 +331,6 @@ def get_update_for_submitted_pp(docname):
         pp.flags.ignore_validate_update_after_submit = True
         pp.flags.ignore_permissions = True
 
-    # All in-memory mutations happen first — nothing is written to DB yet.
     captured = _capture_original_data_if_needed(pp)
     changed = _sync_planned_qty_from_sales_orders(pp)
 
@@ -294,6 +346,10 @@ def get_update_for_submitted_pp(docname):
     pp.bom_modification = ""
     pp.sales_order_modification = ""
 
+    # Snapshot item codes that existed BEFORE this update, so we can tell
+    # which mr_items rows are genuinely new after rebuilding the table.
+    existing_mr_item_codes = {d.item_code for d in (pp.mr_items or []) if d.item_code}
+
     warehouses = _get_default_transfer_warehouses(pp)
     items = get_items_for_material_requests(pp.as_json(), warehouses=warehouses or None)
     pp.set("mr_items", [])
@@ -301,22 +357,87 @@ def get_update_for_submitted_pp(docname):
         pp.append("mr_items", d)
 
     # Single save for everything accumulated above.
+    # This is also what assigns each mr_items row its real `name`.
     pp.save(ignore_permissions=True)
+
+    # flag all non-cancelled linked Work Orders for update
+    _flag_work_orders_for_update(pp.name)
 
     if was_submitted:
         pp.submit()
         create_wo_po_tasks_on_gate_update(pp)
-    
+
+    # --- Auto-create MR for newly added BOM items ---
+    # IMPORTANT: build this list from pp.mr_items AFTER save(), not from the
+    # raw `items` dicts collected before save. Pre-save dicts never receive
+    # the `name` frappe assigns on save, so if you later feed them into
+    # make_material_request(), the created MR Items lose their
+    # `material_request_plan_item` back-link to this Production Plan.
+    # Using the post-save rows keeps that link intact.
+    newly_added_rows = [
+        d for d in (pp.mr_items or [])
+        if d.item_code and d.item_code not in existing_mr_item_codes
+    ]
+
+    new_items_created = []
+    if newly_added_rows and was_submitted:
+        try:
+            original_mr_items = pp.mr_items
+
+            # Temporarily narrow mr_items to just the new rows (already-saved
+            # Document rows, so `.name` etc. are correct) and reuse the
+            # existing make_material_request() flow — same one the
+            # "Create > Material Request" button calls.
+            pp.set("mr_items", newly_added_rows)
+            pp.make_material_request()
+
+            # Restore full mr_items in memory. No re-save needed: the DB
+            # already has the complete list from pp.save() above, and we're
+            # not persisting pp again after this point.
+            pp.set("mr_items", original_mr_items)
+
+            new_items_created = [row.item_code for row in newly_added_rows]
+            frappe.msgprint(
+                _("Material Request created for newly added BOM items: {0}").format(
+                    ", ".join(new_items_created)
+                )
+            )
+        except Exception as e:
+            frappe.log_error(
+                "Auto MR Creation Error",
+                f"Error creating MR for new items in PP {pp.name}: {str(e)}"
+            )
+            frappe.msgprint(
+                _("Could not auto-create Material Request for new items: {0}").format(str(e)),
+                indicator="orange",
+            )
 
     frappe.db.commit()
     return {
         "success": True,
         "planned_qty_updated": changed,
         "original_data_captured_now": captured,
+        "new_items_added": bool(new_items_created),
+        "new_items": new_items_created,
     }
 
+def _flag_work_orders_for_update(production_plan):
+    """Mark linked Work Orders as needing a sync, in a single bulk UPDATE."""
+    work_orders = frappe.get_all(
+        "Work Order",
+        filters={"production_plan": production_plan, "docstatus": ["!=", 2]},
+        pluck="name",
+    )
+    if not work_orders:
+        return
 
-
+    frappe.db.set_value(
+        "Work Order",
+        {"name": ["in", work_orders]},
+        "modification_status",
+        "Yes",
+        update_modified=False,
+    )
 
 def validate_work_orders_before_update(production_plan):
     """
