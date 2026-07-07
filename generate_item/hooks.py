@@ -65,6 +65,8 @@ doctype_js = {"Item" : "public/js/item.js",
               "Sales Invoice" : "public/js/sales_invoice.js",
               "Quality Inspection" : "public/js/quality_inspection.js",
               "Work Order" : "public/js/work_order.js",
+              "Customer" : "public/js/customer_supplier_workflow.js",
+              "Supplier" : "public/js/customer_supplier_workflow.js",
               }
 
 doctype_list_js = {"Item Generator" : "public/js/item_generator_list.js"}
@@ -264,12 +266,20 @@ doc_events = {
         "after_save": "generate_item.utils.subcontracting_receipt.after_save",
         "validate":"generate_item.utils.subcontracting_receipt.validate"
     },
-    "Customer":{
-        "validate":"generate_item.utils.customer.validate"
+    "Customer": {
+        "validate": [
+            "generate_item.utils.customer.validate",
+            "generate_item.utils.customer_supplier_workflow.validate_customer",
+        ],
+        "onload": "generate_item.utils.customer_supplier_workflow.set_cs_onload",
     },
-    "Supplier":{
-        "validate":"generate_item.utils.customer.supplier_validate"
-    }
+    "Supplier": {
+        "validate": [
+            "generate_item.utils.customer.supplier_validate",
+            "generate_item.utils.customer_supplier_workflow.validate_supplier",
+        ],
+        "onload": "generate_item.utils.customer_supplier_workflow.set_cs_onload",
+    },
 }
 # 	"*": {
 # 		"on_update": "method",
@@ -339,6 +349,18 @@ override_whitelisted_methods = {
     "erpnext.subcontracting.doctype.subcontracting_order.subcontracting_order.make_subcontracting_receipt":"generate_item.utils.subcontracting_order.custom_make_subcontracting_receipt",
     "erpnext.controllers.subcontracting_controller.make_rm_stock_entry":"generate_item.utils.subcontracting_order.custom_make_rm_stock_entry"
 }
+
+permission_query_conditions = {
+    "Modification Task":
+"generate_item.generate_item.modification_task_utils.modification_task_permission.get_permission_query_conditions"
+
+}
+
+has_permission = {
+    "Modification Task":
+"generate_item.generate_item.modification_task_utils.modification_task_permission.has_permission"
+}
+
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,

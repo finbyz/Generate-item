@@ -1,0 +1,73 @@
+{
+ "actions": [],
+ "autoname": "hash",
+ "creation": "2026-07-01 00:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "branch",
+  "who_create",
+  "l1_approver",
+  "final_approver",
+  "disabled"
+ ],
+ "fields": [
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Branch",
+   "options": "Branch",
+   "reqd": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "who_create",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Who Create",
+   "options": "Role",
+   "reqd": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "l1_approver",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "L1 Approver",
+   "options": "Role",
+   "reqd": 1,
+   "columns": 2
+  },
+  {
+   "fieldname": "final_approver",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Final Approver",
+   "options": "Role",
+   "reqd": 1,
+   "columns": 2
+  },
+  {
+   "default": "0",
+   "fieldname": "disabled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Disabled",
+   "columns": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-07-01 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Customer Approval Rule",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
