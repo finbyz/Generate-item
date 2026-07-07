@@ -249,7 +249,9 @@ def _extract_so_items(so_doc) -> list:
         # if not item_group or "valve" not in item_group.lower():
         #     continue
 
-        if  item_group != "Valve":
+        type_of_product = ["Valve","Valve Spare"]
+
+        if  item_group not in type_of_product :
             continue
         
         result.append({
@@ -967,7 +969,7 @@ def _process_single_so_for_serial_creation(so_name: str):
                 INNER JOIN `tabItem Generator` ig
                     ON ig.item_code = soi.item_code
                     AND ig.attribute_1       = 'Type Of Product'
-                    AND ig.attribute_1_value = 'Valve'
+                    AND ig.attribute_1_value IN ('Valve', 'Valve Spare')
             WHERE
                 soi.parent          = %(so_name)s
                 AND soi.custom_batch_no IS NOT NULL

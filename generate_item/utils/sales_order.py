@@ -465,9 +465,11 @@ def get_linked_addresses(doctype, txt, searchfield, start, page_len, filters):
     })
     
 def check_warranty(doc):
+    parent_warranty = doc.warranty_period
     for item in doc.items:
-        
-        wp = frappe.db.get_value("Item",item.item_code,"warranty_period")
-        if not wp:
-            wp = 0
-        item.warranty_period = wp 
+        if not item.warranty_period:
+            if parent_warranty:
+                item.warranty_period = parent_warranty
+            else:
+                wp = frappe.db.get_value("Item", item.item_code, "warranty_period")
+                item.warranty_period = wp or 0
