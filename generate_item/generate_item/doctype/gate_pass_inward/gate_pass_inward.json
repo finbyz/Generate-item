@@ -161,8 +161,8 @@
    "fieldname": "branch",
    "fieldtype": "Link",
    "label": "Branch",
-   "mandatory_depends_on": "eval:doc.is_stock_item == 1",
-   "options": "Branch"
+   "options": "Branch",
+   "reqd": 1
   },
   {
    "depends_on": "eval:doc.is_stock_item == 1",
@@ -199,7 +199,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-06-19 16:36:47.624322",
+ "modified": "2026-07-03 14:32:45.927467",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Inward",

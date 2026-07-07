@@ -210,7 +210,6 @@
    "fieldname": "branch",
    "fieldtype": "Link",
    "label": "Branch",
-   "mandatory_depends_on": "eval:doc.is_stock_item == 1",
    "options": "Branch",
    "reqd": 1
   },
@@ -295,7 +294,7 @@
    "link_fieldname": "gate_pass_outward"
   }
  ],
- "modified": "2026-06-22 13:19:06.403094",
+ "modified": "2026-07-03 14:31:24.774571",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Outward",
