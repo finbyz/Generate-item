@@ -17,7 +17,7 @@ from frappe.model.naming import make_autoname
 from frappe.utils import get_url_to_form
 
 
-# from generate_item.generate_item.modification_task_utils.modification_task import create_modification_task
+from generate_item.generate_item.modification_task_utils.modification_task import create_bom_task_on_omr_submit
 
 class OrderModificationRequest(Document):
     
@@ -55,7 +55,26 @@ class OrderModificationRequest(Document):
                 create_batches_for_omr(self)
                 get_change(self)
         
-        # create_modification_task(self)
+        create_bom_task_on_omr_submit(self)
+        self.update_production_plan_sales_order_modification()
+
+    def update_production_plan_sales_order_modification(self):
+        frappe.db.sql(
+            """
+            UPDATE `tabProduction Plan` pp
+            INNER JOIN `tabProduction Plan Item` ppi
+                ON ppi.parent = pp.name
+            SET
+                pp.sales_order_modification = %s
+            WHERE
+                pp.docstatus in (0,1)
+                AND ppi.sales_order = %s
+            """,
+            (
+                "YES",
+                self.sales_order,
+            ),
+        )
 
     def update_sales_order_commercial_details(self):
         """Updates Commercial T&C + Details + Reference Data + Terms & Conditions in Sales Order"""

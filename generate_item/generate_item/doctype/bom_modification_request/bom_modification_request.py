@@ -10,6 +10,8 @@ from frappe.desk.form.linked_with import (
 )
 from frappe.utils import today, now, flt
 
+from generate_item.generate_item.modification_task_utils.modification_task import create_pp_task_on_bmr_submit
+
 
 class BomModificationRequest(Document):
 
@@ -24,6 +26,8 @@ class BomModificationRequest(Document):
         if self.bom:
             self.update_bom_items_using_db_set()  # step 1: apply changes
             self.update_bom_item_revision()        # step 2: stamp + heal zeros
+            self.update_production_plan_bom_modification()
+            create_pp_task_on_bmr_submit(self)
 
     
     def validate_qty_and_rev_qty(self):
@@ -35,6 +39,25 @@ class BomModificationRequest(Document):
                     f"Row {row.idx}: Rev Qty cannot be 0 when Qty is 0",
                     title="Invalid Quantity",
                 )
+
+    def update_production_plan_bom_modification(self):
+        frappe.db.sql(
+            """
+            UPDATE `tabProduction Plan` pp
+            INNER JOIN `tabProduction Plan Item` ppi
+                ON ppi.parent = pp.name
+            SET
+                pp.bom_modification = %s
+            WHERE
+                pp.docstatus in (0,1)
+                AND ppi.bom_no = %s
+            """,
+            (
+                "YES",     
+                self.bom,
+            ),
+        )
+
 
   
     def _qty_fields(self, qty):
