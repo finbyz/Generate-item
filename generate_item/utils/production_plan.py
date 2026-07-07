@@ -1,6 +1,9 @@
 import frappe
 from frappe import _
 
+from generate_item.generate_item.modification_task_utils.modification_task import create_wo_po_tasks_on_gate_update
+
+
 def before_save(doc, method):
     # Handle po_items
     if hasattr(doc, "po_items") and doc.po_items:
@@ -166,18 +169,108 @@ def set_actual_qty_for_child_row(cdt, cdn):
         frappe.db.commit()
 
 
-
 import frappe
 from erpnext.manufacturing.doctype.production_plan.production_plan import (
     get_items_for_material_requests,
 )
 
+
+def _validate_schema_match(source_doctype, target_doctype):
+    """One-time set comparison — cheap, meta is cached by frappe.get_meta."""
+    skip = {"name", "parent", "parentfield", "parenttype", "doctype",
+            "owner", "creation", "modified", "modified_by", "idx"}
+
+    source_fields = {df.fieldname for df in frappe.get_meta(source_doctype).fields
+                      if df.fieldname not in skip}
+    target_fields = {df.fieldname for df in frappe.get_meta(target_doctype).fields
+                      if df.fieldname not in skip}
+
+    missing = source_fields - target_fields
+    if missing:
+        frappe.throw(
+            "Tracking DocType '{0}' is missing field(s) present on source '{1}': {2}."
+            .format(target_doctype, source_doctype, ", ".join(sorted(missing)))
+        )
+
+
+def _copy_child_table(pp, source_fieldname, target_fieldname):
+    source_rows = pp.get(source_fieldname) or []
+    if not source_rows:
+        return
+
+    parent_meta = frappe.get_meta(pp.doctype)
+    source_doctype = parent_meta.get_field(source_fieldname).options
+    target_doctype = parent_meta.get_field(target_fieldname).options
+
+    _validate_schema_match(source_doctype, target_doctype)
+
+    system_fields = {"name", "idx", "parent", "parentfield", "parenttype",
+                      "doctype", "owner", "creation", "modified", "modified_by"}
+
+    # append() only builds in-memory objects — no DB hit per row.
+    for row in source_rows:
+        cleaned = {k: v for k, v in row.as_dict().items() if k not in system_fields}
+        pp.append(target_fieldname, cleaned)
+
+
+def _capture_original_data_if_needed(pp):
+    if pp.get("original_data"):
+        return False
+
+    pp.set("tracking_assembly_items", [])
+    pp.set("tracking_sub_assembly_items", [])
+    pp.set("tracking_raw_materials", [])
+
+    _copy_child_table(pp, "po_items", "tracking_assembly_items")
+    _copy_child_table(pp, "sub_assembly_items", "tracking_sub_assembly_items")
+    _copy_child_table(pp, "mr_items", "tracking_raw_materials")
+
+    pp.original_data = 1
+    return True
+
+
+def _sync_planned_qty_from_sales_orders(pp):
+    """Batch-fetch all Sales Order Item qtys in a single query instead of
+    one query per po_item row (fixes N+1)."""
+    so_item_names = [d.sales_order_item for d in pp.po_items if d.sales_order_item]
+    if not so_item_names:
+        return False
+
+    qty_map = dict(
+        frappe.get_all(
+            "Sales Order Item",
+            filters={"name": ["in", so_item_names]},
+            fields=["name", "qty"],
+            as_list=True,
+        )
+    )
+
+    changed = False
+    for item in pp.po_items:
+        so_qty = qty_map.get(item.sales_order_item)
+        if so_qty and so_qty > (item.planned_qty or 0):
+            item.planned_qty = so_qty
+            changed = True
+    return changed
+
+
+def _get_default_transfer_warehouses(pp):
+    if not pp.branch:
+        return []
+    store_wh = frappe.db.get_value(
+        "Warehouse",
+        {"branch": pp.branch, "store_warehouse": 1, "disabled": 0, "is_group": 0},
+        "name",
+    )
+    return [{"warehouse": store_wh}] if store_wh else []
+
+
 @frappe.whitelist()
 def get_update_for_submitted_pp(docname):
     pp = frappe.get_doc("Production Plan", docname)
+    validate_work_orders_before_update(pp.name)
     was_submitted = pp.docstatus == 1
 
-    # --- Step 0: temporarily un-submit ---
     if was_submitted:
         pp.db_set("docstatus", 0, update_modified=False)
         pp.reload()
@@ -185,52 +278,78 @@ def get_update_for_submitted_pp(docname):
         pp.flags.ignore_validate_update_after_submit = True
         pp.flags.ignore_permissions = True
 
-    # --- Step 1: sync planned_qty from linked Sales Order Item qty ---
-    changed = False
-    for item in pp.po_items:
-        if not item.sales_order_item:
-            continue
-        so_qty = frappe.db.get_value("Sales Order Item", item.sales_order_item, "qty")
-        if so_qty and so_qty > (item.planned_qty or 0):
-            item.planned_qty = so_qty
-            changed = True
+    # All in-memory mutations happen first — nothing is written to DB yet.
+    captured = _capture_original_data_if_needed(pp)
+    changed = _sync_planned_qty_from_sales_orders(pp)
 
-    if changed:
-        pp.save(ignore_permissions=True)
+    # get_sub_assembly_items() reads pp.po_items in memory — no save needed first.
+    pp.get_sub_assembly_items()
 
-    # --- Step 2: regenerate sub-assembly items against the new planned_qty ---
-    pp.get_sub_assembly_items()   # same method the "Get Items for Sub Assembly" button calls
-    pp.save(ignore_permissions=True)
+    # Clear both modification flags in a single UPDATE instead of two.
+    frappe.db.set_value(
+        "Production Plan", pp.name,
+        {"bom_modification": "", "sales_order_modification": ""},
+        update_modified=False,
+    )
+    pp.bom_modification = ""
+    pp.sales_order_modification = ""
 
-    # --- Step 3: regenerate mr_items, same as "Get Items" in the Transfer Materials dialog ---
-    def get_default_transfer_warehouses(pp):
-        if not pp.branch:
-            return []
-        store_wh = frappe.db.get_value(
-            "Warehouse",
-            {
-                "branch": pp.branch,
-                "store_warehouse": 1,
-                "disabled": 0,
-                "is_group": 0,
-            },
-            "name",
-        )
-        return [{"warehouse": store_wh}] if store_wh else []
-
-    warehouses = get_default_transfer_warehouses(pp)
+    warehouses = _get_default_transfer_warehouses(pp)
     items = get_items_for_material_requests(pp.as_json(), warehouses=warehouses or None)
-    # warehouses = [{"warehouse": pp.for_warehouse}] if pp.for_warehouse else None
-    # items = get_items_for_material_requests(pp.as_json(), warehouses=warehouses)
-
     pp.set("mr_items", [])
     for d in items:
         pp.append("mr_items", d)
+
+    # Single save for everything accumulated above.
     pp.save(ignore_permissions=True)
 
-    # --- Step 4: re-submit ---
     if was_submitted:
-        pp.db_set("docstatus", 1, update_modified=False)
+        pp.submit()
+        create_wo_po_tasks_on_gate_update(pp)
+    
 
     frappe.db.commit()
-    return {"success": True, "planned_qty_updated": changed}
+    return {
+        "success": True,
+        "planned_qty_updated": changed,
+        "original_data_captured_now": captured,
+    }
+
+
+
+
+def validate_work_orders_before_update(production_plan):
+    """
+    Prevent updating a Production Plan if any linked Work Order
+    has already entered execution.
+
+    Allowed:
+        - Draft
+        - Not Started
+
+    Blocked:
+        - Started
+        - In Process
+        - Completed
+    """
+
+    blocked_statuses = ("Started", "In Process", "Completed")
+
+    work_order = frappe.db.get_value(
+        "Work Order",
+        {
+            "production_plan": production_plan,
+            "docstatus": ("!=", 2),
+            "status": ("in", blocked_statuses),
+        },
+        ["name", "status"],
+        as_dict=True,
+    )
+
+    if work_order:
+        frappe.throw(
+            _(
+                "Production Plan cannot be updated because Work Order <b>{0}</b> is in <b>{1}</b> status."
+            ).format(work_order.name, work_order.status),
+            title=_("Update Not Allowed"),
+        )
