@@ -353,3 +353,49 @@ def _sync_required_items_from_bom(wo, bom):
 
     wo.set("required_items", rows_to_keep)
     wo.save(ignore_permissions=True)
+
+
+
+def remove_modification_task_link(doc, method=None):
+    """
+    Before a draft Work Order is trashed, unlink it from any
+    Modification Task referencing it, so the Dynamic Link check
+    doesn't block deletion.
+    """
+    # Safety: only auto-unlink for Draft WOs. Anything further along,
+    # fail loud instead of silently orphaning a task.
+    if doc.status != "Draft":
+        return
+
+    linked_tasks = frappe.get_all(
+        "Modification Task",
+        filters={
+            "reference_doctype": "Work Order",
+            "reference_document_name": doc.name,
+        },
+        pluck="name",
+    )
+
+    for task_name in linked_tasks:
+        # Modification Task is submittable (docstatus=1), so a normal
+        # doc.save() would fail on non-allow-on-submit fields.
+        # db_set bypasses validate/on_update and works on submitted docs.
+        note = (
+            f"\n\n---\n[System] Reference Work Order **{doc.name}** was "
+            f"deleted on {frappe.utils.now()}. Link removed automatically."
+        )
+        existing_desc = frappe.db.get_value("Modification Task", task_name, "description") or ""
+
+        frappe.db.set_value(
+            "Modification Task",
+            task_name,
+            {
+                "reference_doctype": None,
+                "reference_document_name": None,
+                "description": existing_desc + note,
+            },
+            update_modified=True,
+        )
+
+    if linked_tasks:
+        frappe.db.commit()

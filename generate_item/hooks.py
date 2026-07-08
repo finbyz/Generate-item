@@ -235,6 +235,7 @@ doc_events = {
     },
     "Work Order":{
         "before_insert": "generate_item.utils.work_order.before_insert",
+        "on_trash": "generate_item.utils.work_order.remove_modification_task_link"
     },
     "Delivery Note": {
         "after_insert": "generate_item.utils.delivery_note.after_insert",
