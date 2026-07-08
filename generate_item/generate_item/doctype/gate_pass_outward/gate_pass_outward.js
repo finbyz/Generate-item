@@ -338,13 +338,17 @@ function _build_inward_doc(frm, pending_items, is_stock) {
                 row.item = item.item;
 
                 row.sent_qty = pending;
+              
                 row.pending_qty = pending;
                 row.qty = pending;
                 row.rate = item.rate || 0;
 
                 row.source_warehouse = item.target_warehouse || "";
                 row.target_warehouse = item.source_warehouse || "" ;
+                row.gate_pass_outward_detail = item.name;
+                
             });
+              frm.refresh_field("item_detail");
         } else {
             // ── Non-stock items → populate items child ────────────────────────
             pending_items.forEach(item => {
@@ -357,7 +361,9 @@ function _build_inward_doc(frm, pending_items, is_stock) {
                 row.sent_qty = pending;
                 row.pending_qty = pending;
                 row.quality = "Good";
+                row.gate_pass_outward_item = item.name
             });
+             frm.refresh_field("items");
         }
 
         frappe.set_route("Form", "Gate Pass Inward", new_name);

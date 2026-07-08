@@ -51,17 +51,23 @@ class GatePassInward(Document):
         )
 
     def _update_stock_item_qtys(self, gpo, cancel):
-        outward_map = {row.item: row for row in gpo.item_detail}
+        outward_map_by_name = {row.name: row for row in gpo.item_detail}
+        outward_map_by_item = {row.item: row for row in gpo.item_detail}
 
         for gpi_row in self.item_detail:
-            item_code = gpi_row.item
-            if item_code not in outward_map:
+            item_code    = gpi_row.item
+            gpo_row_name = gpi_row.get("gate_pass_outward_detail")
+
+            if gpo_row_name and gpo_row_name in outward_map_by_name:
+                gpo_row = outward_map_by_name[gpo_row_name]
+            elif item_code in outward_map_by_item:
+                gpo_row = outward_map_by_item[item_code]
+            else:
                 frappe.throw(
                     _(f"Item <b>{item_code}</b> not found in "
-                      f"Gate Pass Outward {self.gate_pass_outward}")
+                    f"Gate Pass Outward {self.gate_pass_outward}")
                 )
 
-            gpo_row    = outward_map[item_code]
             qty_change = gpi_row.qty or 0
 
             if cancel:
@@ -71,10 +77,10 @@ class GatePassInward(Document):
                 if new_received > (gpo_row.qty or 0):
                     frappe.throw(
                         _(f"Receiving qty for <b>{item_code}</b> exceeds sent qty "
-                          f"in {self.gate_pass_outward}. "
-                          f"(Sent: {gpo_row.qty}, "
-                          f"Already received: {gpo_row.received_qty}, "
-                          f"Receiving now: {qty_change})")
+                        f"in {self.gate_pass_outward}. "
+                        f"(Sent: {gpo_row.qty}, "
+                        f"Already received: {gpo_row.received_qty}, "
+                        f"Receiving now: {qty_change})")
                     )
                 gpo_row.received_qty = new_received
 
@@ -87,19 +93,24 @@ class GatePassInward(Document):
                     "pending_qty" : gpo_row.pending_qty,
                 }
             )
-
     def _update_sub_component_qtys(self, gpo, cancel):
-        outward_map = {row.sub_component: row for row in gpo.items}
+        outward_map_by_name = {row.name: row for row in gpo.items}
+        outward_map_by_sc   = {row.sub_component: row for row in gpo.items}
 
         for gpi_row in self.items:
-            sc = gpi_row.sub_component
-            if sc not in outward_map:
+            sc           = gpi_row.sub_component
+            gpo_row_name = gpi_row.get("gate_pass_outward_item")
+
+            if gpo_row_name and gpo_row_name in outward_map_by_name:
+                gpo_row = outward_map_by_name[gpo_row_name]
+            elif sc in outward_map_by_sc:
+                gpo_row = outward_map_by_sc[sc]
+            else:
                 frappe.throw(
                     _(f"Sub Component <b>{sc}</b> not found in "
-                      f"Gate Pass Outward {self.gate_pass_outward}")
+                    f"Gate Pass Outward {self.gate_pass_outward}")
                 )
 
-            gpo_row    = outward_map[sc]
             qty_change = gpi_row.sent_qty or 0
 
             if cancel:
@@ -109,10 +120,10 @@ class GatePassInward(Document):
                 if new_received > (gpo_row.qty or 0):
                     frappe.throw(
                         _(f"Receiving qty for <b>{sc}</b> exceeds sent qty "
-                          f"in {self.gate_pass_outward}. "
-                          f"(Sent: {gpo_row.qty}, "
-                          f"Already received: {gpo_row.received_qty}, "
-                          f"Receiving now: {qty_change})")
+                        f"in {self.gate_pass_outward}. "
+                        f"(Sent: {gpo_row.qty}, "
+                        f"Already received: {gpo_row.received_qty}, "
+                        f"Receiving now: {qty_change})")
                     )
                 gpo_row.received_qty = new_received
 
@@ -125,7 +136,6 @@ class GatePassInward(Document):
                     "pending_qty" : gpo_row.pending_qty,
                 }
             )
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # STOCK ENTRY — exact same pattern as GPO working code
@@ -338,12 +348,16 @@ def get_draft_inward_info(gate_pass_outward):
     gpo      = frappe.get_doc("Gate Pass Outward", gate_pass_outward)
     is_stock = bool(gpo.is_stock_item)
 
+    # if is_stock:
+    #     pending_map = {row.item: (row.pending_qty or 0) for row in gpo.item_detail}
+    # else:
+    #     pending_map = {row.sub_component: (row.pending_qty or 0) for row in gpo.items}
     if is_stock:
-        pending_map = {row.item: (row.pending_qty or 0) for row in gpo.item_detail}
+        total_pending = sum((row.pending_qty or 0) for row in gpo.item_detail)
     else:
-        pending_map = {row.sub_component: (row.pending_qty or 0) for row in gpo.items}
+        total_pending = sum((row.pending_qty or 0) for row in gpo.items)
 
-    total_pending   = sum(pending_map.values())
+    # total_pending   = sum(pending_map.values())
     total_draft_qty = 0
     draft_names     = []
 

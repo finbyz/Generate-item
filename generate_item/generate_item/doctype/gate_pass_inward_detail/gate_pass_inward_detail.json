@@ -1,5 +1,6 @@
 {
  "actions": [],
+ "allow_bulk_edit": 1,
  "allow_rename": 1,
  "creation": "2026-05-13 18:00:50.053777",
  "doctype": "DocType",
@@ -11,6 +12,7 @@
   "uom",
   "description",
   "serial_no",
+  "gate_pass_outward_detail",
   "column_break_rcft",
   "rate",
   "sent_qty",
@@ -108,13 +110,24 @@
    "fieldname": "remarks",
    "fieldtype": "Small Text",
    "label": "Remarks"
+  },
+  {
+   "fieldname": "gate_pass_outward_detail",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Gate Pass Outward Detail",
+   "no_copy": 1,
+   "options": "Gate Pass Outward Detail",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-05-25 10:23:05.536449",
+ "modified": "2026-07-08 15:36:39.278055",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Inward Detail",
