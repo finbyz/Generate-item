@@ -101,8 +101,46 @@ frappe.ui.form.on('Modification Task', {
 
             // Toggle click logic
             $wrapper.find('#status-toggle').on('change', function () {
+                const $checkbox = $(this);
                 const newStatus = this.checked ? 'Completed' : 'Pending';
                 const label = newStatus === 'Completed' ? '' : '';
+
+                // ---- Validation: required before marking Completed ----
+                if (newStatus === 'Completed') {
+                    const missing = [];
+
+                    if (!frm.doc.task_status || !frm.doc.task_status.trim()) {
+                        missing.push('Task Status');
+                    }
+
+                    if (!frm.doc.task_remarks || !frm.doc.task_remarks.trim()) {
+                        missing.push('Task Remarks');
+                    }
+
+                    if (!frm.doc.assign_to || !frm.doc.assign_to.trim()) {
+                        missing.push('Assign To');
+                    }
+
+                    // "Assigned To" is stored
+                   
+
+                    if (missing.length > 0) {
+                        frappe.msgprint({
+                            title: __('Cannot Mark as Completed'),
+                            indicator: 'red',
+                            message: __('Please fill the following field(s) before marking this task as Completed: {0}', [
+                                '<b>' + missing.join(', ') + '</b>'
+                            ])
+                        });
+
+                        // Revert toggle, do not proceed
+                        this.checked = false;
+                        $wrapper.find('.toggle-text').text('');
+                        $wrapper.find('.toggle-label-text').text('Pending');
+                        return;
+                    }
+                }
+                // ---- End validation ----
 
                 frappe.confirm(
                     `Mark this task as <b>${newStatus}</b>?`,
@@ -124,7 +162,7 @@ frappe.ui.form.on('Modification Task', {
                                     frm.reload_doc();
                                 } else {
                                     // Revert toggle if failed
-                                    this.checked = !this.checked;
+                                    $checkbox.prop('checked', !$checkbox.prop('checked'));
                                 }
                             }
                         });

@@ -265,58 +265,6 @@ def _get_default_transfer_warehouses(pp):
     return [{"warehouse": store_wh}] if store_wh else []
 
 
-# @frappe.whitelist()
-# def get_update_for_submitted_pp(docname):
-#     pp = frappe.get_doc("Production Plan", docname)
-#     validate_work_orders_before_update(pp.name)
-#     was_submitted = pp.docstatus == 1
-
-#     if was_submitted:
-#         pp.db_set("docstatus", 0, update_modified=False)
-#         pp.reload()
-#         pp.flags.ignore_validate = True
-#         pp.flags.ignore_validate_update_after_submit = True
-#         pp.flags.ignore_permissions = True
-
-#     # All in-memory mutations happen first — nothing is written to DB yet.
-#     captured = _capture_original_data_if_needed(pp)
-#     changed = _sync_planned_qty_from_sales_orders(pp)
-
-#     # get_sub_assembly_items() reads pp.po_items in memory — no save needed first.
-#     pp.get_sub_assembly_items()
-
-#     # Clear both modification flags in a single UPDATE instead of two.
-#     frappe.db.set_value(
-#         "Production Plan", pp.name,
-#         {"bom_modification": "", "sales_order_modification": ""},
-#         update_modified=False,
-#     )
-#     pp.bom_modification = ""
-#     pp.sales_order_modification = ""
-
-#     warehouses = _get_default_transfer_warehouses(pp)
-#     items = get_items_for_material_requests(pp.as_json(), warehouses=warehouses or None)
-#     pp.set("mr_items", [])
-#     for d in items:
-#         pp.append("mr_items", d)
-
-#     # Single save for everything accumulated above.
-#     pp.save(ignore_permissions=True)
-#     # flag all non-cancelled linked Work Orders for update ---
-#     _flag_work_orders_for_update(pp.name)
-
-#     if was_submitted:
-#         pp.submit()
-#         create_wo_po_tasks_on_gate_update(pp)
-    
-
-#     frappe.db.commit()
-#     return {
-#         "success": True,
-#         "planned_qty_updated": changed,
-#         "original_data_captured_now": captured,
-#     }
-
 
 @frappe.whitelist()
 def get_update_for_submitted_pp(docname):
@@ -338,6 +286,7 @@ def get_update_for_submitted_pp(docname):
     pp.get_sub_assembly_items()
 
     # Clear both modification flags in a single UPDATE instead of two.
+    pp.production_plan_updated = 1
     frappe.db.set_value(
         "Production Plan", pp.name,
         {"bom_modification": "", "sales_order_modification": ""},
@@ -346,18 +295,14 @@ def get_update_for_submitted_pp(docname):
     pp.bom_modification = ""
     pp.sales_order_modification = ""
 
-    # Snapshot item codes that existed BEFORE this update, so we can tell
-    # which mr_items rows are genuinely new after rebuilding the table.
-    existing_mr_item_codes = {d.item_code for d in (pp.mr_items or []) if d.item_code}
-
     warehouses = _get_default_transfer_warehouses(pp)
     items = get_items_for_material_requests(pp.as_json(), warehouses=warehouses or None)
-    pp.set("mr_items", [])
-    for d in items:
-        pp.append("mr_items", d)
 
-    # Single save for everything accumulated above.
-    # This is also what assigns each mr_items row its real `name`.
+    # Merge instead of wipe-and-rebuild: existing rows keep their original
+    # `name` (and therefore stay correctly linked to any Material Request
+    # already created against them). See _merge_mr_items() for details.
+    _merge_mr_items(pp, items)
+
     pp.save(ignore_permissions=True)
 
     # flag all non-cancelled linked Work Orders for update
@@ -367,59 +312,253 @@ def get_update_for_submitted_pp(docname):
         pp.submit()
         create_wo_po_tasks_on_gate_update(pp)
 
-    # --- Auto-create MR for newly added BOM items ---
-    # IMPORTANT: build this list from pp.mr_items AFTER save(), not from the
-    # raw `items` dicts collected before save. Pre-save dicts never receive
-    # the `name` frappe assigns on save, so if you later feed them into
-    # make_material_request(), the created MR Items lose their
-    # `material_request_plan_item` back-link to this Production Plan.
-    # Using the post-save rows keeps that link intact.
-    newly_added_rows = [
-        d for d in (pp.mr_items or [])
-        if d.item_code and d.item_code not in existing_mr_item_codes
-    ]
-
-    new_items_created = []
-    if newly_added_rows and was_submitted:
-        try:
-            original_mr_items = pp.mr_items
-
-            # Temporarily narrow mr_items to just the new rows (already-saved
-            # Document rows, so `.name` etc. are correct) and reuse the
-            # existing make_material_request() flow — same one the
-            # "Create > Material Request" button calls.
-            pp.set("mr_items", newly_added_rows)
-            pp.make_material_request()
-
-            # Restore full mr_items in memory. No re-save needed: the DB
-            # already has the complete list from pp.save() above, and we're
-            # not persisting pp again after this point.
-            pp.set("mr_items", original_mr_items)
-
-            new_items_created = [row.item_code for row in newly_added_rows]
-            frappe.msgprint(
-                _("Material Request created for newly added BOM items: {0}").format(
-                    ", ".join(new_items_created)
-                )
-            )
-        except Exception as e:
-            frappe.log_error(
-                "Auto MR Creation Error",
-                f"Error creating MR for new items in PP {pp.name}: {str(e)}"
-            )
-            frappe.msgprint(
-                _("Could not auto-create Material Request for new items: {0}").format(str(e)),
-                indicator="orange",
-            )
+    # Auto-creation of Material Requests has been intentionally removed from
+    # this flow. MR creation now happens ONLY via the explicit "Create
+    # Material Request" button -> create_material_request_for_pending_items().
 
     frappe.db.commit()
     return {
         "success": True,
         "planned_qty_updated": changed,
         "original_data_captured_now": captured,
-        "new_items_added": bool(new_items_created),
-        "new_items": new_items_created,
     }
+
+
+def _mr_item_key(row):
+    """
+    Stable identity for an mr_items row that survives table rebuilds.
+
+    Includes sales_order (not just item_code + warehouse) because the same
+    item + warehouse combination can legitimately appear as separate rows
+    for different sales orders within one Production Plan. Without
+    sales_order in the key, rows for SO-A and SO-B on the same item could be
+    cross-matched during merge, or an MR raised for SO-A could incorrectly
+    make SO-B's row look "already requested".
+    """
+    return (row.item_code, row.get("warehouse"), row.get("sales_order"),row.get("parent"))
+
+
+# Fields we never overwrite when updating an existing mr_items row in place —
+# these are either system-managed or identity fields, and must be left alone.
+_MR_ITEM_PROTECTED_FIELDS = {
+    "name", "idx", "doctype", "parent", "parentfield", "parenttype",
+    "owner", "creation", "modified", "modified_by", "docstatus",
+    "material_request_plan_item",
+}
+
+
+def _merge_mr_items(pp, new_items):
+    """
+    Merge freshly recomputed mr_items into pp.mr_items WITHOUT wiping the
+    table. This replaces the old "pp.set('mr_items', []) + re-append"
+    approach, which destroyed and recreated every row on every call —
+    handing each row a brand-new `name` and silently orphaning the link to
+    any Material Request already created against it (root cause of the
+    duplicate-MR bug).
+
+    Matching key: (item_code, warehouse) — same key used by
+    _get_pending_mr_rows() / _get_already_requested_keys().
+
+    Rules:
+    1. Existing row, still needed (key present in new_items)
+       -> update its fields IN PLACE. Same object, same `name`, so any
+          existing Material Request link stays valid.
+    2. Existing row, no longer needed, NO Material Request created yet
+       -> safe to drop.
+    3. Existing row, no longer needed, but a Material Request WAS already
+       created against it
+       -> keep the row untouched. We never delete a row that a live MR
+          still references, even if recompute says it's no longer required —
+          that MR is a real document already in the system.
+    4. Genuinely new item (key not in existing rows)
+       -> appended as a new row (this is the only case where a new `name`
+          is expected/correct, because there was nothing to preserve).
+    """
+    already_requested_keys = _get_already_requested_keys(pp)
+
+    existing_rows = list(pp.mr_items or [])
+    existing_by_key = {}
+    for row in existing_rows:
+        existing_by_key.setdefault(_mr_item_key(row), []).append(row)
+
+    new_by_key = {}
+    for d in new_items:
+        key = (d.get("item_code"), d.get("warehouse"), d.get("sales_order"),d.get("parent"))
+        new_by_key.setdefault(key, []).append(d)
+
+    kept_rows = []
+    dropped_with_live_mr = []  # for an optional heads-up message to the user
+
+    for key, rows in existing_by_key.items():
+        new_matches = new_by_key.pop(key, [])
+
+        for i, row in enumerate(rows):
+            if i < len(new_matches):
+                # Rule 1: still needed -> update in place, same `name`.
+                new_data = new_matches[i]
+                for fieldname, value in new_data.items():
+                    if fieldname not in _MR_ITEM_PROTECTED_FIELDS:
+                        row.set(fieldname, value)
+                kept_rows.append(row)
+            elif key in already_requested_keys:
+                # Rule 3: no longer needed but MR already exists -> keep as-is.
+                kept_rows.append(row)
+                dropped_with_live_mr.append(row.item_code)
+            # else Rule 2: no longer needed, no MR yet -> drop (don't append).
+
+    # Rule 4: anything left in new_by_key is genuinely new.
+    remaining_new = [d for items_ in new_by_key.values() for d in items_]
+
+    pp.set("mr_items", kept_rows)
+    for d in remaining_new:
+        pp.append("mr_items", d)
+
+    # Renumber idx cleanly since rows may have been dropped/reordered.
+    for i, row in enumerate(pp.mr_items, start=1):
+        row.idx = i
+
+    if dropped_with_live_mr:
+        frappe.msgprint(
+            _(
+                "Note: {0} no longer appear required by the current plan, "
+                "but a Material Request already exists for them, so they "
+                "were kept as-is."
+            ).format(", ".join(dropped_with_live_mr)),
+            indicator="orange",
+            alert=True,
+        )
+
+
+def _get_already_requested_keys(pp):
+    """
+    Single query: fetch every non-cancelled Material Request Item already
+    raised for this Production Plan, keyed the same way as mr_items rows.
+
+    Matching is done on (item_code, warehouse) rather than on
+    material_request_plan_item -> mr_items.name, because
+    get_update_for_submitted_pp() fully rebuilds mr_items (delete + re-append)
+    on every run, which assigns each row a brand-new `name`. Matching by name
+    breaks the moment the plan is updated again — the old MR's back-link
+    points to a row that no longer exists, so an already-fulfilled item looks
+    "pending" and gets requested a second time.
+
+    Primary match: production_plan == pp.name (set by make_material_request()
+    on every row it creates).
+    Fallback match: sales_order == pp's linked sales orders, for any legacy
+    Material Request Item rows created before production_plan existed / was
+    populated on this table.
+    """
+    rows = frappe.get_all(
+        "Material Request Item",
+        filters={
+            "production_plan": pp.name,
+            "docstatus": ["!=", 2],  # cancelled MRs don't count as "created"
+        },
+        fields=["item_code", "warehouse", "sales_order","production_plan"],
+    )
+    keys = {(r.item_code, r.warehouse, r.sales_order,r.production_plan) for r in rows}
+
+    # Fallback for legacy data where production_plan wasn't stamped on the MR
+    # Item (e.g. rows created before this field/flow existed).
+    sales_orders = {d.get("sales_order") for d in (pp.mr_items or []) if d.get("sales_order")}
+    if sales_orders:
+        legacy_rows = frappe.get_all(
+            "Material Request Item",
+            filters={
+                "sales_order": ["in", list(sales_orders)],
+                "production_plan": ["in", ["", None]],
+                "docstatus": ["!=", 2],
+            },
+            fields=["item_code", "warehouse", "sales_order","production_plan"],
+        )
+        keys |= {(r.item_code, r.warehouse, r.sales_order,r.production_plan) for r in legacy_rows}
+
+    return keys
+
+
+def _get_pending_mr_rows(pp):
+    """Return the mr_items rows that don't yet have a live Material Request."""
+    if not pp.mr_items:
+        return []
+
+    already_requested_keys = _get_already_requested_keys(pp)
+    return [d for d in pp.mr_items if _mr_item_key(d) not in already_requested_keys]
+
+
+@frappe.whitelist()
+def get_pending_mr_items(docname):
+    """
+    Used by the client script on refresh to decide whether to show the
+    'Create Material Request' button.
+    """
+    pp = frappe.get_doc("Production Plan", docname)
+    pending_rows = _get_pending_mr_rows(pp)
+    return {
+        "pending_count": len(pending_rows),
+        "pending_items": [d.item_code for d in pending_rows],
+    }
+
+
+@frappe.whitelist()
+def create_material_request_for_pending_items(docname):
+    """
+    Explicit button action: check every raw material row in mr_items,
+    skip the ones that already have a live Material Request, and create
+    one MR covering only the genuinely pending rows.
+
+    Guarded against double-click / concurrent-request races with a short-lived
+    cache lock per Production Plan.
+    """
+    lock_key = f"pp_mr_create_lock::{docname}"
+
+    if frappe.cache().get_value(lock_key):
+        frappe.throw(_("Material Request creation is already in progress for this Production Plan. Please wait."))
+
+    frappe.cache().set_value(lock_key, 1, expires_in_sec=60)
+
+    try:
+        pp = frappe.get_doc("Production Plan", docname)
+
+        pending_rows = _get_pending_mr_rows(pp)
+        if not pending_rows:
+            return {
+                "created": False,
+                "items": [],
+                "message": _("Material Request has already been created for all items."),
+            }
+
+        original_mr_items = pp.mr_items
+
+        try:
+            # Narrow mr_items to just the pending rows and reuse the standard
+            # make_material_request() flow — same one the stock "Create >
+            # Material Request" button calls.
+            pp.set("mr_items", pending_rows)
+            pp.make_material_request()
+        except Exception as e:
+            frappe.log_error(
+                "Manual MR Creation Error",
+                f"Error creating MR for pending items in PP {pp.name}: {str(e)}"
+            )
+            frappe.throw(_("Could not create Material Request: {0}").format(str(e)))
+        finally:
+            # Restore full mr_items in memory; nothing else needs re-saving on
+            # pp itself since make_material_request() persists the new MR
+            # document separately.
+            pp.set("mr_items", original_mr_items)
+
+        created_items = [d.item_code for d in pending_rows if d.item_code]
+        pp.production_plan_updated = 0
+        pp.save()
+        frappe.db.commit()
+
+        return {
+            "created": True,
+            "items": created_items,
+            "message": _("Material Request created for: {0}").format(", ".join(created_items)),
+        }
+    finally:
+        frappe.cache().delete_value(lock_key)
 
 def _flag_work_orders_for_update(production_plan):
     """Mark linked Work Orders as needing a sync, in a single bulk UPDATE."""
