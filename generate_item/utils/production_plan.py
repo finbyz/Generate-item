@@ -175,6 +175,8 @@ import frappe
 from erpnext.manufacturing.doctype.production_plan.production_plan import (
     get_items_for_material_requests,
 )
+from collections import defaultdict
+from frappe.utils import flt
 
 
 def _validate_schema_match(source_doctype, target_doctype):
@@ -382,18 +384,6 @@ def get_update_for_submitted_pp(docname):
 #     }
 
 
-def _mr_item_key(row):
-    """
-    Stable identity for an mr_items row that survives table rebuilds.
-
-    Includes sales_order (not just item_code + warehouse) because the same
-    item + warehouse combination can legitimately appear as separate rows
-    for different sales orders within one Production Plan. Without
-    sales_order in the key, rows for SO-A and SO-B on the same item could be
-    cross-matched during merge, or an MR raised for SO-A could incorrectly
-    make SO-B's row look "already requested".
-    """
-    return (row.item_code, row.get("warehouse"), row.get("sales_order"),row.get("parent"))
 
 
 # Fields we never overwrite when updating an existing mr_items row in place —
@@ -486,38 +476,46 @@ def _merge_mr_items(pp, new_items):
             alert=True,
         )
 
-
-def _get_already_requested_keys(pp):
+def _normalize(value):
     """
-    Single query: fetch every non-cancelled Material Request Item already
-    raised for this Production Plan, keyed the same way as mr_items rows.
-
-    Matching is done on (item_code, warehouse) rather than on
-    material_request_plan_item -> mr_items.name, because
-    get_update_for_submitted_pp() fully rebuilds mr_items (delete + re-append)
-    on every run, which assigns each row a brand-new `name`. Matching by name
-    breaks the moment the plan is updated again — the old MR's back-link
-    points to a row that no longer exists, so an already-fulfilled item looks
-    "pending" and gets requested a second time.
-
-    Primary match: production_plan == pp.name (set by make_material_request()
-    on every row it creates).
-    Fallback match: sales_order == pp's linked sales orders, for any legacy
-    Material Request Item rows created before production_plan existed / was
-    populated on this table.
+    Treat None, False, and blank identically, and strip whitespace, so key
+    matching can't silently break just because one side has None and the
+    other has "" for the same logical value.
     """
+    return (value or "").strip()
+
+
+def _mr_item_key(item_code, warehouse,sales_order):
+    """
+    Match key linking a Production Plan required-item row to Material
+    
+    """
+    return (_normalize(item_code), _normalize(warehouse),_normalize(sales_order))
+
+
+def _get_already_requested_qty_map(pp):
+    """
+    Returns a dict keyed by (item_code, warehouse) -> total qty already
+    requested via non-cancelled Material Request Items linked to this
+    Production Plan (plus legacy fallback rows matched the same way, for
+    MR Items created before `production_plan` was stamped on them).
+    """
+    qty_map = defaultdict(float)
+
     rows = frappe.get_all(
         "Material Request Item",
         filters={
             "production_plan": pp.name,
-            "docstatus": ["!=", 2],  # cancelled MRs don't count as "created"
+            "docstatus": ["!=", 2],  # cancelled MRs don't count as "requested"
         },
-        fields=["item_code", "warehouse", "sales_order","production_plan"],
+        fields=["item_code", "warehouse", "sales_order","qty"],
     )
-    keys = {(r.item_code, r.warehouse, r.sales_order,r.production_plan) for r in rows}
+    for r in rows:
+        key = _mr_item_key(r.item_code, r.warehouse,r.sales_order)
+        qty_map[key] += flt(r.qty)
 
-    # Fallback for legacy data where production_plan wasn't stamped on the MR
-    # Item (e.g. rows created before this field/flow existed).
+    # Fallback for legacy data where production_plan wasn't stamped on the
+    # MR Item (e.g. rows created before this field/flow existed).
     sales_orders = {d.get("sales_order") for d in (pp.mr_items or []) if d.get("sales_order")}
     if sales_orders:
         legacy_rows = frappe.get_all(
@@ -527,45 +525,78 @@ def _get_already_requested_keys(pp):
                 "production_plan": ["in", ["", None]],
                 "docstatus": ["!=", 2],
             },
-            fields=["item_code", "warehouse", "sales_order","production_plan"],
+            fields=["item_code", "warehouse", "sales_order","qty"],
         )
-        keys |= {(r.item_code, r.warehouse, r.sales_order,r.production_plan) for r in legacy_rows}
+        for r in legacy_rows:
+            key = _mr_item_key(r.item_code, r.warehouse,r.sales_order)
+            qty_map[key] += flt(r.qty)
 
-    return keys
+    return qty_map
 
 
 def _get_pending_mr_rows(pp):
-    """Return the mr_items rows that don't yet have a live Material Request."""
+    """
+    Return mr_items rows still pending, with `quantity` overridden to the
+    *remaining* qty only (required_qty - already_requested_qty).
+
+    NOTE: pp.mr_items is Material Request Plan Item, whose qty field is
+    named `quantity` (not `qty` — that's the field name on the separate
+    Material Request Item doctype used on the target MR).
+    """
     if not pp.mr_items:
         return []
 
-    already_requested_keys = _get_already_requested_keys(pp)
-    return [d for d in pp.mr_items if _mr_item_key(d) not in already_requested_keys]
+    requested_qty_map = _get_already_requested_qty_map(pp)
+    pending_rows = []
+    precision = 6  # tolerance for float rounding noise (e.g. 4.999999999 vs 5)
 
+    for d in pp.mr_items:
+        key = _mr_item_key(d.item_code, d.warehouse,d.sales_order)
+        already_requested = requested_qty_map.get(key, 0)
+        pending_qty = flt(flt(d.quantity) - flt(already_requested), precision)
+
+        if pending_qty > 0:
+            pending_row = frappe._dict(d.as_dict())
+            pending_row.quantity = pending_qty
+            pending_row.total_required_qty = d.quantity
+            pending_row.already_requested_qty = already_requested
+            pending_rows.append(pending_row)
+
+    return pending_rows
 
 @frappe.whitelist()
 def get_pending_mr_items(docname):
     """
     Used by the client script on refresh to decide whether to show the
-    'Create Material Request' button.
+    'Create Material Request' button, and to show accurate pending qty
+    (not just item codes) in the confirmation dialog.
     """
     pp = frappe.get_doc("Production Plan", docname)
     pending_rows = _get_pending_mr_rows(pp)
+
     return {
         "pending_count": len(pending_rows),
-        "pending_items": [d.item_code for d in pending_rows],
+        "pending_items": [
+            f"{d.item_code} ({d.quantity})" for d in pending_rows
+        ],
     }
-
 
 @frappe.whitelist()
 def create_material_request_for_pending_items(docname):
     """
     Explicit button action: check every raw material row in mr_items,
-    skip the ones that already have a live Material Request, and create
-    one MR covering only the genuinely pending rows.
+    and create one Material Request covering only the genuinely pending
+    quantity — not the full row qty.
 
-    Guarded against double-click / concurrent-request races with a short-lived
-    cache lock per Production Plan.
+    Qty-aware: if a row's required qty was increased by a BOM modification
+    after a partial MR was already created (e.g. required qty 5 -> 10,
+    MR already exists for 5), only the remaining shortfall (5) is requested
+    here. `_get_pending_mr_rows()` is responsible for that qty math; this
+    function just trusts the `.qty` it returns on each row and passes it
+    straight through to make_material_request().
+
+    Guarded against double-click / concurrent-request races with a
+    short-lived cache lock per Production Plan.
     """
     lock_key = f"pp_mr_create_lock::{docname}"
 
@@ -577,6 +608,9 @@ def create_material_request_for_pending_items(docname):
     try:
         pp = frappe.get_doc("Production Plan", docname)
 
+        # Re-fetch pending rows fresh inside the lock, not from any
+        # earlier client-side snapshot, so a concurrent update to mr_items
+        # (or an MR created by someone else moments ago) is reflected here.
         pending_rows = _get_pending_mr_rows(pp)
         if not pending_rows:
             return {
@@ -588,9 +622,12 @@ def create_material_request_for_pending_items(docname):
         original_mr_items = pp.mr_items
 
         try:
-            # Narrow mr_items to just the pending rows and reuse the standard
-            # make_material_request() flow — same one the stock "Create >
-            # Material Request" button calls.
+            # pending_rows already has `.qty` overridden to the remaining
+            # (shortfall) qty by _get_pending_mr_rows() — e.g. required 10,
+            # already requested 5 -> qty here is 5, not 10. We swap mr_items
+            # to just these rows and reuse the standard make_material_request()
+            # flow — same one the stock "Create > Material Request" button
+            # calls — so it requests exactly the shortfall qty per row.
             pp.set("mr_items", pending_rows)
             pp.make_material_request()
         except Exception as e:
@@ -602,12 +639,16 @@ def create_material_request_for_pending_items(docname):
         finally:
             # Restore full mr_items in memory; nothing else needs re-saving on
             # pp itself since make_material_request() persists the new MR
-            # document separately.
+            # document separately. pp itself is never saved in this flow.
             pp.set("mr_items", original_mr_items)
 
-        created_items = [d.item_code for d in pending_rows if d.item_code]
+        # Report actual requested qty per item, not just item codes, so the
+        # success message reflects the real (possibly partial) quantities.
+        created_items = [
+            f"{d.item_code} ({d.quantity})" for d in pending_rows if d.item_code
+        ]
         frappe.db.set_value("Production Plan", pp.name, "production_plan_updated", 0, update_modified=False)
-        
+
         frappe.db.commit()
 
         return {

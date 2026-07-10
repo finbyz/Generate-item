@@ -263,14 +263,71 @@ from erpnext.manufacturing.doctype.bom.bom import get_bom_items_as_dict
 @frappe.whitelist()
 def get_update_for_work_order(docname):
     wo = frappe.get_doc("Work Order", docname)
+    result = _update_single_work_order(wo)
+    frappe.db.commit()
+    return result
 
+
+@frappe.whitelist()
+def get_update_for_production_plan(docname):
+    """
+    Run the same BOM sync logic for every Work Order linked to this
+    Production Plan. Each WO is updated independently — if one is
+    blocked (e.g. already Started) or errors out, the rest still proceed.
+    """
+    wo_names = frappe.get_all(
+        "Work Order",
+        filters={"production_plan": docname, "docstatus": ["!=", 2]},
+        pluck="name",
+    )
+
+    if not wo_names:
+        frappe.throw(_("No active Work Orders found against this Production Plan."))
+
+    results = []
+
+    for wo_name in wo_names:
+        # Savepoint so one WO's failure doesn't roll back the ones
+        # already updated in this same request.
+        savepoint = f"wo_update_{wo_name}"
+        frappe.db.savepoint(savepoint)
+        try:
+            wo = frappe.get_doc("Work Order", wo_name)
+            res = _update_single_work_order(wo)
+            results.append({"work_order": wo_name, "status": "success", "message": res.get("message")})
+        except Exception as e:
+            frappe.db.rollback(save_point=savepoint)
+            results.append({"work_order": wo_name, "status": "failed", "message": str(e)})
+            frappe.log_error(
+                title=_("Production Plan WO update failed"),
+                message=frappe.get_traceback(),
+            )
+
+    frappe.db.commit()
+
+    return {
+        "total": len(results),
+        "succeeded": len([r for r in results if r["status"] == "success"]),
+        "failed": len([r for r in results if r["status"] == "failed"]),
+        "details": results,
+    }
+
+
+def _update_single_work_order(wo):
+    """
+    Core update logic for one Work Order. Shared by the single-WO
+    endpoint and the Production Plan bulk endpoint.
+    Raises frappe.ValidationError (via frappe.throw) for blocked WOs —
+    caller decides whether that aborts everything (single) or is just
+    recorded and skipped (bulk).
+    """
     if wo.docstatus == 2:
-        frappe.throw(_("Cannot update a cancelled Work Order."))
+        frappe.throw(_("Cannot update a cancelled Work Order ({0}).").format(wo.name))
 
     if wo.status in ("Started", "In Process", "Completed"):
         frappe.throw(
-            _("Work Order cannot be updated because it is already in <b>{0}</b> status.").format(wo.status),
-            title=_("Update Not Allowed"),
+            _("Work Order {0} cannot be updated because it is already in <b>{1}</b> status.")
+            .format(wo.name, wo.status)
         )
 
     if not wo.bom_no:
@@ -278,8 +335,6 @@ def get_update_for_work_order(docname):
 
     bom = frappe.get_doc("BOM", wo.bom_no)
 
-    # Update Item to Manufacture directly via db_set — bypasses the core
-    # production_item field trigger (which would wipe sales_order).
     if bom.item and bom.item != wo.production_item:
         wo.db_set("production_item", bom.item, update_modified=False)
         wo.db_set("item_name", bom.item_name, update_modified=False)
@@ -289,19 +344,13 @@ def get_update_for_work_order(docname):
 
     wo.db_set("modification_status", "No", update_modified=False)
 
-    frappe.db.commit()
-    return {"success": True}
+    return {"success": True, "message": _("Work Order {0} updated").format(wo.name)}
 
 
 def _sync_required_items_from_bom(wo, bom):
     """
     Sync required_items with the current BOM, without losing history.
-
-    - Items still in the BOM: qty/rate updated in place (preserves
-      custom fields like sales_order, custom_batch_no, branch, drawing no.).
-    - Items already transferred/consumed but removed from the BOM:
-      kept and flagged, never silently deleted.
-    - New items introduced by the BOM: appended fresh.
+    Works for draft and submitted Work Orders.
     """
     bom_items = get_bom_items_as_dict(
         bom.name,
@@ -326,14 +375,12 @@ def _sync_required_items_from_bom(wo, bom):
         elif flt(row.transferred_qty) or flt(row.consumed_qty):
             blocked_removals.append(row.item_code)
             rows_to_keep.append(row)
-        # else: item dropped from BOM and nothing moved against it — safe to drop
 
     if blocked_removals:
         frappe.msgprint(
-            _("Items {0} were removed from the BOM but kept because material "
-              "has already been transferred or consumed against them.").format(
-                ", ".join(blocked_removals)
-            ),
+            _("Work Order {0}: items {1} were removed from the BOM but kept "
+              "because material has already been transferred or consumed against them.")
+            .format(wo.name, ", ".join(blocked_removals)),
             indicator="orange",
             alert=True,
         )
@@ -357,9 +404,8 @@ def _sync_required_items_from_bom(wo, bom):
             }))
 
     wo.set("required_items", rows_to_keep)
+    wo.flags.ignore_validate_update_after_submit = True
     wo.save(ignore_permissions=True)
-
-
 
 def remove_modification_task_link(doc, method=None):
     """
