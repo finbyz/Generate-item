@@ -1063,6 +1063,9 @@ function show_dispatchable_so_dialog(frm) {
                 get_query() {
                     return {
                         query:   'generate_item.utils.delivery_note.get_dispatchable_so_for_query',
+                        filters: {
+                            customer: frm.doc.customer
+                        }
                        
                     };
                 },

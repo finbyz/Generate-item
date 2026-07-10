@@ -145,7 +145,16 @@ frappe.ui.form.on('Purchase Receipt', {
                     fieldname: 'po',
                     fieldtype: 'Link',
                     options: 'Purchase Order',
-                    reqd: 1
+                    reqd: 1,
+                    get_query: function () {
+                        return {
+                            filters: {
+                                supplier: frm.doc.supplier,
+                                status: ["not in", ["Completed", "Closed", "Cancelled"]],
+                                docstatus: 1
+                            }
+                        };
+    }
                 }
             ], function(values) {
 
