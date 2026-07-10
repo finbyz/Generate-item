@@ -428,7 +428,7 @@ function update_actual_qty_for_items(frm) {
 
 function add_create_material_request_button(frm) {
     // Only relevant for submitted plans that actually have raw material rows
-    if (frm.doc.docstatus !== 1 || !(frm.doc.mr_items || []).length) {
+    if (frm.doc.docstatus !== 1 || !(frm.doc.mr_items || []).length || !frm.doc.production_plan_updated  ) {
         return;
     }
  

@@ -1,3 +1,5 @@
+from pydoc import doc
+
 import frappe
 from frappe import _
 
@@ -265,7 +267,6 @@ def _get_default_transfer_warehouses(pp):
     return [{"warehouse": store_wh}] if store_wh else []
 
 
-
 @frappe.whitelist()
 def get_update_for_submitted_pp(docname):
     pp = frappe.get_doc("Production Plan", docname)
@@ -273,12 +274,14 @@ def get_update_for_submitted_pp(docname):
     was_submitted = pp.docstatus == 1
 
     if was_submitted:
+        pp.set_status(close=True, update_bin=True)
         pp.db_set("docstatus", 0, update_modified=False)
         pp.reload()
         pp.flags.ignore_validate = True
         pp.flags.ignore_validate_update_after_submit = True
         pp.flags.ignore_permissions = True
 
+    # All in-memory mutations happen first — nothing is written to DB yet.
     captured = _capture_original_data_if_needed(pp)
     changed = _sync_planned_qty_from_sales_orders(pp)
 
@@ -286,7 +289,6 @@ def get_update_for_submitted_pp(docname):
     pp.get_sub_assembly_items()
 
     # Clear both modification flags in a single UPDATE instead of two.
-    pp.production_plan_updated = 1
     frappe.db.set_value(
         "Production Plan", pp.name,
         {"bom_modification": "", "sales_order_modification": ""},
@@ -297,24 +299,20 @@ def get_update_for_submitted_pp(docname):
 
     warehouses = _get_default_transfer_warehouses(pp)
     items = get_items_for_material_requests(pp.as_json(), warehouses=warehouses or None)
+    pp.set("mr_items", [])
+    for d in items:
+        pp.append("mr_items", d)
 
-    # Merge instead of wipe-and-rebuild: existing rows keep their original
-    # `name` (and therefore stay correctly linked to any Material Request
-    # already created against them). See _merge_mr_items() for details.
-    _merge_mr_items(pp, items)
-
+    # Single save for everything accumulated above.
     pp.save(ignore_permissions=True)
-
-    # flag all non-cancelled linked Work Orders for update
+    # flag all non-cancelled linked Work Orders for update ---
     _flag_work_orders_for_update(pp.name)
 
     if was_submitted:
         pp.submit()
         create_wo_po_tasks_on_gate_update(pp)
-
-    # Auto-creation of Material Requests has been intentionally removed from
-    # this flow. MR creation now happens ONLY via the explicit "Create
-    # Material Request" button -> create_material_request_for_pending_items().
+    
+    pp.set_status(close=False, update_bin=True)
 
     frappe.db.commit()
     return {
@@ -322,6 +320,65 @@ def get_update_for_submitted_pp(docname):
         "planned_qty_updated": changed,
         "original_data_captured_now": captured,
     }
+
+
+
+# @frappe.whitelist()
+# def get_update_for_submitted_pp(docname):
+#     pp = frappe.get_doc("Production Plan", docname)
+#     validate_work_orders_before_update(pp.name)
+#     was_submitted = pp.docstatus == 1
+
+#     if was_submitted:
+#         pp.db_set("docstatus", 0, update_modified=False)
+#         pp.reload()
+#         pp.flags.ignore_validate = True
+#         pp.flags.ignore_validate_update_after_submit = True
+#         pp.flags.ignore_permissions = True
+
+#     captured = _capture_original_data_if_needed(pp)
+#     changed = _sync_planned_qty_from_sales_orders(pp)
+
+#     # get_sub_assembly_items() reads pp.po_items in memory — no save needed first.
+#     pp.get_sub_assembly_items()
+
+#     # Clear both modification flags in a single UPDATE instead of two.
+#     pp.production_plan_updated = 1
+#     frappe.db.set_value(
+#         "Production Plan", pp.name,
+#         {"bom_modification": "", "sales_order_modification": ""},
+#         update_modified=False,
+#     )
+#     pp.bom_modification = ""
+#     pp.sales_order_modification = ""
+
+#     warehouses = _get_default_transfer_warehouses(pp)
+#     items = get_items_for_material_requests(pp.as_json(), warehouses=warehouses or None)
+
+#     # Merge instead of wipe-and-rebuild: existing rows keep their original
+#     # `name` (and therefore stay correctly linked to any Material Request
+#     # already created against them). See _merge_mr_items() for details.
+#     _merge_mr_items(pp, items)
+
+#     pp.save(ignore_permissions=True)
+
+#     # flag all non-cancelled linked Work Orders for update
+#     _flag_work_orders_for_update(pp.name)
+
+#     if was_submitted:
+#         pp.submit()
+#         create_wo_po_tasks_on_gate_update(pp)
+
+#     # Auto-creation of Material Requests has been intentionally removed from
+#     # this flow. MR creation now happens ONLY via the explicit "Create
+#     # Material Request" button -> create_material_request_for_pending_items().
+
+#     frappe.db.commit()
+#     return {
+#         "success": True,
+#         "planned_qty_updated": changed,
+#         "original_data_captured_now": captured,
+#     }
 
 
 def _mr_item_key(row):
