@@ -1,7 +1,6 @@
 {
  "actions": [],
  "allow_bulk_edit": 1,
- "allow_rename": 1,
  "autoname": "naming_series:",
  "creation": "2026-05-07 16:35:37.801397",
  "doctype": "DocType",
@@ -181,6 +180,7 @@
    "fieldname": "status",
    "fieldtype": "Select",
    "label": "Status",
+   "no_copy": 1,
    "options": "\nDraft\nOpen\nPartially Received\nCompleted\nClosed\nCancelled",
    "read_only": 1
   },
@@ -294,7 +294,7 @@
    "link_fieldname": "gate_pass_outward"
   }
  ],
- "modified": "2026-07-03 14:31:24.774571",
+ "modified": "2026-07-09 12:30:18.758259",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Outward",

@@ -1,7 +1,6 @@
 {
  "actions": [],
  "allow_bulk_edit": 1,
- "allow_rename": 1,
  "autoname": "naming_series:",
  "creation": "2026-05-07 15:15:37.478899",
  "doctype": "DocType",
@@ -11,6 +10,7 @@
   "branch",
   "naming_series",
   "gate_pass_outward",
+  "party_type",
   "party_name",
   "column_break_zkvf",
   "date",
@@ -83,10 +83,10 @@
   {
    "fetch_from": "gate_pass_outward.party_name",
    "fieldname": "party_name",
-   "fieldtype": "Link",
+   "fieldtype": "Dynamic Link",
    "label": "Party Name",
    "no_copy": 1,
-   "options": "Supplier",
+   "options": "party_type",
    "read_only": 1
   },
   {
@@ -193,13 +193,22 @@
    "no_copy": 1,
    "options": "Stock Entry",
    "read_only": 1
+  },
+  {
+   "fetch_from": "gate_pass_outward.party_type",
+   "fieldname": "party_type",
+   "fieldtype": "Select",
+   "label": "Party Type",
+   "no_copy": 1,
+   "options": "\nCustomer\nSupplier",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-07-03 14:32:45.927467",
+ "modified": "2026-07-09 12:36:38.238015",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Inward",
