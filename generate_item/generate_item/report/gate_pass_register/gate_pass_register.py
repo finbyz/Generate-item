@@ -68,6 +68,13 @@ def get_columns():
             "width"    : 150,
         },
         {
+            "label"    : _("Email By"),
+            "fieldname": "email_by",
+            "fieldtype": "Link",
+            "options"  : "User",
+            "width"    : 140,
+        },
+        {
             "label"    : _("Transporter"),
             "fieldname": "transporter_name",
             "fieldtype": "Data",
@@ -268,6 +275,7 @@ def get_data(filters):
             gpo.purpose,
             gpo.party_type,
             gpo.party_name,
+            gpo.email_by,
             gpo.transporter_name,
             gpo.vehicle_no,
             gpo.lr_no,
@@ -407,6 +415,8 @@ def get_data(filters):
         inward_se_type = ""
         if inward_se_ref:
             inward_se_type = "Material Transfer (Inward Reverse)"
+        
+        email_by = frappe.db.get_value("User", row.email_by, "full_name") or row.email_by
 
         result.append(
             frappe._dict(
@@ -417,6 +427,7 @@ def get_data(filters):
                 purpose           = row.purpose,
                 party_type        = row.party_type,
                 party_name        = row.party_name,
+                email_by          = email_by,
                 transporter_name  = row.transporter_name,
                 vehicle_no        = row.vehicle_no,
                 lr_no             = row.lr_no,
