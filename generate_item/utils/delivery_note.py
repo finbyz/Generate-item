@@ -356,21 +356,30 @@ from frappe.utils import flt
 
 
 @frappe.whitelist()
-def get_dispatchable_so():
+def get_dispatchable_so(customer=None):
     """
     Return dispatchable Sales Orders.
     Checks ALL submitted SOs that are not fully delivered and have available stock.
     """
     # ── 1. Eligible SOs ──────────────────────────────────────────────────────
+    conditions = """
+    docstatus = 1
+    AND status NOT IN ('Closed', 'On Hold', 'Completed','Cancelled')
+    AND COALESCE(per_delivered, 0) < 99.99
+"""
+    params = []
+
+    if customer:
+        conditions += " AND customer = %s"
+        params.append(customer)
     eligible_sos = frappe.db.sql(
-        """
+        f"""
         SELECT name, set_warehouse
         FROM `tabSales Order`
-        WHERE docstatus = 1
-          AND status NOT IN ('Closed', 'On Hold', 'Completed')
-          AND COALESCE(per_delivered, 0) < 99.99
+        WHERE {conditions}
         ORDER BY modified DESC
         """,
+        params,
         as_dict=True,
     )
 
@@ -501,7 +510,11 @@ def get_dispatchable_so_for_query(doctype, txt, searchfield, start, page_len, fi
     """
     Link-field query for dispatchable SOs.
     """
-    so_names = [so["name"] for so in get_dispatchable_so()]
+   
+    if isinstance(filters, str):
+        filters = frappe.parse_json(filters)
+    customer = filters.get("customer") if filters else None
+    so_names = [so["name"] for so in get_dispatchable_so(customer=customer)]
 
     if not so_names:
         return []
