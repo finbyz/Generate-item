@@ -40,7 +40,9 @@ def create_serial_numbers_for_sales_order(sales_order_name: str):
     Flow
     ────
     1.  Read SO branch + items.
-    2.  Validate: skip items whose batch already has serial numbers.
+    2.  Validate: skip items whose batch already has serial numbers,
+        top up items whose qty increased, CANCEL excess for items
+        whose qty decreased.
     3.  Calculate total qty for items that still need serials.
     4.  Reserve counter block atomically (rolled back if anything fails).
     5.  Build per-item serial ranges.
@@ -89,8 +91,9 @@ def create_serial_numbers_for_sales_order(sales_order_name: str):
     )
         # frappe.throw(_("No items with valid quantity found on the Sales Order."))
 
-    # Step 2: filter batches — skip complete, trim partial, pass new
-    items_to_process, skipped = _filter_already_created(items)
+    # Step 2: filter batches — skip complete, trim partial, pass new,
+    # flag batches whose qty was DECREASED for cancellation
+    items_to_process, skipped, to_cancel = _filter_already_created(items)
 
     # -----------------------------------------------------------------------
     # Build human-readable batch status summary
@@ -99,7 +102,6 @@ def create_serial_numbers_for_sales_order(sales_order_name: str):
     skipped_details = []
     partial_count   = 0   # batches where some serials existed, generating diff
     complete_count  = 0   # batches fully done — skipped entirely
-    over_count      = 0   # batches over-generated — skipped with warning
 
     for s in skipped:
         reason = s.get("reason", "complete")
@@ -111,14 +113,6 @@ def create_serial_numbers_for_sales_order(sales_order_name: str):
                     s["batch_id"], s["existing_count"]
                 )
             )
-        elif reason == "over_generated":
-            over_count += 1
-            skipped_details.append(
-                _("Batch {0}: OVER-GENERATED ({1} serials exist, SO qty is {2})"
-                  " — manual review needed").format(
-                    s["batch_id"], s["existing_count"], s["so_qty"]
-                )
-            )
         elif reason == "partial":
             partial_count += 1
             skipped_details.append(
@@ -126,6 +120,49 @@ def create_serial_numbers_for_sales_order(sales_order_name: str):
                     s["batch_id"], s["existing_count"], s["generating"]
                 )
             )
+
+    # -----------------------------------------------------------------------
+    # Step 2b: process quantity-DECREASE cancellations
+    # Each batch is handled independently — one failure doesn't block others.
+    # -----------------------------------------------------------------------
+    cancel_count_total = 0
+    cancel_short_total = 0
+
+    for c in to_cancel:
+        try:
+            result = _cancel_excess_serials_for_batch(
+                c["batch_id"], c["cancel_count"], branch=branch
+            )
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"Serial Number cancellation failed for batch {c['batch_id']}"
+            )
+            skipped_details.append(
+                _("Batch {0}: cancellation failed — see Error Log").format(c["batch_id"])
+            )
+            continue
+
+        cancel_count_total += result["cancelled"]
+        cancel_short_total += result["short_by"]
+
+        if result["short_by"]:
+            skipped_details.append(
+                _("Batch {0}: qty decreased from {1} to {2} — only {3} of {4} serial(s) "
+                  "could be cancelled ({5} linked to Stock Entry — manual review needed)").format(
+                    c["batch_id"], c["existing_count"], c["so_qty"],
+                    result["cancelled"], c["cancel_count"], result["short_by"],
+                )
+            )
+        else:
+            skipped_details.append(
+                _("Batch {0}: qty decreased from {1} to {2} — {3} serial number(s) cancelled").format(
+                    c["batch_id"], c["existing_count"], c["so_qty"], result["cancelled"],
+                )
+            )
+
+    if to_cancel:
+        frappe.db.commit()
 
     if skipped_details:
         frappe.msgprint(
@@ -138,16 +175,22 @@ def create_serial_numbers_for_sales_order(sales_order_name: str):
     # Early exit — nothing left to generate
     # -----------------------------------------------------------------------
     if not items_to_process:
-        frappe.msgprint(
-            _("All batches on this Sales Order already have serial numbers. Nothing to generate."),
-            title=_("Already Created"),
-            indicator="orange",
-        )
+        if cancel_count_total:
+            msg = _("{0} serial number(s) cancelled for decreased quantities. "
+                     "Nothing new to generate.").format(cancel_count_total)
+            indicator = "green"
+        else:
+            msg = _("All batches on this Sales Order already have serial numbers. Nothing to generate.")
+            indicator = "orange"
+
+        frappe.msgprint(msg, title=_("Already Created"), indicator=indicator)
         return {
-            "total":       0,
-            "skipped":     complete_count + over_count,
-            "partial":     partial_count,
-            "elapsed_sec": 0,
+            "total":            0,
+            "skipped":          complete_count,
+            "partial":          partial_count,
+            "cancelled":        cancel_count_total,
+            "cancel_short_by":  cancel_short_total,
+            "elapsed_sec":      0,
         }
 
     # Step 3: total qty (sum of adjusted qtys — partials already trimmed)
@@ -191,27 +234,34 @@ def create_serial_numbers_for_sales_order(sales_order_name: str):
     elapsed = round(time.monotonic() - t_start, 3)
 
     # -----------------------------------------------------------------------
-    # Build skipped summary message for return payload
+    # Build skipped/cancelled summary message for return payload
     # Partials are NOT counted as "skipped" — they were partially processed
     # -----------------------------------------------------------------------
-    truly_skipped = complete_count + over_count
     skipped_msg = ""
-    if truly_skipped:
-        skipped_msg = _(" ({0} batch(es) skipped — already complete)").format(truly_skipped)
+    if complete_count:
+        skipped_msg = _(" ({0} batch(es) skipped — already complete)").format(complete_count)
     if partial_count:
         skipped_msg += _(" ({0} batch(es) topped up — partial generation)").format(partial_count)
 
+    cancel_msg = ""
+    if cancel_count_total:
+        cancel_msg = _(" ({0} serial(s) cancelled for decreased batch(es))").format(cancel_count_total)
+    if cancel_short_total:
+        cancel_msg += _(" ({0} short — linked to Stock Entry, manual review needed)").format(cancel_short_total)
+
     # Step 7: return stats — JS shows the timing popup
     return {
-        "total":        total_qty,
-        "skipped":      truly_skipped,
-        "partial":      partial_count,
-        "branch":       branch,
-        "first_serial": series_info["first_serial"],   # safe — series_info guaranteed non-None here
-        "elapsed_sec":  elapsed,
+        "total":            total_qty,
+        "skipped":          complete_count,
+        "partial":          partial_count,
+        "cancelled":        cancel_count_total,
+        "cancel_short_by":  cancel_short_total,
+        "branch":           branch,
+        "first_serial":     series_info["first_serial"],   # safe — series_info guaranteed non-None here
+        "elapsed_sec":      elapsed,
         "message":      _(
-            "{0} serial numbers generated in {1} seconds.{2}"
-        ).format(total_qty, elapsed, skipped_msg),
+            "{0} serial numbers generated in {1} seconds.{2}{3}"
+        ).format(total_qty, elapsed, skipped_msg, cancel_msg),
     }
 
 # ===========================================================================
@@ -270,20 +320,27 @@ def _extract_so_items(so_doc) -> list:
 
 def _filter_already_created(items: list):
     """
-    For each item, checks existing serial numbers vs SO qty:
+    For each item, checks existing LIVE (docstatus=1) serial numbers vs SO qty:
 
     Cases:
         existing == 0          → generate all qty (normal)
         existing == qty        → skip entirely (already complete)
-        existing < qty         → generate only the difference (partial)
-        existing > qty         → skip, but warn (over-generated, manual fix needed)
+        existing < qty         → generate only the difference (partial / increase)
+        existing > qty         → CANCEL the excess (quantity was decreased)
+
+    NOTE: the docstatus=1 filter on the count is critical — without it,
+    already-cancelled serials would still count as "existing" and would
+    permanently block regeneration after a decrease-then-increase cycle.
 
     Returns:
         to_process  — items that still need serial numbers (with adjusted qty)
-        skipped     — list of { batch_id, existing_count } that were skipped
+        skipped     — list of { batch_id, existing_count, reason } — informational
+        to_cancel   — list of { batch_id, existing_count, so_qty, cancel_count }
+                      for batches whose qty decreased and need excess cancelled
     """
     to_process = []
     skipped    = []
+    to_cancel  = []
 
     for item in items:
         batch_id = item["batch_id"]
@@ -293,37 +350,48 @@ def _filter_already_created(items: list):
             to_process.append(item)
             continue
 
-        existing = frappe.db.count("Serial Number", {"batch": batch_id})
+        existing = frappe.db.count(
+            "Serial Number", {"batch": batch_id, "docstatus": 1}
+        )
 
         if existing == 0:
             # Normal case — generate all
             to_process.append(item)
 
-        elif existing >= qty:
-            # Already fully generated (or over-generated) — skip
+        elif existing == qty:
+            # Already fully generated — skip
             skipped.append({
-                "batch_id":      batch_id,
+                "batch_id":       batch_id,
                 "existing_count": existing,
-                "so_qty":        qty,
-                "reason":        "complete" if existing == qty else "over_generated",
+                "so_qty":         qty,
+                "reason":         "complete",
             })
 
-        else:
+        elif existing < qty:
             # Partial — existing < qty, generate only the difference
             diff = qty - existing
             to_process.append({
                 **item,
-                "qty": diff,   
+                "qty": diff,
             })
             skipped.append({
-                "batch_id":      batch_id,
+                "batch_id":       batch_id,
                 "existing_count": existing,
-                "so_qty":        qty,
-                "reason":        "partial",
-                "generating":    diff,
+                "so_qty":         qty,
+                "reason":         "partial",
+                "generating":     diff,
             })
 
-    return to_process, skipped
+        else:
+            # existing > qty  →  quantity was DECREASED — cancel the excess
+            to_cancel.append({
+                "batch_id":       batch_id,
+                "existing_count": existing,
+                "so_qty":         qty,
+                "cancel_count":   existing - qty,
+            })
+
+    return to_process, skipped, to_cancel
 
 
 # ===========================================================================
@@ -721,6 +789,72 @@ def cancel_serials_for_items(items_with_batch: list, branch: str) -> dict:
     }
 
 
+# ===========================================================================
+# NEW: SHARED CANCEL CORE — used by both the SO button path (decrease case)
+#      and the scheduler (decrease case). Different from the two functions
+#      above: those cancel an ENTIRE batch's serials unconditionally when a
+#      line is fully cancelled. This one cancels a specific COUNT, preferring
+#      newest-first and never touching serials linked to a Stock Entry.
+# ===========================================================================
+def _cancel_excess_serials_for_batch(batch_id: str, cancel_count: int, branch: str = None) -> dict:
+    """
+    Cancels up to `cancel_count` LIVE (docstatus=1) serials for a batch.
+
+    Rule
+    ────
+    1. Sort candidates by name DESC (cancel newest-generated first — mirrors
+       the order they were appended in during generation).
+    2. Skip any serial that has `stock_entry` set — it is NEVER cancelled,
+       not even as a fallback to hit the target count.
+    3. If not enough free (unlinked) serials exist, cancel only what's
+       available and report the shortfall via `short_by` — caller decides
+       how to surface that (msgprint / log).
+    """
+    if cancel_count <= 0:
+        return {"cancelled": 0, "short_by": 0, "cancelled_serials": [], "batch_id": batch_id}
+
+    where  = "batch = %s AND docstatus = 1"
+    params = [batch_id]
+    if branch:
+        where += " AND branch = %s"
+        params.append(branch)
+
+    # Lock candidate rows so a concurrent call (button click landing at the
+    # same moment as a scheduler tick) can't double-process the same batch.
+    serials = frappe.db.sql(
+        f"""
+        SELECT name, stock_entry
+        FROM `tabSerial Number`
+        WHERE {where}
+        ORDER BY name DESC
+        FOR UPDATE
+        """,
+        params,
+        as_dict=True,
+    )
+
+    free_serials = [s.name for s in serials if not s.stock_entry]
+    to_cancel    = free_serials[:cancel_count]
+    short_by     = cancel_count - len(to_cancel)
+
+    if to_cancel:
+        placeholders = ", ".join(["%s"] * len(to_cancel))
+        frappe.db.sql(
+            f"""
+            UPDATE `tabSerial Number`
+            SET docstatus = 2, modified = %s, modified_by = %s
+            WHERE name IN ({placeholders}) AND docstatus = 1
+            """,
+            [frappe.utils.now(), frappe.session.user] + to_cancel,
+        )
+
+    return {
+        "cancelled":         len(to_cancel),
+        "short_by":          short_by,
+        "cancelled_serials": to_cancel,
+        "batch_id":          batch_id,
+    }
+
 
 def _handle_cancelled_lines(doc):
     """
@@ -879,14 +1013,15 @@ def before_cancel_stock_entry(doc, method=None):
 
 def process_sales_orders_for_serial_creation():
     """
-    Scheduled job — runs periodically to auto-generate serial numbers.
+    Scheduled job — runs periodically to auto-generate/cancel serial numbers.
 
     Logic per SO item:
-        required   = MIN(so_qty, batch_qty)   # how many can be fulfilled
-        difference = required - existing_serial_count
+        required   = MAX(0, pending_qty - batch_qty)   # how many still needed
+        difference = required - serial_count
 
-        difference <= 0  → skip (already generated or batch has no stock)
-        difference >  0  → generate `difference` more serials
+        difference >  0  → generate `difference` more serials  (qty increased)
+        difference == 0  → skip (already correct)
+        difference <  0  → CANCEL `abs(difference)` serials    (qty decreased)
 
     Only processes:
        
@@ -935,13 +1070,16 @@ def process_sales_orders_for_serial_creation():
 def _process_single_so_for_serial_creation(so_name: str):
     """
     Processes one Sales Order:
-      1. Joins SO items → Batch → Serial Number count
-      2. Calculates how many serials still need to be generated
-      3. Calls the existing generation pipeline for items that need serials
+      1. Joins SO items → Batch → live Serial Number count
+      2. Calculates how many serials still need to be generated OR cancelled
+      3. Cancels excess first (decrease), then generates any shortfall (increase)
     """
 
-    # ── Step 2: Pull items with batch qty + serial count in one query ────────
-   
+    # ── Step 2: Pull items with batch qty + LIVE serial count in one query ───
+    # NOTE: added "AND docstatus = 1" to the sn_counts subquery below.
+    # Without it, cancelled serials (docstatus=2) would still be counted as
+    # live, which would silently break both the increase and decrease math
+    # the moment any cancellation happens.
     rows = frappe.db.sql("""
             SELECT
                 soi.name            AS soi_name,
@@ -957,11 +1095,12 @@ def _process_single_so_for_serial_creation(so_name: str):
                 -- Join Batch to get available batch_qty
                 LEFT JOIN `tabBatch` b
                     ON b.name = soi.custom_batch_no
-                -- Join pre-aggregated serial number counts
+                -- Join pre-aggregated LIVE serial number counts
                 LEFT JOIN (
                     SELECT batch, COUNT(*) AS sn_count
                     FROM   `tabSerial Number`
-                    WHERE stock_entry IS NULL OR stock_entry = ""
+                    WHERE  (stock_entry IS NULL OR stock_entry = "")
+                       AND docstatus = 1
                     GROUP  BY batch
                 ) sn_counts
                     ON sn_counts.batch = soi.custom_batch_no
@@ -981,46 +1120,90 @@ def _process_single_so_for_serial_creation(so_name: str):
     if not rows:
         return
 
-    # ── Step 3: Calculate required generation per item ───────────────────────
+    # ── Step 2b: Get branch from the SO up front (needed for both paths) ────
+    branch = frappe.db.get_value("Sales Order", so_name, "branch")
+
+    # ── Step 3: Calculate required generation / cancellation per item ───────
     items_to_generate = []
+    items_to_cancel   = []   # NEW — decrease case
 
     for row in rows:
-        so_qty       = cint(row["so_qty"])
+        so_qty        = cint(row["so_qty"])
         delivered_qty = cint(row["delivered_qty"])
-        batch_qty    = cint(row["batch_qty"])
-        serial_count = cint(row["serial_count"])
+        batch_qty     = cint(row["batch_qty"])
+        serial_count  = cint(row["serial_count"])
 
-        # Required = how many can actually be fulfilled
-        
-        # required   = min(so_qty, batch_qty)
+        # Required = how many still need to exist to cover pending qty
         pending_qty = so_qty - delivered_qty
-        required = pending_qty - batch_qty
+        required    = pending_qty - batch_qty
+        if required < 0:
+            required = 0   # can never require a negative count
 
-        if required<=0:
-            continue
-
-        # Difference = how many still need to be generated
+        # Difference = how many still need to be generated (or cancelled)
         difference = required - serial_count
 
-        # Skip: already generated, over-generated, or batch has no stock
-        if difference <= 0:
-            continue
+        if difference > 0:
+            items_to_generate.append({
+                "item_code": row["item_code"],
+                "item_name": row["item_name"],
+                "qty":       difference,      # only generate the gap
+                "batch_id":  row["batch_id"],
+            })
+        elif difference < 0:
+            # NEW: quantity effectively decreased for this batch — cancel excess
+            items_to_cancel.append({
+                "batch_id":     row["batch_id"],
+                "cancel_count": abs(difference),
+            })
+        # difference == 0 -> already correct, nothing to do
 
-        items_to_generate.append({
-            "item_code": row["item_code"],
-            "item_name": row["item_name"],
-            "qty":       difference,      # only generate the gap
-            "batch_id":  row["batch_id"],
-        })
+    # ── Step 3b: process cancellations first (decrease path) ────────────────
+    if items_to_cancel and branch:
+        cancel_total = 0
+        cancel_short = 0
+
+        for c in items_to_cancel:
+            try:
+                result = _cancel_excess_serials_for_batch(
+                    c["batch_id"], c["cancel_count"], branch=branch
+                )
+            except Exception:
+                frappe.log_error(
+                    frappe.get_traceback(),
+                    f"Serial Scheduler: cancellation failed for batch {c['batch_id']} (SO {so_name})",
+                )
+                continue
+
+            cancel_total += result["cancelled"]
+            cancel_short += result["short_by"]
+
+        if cancel_total or cancel_short:
+            frappe.db.commit()
+            frappe.logger().info(
+                f"Serial Scheduler: SO {so_name} — cancelled {cancel_total} serial(s) "
+                f"for decreased quantities"
+                + (f", {cancel_short} short (linked to Stock Entry)" if cancel_short else "")
+                + "."
+            )
+        if cancel_short:
+            frappe.log_error(
+                f"SO {so_name}: {cancel_short} serial(s) could not be cancelled — "
+                f"linked to Stock Entry. Manual review needed.",
+                "Serial Scheduler: Partial Cancellation",
+            )
+    elif items_to_cancel and not branch:
+        frappe.log_error(
+            f"Branch not set on Sales Order {so_name}. Skipping serial cancellation.",
+            "Serial Scheduler: Missing Branch (cancel)",
+        )
 
     if not items_to_generate:
         frappe.logger().info(
-            f"Serial Scheduler: SO {so_name} — all items already satisfied, skipping."
+            f"Serial Scheduler: SO {so_name} — all items already satisfied, skipping generation."
         )
         return
 
-    # ── Step 4: Get branch from the SO ──────────────────────────────────────
-    branch = frappe.db.get_value("Sales Order", so_name, "branch")
+    # ── Step 4: Confirm branch is set before generation ──────────────────────
     if not branch:
         frappe.log_error(
             f"Branch not set on Sales Order {so_name}. Skipping serial generation.",
