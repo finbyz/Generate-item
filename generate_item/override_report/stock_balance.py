@@ -61,7 +61,7 @@ def _enrich_stock_balance(columns, data):
     return columns, data
 
 
-def execute(filters=None):
+def custom_execute(filters=None):
     try:
         columns, data = stock_balance_execute(filters) or ([], [])
         columns, data = _enrich_stock_balance(columns, data)
