@@ -289,6 +289,7 @@ def get_update_for_submitted_pp(docname):
     pp.get_sub_assembly_items()
 
     # Clear both modification flags in a single UPDATE instead of two.
+    pp.production_plan_updated = 1
     frappe.db.set_value(
         "Production Plan", pp.name,
         {"bom_modification": "", "sales_order_modification": ""},
@@ -605,8 +606,8 @@ def create_material_request_for_pending_items(docname):
             pp.set("mr_items", original_mr_items)
 
         created_items = [d.item_code for d in pending_rows if d.item_code]
-        pp.production_plan_updated = 0
-        pp.save()
+        frappe.db.set_value("Production Plan", pp.name, "production_plan_updated", 0, update_modified=False)
+        
         frappe.db.commit()
 
         return {
