@@ -1,5 +1,10 @@
 import frappe
 from frappe.utils import flt
+import json
+from frappe.utils import getdate, nowdate
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+from openpyxl.worksheet.table import Table, TableStyleInfo
 
 
 def before_insert(doc, method=None):
@@ -399,3 +404,242 @@ def remove_modification_task_link(doc, method=None):
 
     if linked_tasks:
         frappe.db.commit()
+
+
+
+def get_branch_warehouses(branch):
+    """Return list of all warehouse names belonging to a branch."""
+    if not branch:
+        return []
+    return frappe.get_all(
+        "Warehouse",
+        filters={"branch": branch, "disabled": 0},
+        pluck="name"
+    )
+ 
+ 
+def get_branch_on_hand_qty(item_code, warehouses):
+    """Sum actual_qty (Bin) for an item across all given warehouses."""
+    if not item_code or not warehouses:
+        return 0
+ 
+    total = frappe.db.sql(
+        """
+        select sum(actual_qty)
+        from `tabBin`
+        where item_code = %s
+        and warehouse in %s
+        """,
+        (item_code, warehouses),
+    )[0][0]
+ 
+    return total or 0
+
+def get_current_qty(item_code, source_warehouse, target_warehouse):
+    """Sum actual_qty (Bin) for an item across source + target warehouse (dedup if same)."""
+    if not item_code:
+        return 0
+
+    warehouses = set()
+    if source_warehouse:
+        warehouses.add(source_warehouse)
+    if target_warehouse:
+        warehouses.add(target_warehouse)
+
+    if not warehouses:
+        return 0
+
+    total = frappe.db.sql(
+        """
+        select sum(actual_qty)
+        from `tabBin`
+        where item_code = %s
+        and warehouse in %s
+        """,
+        (item_code, tuple(warehouses)),
+    )[0][0]
+
+    return total or 0
+ 
+ 
+@frappe.whitelist()
+def export_work_orders(work_orders):
+    if isinstance(work_orders, str):
+        work_orders = json.loads(work_orders)
+ 
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Work Orders"
+ 
+    headers = [
+        "WO No",
+        "Branch",
+        "FG Item Code",
+        "BOM No",
+        "Batch No",
+        "Item Code",
+        "Item Description",
+        "Qty Issued",
+        "Current Qty",   
+        "On Hand Qty",
+        "Balance Qty",
+        "UOM",
+        "Source WH",
+        "Bin No",
+        "Target WH",
+        "Drawing No",
+        "Drawing Rev No",
+    ]
+ 
+    ws.append(headers)
+ 
+    # Header Style
+    header_fill = PatternFill("solid", fgColor="4472C4")
+    header_font = Font(bold=True, color="FFFFFF")
+    thin_border = Border(
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin")
+    )
+ 
+    for cell in ws[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.border = thin_border
+ 
+    # cache: branch -> list of warehouses (avoid repeat queries)
+    branch_warehouse_cache = {}
+ 
+    for wo_name in work_orders:
+        wo = frappe.get_doc("Work Order", wo_name)
+ 
+        # NOTE: adjust these fieldnames if your Work Order doctype
+        # uses different fieldnames for branch / batch_no
+        branch = getattr(wo, "branch", "") or ""
+        fg_item_code = wo.production_item or ""
+        bom_no = wo.bom_no or ""
+        custom_batch_no = getattr(wo, "custom_batch_no", "") or ""
+ 
+        if branch not in branch_warehouse_cache:
+            branch_warehouse_cache[branch] = get_branch_warehouses(branch)
+ 
+        branch_warehouses = branch_warehouse_cache[branch]
+ 
+        if not wo.get("required_items"):
+            # still emit a row with header-level info if there are no items
+            row = [
+                wo.name,
+                branch,
+                fg_item_code,
+                bom_no,
+                custom_batch_no,
+                "", "", "", "", "", "", "", "", "", "", "", "", 
+            ]
+            ws.append(row)
+            continue
+ 
+        for item in wo.required_items:
+            on_hand_qty = get_branch_on_hand_qty(item.item_code, branch_warehouses)
+            current_qty = get_current_qty(
+                item.item_code,
+                item.source_warehouse,
+                wo.fg_warehouse
+            )
+ 
+            row = [
+                wo.name,
+                branch,
+                fg_item_code,
+                bom_no,
+                custom_batch_no,
+                item.item_code or "",
+                item.description or "",
+                item.transferred_qty or 0,
+                current_qty,    
+                on_hand_qty,
+                item.available_qty_at_wip_warehouse or 0,
+                item.stock_uom or "",
+                item.source_warehouse or "",
+                "",
+                wo.fg_warehouse or "",
+                item.custom_drawing_no or "",
+                item.custom_drawing_rev_no or "",
+            ]
+            ws.append(row)
+ 
+    # Apply border and alignment
+    for row in ws.iter_rows():
+        for cell in row:
+            cell.border = thin_border
+            cell.alignment = Alignment(vertical="center")
+ 
+    # Column widths
+    widths = {
+                "A": 20,  # WO No
+                "B": 15,  # Branch
+                "C": 42,  # FG Item Code
+                "D": 42,  # BOM No
+                "E": 15,  # Batch No
+                "F": 42,  # Item Code
+                "G": 35,  # Item Description
+                "H": 12,  # Qty Issued
+                "I": 12,  # Current Qty
+                "J": 12,  # On Hand Qty
+                "K": 12,  # Balance Qty
+                "L": 10,  # UOM
+                "M": 27,  # Source WH
+                "N": 15,  # Bin No
+                "O": 27,  # Target WH
+                "P": 20,  # Drawing No
+                "Q": 10,  # Drawing Rev No
+            }
+ 
+    for col, width in widths.items():
+        ws.column_dimensions[col].width = width
+ 
+    # Format Qty columns
+    for col_letter in ["H", "I", "J", "K"]:
+        for cell in ws[col_letter][1:]:
+            cell.number_format = '#,##0.00'
+ 
+    # Freeze Header Row
+    ws.freeze_panes = "A2"
+ 
+    # Add Filter
+    ws.auto_filter.ref = ws.dimensions
+ 
+    # Create Table
+    table = Table(
+        displayName="WorkOrderTable",
+        ref=f"A1:Q{ws.max_row}"
+    )
+ 
+    style = TableStyleInfo(
+        name="TableStyleMedium2",
+        showFirstColumn=False,
+        showLastColumn=False,
+        showRowStripes=True,
+        showColumnStripes=False
+    )
+ 
+    table.tableStyleInfo = style
+    ws.add_table(table)
+ 
+    # Save File
+    file_name = "Work_Order_Export.xlsx"
+    file_path = f"/tmp/{file_name}"
+ 
+    wb.save(file_path)
+ 
+    with open(file_path, "rb") as f:
+        file_doc = frappe.get_doc({
+            "doctype": "File",
+            "file_name": file_name,
+            "is_private": 0,
+            "content": f.read()
+        })
+        file_doc.save(ignore_permissions=True)
+ 
+    return file_doc.file_url

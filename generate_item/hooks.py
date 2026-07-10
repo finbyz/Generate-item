@@ -69,7 +69,13 @@ doctype_js = {"Item" : "public/js/item.js",
               "Supplier" : "public/js/customer_supplier_workflow.js",
               }
 
-doctype_list_js = {"Item Generator" : "public/js/item_generator_list.js"}
+doctype_list_js = {
+    "Item Generator" : "public/js/item_generator_list.js",
+    "Work Order" : "public/js/work_order_list.js",
+}
+
+
+
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
