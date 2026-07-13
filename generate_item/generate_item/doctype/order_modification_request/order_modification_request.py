@@ -985,7 +985,7 @@ def update_sales_order_items(self, mismatched_rows):
             # 3️⃣ Update Batch if exists
             if custom_batch_no:
                 update_batch_item(custom_batch_no, row.rev_item)
-                bom_name = update_finish_item_bom(custom_batch_no, row.rev_item)
+                bom_name = update_finish_item_bom(custom_batch_no, row.rev_item,row.item)
                 if bom_name:
                     updated_boms.append({"row_name": row.name, "bom": bom_name, "custom_batch_no": custom_batch_no})
 
@@ -1028,7 +1028,7 @@ def update_batch_item(batch_name, new_item_code):
     return True
 
 
-def update_finish_item_bom(custom_batch_no, new_item):
+def update_finish_item_bom(custom_batch_no, new_item,old_item):
     """
     Update submitted BOM using direct SQL.
     Returns updated BOM name.
@@ -1043,9 +1043,10 @@ def update_finish_item_bom(custom_batch_no, new_item):
         SELECT name
         FROM `tabBOM`
         WHERE custom_batch_no = %s
+        AND item = %s
         LIMIT 1
     """,
-        (custom_batch_no,),
+        (custom_batch_no,old_item),
         as_dict=True,
     )
 
