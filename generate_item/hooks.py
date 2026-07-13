@@ -287,6 +287,9 @@ doc_events = {
         ],
         "onload": "generate_item.utils.customer_supplier_workflow.set_cs_onload",
     },
+    "Batch": {
+        "after_insert":   "generate_item.generate_item.doctype.valve_spare_serial.valve_spare_serial.after_insert_batch"
+    },  
 }
 # 	"*": {
 # 		"on_update": "method",

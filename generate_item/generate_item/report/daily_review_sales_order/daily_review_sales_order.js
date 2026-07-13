@@ -692,37 +692,19 @@ async _execute_bulk_update(values, dialog) {
         return;
     }
 
-    // ── NEW: Check cancelled SO lines from report data ────────────────────
+    // ── NEW: split matched rows by product type for a clear confirm message ──
     const report_rows = me._report.data || [];
-
-    // Find all rows matching this reference
     const matched_rows = select_type === "Sales Order"
         ? report_rows.filter(r => r.sales_order === reference)
         : report_rows.filter(r => r.batch_key   === reference);
 
-    const all_cancelled  = matched_rows.length > 0
-        && matched_rows.every(r => r.so_line_status === "Cancelled");
+    const valve_batches       = new Set(matched_rows.filter(r => r.source_doctype === "Serial Number").map(r => r.batch_key));
+    const valve_spare_batches = new Set(matched_rows.filter(r => r.source_doctype === "Valve Spare Serial").map(r => r.batch_key));
 
-    const some_cancelled = !all_cancelled
-        && matched_rows.some(r => r.so_line_status === "Cancelled");
-
-    // Case 1 — every row for this reference is cancelled → stop entirely
-    // if (all_cancelled) {
-    //     frappe.show_alert({
-    //         message:   __("All rows for this {0} have a Cancelled SO line. No Serial Numbers will be updated.", [select_type]),
-    //         indicator: "red",
-    //     }, 6);
-    //     return;
-    // }
-
-    // Case 2 — some rows are cancelled → warn but continue (server already skips them)
-    // if (some_cancelled) {
-    //     frappe.show_alert({
-    //         message:   __("Some rows for this {0} have a Cancelled SO line and will be skipped.", [select_type]),
-    //         indicator: "orange",
-    //     }, 6);
-    // }
-   
+    const breakdown_lines = [];
+    if (valve_batches.size)       breakdown_lines.push(__("{0} Valve batch(es)", [valve_batches.size]));
+    if (valve_spare_batches.size) breakdown_lines.push(__("{0} Valve Spare batch(es)", [valve_spare_batches.size]));
+    const breakdown_text = breakdown_lines.length ? breakdown_lines.join(" + ") : reference;
 
     // Collect only non-blank user-filled editable fields
     const field_value_map = {};
@@ -742,12 +724,13 @@ async _execute_bulk_update(values, dialog) {
         return;
     }
 
-    // Confirm before mass-update
+    // Confirm before mass-update — now shows the Valve / Valve Spare split
     frappe.confirm(
-        __(`This will update <strong>{0}</strong> field(s) across all Serial Numbers
-            linked to <strong>{1}</strong>.<br><br>
+        __(`This will update <strong>{0}</strong> field(s) across <strong>{1}</strong>
+            linked to <strong>{2}</strong>.<br><br>
             Are you sure?`, [
             field_count,
+            breakdown_text,
             reference,
         ]),
         async () => {
@@ -765,13 +748,22 @@ async _execute_bulk_update(values, dialog) {
                     { select_type, reference, field_value_map }
                 );
 
+                // NEW: build a message that breaks down Valve vs Valve Spare counts
+                let result_message;
+                if (result.updated == 0) {
+                    result_message = __("No Serial Numbers updated.");
+                } else {
+                    const bd = result.updated_by_doctype || {};
+                    const parts = [];
+                    if (bd["Serial Number"])      parts.push(__("{0} Valve Serial Number(s)", [bd["Serial Number"]]));
+                    if (bd["Valve Spare Serial"])  parts.push(__("{0} Valve Spare Serial(s)", [bd["Valve Spare Serial"]]));
+                    result_message = parts.length
+                        ? __("✓ Updated: {0} — across {1} field(s).", [parts.join(", "), field_count])
+                        : __("✓ {0} record(s) updated successfully across {1} field(s).", [result.updated, field_count]);
+                }
+
                 frappe.show_alert({
-                    message: result.updated == 0
-                        ? __("No Serial Numbers updated.")
-                        : __(
-                            "✓ {0} Serial Number(s) updated successfully across {1} field(s).",
-                            [result.updated, field_count]
-                        ),
+                    message:   result_message,
                     indicator: result.updated == 0 ? "orange" : "green",
                 }, 8);
 
@@ -788,6 +780,119 @@ async _execute_bulk_update(values, dialog) {
         }
     );
 },
+
+// async _execute_bulk_update(values, dialog) {
+//     const me = frappe.query_reports["Daily Review Sales Order"];
+
+//     const select_type = values.select_type;
+//     const reference   = select_type === "Sales Order"
+//         ? values.sales_order_ref
+//         : values.batch_ref;
+
+//     if (!reference) {
+//         frappe.show_alert({
+//             message:   __("Please select a {0} first.", [select_type]),
+//             indicator: "orange",
+//         }, 3);
+//         return;
+//     }
+
+//     // ── NEW: Check cancelled SO lines from report data ────────────────────
+//     const report_rows = me._report.data || [];
+
+//     // Find all rows matching this reference
+//     const matched_rows = select_type === "Sales Order"
+//         ? report_rows.filter(r => r.sales_order === reference)
+//         : report_rows.filter(r => r.batch_key   === reference);
+
+//     const all_cancelled  = matched_rows.length > 0
+//         && matched_rows.every(r => r.so_line_status === "Cancelled");
+
+//     const some_cancelled = !all_cancelled
+//         && matched_rows.some(r => r.so_line_status === "Cancelled");
+
+//     // Case 1 — every row for this reference is cancelled → stop entirely
+//     // if (all_cancelled) {
+//     //     frappe.show_alert({
+//     //         message:   __("All rows for this {0} have a Cancelled SO line. No Serial Numbers will be updated.", [select_type]),
+//     //         indicator: "red",
+//     //     }, 6);
+//     //     return;
+//     // }
+
+//     // Case 2 — some rows are cancelled → warn but continue (server already skips them)
+//     // if (some_cancelled) {
+//     //     frappe.show_alert({
+//     //         message:   __("Some rows for this {0} have a Cancelled SO line and will be skipped.", [select_type]),
+//     //         indicator: "orange",
+//     //     }, 6);
+//     // }
+   
+
+//     // Collect only non-blank user-filled editable fields
+//     const field_value_map = {};
+//     for (const fieldname of Object.keys(me._sn_meta)) {
+//         const val = values[fieldname];
+//         if (val !== undefined && val !== null && val !== "") {
+//             field_value_map[fieldname] = val;
+//         }
+//     }
+
+//     const field_count = Object.keys(field_value_map).length;
+//     if (!field_count) {
+//         frappe.show_alert({
+//             message:   __("Please fill at least one field to update."),
+//             indicator: "orange",
+//         }, 3);
+//         return;
+//     }
+
+//     // Confirm before mass-update
+//     frappe.confirm(
+//         __(`This will update <strong>{0}</strong> field(s) across all Serial Numbers
+//             linked to <strong>{1}</strong>.<br><br>
+//             Are you sure?`, [
+//             field_count,
+//             reference,
+//         ]),
+//         async () => {
+//             dialog.hide();
+
+//             frappe.show_alert({
+//                 message:   __("Bulk updating — please wait…"),
+//                 indicator: "blue",
+//             }, 30);
+
+//             try {
+//                 const result = await frappe.xcall(
+//                     "generate_item.generate_item.report.daily_review_sales_order"
+//                     + ".daily_review_sales_order.bulk_update_by_reference",
+//                     { select_type, reference, field_value_map }
+//                 );
+
+//                 frappe.show_alert({
+//                     message: result.updated == 0
+//                         ? __("No Serial Numbers updated.")
+//                         : __(
+//                             "✓ {0} Serial Number(s) updated successfully across {1} field(s).",
+//                             [result.updated, field_count]
+//                         ),
+//                     indicator: result.updated == 0 ? "orange" : "green",
+//                 }, 8);
+
+//                 me._report.refresh();
+
+//             } catch (err) {
+//                 console.error("Bulk update error:", err);
+//                 frappe.msgprint({
+//                     title:     __("Bulk Update Failed"),
+//                     message:   err.message || __("An unexpected server error occurred."),
+//                     indicator: "red",
+//                 });
+//             }
+//         }
+//     );
+// },
     formatter(value, row, column, data, default_formatter) {
         const me = frappe.query_reports["Daily Review Sales Order"];
         value = default_formatter(value, row, column, data);

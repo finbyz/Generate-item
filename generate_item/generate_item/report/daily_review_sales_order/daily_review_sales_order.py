@@ -157,6 +157,7 @@ def get_columns():
         {"fieldname": "soi_name",  "label": _("SOI Name"),  "fieldtype": "Data", "width": 0, "hidden": 1},
         {"fieldname": "sn_name",   "label": _("SN Name"),   "fieldtype": "Data", "width": 0, "hidden": 1},
         {"fieldname": "batch_key", "label": _("Batch Key"), "fieldtype": "Data", "width": 0, "hidden": 1},
+        {"fieldname": "source_doctype", "label": _("Source Doctype"), "fieldtype": "Data", "width": 0, "hidden": 1},
 
         # ─── A : Batch / SO Line ─────────────────────────────────────────────
         {"fieldname": "batch_no",       "label": _("Batch No"), "fieldtype": "Link",  "options": "Batch",        "width": 160},
@@ -258,7 +259,7 @@ def _fetch_rows(filters):
             soi.name                                            AS soi_name,
             rep_sn.sn_name                                      AS sn_name,
             soi.custom_batch_no                                 AS batch_key,
-
+            rep_sn.source_doctype                               AS source_doctype,
             /*── A-E : SO + SO Item ───────────────────────────────────────────*/
             soi.custom_batch_no                                 AS batch_no,
             so.name                                             AS sales_order,
@@ -357,48 +358,33 @@ def _fetch_rows(filters):
              (ORDER BY name ASC).  This is a single indexed scan per batch
              and avoids 5 000-row fan-out in the join.                        */
         LEFT JOIN (
-            SELECT
-                sn.batch,
-                sn.name                                         AS sn_name,
-                sn.mds_status,
-                sn.mds_no,
-                sn.mds_rev,
-                sn.mds_date,
-                sn.gad_required,
-                sn.gad_status,
-                sn.gad_rev,
-                sn.gad_receive_date,
-                sn.after_gad_change_bom_change_required,
-                sn.itpqap,
-                sn.itpqap_rev,
-                sn.itpqap_receive_date,
-                sn.mfg_type,
-                sn.after_gad_change_bom_update_or_not,
-                sn.engg_bom_created_by,
-                sn.release_date_expected,
-                # sn.expected_based_delay_week,
-                sn.bom_released_in_which_gad_revision,
-                sn.design_remarks,
-                sn.pattern_status,
-                sn.advance_action_casting,
-                sn.advance_action_trim,
-                sn.other_remarks,
-                sn.reason_for_delay
+            SELECT 'Serial Number' AS source_doctype, sn.batch, sn.name AS sn_name, sn.mds_status, sn.mds_no, sn.mds_rev,
+                   sn.mds_date, sn.gad_required, sn.gad_status, sn.gad_rev, sn.gad_receive_date,
+                   sn.after_gad_change_bom_change_required, sn.itpqap, sn.itpqap_rev,
+                   sn.itpqap_receive_date, sn.mfg_type, sn.after_gad_change_bom_update_or_not,
+                   sn.engg_bom_created_by, sn.release_date_expected,
+                   sn.bom_released_in_which_gad_revision, sn.design_remarks, sn.pattern_status,
+                   sn.advance_action_casting, sn.advance_action_trim, sn.other_remarks, sn.reason_for_delay
             FROM `tabSerial Number` sn
-            /*
-              MariaDB does not support DISTINCT ON or ROW_NUMBER in older
-              versions.  The self-join below picks the minimum (first) name
-              per batch using a plain GROUP BY + MIN — fully index-friendly.
-            */
             INNER JOIN (
-                SELECT batch, MIN(name) AS first_name
-                FROM   `tabSerial Number`
-                WHERE  batch IS NOT NULL
-                  AND  batch != ''
-                GROUP  BY batch
-            ) AS first_sn
-               ON first_sn.batch      = sn.batch
-               AND first_sn.first_name = sn.name
+                SELECT batch, MIN(name) AS first_name FROM `tabSerial Number`
+                WHERE batch IS NOT NULL AND batch != '' GROUP BY batch
+            ) AS first_sn ON first_sn.batch = sn.batch AND first_sn.first_name = sn.name
+
+            UNION ALL
+
+            SELECT 'Valve Spare Serial' AS source_doctype, vss.batch, vss.name AS sn_name, vss.mds_status, vss.mds_no, vss.mds_rev,
+                   vss.mds_date, vss.gad_required, vss.gad_status, vss.gad_rev, vss.gad_receive_date,
+                   vss.after_gad_change_bom_change_required, vss.itpqap, vss.itpqap_rev,
+                   vss.itpqap_receive_date, vss.mfg_type, vss.after_gad_change_bom_update_or_not,
+                   vss.engg_bom_created_by, vss.release_date_expected,
+                   vss.bom_released_in_which_gad_revision, vss.design_remarks, vss.pattern_status,
+                   vss.advance_action_casting, vss.advance_action_trim, vss.other_remarks, vss.reason_for_delay
+            FROM `tabValve Spare Serial` vss
+            INNER JOIN (
+                SELECT batch, MIN(name) AS first_name FROM `tabValve Spare Serial`
+                WHERE batch IS NOT NULL AND batch != '' GROUP BY batch
+            ) AS first_vss ON first_vss.batch = vss.batch AND first_vss.first_name = vss.name
         ) AS rep_sn
                ON rep_sn.batch = soi.custom_batch_no
 
@@ -449,6 +435,13 @@ def _fetch_rows(filters):
 # ---------------------------------------------------------------------------
 
 _BOM_DONE = {"Active", "Submitted"}
+def _resolve_doctype_for_batch(batch_name):
+    """Returns 'Serial Number' or 'Valve Spare Serial' based on the SO item's product type."""
+    item_code = frappe.db.get_value(
+        "Sales Order Item", {"custom_batch_no": batch_name}, "item_code"
+    )
+    product_type = frappe.db.get_value("Item Generator", item_code, "attribute_1_value") if item_code else None
+    return "Valve Spare Serial" if product_type == "Valve Spare" else "Serial Number"
 
 def _post_process(rows):
     today = getdate(get_today())
@@ -668,70 +661,30 @@ CHUNK_SIZE = 1000
 # ---------------------------------------------------------------------------
 # PUBLIC API 1 : BULK UPDATE (one field, all SNs in a batch)
 # ---------------------------------------------------------------------------
-
 @frappe.whitelist()
 def bulk_update_batch(batch_name, fieldname, value):
-    """
-    Update `fieldname` = `value` on EVERY Serial Number that belongs to
-    `batch_name` in a single SQL UPDATE statement.
-
-    Called from JS when the user edits a cell in the report.
-
-    Args:
-        batch_name  (str) : value of `custom_batch_no` / `sn.batch`
-        fieldname   (str) : Serial Number field to update
-        value       (str) : new value (empty string clears the field)
-
-    Returns:
-        dict  { updated: <int>, batch: <str>, field: <str> }
-    """
     _validate_field(fieldname)
-    _check_permission()
-
-    # Sanitise: convert JSON-stringified None / "null" to empty string
+    doctype = _resolve_doctype_for_batch(batch_name)          
+    _check_permission(doctype)                                 
     value = _clean_value(value)
 
-    # Count before update (for response)
-    count = frappe.db.count("Serial Number", filters={"batch": batch_name,"docstatus": ["!=", 2]})
-
+    count = frappe.db.count(doctype, filters={"batch": batch_name, "docstatus": ["!=", 2]})  
     if count == 0:
+        return {"updated": 0, "batches_resolved": 0, "chunks": 0, "skipped": True}
 
-        # frappe.throw(_("No Serial Numbers found for batch {0}").format(batch_name))
-        return {
-            "updated":          0,
-            "batches_resolved": 0,
-            "chunks":           0,
-            "skipped":          True,
-        }
-
-    # Single UPDATE — fastest possible for any batch size.
-    # frappe.db.sql uses parameterised queries; fieldname is validated above.
     frappe.db.sql(
         f"""
-        UPDATE `tabSerial Number`
+        UPDATE `tab{doctype}`
         SET    `{fieldname}` = %(value)s,
                `modified`   = %(now)s,
                `modified_by`= %(user)s
         WHERE  `batch`      = %(batch)s
                 AND `docstatus` != 2
         """,
-        {
-            "value": value,
-            "now":   now_datetime(),
-            "user":  frappe.session.user,
-            "batch": batch_name,
-        },
+        {"value": value, "now": now_datetime(), "user": frappe.session.user, "batch": batch_name},
     )
-
     frappe.db.commit()
-
-    return {
-        "status":  "ok",
-        "updated": count,
-        "batch":   batch_name,
-        "field":   fieldname,
-    }
-
+    return {"status": "ok", "updated": count, "batch": batch_name, "field": fieldname}
 
 # ---------------------------------------------------------------------------
 # PUBLIC API 2 : MULTI-FIELD BULK UPDATE (multiple fields, all SNs in batch)
@@ -739,153 +692,78 @@ def bulk_update_batch(batch_name, fieldname, value):
 
 @frappe.whitelist()
 def bulk_update_batch_multifield(batch_name, field_value_map):
-    """
-    Update multiple fields at once for all SNs in a batch.
-    More efficient than calling bulk_update_batch repeatedly.
-
-    Args:
-        batch_name      (str)  : batch identifier
-        field_value_map (str)  : JSON-encoded dict  { fieldname: value, ... }
-
-    Returns:
-        dict  { updated: <int>, batch: <str>, fields: [<str>, ...] }
-    """
-    _check_permission()
-
     if isinstance(field_value_map, str):
         field_value_map = json.loads(field_value_map)
-
     if not field_value_map:
         frappe.throw(_("No fields provided for update."))
-
-    # Validate all field names before touching the DB
     for fn in field_value_map:
         _validate_field(fn)
 
-    count = frappe.db.count("Serial Number", filters={"batch": batch_name,"docstatus": ["!=", 2]})
-    if count == 0:
-        return {
-            "updated":          0,
-            "batches_resolved": 0,
-            "chunks":           0,
-            "skipped":          True,
-        }
-        # frappe.throw(_("No Serial Numbers found for batch {0}").format(batch_name))
+    doctype = _resolve_doctype_for_batch(batch_name)         
+    _check_permission(doctype)                                 
 
-    # Build SET clause dynamically from validated field names
+    count = frappe.db.count(doctype, filters={"batch": batch_name, "docstatus": ["!=", 2]})  
+    if count == 0:
+        return {"updated": 0, "batches_resolved": 0, "chunks": 0, "skipped": True}
+
     set_parts  = [f"`{fn}` = %({fn}_val)s" for fn in field_value_map]
     set_parts += ["`modified` = %(now)s", "`modified_by` = %(user)s"]
 
     params = {f"{fn}_val": _clean_value(v) for fn, v in field_value_map.items()}
-    params.update({
-        "now":   now_datetime(),
-        "user":  frappe.session.user,
-        "batch": batch_name,
-    })
+    params.update({"now": now_datetime(), "user": frappe.session.user, "batch": batch_name})
 
     frappe.db.sql(
         f"""
-        UPDATE `tabSerial Number`
+        UPDATE `tab{doctype}`
         SET    {', '.join(set_parts)}
         WHERE  `batch` = %(batch)s
-                AND  `docstatus` != 2  
+                AND  `docstatus` != 2
         """,
         params,
     )
-
     frappe.db.commit()
-
-    return {
-        "status":  "ok",
-        "updated": count,
-        "batch":   batch_name,
-        "fields":  list(field_value_map.keys()),
-    }
-
-
+    return {"status": "ok", "updated": count, "batch": batch_name, "fields": list(field_value_map.keys())}
 # ---------------------------------------------------------------------------
 # PUBLIC API 3 : ROW-WISE UPDATE (one SN + propagate to batch siblings)
 # ---------------------------------------------------------------------------
 
 @frappe.whitelist()
 def row_update_and_propagate(sn_name, fieldname, value, propagate_to_batch=True):
-    """
-    Update `fieldname` = `value` on a single Serial Number, then optionally
-    propagate the same change to all siblings in the same batch.
-
-    This keeps the "representative SN" approach consistent: whatever the
-    user sets on the displayed row is immediately mirrored across the batch.
-
-    Args:
-        sn_name             (str)  : Serial Number document name
-        fieldname           (str)  : field to update
-        value               (str)  : new value
-        propagate_to_batch  (bool) : default True; set False for true row-only edit
-
-    Returns:
-        dict  { updated: <int>, propagated: <bool>, sn: <str> }
-    """
     try:
-
         _validate_field(fieldname)
         _check_permission()
-
         value = _clean_value(value)
 
-        # Fetch batch name for this SN (one indexed read)
+        # CHANGED: check both doctypes for the batch, since sn_name could be either
         batch_name = frappe.db.get_value("Serial Number", sn_name, "batch")
+        doctype = "Serial Number"
+        if batch_name is None:
+            batch_name = frappe.db.get_value("Valve Spare Serial", sn_name, "batch")
+            doctype = "Valve Spare Serial"
 
         if propagate_to_batch and batch_name:
-            # Propagate to entire batch via single SQL UPDATE (same as bulk API)
             result = bulk_update_batch(batch_name, fieldname, value)
-            return {
-                "status":     "ok",
-                "updated":    result["updated"],
-                "propagated": True,
-                "sn":         sn_name,
-                "batch":      batch_name,
-            }
+            return {"status": "ok", "updated": result["updated"], "propagated": True,
+                    "sn": sn_name, "batch": batch_name}
         else:
-            # Update only the single row
             frappe.db.sql(
                 f"""
-                UPDATE `tabSerial Number`
+                UPDATE `tab{doctype}`
                 SET    `{fieldname}` = %(value)s,
                     `modified`   = %(now)s,
                     `modified_by`= %(user)s
                 WHERE  `name`       = %(sn_name)s
-                    AND  `docstatus`  != 2  
+                    AND  `docstatus`  != 2
                 """,
-                {
-                    "value":   value,
-                    "now":     now_datetime(),
-                    "user":    frappe.session.user,
-                    "sn_name": sn_name,
-                },
+                {"value": value, "now": now_datetime(), "user": frappe.session.user, "sn_name": sn_name},
             )
             frappe.db.commit()
-            return {
-                "status":     "ok",
-                "updated":    1,
-                "propagated": False,
-                "sn":         sn_name,
-            }
-    except Exception as e:
-        #  Rollback DB changes
+            return {"status": "ok", "updated": 1, "propagated": False, "sn": sn_name}
+    except Exception:
         frappe.db.rollback()
-
-        #  Log full error (very important for debugging)
-        frappe.log_error(
-            title="Row Update and Propagate Failed in daily_review_sales_order",
-            message=frappe.get_traceback()
-        )
-        return {
-            "status":     "error",
-            "updated":    0,
-            "propagated": False,
-            "sn":         sn_name,
-        }
-
+        frappe.log_error(title="Row Update and Propagate Failed in daily_review_sales_order",
+                          message=frappe.get_traceback())
+        return {"status": "error", "updated": 0, "propagated": False, "sn": sn_name}
 
 # ---------------------------------------------------------------------------
 # PUBLIC API 4 : CHUNKED BULK UPDATE (for very large batches > CHUNK_SIZE)
@@ -975,11 +853,10 @@ def _validate_field(fieldname):
         )
 
 
-def _check_permission():
-    """Raise if the current user lacks write permission on Serial Number."""
-    if not frappe.has_permission("Serial Number", ptype="write"):
+def _check_permission(doctype="Serial Number"):
+    if not frappe.has_permission(doctype, ptype="write"):
         frappe.throw(
-            _("You do not have permission to update Serial Number records."),
+            _("You do not have permission to update {0} records.").format(doctype),
             frappe.PermissionError,
         )
 
@@ -1002,124 +879,99 @@ def _clean_value(value):
 
 @frappe.whitelist()
 def bulk_update_by_reference(select_type, reference, field_value_map):
-    """
-    Bulk-update multiple Serial Number fields for all SNs linked to either
-    a Sales Order (via its batch chain) or a single Batch.
-
-    Flow
-    ----
-    Sales Order
-        └─ tabSales Order Item  (parent = reference, custom_batch_no IS NOT NULL)
-                └─ tabSerial Number  (batch IN collected_batches)
-                        └─ chunked multi-field SQL UPDATE
-
-    Batch
-        └─ tabSerial Number  (batch = reference)
-                └─ chunked multi-field SQL UPDATE
-
-
-    Args:
-        select_type     (str)       : "Sales Order" | "Batch"
-        reference       (str)       : SO name or Batch name
-        field_value_map (str|dict)  : JSON / dict  { fieldname: value, ... }
-                                      Only non-blank fields the user filled.
-
-    Returns:
-        dict  { updated: int, batches_resolved: int, chunks: int }
-    """
     _check_permission()
 
-    # ── 1. Parse & validate incoming field map ────────────────────────────
     if isinstance(field_value_map, str):
         field_value_map = json.loads(field_value_map)
-
     if not field_value_map:
         frappe.throw(_("No fields provided for bulk update."))
-
-   
     for fn in field_value_map:
         _validate_field(fn)
-
-   
     clean_map = {fn: _clean_value(v) for fn, v in field_value_map.items()}
 
-    # ── 2. Resolve target Serial Number names ─────────────────────────────
+    # CHANGED: resolve names per doctype instead of assuming Serial Number
+    names_by_doctype = {"Serial Number": [], "Valve Spare Serial": []}
+
     if select_type == "Sales Order":
-        sn_names, batches_resolved = _sn_names_for_sales_order(reference)
+        batch_rows = frappe.db.sql(
+            """
+            SELECT DISTINCT custom_batch_no
+                FROM `tabSales Order Item`
+                WHERE parent = %s AND docstatus = 1
+                AND custom_batch_no IS NOT NULL AND custom_batch_no != ''
+                AND (line_status IS NULL OR line_status != 'Cancelled')
+            """,
+            (reference,), as_list=True,
+        )
+        batches = [row[0] for row in batch_rows if row[0]]
+        if not batches:
+            frappe.throw(_("Sales Order {0} has no batch-linked line items.").format(reference))
+
+        for b in batches:
+            names_by_doctype[_resolve_doctype_for_batch(b)].append(b)
 
     elif select_type == "Batch":
-        sn_names        = _sn_names_for_batch(reference)
-        batches_resolved = 1 if sn_names else 0
+        doctype = _resolve_doctype_for_batch(reference)
+        names_by_doctype[doctype].append(reference)
 
     else:
         frappe.throw(_("Invalid select_type '{0}'. Expected 'Sales Order' or 'Batch'.").format(select_type))
 
-    if not sn_names:
-        # frappe.throw(
-        #     _("No Serial Numbers found for {0}: {1}.").format(select_type, reference)
-        # )
-        return {
-            "updated":          0,
-            "batches_resolved": 0,
-            "chunks":           0,
-            "skipped":          True,
-        }
+    batches_resolved = sum(len(v) for v in names_by_doctype.values())
 
-    # ── 3. Build the SET clause once 
-    #       All fieldnames already validated → safe to interpolate
-    set_parts  = [f"`{fn}` = %({fn}_val)s" for fn in clean_map]
-    set_parts += [
-        "`modified`    = %(now)s",
-        "`modified_by` = %(user)s",
-    ]
-    set_clause = ", ".join(set_parts)
+    set_parts_pos  = [f"`{fn}` = %s" for fn in clean_map]
+    set_parts_pos += ["`modified` = %s", "`modified_by` = %s"]
 
-    base_params = {f"{fn}_val": v for fn, v in clean_map.items()}
-    base_params.update({
-        "now":  now_datetime(),
-        "user": frappe.session.user,
-    })
-
-    # ── 4. Chunked bulk UPDATE ─────────────────────────────────────────────
-   
     total_updated = 0
-    chunks        = 0
+    chunks = 0
+    any_found = False
 
-    for offset in range(0, len(sn_names), CHUNK_SIZE):
-        chunk        = sn_names[offset : offset + CHUNK_SIZE]
-        placeholders = ", ".join(["%s"] * len(chunk))
+    updated_by_doctype = {"Serial Number": 0, "Valve Spare Serial": 0}   # NEW
 
-
-        set_positional  = [v for fn, v in clean_map.items()]          
-        set_positional += [base_params["now"], base_params["user"]]   
-        set_positional += chunk                                        
-
-        
-        set_parts_pos  = [f"`{fn}` = %s" for fn in clean_map]
-        set_parts_pos += ["`modified` = %s", "`modified_by` = %s"]
-
-        frappe.db.sql(
+    for doctype, batches in names_by_doctype.items():
+        if not batches:
+            continue
+        placeholders_b = ", ".join(["%s"] * len(batches))
+        sn_rows = frappe.db.sql(
             f"""
-            UPDATE `tabSerial Number`
-               SET {', '.join(set_parts_pos)}
-             WHERE `name` IN ({placeholders})
+            SELECT name FROM `tab{doctype}`
+                WHERE docstatus != 2 AND batch IN ({placeholders_b})
+                ORDER BY batch, name
             """,
-            set_positional,
+            batches, as_list=True,
         )
+        sn_names = [row[0] for row in sn_rows]
+        if not sn_names:
+            continue
+        any_found = True
 
-        frappe.db.commit()         
-        total_updated += len(chunk)
-        chunks        += 1
+        for offset in range(0, len(sn_names), CHUNK_SIZE):
+            chunk = sn_names[offset: offset + CHUNK_SIZE]
+            placeholders = ", ".join(["%s"] * len(chunk))
+            set_positional = list(clean_map.values()) + [now_datetime(), frappe.session.user] + chunk
 
-   
+            frappe.db.sql(
+                f"""
+                UPDATE `tab{doctype}`
+                    SET {', '.join(set_parts_pos)}
+                    WHERE `name` IN ({placeholders})
+                """,
+                set_positional,
+            )
+            frappe.db.commit()
+            total_updated += len(chunk)
+            chunks += 1
+            updated_by_doctype[doctype] += len(chunk)   # NEW
+
+    if not any_found:
+        return {"updated": 0, "batches_resolved": 0, "chunks": 0, "skipped": True}
 
     return {
-        "updated":          total_updated,
+        "updated": total_updated,
         "batches_resolved": batches_resolved,
-        "chunks":           chunks,
+        "chunks": chunks,
+        "updated_by_doctype": updated_by_doctype,   # NEW
     }
-
-
 # ---------------------------------------------------------------------------
 # INTERNAL HELPERS for bulk_update_by_reference
 # ---------------------------------------------------------------------------

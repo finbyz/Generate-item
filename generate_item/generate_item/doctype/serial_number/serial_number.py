@@ -12,6 +12,7 @@ import math
 import time
 import calendar
 from frappe.utils import nowdate, getdate
+from generate_item.generate_item.doctype.valve_spare_serial.valve_spare_serial import _handle_valve_spare_qty_changes
 
 class SerialNumber(Document):
 	pass
@@ -937,6 +938,8 @@ def on_update_sales_order(doc, method):
     """
     # frappe.log_error("trigger on_update_sales_order")
     _handle_cancelled_lines(doc)
+    _handle_valve_spare_qty_changes(doc)
+
 
 
 def on_cancel_sales_order(doc, method):
