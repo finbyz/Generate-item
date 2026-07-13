@@ -572,6 +572,8 @@ def get_so_items_for_selection(sales_order):
     # ── 2. Get item-warehouse pairs ──────────────────────────────────────────
     item_warehouse_pairs = set()
     for item in so.items:
+        if item.get("line_status") in ["Cancelled","Hold"]:
+            continue
         warehouse = so.set_warehouse or item.warehouse
         if warehouse and item.item_code:
             item_warehouse_pairs.add((item.item_code, warehouse))
@@ -582,6 +584,9 @@ def get_so_items_for_selection(sales_order):
     # ── 4. Build result ──────────────────────────────────────────────────────
     result = []
     for item in so.items:
+        # Skip cancelled SO lines
+        if item.get("line_status") in ["Cancelled","Hold"]:
+            continue
         ordered = flt(item.qty)
         delivered = flt(delivered_map.get(item.name, 0))
         pending = ordered - delivered
@@ -657,6 +662,7 @@ def get_so_items_for_selection(sales_order):
         })
 
     return result
+
 @frappe.whitelist()
 def make_delivery_note_for_so(source_name, target_doc=None, kwargs=None):
     
@@ -866,11 +872,14 @@ def make_delivery_note(source_name, target_doc=None, kwargs=None):
         so_item = frappe.db.get_value(
             "Sales Order Item",
             so_item_name,
-            ["qty", "delivered_qty", "conversion_factor"],
+            ["qty", "delivered_qty", "conversion_factor", "line_status"],
             as_dict=True,
         )
         if not so_item:
             items_to_keep.append(item)
+            continue
+        # Skip cancelled SO lines
+        if so_item.get("line_status") in ["Cancelled","Hold"]:
             continue
 
         so_qty = frappe.utils.flt(so_item.qty)
@@ -1068,12 +1077,25 @@ def _calculate_and_set_remaining_taxes(doc):
 
 def validate(doc, method):
     """Validate Delivery Note"""
+    _rebuild_item_idx(doc)
     fetch_po_line_no_from_sales_order(doc)
     validate_duplicate_delivery_note(doc, method)
     # validate_so_line_shipping_address(doc)
     validate_free_items(doc)
     # validate_batch_from_custom_field(doc,method)
     validate_dn_line_status(doc,method)
+
+
+def _rebuild_item_idx(self):
+    """Ensure Delivery Note Item idx values are sequential."""
+
+    if not self.items:
+        return
+
+    for idx, row in enumerate(self.items, start=1):
+        # Avoid unnecessary assignments
+        if row.idx != idx:
+            row.idx = idx
 
 def validate_duplicate_delivery_note(doc, method):
     """
