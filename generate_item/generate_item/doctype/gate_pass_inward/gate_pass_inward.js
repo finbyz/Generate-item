@@ -145,6 +145,8 @@ frappe.ui.form.on("Gate Pass Inward", {
                                 row.rate              = item.rate || 0;
                                 row.source_warehouse = item.target_warehouse || "";
                                 row.target_warehouse = item.source_warehouse || "" ;
+                                row.description = item.description || "";
+                                row.remarks = item.remarks || "";
                                 row.gate_pass_outward_detail = item.name;
                             });
                             frm.refresh_field("item_detail");

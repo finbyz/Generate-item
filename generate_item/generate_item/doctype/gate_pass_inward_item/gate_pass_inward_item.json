@@ -17,7 +17,8 @@
   "pending_after",
   "received_item",
   "quality",
-  "gate_pass_outward_item"
+  "gate_pass_outward_item",
+  "remarks"
  ],
  "fields": [
   {
@@ -95,13 +96,18 @@
    "print_hide": 1,
    "read_only": 1,
    "search_index": 1
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-07-08 15:36:23.367846",
+ "modified": "2026-07-13 09:54:51.286643",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Gate Pass Inward Item",

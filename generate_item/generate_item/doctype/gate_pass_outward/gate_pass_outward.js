@@ -325,6 +325,7 @@ function _build_inward_doc(frm, pending_items, is_stock) {
         doc.is_stock_item = frm.doc.is_stock_item;  // carry flag to inward
         doc.branch = frm.doc.branch;
         doc.default_target_warehouse = frm.doc.default_source_warehouse;
+        doc.remarks = frm.doc.remarks;
 
         // ── Clear default empty row ───────────────────────────────────────────
         doc.item_detail = [];
@@ -345,6 +346,8 @@ function _build_inward_doc(frm, pending_items, is_stock) {
 
                 row.source_warehouse = item.target_warehouse || "";
                 row.target_warehouse = item.source_warehouse || "" ;
+                row.description = item.description || "";
+                row.remarks = item.remarks || "";
                 row.gate_pass_outward_detail = item.name;
                 
             });
