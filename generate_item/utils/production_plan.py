@@ -676,30 +676,27 @@ def _flag_work_orders_for_update(production_plan):
         "Yes",
         update_modified=False,
     )
-
 def validate_work_orders_before_update(production_plan):
     """
-    Prevent updating a Production Plan if any linked Work Order
-    has already entered execution.
+    Allow updating a Production Plan (via Get Items/Update) only if every
+    linked Work Order is still in Draft or Not Started status.
 
     Allowed:
         - Draft
         - Not Started
 
     Blocked:
-        - Started
-        - In Process
-        - Completed
+        - Any other status (Started, In Process, Completed, Stopped, Closed, etc.)
     """
 
-    blocked_statuses = ("Started", "In Process", "Completed")
+    allowed_statuses = ("Draft", "Not Started")
 
     work_order = frappe.db.get_value(
         "Work Order",
         {
             "production_plan": production_plan,
             "docstatus": ("!=", 2),
-            "status": ("in", blocked_statuses),
+            "status": ("not in", allowed_statuses),
         },
         ["name", "status"],
         as_dict=True,

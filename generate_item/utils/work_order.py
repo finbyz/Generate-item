@@ -311,8 +311,6 @@ def get_update_for_production_plan(docname):
         "failed": len([r for r in results if r["status"] == "failed"]),
         "details": results,
     }
-
-
 def _update_single_work_order(wo):
     """
     Core update logic for one Work Order. Shared by the single-WO
@@ -321,10 +319,12 @@ def _update_single_work_order(wo):
     caller decides whether that aborts everything (single) or is just
     recorded and skipped (bulk).
     """
+    allowed_statuses = ("Draft", "Not Started")
+
     if wo.docstatus == 2:
         frappe.throw(_("Cannot update a cancelled Work Order ({0}).").format(wo.name))
 
-    if wo.status in ("Started", "In Process", "Completed"):
+    if wo.status not in allowed_statuses:
         frappe.throw(
             _("Work Order {0} cannot be updated because it is already in <b>{1}</b> status.")
             .format(wo.name, wo.status)
@@ -345,7 +345,6 @@ def _update_single_work_order(wo):
     wo.db_set("modification_status", "No", update_modified=False)
 
     return {"success": True, "message": _("Work Order {0} updated").format(wo.name)}
-
 
 def _sync_required_items_from_bom(wo, bom):
     """
