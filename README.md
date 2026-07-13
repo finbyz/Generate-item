@@ -2,6 +2,11 @@
 
 Item
 
+### Developer documentation
+
+- [Generate Item Technical and Developer Documentation](docs/generate_item_technical_documentation.md)
+- [Production Plan Modification Workflow](docs/production_plan_modification_workflow.md)
+
 ### Installation
 
 You can install this app using the [bench](https://github.com/frappe/bench) CLI:
