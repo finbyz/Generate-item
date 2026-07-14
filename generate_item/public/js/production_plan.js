@@ -241,11 +241,11 @@ frappe.ui.form.on('Production Plan', {
     refresh: function (frm) {
         const UPDATE_GROUP = __("Update");
         if (frm.doc.docstatus === 1  ) {
-             if (frm.doc.bom_modification || frm.doc.sales_order_modification) {
+    
         add_update_work_orders_button(frm, UPDATE_GROUP);
         add_get_update_button(frm, UPDATE_GROUP);
         add_create_material_request_button(frm, UPDATE_GROUP);
-    }
+    
            
         
         }
