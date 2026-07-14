@@ -1151,24 +1151,12 @@ def create_order_modification_requests(updated_boms, branch):
 
     return created_docs
 
-
 def fetch_items_from_reference(doc):
     """
     Works like the JS get_item() function.
     Fetches items from Sales Order or BOM
     and fills child table 'items'.
     """
-
-    # if not doc.type:
-    #     return
-
-    # Determine reference document
-    # if doc.type == "Sales Order":
-    #     ref_name = doc.sales_order
-    # elif doc.type == "BOM":
-    #     ref_name = doc.bom
-    # else:
-    #     return
 
     if doc.bom:
         ref_name = doc.bom
@@ -1182,30 +1170,24 @@ def fetch_items_from_reference(doc):
 
     # Clear existing child table (optional but recommended)
     doc.set("items", [])
-    # doc.set("sales_order_item", [])
-
-    # -------- SALES ORDER --------
-    # if doc.type == "Sales Order":
-    #     for item in reference_doc.items:
-    #         row = doc.append("sales_order_item", {})
-    #         row.sales_order_item_name = item.name
-    #         row.item = item.item_code
-    #         row.qty = item.qty
-    #         row.batch_no = item.custom_batch_no
-    #         row.po_line_no = item.po_line_no
-    #         row.rate = item.rate
 
     # -------- BOM --------
     if reference_doc.items:
         for item in reference_doc.items:
             row = doc.append("items", {})
+            row.bom_item_name = item.name              
             row.item = item.item_code
             if item.item_code:
                 description = frappe.db.get_value(
                     "Item", item.item_code, "description"
                 )
                 row.description = description
+            row.uom = item.uom                         
+            row.do_not_explode = item.do_not_explode     
+            row.rev_do_not_explode = item.do_not_explode 
+            row.bom_no = item.bom_no                     
             row.qty = item.qty
+            row.rate = item.rate                         
             row.batch_no = item.custom_batch_no
             row.drawing_no = item.custom_drawing_no
             row.drawing_rev_no = item.custom_drawing_rev_no

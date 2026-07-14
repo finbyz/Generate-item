@@ -393,18 +393,21 @@ def update_po_item_received_stock_qty(purchase_order_item):
     if not purchase_order_item:
         return
 
-    # Get total received stock qty from Purchase Receipt Items
+    # Get total received stock qty from submitted Purchase Receipt Items
     result = frappe.db.get_all(
         "Purchase Receipt Item",
         filters={
             "purchase_order_item": purchase_order_item,
-            "docstatus": 1  # only submitted receipts
+            "docstatus": 1,
         },
-        fields=[{"SUM": "stock_qty", "as": "total_received"}]
+        fields=[{"SUM": "stock_qty", "as": "total_received"}],
     )
 
-    total_received = result[0].get("total_received") if result else 0
-    # frappe.throw(str(total_received))
+    total_received = (
+        flt(result[0].get("total_received"))
+        if result
+        else 0.0
+    )
 
     # Update Purchase Order Item
     frappe.db.set_value(
@@ -412,10 +415,8 @@ def update_po_item_received_stock_qty(purchase_order_item):
         purchase_order_item,
         "received_qty_in_stock_uom",
         total_received,
-        update_modified=False
+        update_modified=False,
     )
-
-
 
 def calculate_pending_qty(item):
     if not item.purchase_order_item:
