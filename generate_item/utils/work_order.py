@@ -269,6 +269,18 @@ def get_update_for_work_order(docname):
 
 
 @frappe.whitelist()
+def clear_work_order_updated(docname):
+    frappe.db.set_value(
+        "Production Plan",
+        docname,
+        "work_order_updated",
+        0,
+        update_modified=True
+    )
+
+
+
+@frappe.whitelist()
 def get_update_for_production_plan(docname):
     """
     Run the same BOM sync logic for every Work Order linked to this

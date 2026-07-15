@@ -4,7 +4,7 @@ import frappe
 from frappe import _
 
 from generate_item.generate_item.modification_task_utils.modification_task import create_wo_po_tasks_on_gate_update
-
+from erpnext.manufacturing.doctype.production_plan.production_plan import get_exploded_items
 
 def before_save(doc, method):
     # Handle po_items
@@ -252,8 +252,11 @@ def _sync_planned_qty_from_sales_orders(pp):
     changed = False
     for item in pp.po_items:
         so_qty = qty_map.get(item.sales_order_item)
-        if so_qty and so_qty > (item.planned_qty or 0):
+        if so_qty :
             item.planned_qty = so_qty
+            item.actual_qty = so_qty
+            item.pending_qty = so_qty
+
             changed = True
     return changed
 
@@ -292,6 +295,7 @@ def get_update_for_submitted_pp(docname):
 
     # Clear both modification flags in a single UPDATE instead of two.
     pp.production_plan_updated = 1
+    pp.work_order_updated = 1
     frappe.db.set_value(
         "Production Plan", pp.name,
         {"bom_modification": "", "sales_order_modification": ""},
@@ -307,6 +311,8 @@ def get_update_for_submitted_pp(docname):
         pp.append("mr_items", d)
 
     # Single save for everything accumulated above.
+    pp.calculate_total_planned_qty()
+    pp.calculate_total_produced_qty()
     pp.save(ignore_permissions=True)
     # flag all non-cancelled linked Work Orders for update ---
     _flag_work_orders_for_update(pp.name)

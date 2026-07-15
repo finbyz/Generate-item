@@ -97,23 +97,35 @@ function custom_transfer_materials(frm)
 }
 
 
-
 function get_update_for_production_plan(frm) {
     frappe.confirm(
         __("This will sync Item to Manufacture and raw materials from the linked BOM, for every Work Order under this Production Plan. Continue?"),
         () => {
             frappe.call({
                 method: "generate_item.utils.work_order.get_update_for_production_plan",
-                args: { docname: frm.doc.name },
+                args: {
+                    docname: frm.doc.name
+                },
                 freeze: true,
                 freeze_message: __("Updating Work Orders..."),
                 callback: function (r) {
                     if (!r.exc && r.message) {
-                       frappe.show_alert({
+
+                        frappe.call({
+                            method: "generate_item.utils.work_order.clear_work_order_updated",
+                            args: {
+                                docname: frm.doc.name
+                            },
+                            callback: function () {
+                                frappe.show_alert({
                                     message: __("Work Orders updated"),
                                     indicator: "green",
                                 });
-                        frm.reload_doc();
+
+                                frm.reload_doc();
+                            }
+                        });
+
                     }
                 },
             });
@@ -122,9 +134,8 @@ function get_update_for_production_plan(frm) {
 }
 
 
-
 function add_update_work_orders_button(frm, group) {
-    if (frm.doc.docstatus === 2 ) {
+    if (frm.doc.docstatus !== 1 || !frm.doc.work_order_updated) {
         return;
     }
 
