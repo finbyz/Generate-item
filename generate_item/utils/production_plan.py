@@ -234,30 +234,52 @@ def _capture_original_data_if_needed(pp):
 
 
 def _sync_planned_qty_from_sales_orders(pp):
-    """Batch-fetch all Sales Order Item qtys in a single query instead of
-    one query per po_item row (fixes N+1)."""
+    """Batch-fetch all Sales Order Item data in a single query instead of
+    one query per po_item row (fixes N+1), and propagate FG exchanges
+    (item_code change on the SO) into the Production Plan row's
+    item_code/description/stock_uom. BOM is intentionally left untouched."""
+
     so_item_names = [d.sales_order_item for d in pp.po_items if d.sales_order_item]
     if not so_item_names:
         return False
 
-    qty_map = dict(
-        frappe.get_all(
-            "Sales Order Item",
-            filters={"name": ["in", so_item_names]},
-            fields=["name", "qty"],
-            as_list=True,
-        )
+    so_item_data = frappe.get_all(
+        "Sales Order Item",
+        filters={"name": ["in", so_item_names]},
+        fields=["name", "qty", "item_code"],
     )
+    so_map = {row.name: row for row in so_item_data}
 
+    desc_cache = {}
     changed = False
+
     for item in pp.po_items:
-        so_qty = qty_map.get(item.sales_order_item)
-        if so_qty :
-            item.planned_qty = so_qty
-            item.actual_qty = so_qty
-            item.pending_qty = so_qty
+        so_row = so_map.get(item.sales_order_item)
+        if not so_row or not so_row.qty:
+            continue
+
+        # --- 1. Quantity sync (existing behavior) ---
+        if item.planned_qty != so_row.qty:
+            item.planned_qty = so_row.qty
+            item.actual_qty = so_row.qty
+            item.pending_qty = so_row.qty
+            changed = True
+
+        # --- 2. FG exchange sync: item_code changed on the SO ---
+        new_item_code = so_row.item_code
+        if new_item_code and new_item_code != item.item_code:
+            item.item_code = new_item_code
+
+
+            if new_item_code not in desc_cache:
+                desc_cache[new_item_code] = frappe.db.get_value(
+                    "Item", new_item_code, "description"
+                )
+            if desc_cache[new_item_code]:
+                item.description = desc_cache[new_item_code]
 
             changed = True
+
     return changed
 
 
@@ -270,14 +292,13 @@ def _get_default_transfer_warehouses(pp):
         "name",
     )
     return [{"warehouse": store_wh}] if store_wh else []
-
-
 @frappe.whitelist()
 def get_update_for_submitted_pp(docname):
     pp = frappe.get_doc("Production Plan", docname)
     validate_work_orders_before_update(pp.name)
     was_submitted = pp.docstatus == 1
 
+    # --- Step 2 & 3: Set status Close / Docstatus 0 ---
     if was_submitted:
         pp.set_status(close=True, update_bin=True)
         pp.db_set("docstatus", 0, update_modified=False)
@@ -288,10 +309,34 @@ def get_update_for_submitted_pp(docname):
 
     # All in-memory mutations happen first — nothing is written to DB yet.
     captured = _capture_original_data_if_needed(pp)
+
+    # --- Step 4: Fetch Assembly Update (FG qty/item_code sync from SO) ---
     changed = _sync_planned_qty_from_sales_orders(pp)
 
-    # get_sub_assembly_items() reads pp.po_items in memory — no save needed first.
+    # --- Step 5: Uncheck "Consider Projected Qty" checkboxes for
+    # Sub Assembly (skip_available_sub_assembly_item) and Raw Material
+    # (ignore_existing_ordered_qty), caching originals so we can restore
+    # them exactly — including None, so don't coerce with `or 0` here. ---
+    checkbox_cache = {
+        "skip_available_sub_assembly_item": pp.get("skip_available_sub_assembly_item"),
+        "ignore_existing_ordered_qty": pp.get("ignore_existing_ordered_qty"),
+    }
+    pp.skip_available_sub_assembly_item = 0
+    pp.ignore_existing_ordered_qty = 0
+
+    # --- Step 6: Fetch Sub Assembly updates (unfiltered by projected qty) ---
     pp.get_sub_assembly_items()
+
+    # --- Step 7: Fetch Raw Material updates (unfiltered by existing ordered qty) ---
+    warehouses = _get_default_transfer_warehouses(pp)
+    items = get_items_for_material_requests(pp.as_json(), warehouses=warehouses or None)
+    pp.set("mr_items", [])
+    for d in items:
+        pp.append("mr_items", d)
+
+    # --- Step 8: Revert checkbox state from cache ---
+    pp.skip_available_sub_assembly_item = checkbox_cache["skip_available_sub_assembly_item"]
+    pp.ignore_existing_ordered_qty = checkbox_cache["ignore_existing_ordered_qty"]
 
     # Clear both modification flags in a single UPDATE instead of two.
     pp.production_plan_updated = 1
@@ -304,23 +349,20 @@ def get_update_for_submitted_pp(docname):
     pp.bom_modification = ""
     pp.sales_order_modification = ""
 
-    warehouses = _get_default_transfer_warehouses(pp)
-    items = get_items_for_material_requests(pp.as_json(), warehouses=warehouses or None)
-    pp.set("mr_items", [])
-    for d in items:
-        pp.append("mr_items", d)
-
-    # Single save for everything accumulated above.
+    # --- Step 9: Save (persists the reverted checkbox values, not the
+    # temporary 0/0 used for fetching) ---
     pp.calculate_total_planned_qty()
     pp.calculate_total_produced_qty()
     pp.save(ignore_permissions=True)
-    # flag all non-cancelled linked Work Orders for update ---
+
     _flag_work_orders_for_update(pp.name)
 
+    # --- Step 10: Submit ---
     if was_submitted:
         pp.submit()
         create_wo_po_tasks_on_gate_update(pp)
-    
+
+    # --- Step 11: Set status Re-open ---
     pp.set_status(close=False, update_bin=True)
 
     frappe.db.commit()
@@ -329,7 +371,6 @@ def get_update_for_submitted_pp(docname):
         "planned_qty_updated": changed,
         "original_data_captured_now": captured,
     }
-
 
 
 # @frappe.whitelist()
