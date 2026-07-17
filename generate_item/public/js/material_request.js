@@ -643,6 +643,11 @@ frappe.ui.form.on('Material Request', {
     refresh(frm) {
         // frm.trigger("set_linked_batch_query");
         // Add custom button for BOM
+          if (frm.doc.docstatus == 1) {
+        frm.add_custom_button(__("Link With Production"), () => {
+            open_production_plan_dialog(frm);
+        });
+    }
         if (frm.doc.docstatus == 0) {
             frm.add_custom_button(
                 __("Bill of Materials"),
@@ -898,6 +903,62 @@ frappe.ui.form.on('Material Request', {
     },
     
 });
+
+function open_production_plan_dialog(frm) {
+
+    // Get first available batch from MR Items
+    const batch_no = frm.doc.items.find(d => d.custom_batch_no)?.custom_batch_no;
+
+    if (!batch_no) {
+        frappe.msgprint(__("No Batch No found in Material Request Items."));
+        return;
+    }
+
+    const dialog = new frappe.ui.Dialog({
+        title: __("Select Production Plan"),
+        fields: [
+            {
+                fieldtype: "Link",
+                fieldname: "production_plan",
+                label: __("Production Plan"),
+                options: "Production Plan",
+                reqd: 1,
+                get_query() {
+                    return {
+                        query: "generate_item.utils.material_request.production_plan_query",
+                        filters: {
+                            batch_no: batch_no
+                        }
+                    };
+                }
+            }
+        ],
+        primary_action_label: __("Link"), 
+
+        primary_action(values) {
+
+            frappe.call({
+                method: "generate_item.utils.material_request.link_production_plan",
+                freeze: true,
+                freeze_message: __("Linking Production Plan..."),
+                args: {
+                    material_request: frm.doc.name,
+                    batch_no: batch_no,
+                    production_plan: values.production_plan
+                },
+                callback(r) {
+                    if (!r.exc) {
+                        frm.reload_doc();
+                    }
+                    dialog.hide();
+                }
+            });
+
+        }
+    });
+
+    dialog.show();
+}
 
 // Child table events
 frappe.ui.form.on("Material Request Item", {

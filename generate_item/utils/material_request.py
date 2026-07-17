@@ -433,3 +433,74 @@ def get_bom_name(sales_order: str, linked_batch: str, item_code: str):
         return {}
     
     return bom_name
+
+
+import frappe
+from frappe import _
+from frappe.desk.search import validate_and_sanitize_search_inputs
+
+
+@frappe.whitelist()
+@validate_and_sanitize_search_inputs
+def production_plan_query(
+    doctype,
+    txt,
+    searchfield,
+    start,
+    page_len,
+    filters,
+):
+
+    batch_no = filters.get("batch_no")
+
+    return frappe.db.sql(
+        """
+        SELECT DISTINCT pp.name
+        FROM `tabProduction Plan` pp
+        INNER JOIN `tabProduction Plan Item` ppi
+            ON ppi.parent = pp.name
+        WHERE
+            pp.docstatus = 1
+            AND ppi.custom_batch_no=%(batch)s
+            AND pp.name LIKE %(txt)s
+        ORDER BY pp.creation DESC
+        LIMIT %(start)s,%(page_len)s
+        """,
+        {
+            "batch": batch_no,
+            "txt": f"%{txt}%",
+            "start": start,
+            "page_len": page_len,
+        },
+    )
+
+@frappe.whitelist()
+def link_production_plan(material_request, batch_no, production_plan):
+
+    doc = frappe.get_doc("Material Request", material_request)
+
+    if doc.docstatus != 1:
+        frappe.throw(_("Production Plan can only be linked to Submitted Material Requests."))
+
+    updated = False
+
+    for row in doc.items:
+        if row.custom_batch_no == batch_no:
+            frappe.db.set_value(
+                "Material Request Item",
+                row.name,
+                "production_plan",
+                production_plan,
+                update_modified=False,
+            )
+            updated = True
+
+    if not updated:
+        frappe.throw(_("No Material Request Item found for Batch {0}.").format(batch_no))
+
+    frappe.db.commit()
+
+    return {
+        "status": "success",
+        "message": _("Production Plan linked successfully.")
+    }
