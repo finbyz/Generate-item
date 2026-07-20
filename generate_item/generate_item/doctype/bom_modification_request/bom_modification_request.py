@@ -21,6 +21,7 @@ class BomModificationRequest(Document):
 
     def validate(self):
         self.validate_qty_and_rev_qty()
+        self.validate_main_bom_not_draft()
 
     def on_submit(self):
         if self.bom:
@@ -39,6 +40,19 @@ class BomModificationRequest(Document):
                     f"Row {row.idx}: Rev Qty cannot be 0 when Qty is 0",
                     title="Invalid Quantity",
                 )
+
+    def validate_main_bom_not_draft(self):
+        if not self.bom:
+            return
+        bom_docstatus = frappe.db.get_value("BOM", self.bom, "docstatus")
+        if bom_docstatus == 0:
+            frappe.throw(
+                _(
+                    "BOM Modification Request is not required for {0} because it is "
+                    "still in Draft. You can edit the draft BOM directly."
+                ).format(frappe.utils.get_link_to_form("BOM", self.bom)),
+                title=_("BOM is in Draft"),
+            )
 
     def update_production_plan_bom_modification(self):
         frappe.db.sql(

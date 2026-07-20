@@ -987,7 +987,15 @@ def update_sales_order_items(self, mismatched_rows):
                 update_batch_item(custom_batch_no, row.rev_item)
                 bom_name = update_finish_item_bom(custom_batch_no, row.rev_item,row.item)
                 if bom_name:
-                    updated_boms.append({"row_name": row.name, "bom": bom_name, "custom_batch_no": custom_batch_no})
+                    bom_docstatus = frappe.db.get_value("BOM", bom_name, "docstatus")
+                    if bom_docstatus == 1:
+                        updated_boms.append({
+                            "row_name": row.name,
+                            "bom": bom_name,
+                            "custom_batch_no": custom_batch_no,
+                        })
+
+                    # updated_boms.append({"row_name": row.name, "bom": bom_name, "custom_batch_no": custom_batch_no})
 
     if updated or updated_boms:
         frappe.db.commit()
