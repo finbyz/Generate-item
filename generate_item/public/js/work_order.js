@@ -1,6 +1,111 @@
 
+// Static mapping — edit here if branches/warehouses change
+const WAREHOUSE_MAP = {
+    "Sanand|Sub Assembly": {
+        source_warehouse: "Sanand Order Allocated - SVIPL",
+        fg_warehouse: "Sanand Semi Finished - SVIPL",
+        wip_warehouse: "Sanand WIP - SVIPL"
+    },
+    "Sanand|Finished Goods": {
+        source_warehouse: "Sanand Order Allocated - SVIPL",
+        fg_warehouse: "Sanand Finished Goods - SVIPL",
+        wip_warehouse: "Sanand WIP - SVIPL"
+    },
+    "Rabale|Sub Assembly": {
+        source_warehouse: "Rabale Order Allocated - SVIPL",
+        fg_warehouse: "Rabale Semi Finished - SVIPL",
+        wip_warehouse: "Rabale WIP - SVIPL"
+    },
+    "Rabale|Finished Goods": {
+        source_warehouse: "Rabale Order Allocated - SVIPL",
+        fg_warehouse: "Rabale Finished Goods - SVIPL",
+        wip_warehouse: "Rabale WIP - SVIPL"
+    },
+    "Nandikoor|Sub Assembly": {
+        source_warehouse: "Nandikoor Order Allocated - SVIPL",
+        fg_warehouse: "Nandikoor Semi Finished - SVIPL",
+        wip_warehouse: "Nandikoor WIP - SVIPL"
+    },
+    "Nandikoor|Finished Goods": {
+        source_warehouse: "Nandikoor Order Allocated - SVIPL",
+        fg_warehouse: "Nandikoor Finished Goods - SVIPL",
+        wip_warehouse: "Nandikoor WIP - SVIPL"
+    }
+};
+
+function set_wo_warehouses(frm) {
+    if (!frm.doc.branch || !frm.doc.production_item) return;
+
+    frappe.db.get_value("Item", frm.doc.production_item, "item_group").then((r) => {
+        let item_group = r.message && r.message.item_group;
+        if (!item_group) return;
+
+        if (item_group === "Sub Assembly") {
+            apply_mapping(frm, frm.doc.branch, "Sub Assembly");
+        } else {
+            // Check if item_group is "Finished Goods" itself or nested under it
+            frappe.call({
+                method: "frappe.client.get_list",
+                args: {
+                    doctype: "Item Group",
+                    filters: { name: item_group },
+                    fields: ["name", "parent_item_group"]
+                },
+                callback: function() {
+                    is_under_finished_goods(item_group).then((is_fg) => {
+                        if (is_fg) {
+                            apply_mapping(frm, frm.doc.branch, "Finished Goods");
+                        } else {
+                            frappe.msgprint(__("No warehouse mapping found for this Branch / Item combination."));
+                        }
+                    });
+                }
+            });
+        }
+    });
+}
+
+// Walks up the Item Group tree to see if "Finished Goods" is an ancestor (or itself)
+function is_under_finished_goods(item_group) {
+    return new Promise((resolve) => {
+        function check(group) {
+            if (group === "Finished Goods") {
+                resolve(true);
+                return;
+            }
+            frappe.db.get_value("Item Group", group, "parent_item_group").then((res) => {
+                let parent = res.message && res.message.parent_item_group;
+                if (!parent || parent === group) {
+                    resolve(false);
+                } else {
+                    check(parent);
+                }
+            });
+        }
+        check(item_group);
+    });
+}
+
+function apply_mapping(frm, branch, category) {
+    let key = `${branch}|${category}`;
+    let map = WAREHOUSE_MAP[key];
+
+    if (map) {
+        frm.set_value("source_warehouse", map.source_warehouse);
+        frm.set_value("fg_warehouse", map.fg_warehouse);
+        frm.set_value("wip_warehouse", map.wip_warehouse);
+    } else {
+        frappe.msgprint(__("No warehouse mapping found for this Branch / Item combination."));
+    }
+}
 
 frappe.ui.form.on('Work Order', {
+     branch: function(frm) {
+        set_wo_warehouses(frm);
+    },
+    production_item: function(frm) {
+        set_wo_warehouses(frm);
+    },
 
  get_update_for_work_order(frm) {
         frappe.confirm(
