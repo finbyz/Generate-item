@@ -2,7 +2,7 @@
 
 ## Overview
 
-Generate Item contains two custom Desk Pages under:
+Generate Item contains custom Desk Pages under:
 
 ```text
 generate_item/generate_item/page/
@@ -103,3 +103,16 @@ Create a Page folder containing:
 
 Avoid exposing unrestricted SQL-backed metrics to users who should not see cross-branch data.
 
+## Pending Advance Material Request
+
+Route: `pending-advance-mate`
+
+Primary files:
+
+- `generate_item/generate_item/page/pending_advance_mate/pending_advance_mate.json`
+- `pending_advance_mate.js`
+- `pending_advance_mate.py`
+
+Lists submitted Advance Material Request items and lets users assign batch-matched Production Plans through an inline editor. It supports Company/date filters, staged bulk saving, and CSV export.
+
+See [Pending Advance Material Request Page Report](pending_advance_material_request.md) for its design, APIs, validation, limitations, and tests.
