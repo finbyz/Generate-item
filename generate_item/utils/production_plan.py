@@ -292,85 +292,86 @@ def _get_default_transfer_warehouses(pp):
         "name",
     )
     return [{"warehouse": store_wh}] if store_wh else []
-@frappe.whitelist()
-def get_update_for_submitted_pp(docname):
-    pp = frappe.get_doc("Production Plan", docname)
-    validate_work_orders_before_update(pp.name)
-    was_submitted = pp.docstatus == 1
+# working method 
+# @frappe.whitelist()
+# def get_update_for_submitted_pp(docname):
+#     pp = frappe.get_doc("Production Plan", docname)
+#     validate_work_orders_before_update(pp.name)
+#     was_submitted = pp.docstatus == 1
 
-    # --- Step 2 & 3: Set status Close / Docstatus 0 ---
-    if was_submitted:
-        pp.set_status(close=True, update_bin=True)
-        pp.db_set("docstatus", 0, update_modified=False)
-        pp.reload()
-        pp.flags.ignore_validate = True
-        pp.flags.ignore_validate_update_after_submit = True
-        pp.flags.ignore_permissions = True
+#     # --- Step 2 & 3: Set status Close / Docstatus 0 ---
+#     if was_submitted:
+#         pp.set_status(close=True, update_bin=True)
+#         pp.db_set("docstatus", 0, update_modified=False)
+#         pp.reload()
+#         pp.flags.ignore_validate = True
+#         pp.flags.ignore_validate_update_after_submit = True
+#         pp.flags.ignore_permissions = True
 
-    # All in-memory mutations happen first — nothing is written to DB yet.
-    captured = _capture_original_data_if_needed(pp)
+#     # All in-memory mutations happen first — nothing is written to DB yet.
+#     captured = _capture_original_data_if_needed(pp)
 
-    # --- Step 4: Fetch Assembly Update (FG qty/item_code sync from SO) ---
-    changed = _sync_planned_qty_from_sales_orders(pp)
+#     # --- Step 4: Fetch Assembly Update (FG qty/item_code sync from SO) ---
+#     changed = _sync_planned_qty_from_sales_orders(pp)
 
-    # --- Step 5: Uncheck "Consider Projected Qty" checkboxes for
-    # Sub Assembly (skip_available_sub_assembly_item) and Raw Material
-    # (ignore_existing_ordered_qty), caching originals so we can restore
-    # them exactly — including None, so don't coerce with `or 0` here. ---
-    checkbox_cache = {
-        "skip_available_sub_assembly_item": pp.get("skip_available_sub_assembly_item"),
-        "ignore_existing_ordered_qty": pp.get("ignore_existing_ordered_qty"),
-    }
-    pp.skip_available_sub_assembly_item = 0
-    pp.ignore_existing_ordered_qty = 1
+#     # --- Step 5: Uncheck "Consider Projected Qty" checkboxes for
+#     # Sub Assembly (skip_available_sub_assembly_item) and Raw Material
+#     # (ignore_existing_ordered_qty), caching originals so we can restore
+#     # them exactly — including None, so don't coerce with `or 0` here. ---
+#     checkbox_cache = {
+#         "skip_available_sub_assembly_item": pp.get("skip_available_sub_assembly_item"),
+#         "ignore_existing_ordered_qty": pp.get("ignore_existing_ordered_qty"),
+#     }
+#     pp.skip_available_sub_assembly_item = 0
+#     pp.ignore_existing_ordered_qty = 1
 
-    # --- Step 6: Fetch Sub Assembly updates (unfiltered by projected qty) ---
-    pp.get_sub_assembly_items()
+#     # --- Step 6: Fetch Sub Assembly updates (unfiltered by projected qty) ---
+#     pp.get_sub_assembly_items()
 
-    # --- Step 7: Fetch Raw Material updates (unfiltered by existing ordered qty) ---
-    warehouses = _get_default_transfer_warehouses(pp)
-    items = get_items_for_material_requests(pp.as_json(), warehouses=warehouses or None)
-    pp.set("mr_items", [])
-    for d in items:
-        pp.append("mr_items", d)
+#     # --- Step 7: Fetch Raw Material updates (unfiltered by existing ordered qty) ---
+#     warehouses = _get_default_transfer_warehouses(pp)
+#     items = get_items_for_material_requests(pp.as_json(), warehouses=warehouses or None)
+#     pp.set("mr_items", [])
+#     for d in items:
+#         pp.append("mr_items", d)
 
-    # --- Step 8: Revert checkbox state from cache ---
-    pp.skip_available_sub_assembly_item = checkbox_cache["skip_available_sub_assembly_item"]
-    pp.ignore_existing_ordered_qty = checkbox_cache["ignore_existing_ordered_qty"]
+#     # --- Step 8: Revert checkbox state from cache ---
+#     pp.skip_available_sub_assembly_item = checkbox_cache["skip_available_sub_assembly_item"]
+#     pp.ignore_existing_ordered_qty = checkbox_cache["ignore_existing_ordered_qty"]
 
-    # Clear both modification flags in a single UPDATE instead of two.
-    pp.production_plan_updated = 1
-    pp.work_order_updated = 1
-    frappe.db.set_value(
-        "Production Plan", pp.name,
-        {"bom_modification": "", "sales_order_modification": ""},
-        update_modified=False,
-    )
-    pp.bom_modification = ""
-    pp.sales_order_modification = ""
+#     # Clear both modification flags in a single UPDATE instead of two.
+#     pp.production_plan_updated = 1
+#     pp.work_order_updated = 1
+#     frappe.db.set_value(
+#         "Production Plan", pp.name,
+#         {"bom_modification": "", "sales_order_modification": ""},
+#         update_modified=False,
+#     )
+#     pp.bom_modification = ""
+#     pp.sales_order_modification = ""
 
-    # --- Step 9: Save (persists the reverted checkbox values, not the
-    # temporary 0/0 used for fetching) ---
-    pp.calculate_total_planned_qty()
-    pp.calculate_total_produced_qty()
-    pp.save(ignore_permissions=True)
+#     # --- Step 9: Save (persists the reverted checkbox values, not the
+#     # temporary 0/0 used for fetching) ---
+#     pp.calculate_total_planned_qty()
+#     pp.calculate_total_produced_qty()
+#     pp.save(ignore_permissions=True)
 
-    _flag_work_orders_for_update(pp.name)
+#     _flag_work_orders_for_update(pp.name)
 
-    # --- Step 10: Submit ---
-    if was_submitted:
-        pp.submit()
-        create_wo_po_tasks_on_gate_update(pp)
+#     # --- Step 10: Submit ---
+#     if was_submitted:
+#         pp.submit()
+#         create_wo_po_tasks_on_gate_update(pp)
 
-    # --- Step 11: Set status Re-open ---
-    pp.set_status(close=False, update_bin=True)
+#     # --- Step 11: Set status Re-open ---
+#     pp.set_status(close=False, update_bin=True)
 
-    frappe.db.commit()
-    return {
-        "success": True,
-        "planned_qty_updated": changed,
-        "original_data_captured_now": captured,
-    }
+#     frappe.db.commit()
+#     return {
+#         "success": True,
+#         "planned_qty_updated": changed,
+#         "original_data_captured_now": captured,
+#     }
 
 
 # @frappe.whitelist()
@@ -628,83 +629,83 @@ def get_pending_mr_items(docname):
         ],
     }
 
-@frappe.whitelist()
-def create_material_request_for_pending_items(docname):
-    """
-    Explicit button action: check every raw material row in mr_items,
-    and create one Material Request covering only the genuinely pending
-    quantity — not the full row qty.
+# @frappe.whitelist()
+# def create_material_request_for_pending_items(docname):
+#     """
+#     Explicit button action: check every raw material row in mr_items,
+#     and create one Material Request covering only the genuinely pending
+#     quantity — not the full row qty.
 
-    Qty-aware: if a row's required qty was increased by a BOM modification
-    after a partial MR was already created (e.g. required qty 5 -> 10,
-    MR already exists for 5), only the remaining shortfall (5) is requested
-    here. `_get_pending_mr_rows()` is responsible for that qty math; this
-    function just trusts the `.qty` it returns on each row and passes it
-    straight through to make_material_request().
+#     Qty-aware: if a row's required qty was increased by a BOM modification
+#     after a partial MR was already created (e.g. required qty 5 -> 10,
+#     MR already exists for 5), only the remaining shortfall (5) is requested
+#     here. `_get_pending_mr_rows()` is responsible for that qty math; this
+#     function just trusts the `.qty` it returns on each row and passes it
+#     straight through to make_material_request().
 
-    Guarded against double-click / concurrent-request races with a
-    short-lived cache lock per Production Plan.
-    """
-    lock_key = f"pp_mr_create_lock::{docname}"
+#     Guarded against double-click / concurrent-request races with a
+#     short-lived cache lock per Production Plan.
+#     """
+#     lock_key = f"pp_mr_create_lock::{docname}"
 
-    if frappe.cache().get_value(lock_key):
-        frappe.throw(_("Material Request creation is already in progress for this Production Plan. Please wait."))
+#     if frappe.cache().get_value(lock_key):
+#         frappe.throw(_("Material Request creation is already in progress for this Production Plan. Please wait."))
 
-    frappe.cache().set_value(lock_key, 1, expires_in_sec=60)
+#     frappe.cache().set_value(lock_key, 1, expires_in_sec=60)
 
-    try:
-        pp = frappe.get_doc("Production Plan", docname)
+#     try:
+#         pp = frappe.get_doc("Production Plan", docname)
 
-        # Re-fetch pending rows fresh inside the lock, not from any
-        # earlier client-side snapshot, so a concurrent update to mr_items
-        # (or an MR created by someone else moments ago) is reflected here.
-        pending_rows = _get_pending_mr_rows(pp)
-        if not pending_rows:
-            return {
-                "created": False,
-                "items": [],
-                "message": _("Material Request has already been created for all items."),
-            }
+#         # Re-fetch pending rows fresh inside the lock, not from any
+#         # earlier client-side snapshot, so a concurrent update to mr_items
+#         # (or an MR created by someone else moments ago) is reflected here.
+#         pending_rows = _get_pending_mr_rows(pp)
+#         if not pending_rows:
+#             return {
+#                 "created": False,
+#                 "items": [],
+#                 "message": _("Material Request has already been created for all items."),
+#             }
 
-        original_mr_items = pp.mr_items
+#         original_mr_items = pp.mr_items
 
-        try:
-            # pending_rows already has `.qty` overridden to the remaining
-            # (shortfall) qty by _get_pending_mr_rows() — e.g. required 10,
-            # already requested 5 -> qty here is 5, not 10. We swap mr_items
-            # to just these rows and reuse the standard make_material_request()
-            # flow — same one the stock "Create > Material Request" button
-            # calls — so it requests exactly the shortfall qty per row.
-            pp.set("mr_items", pending_rows)
-            pp.make_material_request()
-        except Exception as e:
-            frappe.log_error(
-                "Manual MR Creation Error",
-                f"Error creating MR for pending items in PP {pp.name}: {str(e)}"
-            )
-            frappe.throw(_("Could not create Material Request: {0}").format(str(e)))
-        finally:
-            # Restore full mr_items in memory; nothing else needs re-saving on
-            # pp itself since make_material_request() persists the new MR
-            # document separately. pp itself is never saved in this flow.
-            pp.set("mr_items", original_mr_items)
+#         try:
+#             # pending_rows already has `.qty` overridden to the remaining
+#             # (shortfall) qty by _get_pending_mr_rows() — e.g. required 10,
+#             # already requested 5 -> qty here is 5, not 10. We swap mr_items
+#             # to just these rows and reuse the standard make_material_request()
+#             # flow — same one the stock "Create > Material Request" button
+#             # calls — so it requests exactly the shortfall qty per row.
+#             pp.set("mr_items", pending_rows)
+#             pp.make_material_request()
+#         except Exception as e:
+#             frappe.log_error(
+#                 "Manual MR Creation Error",
+#                 f"Error creating MR for pending items in PP {pp.name}: {str(e)}"
+#             )
+#             frappe.throw(_("Could not create Material Request: {0}").format(str(e)))
+#         finally:
+#             # Restore full mr_items in memory; nothing else needs re-saving on
+#             # pp itself since make_material_request() persists the new MR
+#             # document separately. pp itself is never saved in this flow.
+#             pp.set("mr_items", original_mr_items)
 
-        # Report actual requested qty per item, not just item codes, so the
-        # success message reflects the real (possibly partial) quantities.
-        created_items = [
-            f"{d.item_code} ({d.quantity})" for d in pending_rows if d.item_code
-        ]
-        frappe.db.set_value("Production Plan", pp.name, "production_plan_updated", 0, update_modified=False)
+#         # Report actual requested qty per item, not just item codes, so the
+#         # success message reflects the real (possibly partial) quantities.
+#         created_items = [
+#             f"{d.item_code} ({d.quantity})" for d in pending_rows if d.item_code
+#         ]
+#         frappe.db.set_value("Production Plan", pp.name, "production_plan_updated", 0, update_modified=False)
 
-        frappe.db.commit()
+#         frappe.db.commit()
 
-        return {
-            "created": True,
-            "items": created_items,
-            "message": _("Material Request created for: {0}").format(", ".join(created_items)),
-        }
-    finally:
-        frappe.cache().delete_value(lock_key)
+#         return {
+#             "created": True,
+#             "items": created_items,
+#             "message": _("Material Request created for: {0}").format(", ".join(created_items)),
+#         }
+#     finally:
+#         frappe.cache().delete_value(lock_key)
 
 def _flag_work_orders_for_update(production_plan):
     """Mark linked Work Orders as needing a sync, in a single bulk UPDATE."""
