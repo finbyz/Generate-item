@@ -535,6 +535,19 @@ class ProductionPlan(_ProductionPlan):
     @frappe.whitelist()
     def get_sub_assembly_items(self, manufacturing_type=None):
         "Fetch sub assembly items and optionally combine them."
+
+        def _sa_key(r):
+            return (
+                getattr(r, "production_item", None),
+                getattr(r, "bom_no", None),
+                getattr(r, "parent_item_code", None) or getattr(r, "production_plan_item", None),
+            )
+
+        existing_sa_by_key = {}
+        for r in (self.sub_assembly_items or []):
+            if getattr(r, "name", None):
+                existing_sa_by_key.setdefault(_sa_key(r), r.name)
+
         self.sub_assembly_items = []
         sub_assembly_items_store = []  # temporary store to process all subassembly items
         bin_details = frappe._dict()
@@ -583,6 +596,9 @@ class ProductionPlan(_ProductionPlan):
 
         for idx, row in enumerate(sub_assembly_items_store):
             row.idx = idx + 1
+            old_name = existing_sa_by_key.get(_sa_key(row))
+            if old_name:
+                row.name = old_name
             self.append("sub_assembly_items", row)
 
         self.set_default_supplier_for_subcontracting_order()
@@ -956,6 +972,25 @@ class ProductionPlan(_ProductionPlan):
             )
             return None
 
+    def _wo_already_exists_for_subassembly(self, row):
+        if frappe.db.exists("Work Order", {
+            "production_plan": self.name,
+            "production_plan_sub_assembly_item": row.name,
+            "docstatus": ["in", [0, 1]],
+        }):
+            return True
+
+        filters = {
+            "production_plan": self.name,
+            "production_item": getattr(row, "production_item", None),
+            "bom_no": getattr(row, "bom_no", None),
+            "docstatus": ["in", [0, 1]],
+        }
+        sales_order = getattr(row, "sales_order", None)
+        if sales_order:
+            filters["sales_order"] = sales_order
+        return bool(frappe.db.exists("Work Order", filters))
+
     def make_work_order_for_subassembly_items(self, wo_list, subcontracted_po, default_warehouses):
         """Override to ensure sub_assembly_items get correct values from Sales Order Items"""
         
@@ -964,11 +999,7 @@ class ProductionPlan(_ProductionPlan):
             sub_item_name = getattr(row, "name", "Unknown")
             self._populate_subassembly_item_from_sales_order(row)
             # SKIP if WO already exists in draft or submitted state
-            if frappe.db.exists("Work Order", {
-                "production_plan": self.name,
-                "production_plan_sub_assembly_item": row.name,
-                "docstatus": ["in", [0, 1]]
-            }):
+            if self._wo_already_exists_for_subassembly(row):
                 continue
             
             if row.type_of_manufacturing == "Subcontract":

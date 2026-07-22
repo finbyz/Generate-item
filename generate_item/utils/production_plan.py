@@ -322,7 +322,7 @@ def get_update_for_submitted_pp(docname):
         "ignore_existing_ordered_qty": pp.get("ignore_existing_ordered_qty"),
     }
     pp.skip_available_sub_assembly_item = 0
-    pp.ignore_existing_ordered_qty = 0
+    pp.ignore_existing_ordered_qty = 1
 
     # --- Step 6: Fetch Sub Assembly updates (unfiltered by projected qty) ---
     pp.get_sub_assembly_items()

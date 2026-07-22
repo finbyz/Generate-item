@@ -259,6 +259,8 @@ from frappe import _
 from frappe.utils import flt
 from erpnext.manufacturing.doctype.bom.bom import get_bom_items_as_dict
 
+from erpnext.manufacturing.doctype.work_order.work_order import stop_unstop
+
 
 @frappe.whitelist()
 def get_update_for_work_order(docname):
@@ -323,6 +325,7 @@ def get_update_for_production_plan(docname):
         "failed": len([r for r in results if r["status"] == "failed"]),
         "details": results,
     }
+    
 def _update_single_work_order(wo):
     """
     Core update logic for one Work Order. Shared by the single-WO
@@ -353,6 +356,13 @@ def _update_single_work_order(wo):
         wo.db_set("description", bom.description, update_modified=False)
 
     _sync_required_items_from_bom(wo, bom)
+    wo.reload()
+    # stop_unstop(wo.name,"Stopped")
+    # stop_unstop(wo.name,"Resumed")
+    wo.update_status()
+    wo.update_planned_qty()
+
+
 
     wo.db_set("modification_status", "No", update_modified=False)
 
