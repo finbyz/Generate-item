@@ -6,8 +6,68 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
+def before_save(doc, method=None):
+    """Update current_qty before saving Work Order."""
+    branch_warehouses = get_branch_raw_store_warehouses(doc.branch)
+
+    for row in doc.required_items:
+        row.current_qty = get_current_qty_from_bin(
+            item_code=row.item_code,
+            source_warehouse=row.source_warehouse or doc.source_warehouse,
+            target_warehouse=doc.fg_warehouse,  
+        )
+        
+
+        row.on_hand_qty = get_branch_on_hand_qty(
+            row.item_code,
+            tuple(branch_warehouses)
+        )
+
+def get_current_qty_from_bin(item_code, source_warehouse=None, target_warehouse=None):
+    """Sum actual_qty from Bin for source and target warehouses."""
+
+    if not item_code:
+        return 0
+
+    warehouses = {
+        wh for wh in (source_warehouse, target_warehouse) if wh
+    }
+
+    if not warehouses:
+        return 0
+
+    qty = frappe.db.sql(
+        """
+        SELECT COALESCE(SUM(actual_qty), 0)
+        FROM `tabBin`
+        WHERE item_code = %s
+          AND warehouse IN %s
+        """,
+        (item_code, tuple(warehouses)),
+    )[0][0]
+
+    return qty or 0
+
+
+def get_branch_raw_store_warehouses(branch):
+    if not branch:
+        return []
+
+    return frappe.get_all(
+        "Warehouse",
+        filters={
+            "branch": branch,
+            "disabled": 0,
+        },
+        or_filters={
+            "raw_material_warehouse": 1,
+            "store_warehouse": 1,
+        },
+        pluck="name",
+    )
 
 def before_insert(doc, method=None):
+
     logger = frappe.logger("generate_item")
     try:
         logger.info(f"Work Order before_insert: name={getattr(doc, 'name', None)}, sales_order={getattr(doc, 'sales_order', None)}, bom_no={getattr(doc, 'bom_no', None)}")

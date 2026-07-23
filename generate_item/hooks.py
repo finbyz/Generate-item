@@ -240,6 +240,7 @@ doc_events = {
         "before_save": "generate_item.utils.production_plan.before_save"
     },
     "Work Order":{
+        "before_save":"generate_item.utils.work_order.before_save",
         "before_insert": "generate_item.utils.work_order.before_insert",
         "on_trash": "generate_item.utils.work_order.remove_modification_task_link"
     },

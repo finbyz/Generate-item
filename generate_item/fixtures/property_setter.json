@@ -7,7 +7,7 @@
   "doctype_or_field": "DocType",
   "field_name": null,
   "is_system_generated": 0,
-  "modified": "2026-07-09 18:24:54.552604",
+  "modified": "2026-07-18 14:31:18.033907",
   "module": "Generate Item",
   "name": "Sales Taxes and Charges-main-field_order",
   "property": "field_order",
@@ -94,22 +94,6 @@
   "property_type": "Check",
   "row_name": null,
   "value": "1"
- },
- {
-  "default_value": null,
-  "doc_type": "Purchase Receipt Item",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocType",
-  "field_name": null,
-  "is_system_generated": 0,
-  "modified": "2026-05-08 11:50:01.767457",
-  "module": "Generate Item",
-  "name": "Purchase Receipt Item-main-field_order",
-  "property": "field_order",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "[\"barcode\", \"has_item_scanned\", \"section_break_2\", \"item_code\", \"product_bundle\", \"supplier_part_no\", \"po_line_no\", \"column_break_2\", \"item_name\", \"custom_batch_no\", \"custom_column_break_tba6i\", \"custom_heat_no\", \"custom_add_heat\", \"custom_heat_no_ref\", \"section_break_4\", \"description\", \"gst_hsn_code\", \"is_ineligible_for_itc\", \"brand\", \"image_column\", \"item_group\", \"image\", \"image_view\", \"custom_drg_and_pur_spec\", \"custom_drawing_no\", \"custom_pattern_drawing_no\", \"custom_purchase_specification_no\", \"custom_column_break_whszm\", \"custom_drawing_rev_no\", \"custom_pattern_drawing_rev_no\", \"custom_purchase_specification_rev_no\", \"received_and_accepted\", \"col_break2\", \"uom\", \"received_qty\", \"qty\", \"rejected_qty\", \"on_hand_qty\", \"po_qty\", \"col_break_tracking_section\", \"stock_uom\", \"received_stock_qty\", \"stock_qty\", \"pending_qty_in_stock_uom\", \"rejected_stock_qty\", \"qty_in_stock_uom\", \"returned_qty\", \"conversion_factor\", \"sample_quantity\", \"tracking_section\", \"retain_sample\", \"rate_and_amount\", \"price_list_rate\", \"col_break3\", \"base_price_list_rate\", \"discount_and_margin_section\", \"margin_type\", \"margin_rate_or_amount\", \"rate_with_margin\", \"column_break_37\", \"discount_percentage\", \"discount_amount\", \"distributed_discount_amount\", \"base_rate_with_margin\", \"sec_break1\", \"rate\", \"amount\", \"po_rate\", \"col_break4\", \"base_rate\", \"base_amount\", \"pricing_rules\", \"stock_uom_rate\", \"is_free_item\", \"apply_tds\", \"section_break_29\", \"net_rate\", \"net_amount\", \"item_tax_template\", \"gst_treatment\", \"column_break_32\", \"base_net_rate\", \"base_net_amount\", \"taxable_value\", \"gst_details_section\", \"igst_rate\", \"cgst_rate\", \"sgst_rate\", \"cess_rate\", \"cess_non_advol_rate\", \"cb_gst_details\", \"igst_amount\", \"cgst_amount\", \"sgst_amount\", \"cess_amount\", \"cess_non_advol_amount\", \"valuation_rate\", \"sales_incoming_rate\", \"item_tax_amount\", \"rm_supp_cost\", \"landed_cost_voucher_amount\", \"amount_difference_with_purchase_invoice\", \"billed_amt\", \"warehouse_and_reference\", \"warehouse\", \"rejected_warehouse\", \"from_warehouse\", \"material_request\", \"purchase_order\", \"purchase_invoice\", \"column_break_40\", \"allow_zero_valuation_rate\", \"return_qty_from_rejected_warehouse\", \"is_fixed_asset\", \"asset_location\", \"asset_category\", \"schedule_date\", \"quality_inspection\", \"material_request_item\", \"purchase_order_item\", \"purchase_invoice_item\", \"purchase_receipt_item\", \"delivery_note_item\", \"putaway_rule\", \"section_break_45\", \"add_serial_batch_bundle\", \"serial_and_batch_bundle\", \"use_serial_batch_fields\", \"col_break5\", \"add_serial_batch_for_rejected_qty\", \"rejected_serial_and_batch_bundle\", \"section_break_3vxt\", \"serial_no\", \"rejected_serial_no\", \"column_break_tolu\", \"batch_no\", \"subcontract_bom_section\", \"include_exploded_items\", \"bom\", \"item_weight_details\", \"weight_per_unit\", \"total_weight\", \"column_break_41\", \"weight_uom\", \"manufacture_details\", \"manufacturer\", \"column_break_16\", \"manufacturer_part_no\", \"accounting_details_section\", \"expense_account\", \"item_tax_rate\", \"wip_composite_asset\", \"column_break_102\", \"provisional_expense_account\", \"accounting_dimensions_section\", \"project\", \"dimension_col_break\", \"branch\", \"inventory_dimension_col_break\", \"cost_center\", \"section_break_80\", \"page_break\", \"sales_order\", \"sales_order_item\", \"subcontracting_receipt_item\"]"
  },
  {
   "default_value": null,
@@ -254,22 +238,6 @@
   "property_type": "Data",
   "row_name": null,
   "value": "[\"include_exploded_items\", \"item_code\", \"bom_no\", \"custom_batch_no\", \"column_break_6\", \"planned_qty\", \"stock_uom\", \"warehouse\", \"planned_start_date\", \"section_break_9\", \"pending_qty\", \"ordered_qty\", \"column_break_17\", \"description\", \"produced_qty\", \"reference_section\", \"sales_order\", \"sales_order_item\", \"branch\", \"column_break_19\", \"material_request\", \"material_request_item\", \"product_bundle_item\", \"item_reference\", \"temporary_name\"]"
- },
- {
-  "default_value": null,
-  "doc_type": "Work Order Item",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocType",
-  "field_name": null,
-  "is_system_generated": 0,
-  "modified": "2025-09-24 15:23:41.294084",
-  "module": "Generate Item",
-  "name": "Work Order Item-main-field_order",
-  "property": "field_order",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "[\"branch\", \"operation\", \"item_code\", \"source_warehouse\", \"custom_batch_no\", \"column_break_3\", \"item_name\", \"description\", \"allow_alternative_item\", \"include_item_in_manufacturing\", \"custom_drg_and_pur_spec\", \"custom_drawing_no\", \"custom_pattern_drawing_no\", \"custom_purchase_specification_no\", \"custom_column_break_qfjpg\", \"custom_drawing_rev_no\", \"custom_pattern_drawing_rev_no\", \"custom_purchase_specification_rev_no\", \"qty_section\", \"required_qty\", \"stock_uom\", \"rate\", \"amount\", \"column_break_11\", \"transferred_qty\", \"consumed_qty\", \"returned_qty\", \"available_qty_at_source_warehouse\", \"available_qty_at_wip_warehouse\"]"
  },
  {
   "default_value": null,
@@ -1342,22 +1310,6 @@
   "property_type": "Small Text",
   "row_name": null,
   "value": ""
- },
- {
-  "default_value": null,
-  "doc_type": "Purchase Invoice Item",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocType",
-  "field_name": null,
-  "is_system_generated": 0,
-  "modified": "2025-09-24 15:23:41.404410",
-  "module": "Generate Item",
-  "name": "Purchase Invoice Item-main-field_order",
-  "property": "field_order",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "[\"item_code\", \"product_bundle\", \"col_break1\", \"item_name\", \"custom_batch_no\", \"description_section\", \"description\", \"gst_hsn_code\", \"is_ineligible_for_itc\", \"brand\", \"col_break7\", \"item_group\", \"image\", \"image_view\", \"custom_drg_and_pur_spec\", \"custom_drawing_no\", \"custom_pattern_drawing_no\", \"custom_purchase_specification_no\", \"custom_column_break_ogcsn\", \"custom_drawing_rev_no\", \"custom_pattern_drawing_rev_no\", \"custom_purchase_specification_rev_no\", \"advanced_authorization_details\", \"advance_authorisation_license\", \"license_qty\", \"license_remaining_qty\", \"column_break_15\", \"license_amount\", \"license_remaining_amount\", \"duty_drawback\", \"fob_value\", \"cif_value\", \"quantity_and_rate\", \"received_qty\", \"qty\", \"rejected_qty\", \"pending_boe_qty\", \"col_break2\", \"uom\", \"conversion_factor\", \"stock_uom\", \"stock_qty\", \"sec_break1\", \"price_list_rate\", \"col_break3\", \"base_price_list_rate\", \"section_break_26\", \"margin_type\", \"margin_rate_or_amount\", \"rate_with_margin\", \"column_break_30\", \"discount_percentage\", \"discount_amount\", \"distributed_discount_amount\", \"base_rate_with_margin\", \"sec_break2\", \"rate\", \"amount\", \"item_tax_template\", \"gst_treatment\", \"col_break4\", \"base_rate\", \"base_amount\", \"pricing_rules\", \"stock_uom_rate\", \"is_free_item\", \"apply_tds\", \"section_break_22\", \"net_rate\", \"net_amount\", \"column_break_25\", \"base_net_rate\", \"base_net_amount\", \"taxable_value\", \"gst_details_section\", \"igst_rate\", \"cgst_rate\", \"sgst_rate\", \"cess_rate\", \"cess_non_advol_rate\", \"cb_gst_details\", \"igst_amount\", \"cgst_amount\", \"sgst_amount\", \"cess_amount\", \"cess_non_advol_amount\", \"valuation_rate\", \"sales_incoming_rate\", \"item_tax_amount\", \"landed_cost_voucher_amount\", \"rm_supp_cost\", \"warehouse_section\", \"warehouse\", \"add_serial_batch_bundle\", \"serial_and_batch_bundle\", \"use_serial_batch_fields\", \"col_br_wh\", \"from_warehouse\", \"quality_inspection\", \"rejected_warehouse\", \"rejected_serial_and_batch_bundle\", \"section_break_rqbe\", \"serial_no\", \"rejected_serial_no\", \"column_break_vbbb\", \"batch_no\", \"manufacture_details\", \"manufacturer\", \"column_break_13\", \"manufacturer_part_no\", \"accounting\", \"expense_account\", \"wip_composite_asset\", \"col_break5\", \"is_fixed_asset\", \"asset_location\", \"asset_category\", \"deferred_expense_section\", \"deferred_expense_account\", \"service_stop_date\", \"enable_deferred_expense\", \"column_break_58\", \"service_start_date\", \"service_end_date\", \"reference\", \"allow_zero_valuation_rate\", \"item_tax_rate\", \"bom\", \"include_exploded_items\", \"purchase_invoice_item\", \"col_break6\", \"purchase_order\", \"po_detail\", \"purchase_receipt\", \"pr_detail\", \"sales_invoice_item\", \"material_request\", \"material_request_item\", \"item_weight_details\", \"weight_per_unit\", \"total_weight\", \"column_break_38\", \"weight_uom\", \"accounting_dimensions_section\", \"project\", \"dimension_col_break\", \"branch\", \"inventory_dimension_col_break\", \"cost_center\", \"section_break_82\", \"page_break\"]"
  },
  {
   "default_value": null,
