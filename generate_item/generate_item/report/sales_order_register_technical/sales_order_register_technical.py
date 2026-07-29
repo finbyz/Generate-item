@@ -246,12 +246,12 @@ def get_data(filters):
             gst_item = frappe.db.get_value("Address", item.custom_shipping_address, "gstin") if item.custom_shipping_address else ""
 
             invoice_no = get_invoice_no(so.sales_order)
-            delivered_qty = get_delivered_qty_from_invoice(so.sales_order, item.item_code)
-            invoiced_qty = get_invoiced_qty_from_sales_invoice(item.name)
+            delivered_qty = get_delivered_qty_from_delivery_note(item.item_id)
+            invoiced_qty = get_invoiced_qty_from_sales_invoice(item.item_id)
 
             if invoice_no:
                 # Delivered Qty & Delivery Date
-                delivered_qty_actual = get_delivered_qty_from_delivery_note(item.name)
+                delivered_qty_actual = get_delivered_qty_from_delivery_note(item.item_id)
                 # delivered_date = so.delivery_date if so.order_status not in ["Draft", "Cancelled", "To Deliver and Bill"] else ""
             else:
                 delivered_qty_actual = ""
@@ -539,23 +539,6 @@ def get_delivered_qty_from_delivery_note(so_detail):
 
     return flt(delivered_qty[0][0]) if delivered_qty and delivered_qty[0][0] else 0
 
-
-
-def get_invoiced_qty_from_sales_invoice (so_detail):
-    delivered_qty = frappe.db.sql("""
-        SELECT 
-            SUM(dni.qty)
-        FROM 
-            `tabSales Invoice Item` sii
-        INNER JOIN 
-            `tabSales Invoice` si 
-            ON si.name = sii.parent
-        WHERE 
-            sii.so_detail = %s
-            AND si.docstatus = 1
-    """, (so_detail,), as_list=1)
-
-    return flt(delivered_qty[0][0]) if delivered_qty and delivered_qty[0][0] else 0
 
 def get_invoiced_qty_from_sales_invoice (so_detail):
     invoiced_qty = frappe.db.sql("""

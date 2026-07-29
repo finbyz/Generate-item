@@ -187,6 +187,10 @@ doc_events = {
     # "Address":{
     #     "validate":"generate_item.utils.address.validate",
     # },
+
+    "Supplier Scorecard Period": {
+        "before_validate": ["generate_item.utils.supplier_scorecard.import_file"],
+    },
     "Batch":{
         "before_save":"generate_item.utils.batch.before_save",
     },

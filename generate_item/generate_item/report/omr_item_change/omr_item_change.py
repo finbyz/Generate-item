@@ -16,6 +16,8 @@ def get_columns():
         {"label": _("OMR No."), "fieldname": "omr_no", "fieldtype": "Link", "options": "Order Modification Request", "width": 120},
         {"label": _("Branch"), "fieldname": "branch", "fieldtype": "Data", "width": 100},
         {"label": _("OMR Date"), "fieldname": "omr_date", "fieldtype": "Date", "width": 100},
+        {"label": _("Created By"), "fieldname": "created_by", "fieldtype": "Data", "width": 120},
+        
         {"label": _("Customer Name"), "fieldname": "customer_name", "fieldtype": "Data", "width": 150},
         {"label": _("OMR Status"), "fieldname": "omr_status", "fieldtype": "Data", "width": 120},
         {"label": _("Approved Date"), "fieldname": "approved_on", "fieldtype": "Date", "width": 100},
@@ -187,6 +189,7 @@ def get_data(filters):
             omr.name           AS omr_no,
             omr.branch         AS branch,
             DATE(omr.creation) AS omr_date,
+            omr.owner          AS created_by_user,
             omr.customer_name  AS customer_name,
             omr.workflow_state AS omr_status,
             omr.reason_for_change AS reason_for_change,
@@ -315,6 +318,11 @@ def get_data(filters):
     # Fetch all approval details in one query (avoid N+1)
     omr_names = list({r.omr_no for r in raw_rows})
     approval_map = get_approval_details_bulk(omr_names)
+    
+    
+
+    # Fetch full names for OMR creators in one query (avoid N+1)
+    owner_map = get_full_names_bulk({r.created_by_user for r in raw_rows if r.created_by_user})
 
     # Attribute field mapping
     attr_fields = [
@@ -363,6 +371,7 @@ def get_data(filters):
             "omr_no": r.omr_no,
             "branch": r.branch,
             "omr_date": r.omr_date,
+            "created_by": owner_map.get(r.created_by_user, r.created_by_user),
             "customer_name": r.customer_name,
             "omr_status": r.omr_status,
             "approved_on": approval.get("approved_on"),
@@ -500,3 +509,19 @@ def get_approval_details_bulk(omr_names):
             }
 
     return approval_map
+
+def get_full_names_bulk(user_ids):
+    """Fetch full names for a set of users in a single query instead of one per row."""
+    if not user_ids:
+        return {}
+
+    placeholders = ", ".join([f"%(u{i})s" for i in range(len(user_ids))])
+    values = {f"u{i}": user for i, user in enumerate(user_ids)}
+
+    rows = frappe.db.sql(f"""
+        SELECT name, full_name
+        FROM `tabUser`
+        WHERE name IN ({placeholders})
+    """, values=values, as_dict=True)
+
+    return {row.name: row.full_name for row in rows}
