@@ -55,8 +55,8 @@ class OrderModificationRequest(Document):
                 create_batches_for_omr(self)
                 get_change(self)
         
-        # create_bom_task_on_omr_submit(self)
-        # self.update_production_plan_sales_order_modification()
+        create_bom_task_on_omr_submit(self)
+        self.update_production_plan_sales_order_modification()
 
     def update_production_plan_sales_order_modification(self):
         frappe.db.sql(

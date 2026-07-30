@@ -107,37 +107,37 @@ frappe.ui.form.on('Work Order', {
         set_wo_warehouses(frm);
     },
 
-//  get_update_for_work_order(frm) {
-//         frappe.confirm(
-//             __("This will sync the Item to Manufacture and raw materials from the linked BOM. Continue?"),
-//             () => {
-//                 frappe.call({
-//                     method: 
-// 					"generate_item.utils.work_order.get_update_for_work_order",
-//                     args: { docname: frm.doc.name },
-//                     freeze: true,
-//                     freeze_message: __("Updating Work Order..."),
-//                     callback: function (r) {
-//                         if (!r.exc) {
-//                             frappe.show_alert({
-//                                 message: __("Work Order updated"),
-//                                 indicator: "green",
-//                             });
-//                             frm.reload_doc(); // modification_status is now "No" → button disappears
-//                         }
-//                     },
-//                 });
-//             }
-//         );
-//     },
+ get_update_for_work_order(frm) {
+        frappe.confirm(
+            __("This will sync the Item to Manufacture and raw materials from the linked BOM. Continue?"),
+            () => {
+                frappe.call({
+                    method: 
+					"generate_item.utils.work_order.get_update_for_work_order",
+                    args: { docname: frm.doc.name },
+                    freeze: true,
+                    freeze_message: __("Updating Work Order..."),
+                    callback: function (r) {
+                        if (!r.exc) {
+                            frappe.show_alert({
+                                message: __("Work Order updated"),
+                                indicator: "green",
+                            });
+                            frm.reload_doc(); // modification_status is now "No" → button disappears
+                        }
+                    },
+                });
+            }
+        );
+    },
 
     refresh: function(frm) {
 
 
-		//   if (frm.doc.modification_status === "Yes") {
-        //     frm.add_custom_button(__("Get Update"), () => frm.trigger("get_update_for_work_order"))
-        //         .addClass("btn-primary");
-        // }
+		  if (frm.doc.modification_status === "Yes") {
+            frm.add_custom_button(__("Get Update"), () => frm.trigger("get_update_for_work_order"))
+                .addClass("btn-primary");
+        }
         if (!frappe.user.has_role("System Manager")) {
             frm.set_df_property('billing_address', 'read_only', 1);
             frm.set_df_property('shipping_address', 'read_only', 1);
