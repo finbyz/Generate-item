@@ -27,8 +27,8 @@ class BomModificationRequest(Document):
         if self.bom:
             self.update_bom_items_using_db_set()  # step 1: apply changes
             self.update_bom_item_revision()        # step 2: stamp + heal zeros
-            # self.update_production_plan_bom_modification()
-            # create_pp_task_on_bmr_submit(self)
+            self.update_production_plan_bom_modification()
+            create_pp_task_on_bmr_submit(self)
 
     
     def validate_qty_and_rev_qty(self):

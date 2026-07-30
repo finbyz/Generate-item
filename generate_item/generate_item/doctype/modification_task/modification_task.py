@@ -8,6 +8,5 @@ from generate_item.generate_item.modification_task_utils.modification_task_notif
 class ModificationTask(Document):
 
 	def on_submit(self):
-		pass
-		# send_modification_task_notification(self)
+		send_modification_task_notification(self)
 		
