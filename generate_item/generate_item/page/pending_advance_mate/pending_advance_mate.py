@@ -167,3 +167,54 @@ def bulk_update_production_plan(material_request, updates):
         "skipped": skipped_count,
         "message": message,
     }
+
+@frappe.whitelist()
+@validate_and_sanitize_search_inputs
+def batch_query(doctype, txt, searchfield, start, page_len, filters):
+    """Search batches where disabled = 0"""
+    return frappe.db.sql(
+        """
+        SELECT name
+        FROM `tabBatch`
+        WHERE disabled = 0
+        AND name LIKE %(txt)s
+        ORDER BY name
+        LIMIT %(start)s, %(page_len)s
+        """,
+        {
+            "txt": f"%{txt}%",
+            "start": start,
+            "page_len": page_len,
+        },
+    )
+
+
+@frappe.whitelist()
+def bulk_update_batch(material_request, updates):
+    """
+    updates: list of {"name": <Material Request Item row name>, "batch_no": <batch>}
+    """
+    if isinstance(updates, str):
+        updates = frappe.parse_json(updates)
+
+    if not updates:
+        frappe.throw(_("No updates provided."))
+
+    docstatus = frappe.db.get_value("Material Request", material_request, "docstatus")
+    if docstatus != 1:
+        frappe.throw(_("Batch can only be updated on Submitted Material Requests."))
+
+    for update in updates:
+        frappe.db.set_value(
+            "Material Request Item",
+            update["name"],
+            "custom_batch_no",
+            update["batch_no"],
+            update_modified=False,
+        )
+
+    return {
+        "status": "success",
+        "updated": len(updates),
+        "message": _("Batch updated for {0} item(s).").format(len(updates)),
+    }

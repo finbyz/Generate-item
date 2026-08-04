@@ -1,0 +1,19 @@
+{
+ "content": null,
+ "creation": "2026-08-03 10:11:08.450330",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-08-03 10:11:08.450330",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "manufacturing-kpi-da",
+ "owner": "Administrator",
+ "page_name": "manufacturing-kpi-da",
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Manufacturing KPI Dashboard"
+}

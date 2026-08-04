@@ -310,15 +310,16 @@ scheduler_events = {
 	# "all": [
 	# 	"generate_item.tasks.all"
 	# ],
-	# "daily": [
-	# 	"generate_item.tasks.daily"
-	# ],
+	"daily": [
+		"generate_item.scheduler_events.daily_material_request_update.update_material_request_with_production_plan",
+        "generate_item.scheduler_events.auto_linking_pp_with_mr.auto_link_production_plan"
+	],
 	# "hourly": [
 	# 	"generate_item.tasks.hourly"
 	# ],
-	# "weekly": [
-	# 	"generate_item.tasks.weekly"
-	# ],
+	"weekly": [
+		"generate_item.scheduler_events.advance_mr_without_batch_weekly.process_advance_mr_without_batch"
+	],
 	# "monthly": [
 	# 	"generate_item.tasks.monthly"
 	# ],
