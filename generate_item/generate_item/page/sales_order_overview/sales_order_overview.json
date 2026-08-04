@@ -1,0 +1,19 @@
+{
+ "content": null,
+ "creation": "2026-08-04 11:28:41.381934",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-08-04 11:28:41.381934",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "sales-order-overview",
+ "owner": "Administrator",
+ "page_name": "sales-order-overview",
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Sales Order Overview"
+}

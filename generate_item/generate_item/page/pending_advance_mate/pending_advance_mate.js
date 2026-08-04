@@ -224,6 +224,19 @@ class PendingAdvanceMaterialRequestPage {
 						e.stopPropagation();
 						this.make_pp_editable(td, row);
 					});
+				} else if (col.id === 'batch_no') {
+					td.setAttribute('data-row-name', row.name);
+					if (!row.batch_no) {
+						td.className = 'pp-editable-cell';
+						td.style.cursor = 'pointer';
+					}
+					this.render_batch_cell(td, row);
+					td.addEventListener('click', (e) => {
+						e.stopPropagation();
+						if (!row.batch_no) {
+							this.make_batch_editable(td, row);
+						}
+					});
 				} else {
 					td.innerHTML = this.format_cell_value(col.id, row[col.id], row);
 				}
@@ -323,7 +336,7 @@ class PendingAdvanceMaterialRequestPage {
 		input.style.cssText = 'width:100%;height:100%;border:2px solid #3b82f6;border-radius:4px;padding:6px 8px;font-size:13px;outline:none;color:#1e293b;';
 		td.appendChild(input);
 
-		this.active_editor = { input, td, row, currentValue };
+		this.active_editor = { input, td, row, currentValue, fieldname: 'production_plan' };
 		this.active_row_name = row.name;
 
 		this.search_production_plans('', row.batch_no, input, td, row);
@@ -397,6 +410,100 @@ class PendingAdvanceMaterialRequestPage {
 		});
 	}
 
+	make_batch_editable(td, row) {
+		if (this.active_row_name === row.name) return;
+
+		this.commit_editor();
+		this.close_dropdown();
+
+		if (row.batch_no) return;
+
+		const batchKey = `${row.name}::batch_no`;
+		const currentValue = this.pending_changes[batchKey]?.new_value ?? '';
+
+		td.innerHTML = '';
+		td.style.padding = '0';
+
+		const input = document.createElement('input');
+		input.type = 'text';
+		input.className = 'pp-input form-control';
+		input.value = currentValue;
+		input.placeholder = __('Search batch...');
+		input.style.cssText = 'width:100%;height:100%;border:2px solid #3b82f6;border-radius:4px;padding:6px 8px;font-size:13px;outline:none;color:#1e293b;';
+		td.appendChild(input);
+
+		this.active_editor = { input, td, row, currentValue, fieldname: 'batch_no' };
+		this.active_row_name = row.name;
+
+		this.search_batches('', input, td, row);
+
+		setTimeout(() => { input.focus(); }, 50);
+
+		let searchTimeout;
+		input.addEventListener('input', () => {
+			clearTimeout(searchTimeout);
+			const txt = input.value.trim();
+			searchTimeout = setTimeout(() => this.search_batches(txt, input, td, row), 300);
+		});
+
+		input.addEventListener('keydown', (e) => {
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				const selectedItem = this.dropdown_container.querySelector('.pp-dropdown-item.active');
+				if (selectedItem) {
+					const val = selectedItem.textContent;
+					input.value = val;
+					this.stage_change(row, val, 'batch_no');
+				} else {
+					const val = input.value.trim();
+					if (val) {
+						this.stage_change(row, val, 'batch_no');
+					}
+				}
+				this.commit_editor();
+				this.close_dropdown();
+			}
+			if (e.key === 'Escape') {
+				e.preventDefault();
+				input.value = currentValue;
+				this.commit_editor();
+				this.close_dropdown();
+			}
+			if (e.key === 'ArrowDown') {
+				e.preventDefault();
+				this.navigate_dropdown(1);
+			}
+			if (e.key === 'ArrowUp') {
+				e.preventDefault();
+				this.navigate_dropdown(-1);
+			}
+			if (e.key === 'Tab') {
+				e.preventDefault();
+				const selectedItem = this.dropdown_container.querySelector('.pp-dropdown-item.active');
+				if (selectedItem) {
+					const val = selectedItem.textContent;
+					input.value = val;
+					this.stage_change(row, val, 'batch_no');
+				}
+				this.commit_editor();
+				this.close_dropdown();
+			}
+		});
+
+		input.addEventListener('blur', () => {
+			setTimeout(() => {
+				if (this.active_editor?.input === input) {
+					const val = input.value.trim();
+					if (val && val !== currentValue) {
+						this.stage_change(row, val, 'batch_no');
+					}
+					this.commit_editor();
+					this.close_dropdown();
+				}
+			}, 200);
+		});
+	}
+
 	search_production_plans(txt, batch_no, input, td, row) {
 		frappe.call({
 			method: 'generate_item.generate_item.page.pending_advance_mate.pending_advance_mate.production_plan_query',
@@ -414,6 +521,31 @@ class PendingAdvanceMaterialRequestPage {
 				const results = r.message || [];
 				this.show_dropdown(input, results, (selectedValue) => {
 					this.stage_change(row, selectedValue);
+					input.value = selectedValue;
+					this.commit_editor();
+					this.close_dropdown();
+				});
+			}
+		});
+	}
+
+	search_batches(txt, input, td, row) {
+		frappe.call({
+			method: 'generate_item.generate_item.page.pending_advance_mate.pending_advance_mate.batch_query',
+			args: {
+				doctype: 'Batch',
+				txt: txt || '',
+				searchfield: 'name',
+				start: 0,
+				page_len: 50,
+				filters: {}
+			},
+			callback: (r) => {
+				if (this.active_editor?.input !== input) return;
+
+				const results = r.message || [];
+				this.show_dropdown(input, results, (selectedValue) => {
+					this.stage_change(row, selectedValue, 'batch_no');
 					input.value = selectedValue;
 					this.commit_editor();
 					this.close_dropdown();
@@ -512,33 +644,73 @@ class PendingAdvanceMaterialRequestPage {
 	commit_editor() {
 		if (!this.active_editor) return;
 
-		const { td, row } = this.active_editor;
+		const { td, row, fieldname } = this.active_editor;
 
 		if (td && row) {
 			td.innerHTML = '';
 			td.style.padding = '8px 12px';
-			this.render_pp_cell(td, row);
+			if (fieldname === 'batch_no') {
+				this.render_batch_cell(td, row);
+			} else {
+				this.render_pp_cell(td, row);
+			}
 		}
 
 		this.active_editor = null;
 		this.active_row_name = null;
 	}
 
-	stage_change(rowData, newValue) {
-		const ppKey = `${rowData.name}::production_plan`;
-		const originalValue = rowData.production_plan || '';
+	stage_change(rowData, newValue, fieldname = 'production_plan') {
+		const key = `${rowData.name}::${fieldname}`;
+		const originalValue = fieldname === 'batch_no'
+			? (rowData.batch_no || '')
+			: (rowData.production_plan || '');
 
 		if (newValue && newValue !== originalValue) {
-			this.pending_changes[ppKey] = {
+			this.pending_changes[key] = {
 				row_name: rowData.name,
 				material_request: rowData.material_request,
 				new_value: newValue,
+				fieldname: fieldname,
 			};
 		} else {
-			delete this.pending_changes[ppKey];
+			delete this.pending_changes[key];
 		}
 
 		this.update_save_button();
+	}
+
+	render_batch_cell(td, row) {
+		const batchKey = `${row.name}::batch_no`;
+		const batchValue = this.pending_changes[batchKey]?.new_value ?? row.batch_no ?? '';
+		const isPending = !!this.pending_changes[batchKey];
+
+		td.innerHTML = '';
+
+		if (batchValue) {
+			const link = document.createElement('a');
+			link.href = `/app/batch/${encodeURIComponent(batchValue)}`;
+			link.target = '_blank';
+			link.style.cssText = 'font-weight:500;color:#1e293b;text-decoration:none;';
+			link.textContent = batchValue;
+			link.addEventListener('click', (e) => e.stopPropagation());
+			td.appendChild(link);
+		} else {
+			const span = document.createElement('span');
+			span.style.cssText = 'color:var(--text-muted);';
+			span.textContent = __('Click to add batch');
+			td.appendChild(span);
+		}
+
+		if (isPending) {
+			td.style.background = '#fef9c3';
+			td.style.borderLeft = '3px solid #facc15';
+			td.title = __('Unsaved — click Save Changes to apply');
+		} else {
+			td.style.background = '';
+			td.style.borderLeft = '';
+			td.title = batchValue ? '' : __('Click to add batch');
+		}
 	}
 
 	async save_all_changes() {
@@ -553,35 +725,46 @@ class PendingAdvanceMaterialRequestPage {
 			return;
 		}
 
-		const byMr = {};
+		// Group by (material_request, fieldname)
+		const byMrAndField = {};
 		keys.forEach((key) => {
 			const change = changes[key];
-			if (!byMr[change.material_request]) byMr[change.material_request] = [];
-			byMr[change.material_request].push({
+			const mrFieldKey = `${change.material_request}::${change.fieldname}`;
+			if (!byMrAndField[mrFieldKey]) byMrAndField[mrFieldKey] = [];
+			byMrAndField[mrFieldKey].push({
 				name: change.row_name,
-				production_plan: change.new_value,
+				[change.fieldname]: change.new_value,
 			});
 		});
 
-		const mrNames = Object.keys(byMr);
+		const groups = Object.keys(byMrAndField);
 		let totalUpdated = 0;
 
 		frappe.show_alert({
-			message: __('Saving changes for {0} Material Request(s)…', [mrNames.length]),
+			message: __('Saving {0} change(s)…', [keys.length]),
 			indicator: 'blue',
 		}, 2);
 
-		for (const mrName of mrNames) {
+		for (const groupKey of groups) {
+			const [mrName, fieldname] = groupKey.split('::');
+			const updates = byMrAndField[groupKey];
+
 			try {
-				const r = await frappe.call({
-					method: 'generate_item.generate_item.page.pending_advance_mate.pending_advance_mate.bulk_update_production_plan',
-					args: { material_request: mrName, updates: byMr[mrName] },
-				});
+				let method, args;
+				if (fieldname === 'production_plan') {
+					method = 'generate_item.generate_item.page.pending_advance_mate.pending_advance_mate.bulk_update_production_plan';
+					args = { material_request: mrName, updates: updates.map(u => ({ name: u.name, production_plan: u.production_plan })) };
+				} else {
+					method = 'generate_item.generate_item.page.pending_advance_mate.pending_advance_mate.bulk_update_batch';
+					args = { material_request: mrName, updates: updates.map(u => ({ name: u.name, batch_no: u.batch_no })) };
+				}
+
+				const r = await frappe.call({ method, args });
 				if (r.message) totalUpdated += r.message.updated || 0;
 			} catch (err) {
-				console.error('Save failed for MR:', mrName, err);
+				console.error('Save failed for:', mrName, fieldname, err);
 				frappe.show_alert({
-					message: __('Failed to save for Material Request: {0}', [mrName]),
+					message: __('Failed to save for {0} ({1})', [mrName, fieldname]),
 					indicator: 'red',
 				}, 5);
 			}
@@ -611,9 +794,18 @@ class PendingAdvanceMaterialRequestPage {
 		
 		const rows = this.current_data.map((row) => {
 			const ppKey = `${row.name}::production_plan`;
+			const batchKey = `${row.name}::batch_no`;
 			const ppValue = this.pending_changes[ppKey]?.new_value ?? row.production_plan ?? '';
+			const batchValue = this.pending_changes[batchKey]?.new_value ?? row.batch_no ?? '';
 			return exportColumns.map((col) => {
-				let val = col.id === 'production_plan' ? ppValue : (row[col.id] ?? '');
+				let val;
+				if (col.id === 'production_plan') {
+					val = ppValue;
+				} else if (col.id === 'batch_no') {
+					val = batchValue;
+				} else {
+					val = (row[col.id] ?? '');
+				}
 				val = String(val).replace(/"/g, '""');
 				return `"${val}"`;
 			}).join(',');
