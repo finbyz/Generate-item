@@ -1,30 +1,35 @@
-frappe.listview_settings['Work Order'] = {
-    onload(listview) {
+frappe.listview_settings['Work Order'] = frappe.listview_settings['Work Order'] || {};
 
-        listview.page.add_inner_button(__('Export to Excel'), function () {
+const original_onload = frappe.listview_settings['Work Order'].onload;
 
-            let selected = listview.get_checked_items();
+frappe.listview_settings['Work Order'].onload = function(listview) {
+    if (original_onload) {
+        original_onload(listview);
+    }
 
-            if (!selected.length) {
-                frappe.msgprint(__('Please select Work Orders'));
-                return;
-            }
+    listview.page.add_inner_button(__('Export to Excel'), function () {
 
-            let names = selected.map(d => d.name);
+        let selected = listview.get_checked_items();
 
-            frappe.call({
-                method: "generate_item.utils.work_order.export_work_orders",
-                args: {
-                    work_orders: names
-                },
-                callback(r) {
-                    if (r.message) {
-                        window.open(r.message);
-                    }
+        if (!selected.length) {
+            frappe.msgprint(__('Please select Work Orders'));
+            return;
+        }
+
+        let names = selected.map(d => d.name);
+
+        frappe.call({
+            method: "generate_item.utils.work_order.export_work_orders",
+            args: {
+                work_orders: names
+            },
+            callback(r) {
+                if (r.message) {
+                    window.open(r.message);
                 }
-            });
-
+            }
         });
 
-    }
+    });
+
 };
