@@ -31,6 +31,10 @@ app_license = "mit"
 #     {"doctype": "Property Setter", "filters": [["module", "=", "Generate Item"]]},
 # ]
 
+app_include_js = [
+    "/assets/generate_item/js/report_export.js?v=6.0",
+]
+
 # include js, css files in header of desk.html
 # app_include_css = "/assets/generate_item/css/generate_item.css"
 # app_include_js = "/assets/generate_item/js/generate_item.js"
@@ -490,8 +494,3 @@ fields_for_group_similar_items = [
 # default_log_clearing_doctypes = {
 # 	"Logging DocType Name": 30  # days to retain logs
 # }
-
-
-
-
-
