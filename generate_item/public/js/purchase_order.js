@@ -45,9 +45,10 @@ frappe.ui.form.on('Purchase Order', {
 					address: frm.doc.supplier_address
 				}, "name").then(r => {
 					if (r.message) {
+						
 						// frm.set_value('shipping_address_name', r.message);
 
-						frappe.msgprint(`Linked Contact: ${r.message}`);
+						// frappe.msgprint(`Linked Contact: ${r.message}`);
 					}
 					// If r.message is null/undefined (no contact found), the field remains cleared from step 1.
 				});

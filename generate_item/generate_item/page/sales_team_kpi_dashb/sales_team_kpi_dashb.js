@@ -1,8 +1,12 @@
-const OCD_API_METHOD = "generate_item.generate_item.page.manufacturing_kpi_da.manufacturing_kpi_da.get_dashboard_data";
+
+
+const OCD_API_METHOD = "generate_item.generate_item.page.sales_team_kpi_dashb.sales_team_kpi_dashb.get_dashboard_data";
+
+
 
 const OCD_BRANCHES = ["Sanand", "Nandikoor", "Rabale"];
 
-const OCD_DATE_PRESETS = ["Today", "This Week", "Last Week", "This Month", "Last Month", "This Year", "Last Year", "Custom"];
+const OCD_DATE_PRESETS = ["Today", "This Week", "Last Week", "This Month", "Last Month", "This Quarter", "Last Quarter", "This Year", "Last Year", "Custom"];
 
 const OCD_ACCENTS = ["steel", "amber", "moss", "violet", "teal", "rust"];
 
@@ -44,16 +48,19 @@ function ocd_icon(name, cls = "") {
 	return `<svg class="ocd-icon ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
 }
 
-frappe.pages["manufacturing-kpi-da"].on_page_load = function (wrapper) {
+
+frappe.pages['sales-team-kpi-dashb'].on_page_load = function(wrapper) {
 	new OrderChangeDashboard(wrapper);
-};
+	
+}
+
 
 class OrderChangeDashboard {
 	constructor(wrapper) {
 		this.wrapper = wrapper;
 		this.page = frappe.ui.make_app_page({
 			parent: wrapper,
-			title: __("Manufacturing KPI Dashboard"),
+			title: __("Sales Team KPI Dashboard"),
 			single_column: true,
 		});
 		// default filters: Today, All branches
@@ -101,7 +108,7 @@ class OrderChangeDashboard {
 						<div class="ocd-header-icon">${ocd_icon("factory")}</div>
 						<div class="ocd-header-text">
 							<div class="ocd-header-titlerow">
-								<h1 class="ocd-title">${__("Manufacturing KPI Dashboard")}</h1>
+								<h1 class="ocd-title">${__("Sales Team KPI Dashboard")}</h1>
 								<span class="ocd-status-chip" title="${__("Data is refreshed on demand")}">
 									<span class="ocd-status-dot" aria-hidden="true"></span>${__("Live")}
 								</span>
@@ -522,6 +529,7 @@ class OrderChangeDashboard {
 
 		const fmt  = (d) => frappe.datetime.obj_to_str(d);
 		const add  = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+		const subMonths = (d, n) => { const x = new Date(d); x.setMonth(x.getMonth() - n); return x; };
 		const dow  = todayDate.getDay();
 		const daysToMon = (dow === 0 ? -6 : 1 - dow);
 
@@ -545,6 +553,16 @@ class OrderChangeDashboard {
 				const first = new Date(todayDate.getFullYear(), todayDate.getMonth() - 1, 1);
 				const last  = new Date(todayDate.getFullYear(), todayDate.getMonth(), 0);
 				return { from_date: fmt(first), to_date: fmt(last) };
+			}
+			case "This Quarter": {
+				const start = subMonths(todayDate, 3);
+				return { from_date: fmt(start), to_date: today };
+			}
+			case "Last Quarter": {
+				const thisQStart = subMonths(todayDate, 3);
+				const lastQEnd   = add(thisQStart, -1);
+				const lastQStart = subMonths(thisQStart, 3);
+				return { from_date: fmt(lastQStart), to_date: fmt(lastQEnd) };
 			}
 			case "This Year": {
 				const first = new Date(todayDate.getFullYear(), 0, 1);
@@ -585,6 +603,12 @@ class OrderChangeDashboard {
 				const prevLast  = new Date(cur.getFullYear(), cur.getMonth(), 0);
 				return { from_date: fmt(prevFirst), to_date: fmt(prevLast) };
 			}
+			case "This Quarter":
+			case "Last Quarter": {
+				const pf = toObj(from_date); pf.setMonth(pf.getMonth() - 3);
+				const pt = toObj(to_date);   pt.setMonth(pt.getMonth() - 3);
+				return { from_date: fmt(pf), to_date: fmt(pt) };
+			}
 			case "This Year": {
 				const cur = toObj(from_date);
 				const prevFirst = new Date(cur.getFullYear() - 1, 0, 1);
@@ -615,6 +639,8 @@ class OrderChangeDashboard {
 			case "Last Week":  return __("prior week");
 			case "This Month": return __("last month");
 			case "Last Month": return __("prior month");
+			case "This Quarter": return __("previous quarter");
+			case "Last Quarter": return __("quarter before that");
 			case "This Year":  return __("last year");
 			case "Last Year":  return __("prior year");
 			default:           return __("prior period");
@@ -792,7 +818,7 @@ class OrderChangeDashboard {
 					<div class="ocd-kpi-sub">${frappe.utils.escape_html(sub)}</div>
 					${deltaHtml}
 				</div>
-				${sparkHtml}
+			
 			</div>
 		`;
 	}
@@ -807,11 +833,7 @@ class OrderChangeDashboard {
 			const y = h - ((v - min) / range) * (h - pad * 2) - pad;
 			return `${x},${y}`;
 		}).join(" ");
-		return `
-			<svg class="ocd-kpi-spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" aria-hidden="true">
-				<polyline fill="none" stroke="${color}" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" points="${pts}" opacity="0.85"/>
-			</svg>
-		`;
+		
 	}
 
 	render_kpi_delta(current, previous, isRate) {
@@ -923,7 +945,11 @@ class OrderChangeDashboard {
 
 		if (preset === "This Year" || preset === "Last Year") {
 			periodData = this.get_monthly_changes(data);
-		} else if (preset === "This Month" || preset === "Last Month") {
+		}
+		else if (preset === "This Quarter" || preset === "Last Quarter") {
+	periodData = this.get_quarter_monthly_changes(data);
+		}
+		 else if (preset === "This Month" || preset === "Last Month") {
 			periodData = this.get_weekly_changes(data);
 		} else if (preset === "This Week" || preset === "Last Week") {
 			periodData = this.get_daily_changes(data);
@@ -961,6 +987,8 @@ class OrderChangeDashboard {
 
 	get_period_title() {
 		switch(this.filters.preset) {
+			case "This Quarter":
+			case "Last Quarter": return __("Monthly Changes");
 			case "This Year":
 			case "Last Year": return __("Monthly Changes");
 			case "This Month":
@@ -1001,6 +1029,22 @@ class OrderChangeDashboard {
 			count: monthlyCounts[index] || 0
 		}));
 	}
+	get_quarter_monthly_changes(data) {
+	const trends = data.trends?.daily_data || [];
+	if (!trends.length) return [];
+	const monthLabels = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+	const counts = {}, order = [];
+	trends.forEach(t => {
+		const d = new Date(t.date);
+		const key = `${d.getFullYear()}-${d.getMonth()}`;
+		if (!(key in counts)) { counts[key] = 0; order.push(key); }
+		counts[key] += t.count;
+	});
+	return order.map(key => {
+		const [y, m] = key.split("-").map(Number);
+		return { label: `${monthLabels[m]} ${y}`, count: counts[key] };
+	});
+}
 
 	get_weekly_changes(data) {
 		const trends = data.trends?.daily_data || [];
@@ -2134,7 +2178,7 @@ const OCD_CSS = `
 .ocd-kpi-delta-up      { color:var(--ocd-sev-critical); }
 .ocd-kpi-delta-down    { color:var(--ocd-sev-ok); }
 .ocd-kpi-delta-stable  { color:var(--ocd-sev-watch); }
-.ocd-kpi-spark { display:block;margin-top:2px;width:100%;height:30px; }
+
 
 /* =========================================================================
    6. GENERIC CARD / GRID
