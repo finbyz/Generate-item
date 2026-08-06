@@ -116,63 +116,54 @@ def get_branch_wise_changes(filters):
     )
     return [{"branch": r.branch or _("Not Set"), "count": r.count} for r in rows]
 
-
-# def get_order_change_buckets(filters):
-#     """Bucket Sales Orders based on the number of submitted OMRs in the active scope.
-#     Returns bucket counts plus the list of SO names in each bucket for drill-down navigation."""
-#     sales_orders = frappe.db.get_all(
-#         OMR_DOCTYPE,
-#         filters=filters,
-#         fields=[
-#             "sales_order",
-#             {"COUNT": "name", "as": "count"},
-#         ],
-#         group_by="sales_order",
-#         order_by="count desc",
-#     )
-
-#     buckets = {"1": 0, "2": 0, "3": 0, "3+": 0}
-#     bucket_sos = {"1": [], "2": [], "3": [], "3+": []}
-
-#     for row in sales_orders:
-#         count = cint(row.get("count", 0))
-#         so_name = row.get("sales_order", "")
-#         if count == 1:
-#             buckets["1"] += 1
-#             bucket_sos["1"].append(so_name)
-#         elif count == 2:
-#             buckets["2"] += 1
-#             bucket_sos["2"].append(so_name)
-#         elif count == 3:
-#             buckets["3"] += 1
-#             bucket_sos["3"].append(so_name)
-#         elif count > 3:
-#             buckets["3+"] += 1
-#             bucket_sos["3+"].append(so_name)
-
-#     buckets["_drill"] = bucket_sos
-#     return buckets
 def get_order_change_buckets(filters):
     """
     Order Change buckets with branch-wise breakdown.
-
-    Returns:
-    {
-        "1": {
-            "total": 10,
-            "branches": {
-                "Rabale": 3,
-                "Sanand": 5,
-                "Nandikoor": 2
-            }
-        },
-        ...
-    }
+    Now includes total approved SO count for context.
     """
+    # Get approved SOs first for the context count
+    # Use BOTH docstatus AND workflow_state for proper approved filtering
+    so_filters = {
+        "docstatus": 1,
+        "workflow_state": "Approved"  # Add workflow state filter
+    }
+    if filters.get("branch"):
+        so_filters["branch"] = filters.get("branch")
+    
+    # Build SO filters properly for SQL query
+    so_conditions = "so.docstatus = 1 AND so.workflow_state = 'Approved'"
+    
+    date_condition = ""
+    so_params = []
+    if "creation" in filters:
+        from_date, to_date = filters["creation"][1]
+        date_condition = "AND so.transaction_date BETWEEN %s AND %s"
+        so_params = [from_date, to_date.split(" ")[0]]
+    
+    branch_condition = "AND so.branch = %s" if filters.get("branch") else ""
+    params = []
+    if filters.get("branch"):
+        params.append(filters.get("branch"))
+    
+    approved_so_query = f"""
+        SELECT COUNT(DISTINCT so.name) as count
+        FROM `tabSales Order` so
+        WHERE {so_conditions}
+        {branch_condition}
+        {date_condition}
+    """
+    
+    all_params = params + so_params
+    approved_so_count = frappe.db.sql(approved_so_query, all_params, as_dict=True)
+    approved_so_count = approved_so_count[0].count if approved_so_count else 0
 
+    # Also update the main filters to include workflow_state
+    main_filters = filters.copy()
+    main_filters["workflow_state"] = "Approved"  # Only count approved OMRs
+    
     rows = frappe.db.get_all(
         OMR_DOCTYPE,
-        filters=filters,
+        filters=main_filters,  # Use updated filters
         fields=[
             "sales_order",
             "branch",
@@ -191,7 +182,6 @@ def get_order_change_buckets(filters):
     drill = {"1": [], "2": [], "3": [], "3+": []}
 
     for row in rows:
-
         cnt = cint(row.count)
 
         if cnt == 1:
@@ -211,9 +201,119 @@ def get_order_change_buckets(filters):
         buckets[key]["branches"] = dict(buckets[key]["branches"])
 
     buckets["_drill"] = drill
-
+    buckets["approved_so_count"] = approved_so_count
+    
     return buckets
 
+
+def get_batch_change_buckets(filters):
+    """
+    Batch Change buckets with branch-wise breakdown.
+    Now includes total line item count from approved SOs for context.
+    """
+    # Get approved SOs and their line items for the context count
+    # Include workflow_state filter for proper approved status
+    so_conditions = "so.docstatus = 1 AND so.workflow_state = 'Approved'"
+    
+    date_condition = ""
+    so_params = []
+    if "creation" in filters:
+        from_date, to_date = filters["creation"][1]
+        date_condition = "AND so.transaction_date BETWEEN %s AND %s"
+        so_params = [from_date, to_date.split(" ")[0]]
+    
+    branch_condition = "AND so.branch = %s" if filters.get("branch") else ""
+    params = []
+    if filters.get("branch"):
+        params.append(filters.get("branch"))
+    
+    # Get total line items from approved SOs
+    line_item_query = f"""
+        SELECT COUNT(soi.name) as count
+        FROM `tabSales Order Item` soi
+        JOIN `tabSales Order` so ON soi.parent = so.name
+        WHERE {so_conditions}
+        {branch_condition}
+        {date_condition}
+    """
+    
+    all_params = params + so_params
+    total_line_items = frappe.db.sql(line_item_query, all_params, as_dict=True)
+    total_line_items = total_line_items[0].count if total_line_items else 0
+
+    # Add workflow_state filter for OMR documents
+    main_filters = filters.copy()
+    main_filters["workflow_state"] = "Approved"  # Only approved changes
+    
+    submitted = frappe.db.get_all(
+        OMR_DOCTYPE,
+        filters=main_filters,  # Use updated filters
+        fields=["name", "branch"]
+    )
+
+    if not submitted:
+        return {
+            "1": {"total": 0, "branches": {}},
+            "2": {"total": 0, "branches": {}},
+            "3": {"total": 0, "branches": {}},
+            "3+": {"total": 0, "branches": {}},
+            "_drill": {"1": [], "2": [], "3": [], "3+": []},
+            "total_line_items": total_line_items
+        }
+
+    branch_map = {
+        d.name: d.branch or "Not Set"
+        for d in submitted
+    }
+
+    item_rows = frappe.db.get_all(
+        OMR_ITEM_DOCTYPE,
+        filters={
+            "parent": ["in", list(branch_map.keys())]
+        },
+        fields=["parent", "item", "batch_no"] + REV_FIELDS
+    )
+
+    batch_map = defaultdict(set)
+
+    for row in item_rows:
+        if row.batch_no and _row_is_changed(row):
+            batch_map[(row.item, row.batch_no)].add(row.parent)
+
+    buckets = {
+        "1": {"total": 0, "branches": defaultdict(int)},
+        "2": {"total": 0, "branches": defaultdict(int)},
+        "3": {"total": 0, "branches": defaultdict(int)},
+        "3+": {"total": 0, "branches": defaultdict(int)},
+    }
+
+    drill = {"1": [], "2": [], "3": [], "3+": []}
+
+    for _, omrs in batch_map.items():
+        count = len(omrs)
+
+        if count == 1:
+            key = "1"
+        elif count == 2:
+            key = "2"
+        elif count == 3:
+            key = "3"
+        else:
+            key = "3+"
+
+        buckets[key]["total"] += 1
+        first = list(omrs)[0]
+        branch = branch_map.get(first, "Not Set")
+        buckets[key]["branches"][branch] += 1
+        drill[key].extend(list(omrs))
+
+    for key in buckets:
+        buckets[key]["branches"] = dict(buckets[key]["branches"])
+
+    buckets["_drill"] = drill
+    buckets["total_line_items"] = total_line_items
+    
+    return buckets
 
 def get_batch_change_count(filters):
     submitted_omrs = frappe.db.get_all(
@@ -242,113 +342,6 @@ def get_batch_change_count(filters):
     return {"total": len(changed_batches)}
 
 
-# def get_batch_change_buckets(filters):
-#     """Returns bucket counts plus lists of OMR names in each bucket for drill-down navigation."""
-#     submitted_omrs = frappe.db.get_all(OMR_DOCTYPE, filters=filters, pluck="name")
-#     if not submitted_omrs:
-#         return {"1": 0, "2": 0, "3": 0, "3+": 0, "_drill": {"1": [], "2": [], "3": [], "3+": []}}
-        
-#     fields = ["parent", "item", "batch_no"] + REV_FIELDS
-#     item_rows = frappe.db.get_all(
-#         OMR_ITEM_DOCTYPE,
-#         filters={"parent": ["in", submitted_omrs]},
-#         fields=fields
-#     )
-    
-#     batch_omr_map = defaultdict(set)
-#     for row in item_rows:
-#         if row.batch_no and _row_is_changed(row):
-#             batch_omr_map[(row.item, row.batch_no)].add(row.parent)
-            
-#     buckets = {"1": 0, "2": 0, "3": 0, "3+": 0}
-#     bucket_omrs = {"1": [], "2": [], "3": [], "3+": []}
-#     seen = defaultdict(set)
-#     for batch_key, omrs in batch_omr_map.items():
-#         count = len(omrs)
-#         bucket_key = "3+" if count > 3 else str(count)
-#         buckets[bucket_key] += 1
-#         for omr in omrs:
-#             if omr not in seen[bucket_key]:
-#                 seen[bucket_key].add(omr)
-#                 bucket_omrs[bucket_key].append(omr)
-        
-#     buckets["_drill"] = bucket_omrs
-#     return buckets
-
-def get_batch_change_buckets(filters):
-
-    submitted = frappe.db.get_all(
-        OMR_DOCTYPE,
-        filters=filters,
-        fields=["name", "branch"]
-    )
-
-    if not submitted:
-        return {
-            "1": {"total": 0, "branches": {}},
-            "2": {"total": 0, "branches": {}},
-            "3": {"total": 0, "branches": {}},
-            "3+": {"total": 0, "branches": {}},
-            "_drill": {"1": [], "2": [], "3": [], "3+": []}
-        }
-
-    branch_map = {
-        d.name: d.branch or "Not Set"
-        for d in submitted
-    }
-
-    item_rows = frappe.db.get_all(
-        OMR_ITEM_DOCTYPE,
-        filters={
-            "parent": ["in", list(branch_map.keys())]
-        },
-        fields=["parent", "item", "batch_no"] + REV_FIELDS
-    )
-
-    batch_map = defaultdict(set)
-
-    for row in item_rows:
-
-        if row.batch_no and _row_is_changed(row):
-            batch_map[(row.item, row.batch_no)].add(row.parent)
-
-    buckets = {
-        "1": {"total": 0, "branches": defaultdict(int)},
-        "2": {"total": 0, "branches": defaultdict(int)},
-        "3": {"total": 0, "branches": defaultdict(int)},
-        "3+": {"total": 0, "branches": defaultdict(int)},
-    }
-
-    drill = {"1": [], "2": [], "3": [], "3+": []}
-
-    for _, omrs in batch_map.items():
-
-        count = len(omrs)
-
-        if count == 1:
-            key = "1"
-        elif count == 2:
-            key = "2"
-        elif count == 3:
-            key = "3"
-        else:
-            key = "3+"
-
-        buckets[key]["total"] += 1
-
-        first = list(omrs)[0]
-        branch = branch_map.get(first, "Not Set")
-
-        buckets[key]["branches"][branch] += 1
-
-        drill[key].extend(list(omrs))
-
-    for key in buckets:
-        buckets[key]["branches"] = dict(buckets[key]["branches"])
-
-    buckets["_drill"] = drill
-
-    return buckets
 
 def get_top_creators(filters, order="desc", limit=10):
     """OMR count per creator (owner), sorted asc or desc."""
@@ -412,18 +405,41 @@ def get_top_customers(filters, limit=10):
 def get_revision_rates(filters, from_date, to_date):
     omrs = frappe.db.get_all(OMR_DOCTYPE, filters=filters, fields=["name", "sales_order"])
     
-    if not omrs:
-        return {
-            "order_rate": 0, "total_sos": 0, "revised_sos": 0,
-            "item_rate": 0, "total_items": 0, "changed_items": 0
-        }
-        
     so_names = list(set(o.sales_order for o in omrs if o.sales_order))
     omr_names = [o.name for o in omrs]
     
-    # Item wise
-    total_items = frappe.db.count("Sales Order Item", {"parent": ["in", so_names]}) if so_names else 0
+    date_clause = ""
+    if from_date and to_date:
+        date_clause = f"so.transaction_date BETWEEN '{from_date}' AND '{to_date}'"
+        
+    so_condition = "1=1"
+    if date_clause:
+        if so_names:
+            so_names_str = ", ".join(frappe.db.escape(name) for name in so_names)
+            so_condition = f"({date_clause} OR so.name IN ({so_names_str}))"
+        else:
+            so_condition = date_clause
+            
+    total_sos = frappe.db.sql(f"""
+        SELECT COUNT(so.name)
+        FROM `tabSales Order` so
+        WHERE so.docstatus = 1 AND {so_condition}
+    """)[0][0]
     
+    total_items = frappe.db.sql(f"""
+        SELECT COUNT(soi.name) 
+        FROM `tabSales Order Item` soi
+        JOIN `tabSales Order` so ON soi.parent = so.name
+        WHERE so.docstatus = 1 AND {so_condition}
+    """)[0][0]
+
+    if not omrs:
+        return {
+            "order_rate": 0, "total_sos": total_sos, "revised_sos": 0,
+            "item_rate": 0, "total_items": total_items, "changed_items": 0
+        }
+        
+    # Item wise
     item_rows = frappe.db.get_all(
         OMR_ITEM_DOCTYPE,
         filters={"parent": ["in", omr_names]},
@@ -433,11 +449,6 @@ def get_revision_rates(filters, from_date, to_date):
     item_rate = (changed_items / total_items * 100) if total_items > 0 else 0
     
     # Order wise
-    so_filters = {"docstatus": 1}
-    if from_date and to_date:
-        so_filters["transaction_date"] = ["between", [from_date, to_date]]
-    
-    total_sos = frappe.db.count("Sales Order", so_filters)
     revised_sos = len(so_names)
     
     order_rate = (revised_sos / total_sos * 100) if total_sos > 0 else 0
@@ -500,7 +511,7 @@ def get_30_day_trends(base_filters, from_date=None, to_date=None):
         current += timedelta(days=1)
 
     # Trend direction
-    if len(trends) >= 14:
+    if len(trends) >= 2:
         mid = len(trends) // 2
         first_half  = sum(t["count"] for t in trends[:mid])
         second_half = sum(t["count"] for t in trends[mid:])
