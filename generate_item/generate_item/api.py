@@ -10,6 +10,7 @@ from openpyxl.formatting.rule import CellIsRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.table import Table, TableStyleInfo
+from frappe.utils import strip_html
 
 DATE_FIELDTYPES = {"Date"}
 DATETIME_FIELDTYPES = {"Datetime"}
@@ -129,6 +130,8 @@ def export_query_report(form_params):
                     cell.value = cstr(value)
                 cell.alignment = center
             else:
+                if isinstance(value, str) and ("<" in value and ">" in value):
+                    value = strip_html(value)
                 cell.value = value
                 cell.alignment = left_align
 
