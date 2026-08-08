@@ -3,7 +3,7 @@
 
 import frappe
 from frappe import _
-from frappe.utils import flt, getdate
+from frappe.utils import flt, getdate, cint
 
 
 def execute(filters=None):
@@ -25,7 +25,7 @@ def get_columns():
         {"label": _("Reason for Change"), "fieldname": "reason_for_change", "fieldtype": "Small Text", "width": 150},
         {"label": _("Batch No Ref"), "fieldname": "batch_no", "fieldtype": "Data", "width": 120},
         {"label": _("Entry Type"), "fieldname": "entry_type", "fieldtype": "Data", "width": 130},
-        {"label": _("OMR Line No"), "fieldname": "omr_line_no", "fieldtype": "Data", "width": 100},
+        {"label": _("OMR Line No"), "fieldname": "omr_line_no", "fieldtype": "Int", "width": 100},
         
         # PO Line No
         {"label": _("PO Line No"), "fieldname": "original_po_line_no", "fieldtype": "Data", "width": 100},
@@ -208,6 +208,8 @@ def get_data(filters):
             itm.line_remark     AS original_line_remark,
             itm.line_status     AS original_line_status,
             itm.is_free_item    AS original_is_free_item,
+            itm.component_of as original_component_of,
+            itm.shipping_address as original_shipping_address,
             
             -- Revised values from Sales Order Item For OMR
             itm.rev_qty         AS revised_qty,
@@ -218,6 +220,8 @@ def get_data(filters):
             itm.rev_is_free_item AS revised_is_free_item,
             itm.rev_delivery_date   AS revised_delivery_date,
             itm.rev_line_remark     AS revised_line_remark,
+            itm.rev_component_of AS revised_component_of,
+            itm.rev_shipping_address AS revised_shipping_address,
             
            
             
@@ -379,7 +383,7 @@ def get_data(filters):
             "reason_for_change": r.reason_for_change,
             "batch_no": r.batch_no,
             "entry_type": entry_type,
-            "omr_line_no": r.omr_line_no,
+            "omr_line_no": cint(r.omr_line_no),
             
             # PO Line No
             "original_po_line_no": r.original_po_line_no,

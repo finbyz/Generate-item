@@ -781,6 +781,7 @@ def make_sales_invoice(source_name, target_doc=None, args=None):
 
 def check_warranty(doc):
     for item in doc.items:
+            so_wp = None
             if item.so_detail:
                 so_wp = frappe.db.get_value("Sales Order Item", item.so_detail, "warranty_period")
             if not so_wp:

@@ -143,13 +143,19 @@ def _current_user_is_manager():
 	return any(r in roles for r in MANAGER_ROLES)
 
 
+
 def _own_sales_person():
 	"""Best-effort match of the logged-in user to a Sales Person record."""
 	if frappe.session.user == "Administrator":
 		return None
-	name = frappe.db.get_value("Sales Person", {"user_id": frappe.session.user}, "name")
-	if name:
-		return name
+
+	# Only query user_id if that field actually exists on this site's
+	# Sales Person doctype — it isn't part of standard ERPNext and may
+	if frappe.get_meta("Sales Person").has_field("user_id"):
+		name = frappe.db.get_value("Sales Person", {"user_id": frappe.session.user}, "name")
+		if name:
+			return name
+
 	# fallback: match by full name text, in case Sales Person isn't linked via user_id
 	full_name = frappe.utils.get_fullname(frappe.session.user)
 	return frappe.db.get_value("Sales Person", {"sales_person_name": full_name}, "name")

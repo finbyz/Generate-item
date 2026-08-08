@@ -239,6 +239,123 @@ function add_create_material_request_button(frm, group) {
         },
     });
 }
+
+// ============================================================
+// Client Script - Doctype: Production Plan
+// Renders a 2-column table (Item Code, Stock Qty) from the
+// exploded_items of the BOM(s) linked in this Production Plan.
+// Row color: YELLOW if item_code already exists in this PP's
+// raw material tables (mr_items / tracking_raw_materials),
+// GREEN if it does not.
+// ============================================================
+
+frappe.ui.form.on('Production Plan', {
+    onload: function (frm) {
+        render_bom_exploded_table(frm);
+    },
+    refresh: function (frm) {
+        render_bom_exploded_table(frm);
+    }
+});
+
+function render_bom_exploded_table(frm) {
+    // >>> CHANGE THIS to the actual fieldname of your HTML field <<<
+    const HTML_FIELDNAME = 'raw_materials';
+
+    if (!frm.fields_dict[HTML_FIELDNAME]) {
+        console.warn(`HTML field "${HTML_FIELDNAME}" not found on this form. Update HTML_FIELDNAME in the script.`);
+        return;
+    }
+
+    const $wrapper = $(frm.fields_dict[HTML_FIELDNAME].wrapper);
+
+    // 1. Collect item_codes already present as raw materials in this PP
+    const pp_raw_material_codes = new Set();
+
+    (frm.doc.mr_items || []).forEach(row => {
+        if (row.item_code) pp_raw_material_codes.add(row.item_code);
+    });
+
+    
+
+    // 2. Collect the BOM(s) used by the main item(s) in this PP
+    const bom_numbers = new Set();
+    (frm.doc.po_items || []).forEach(row => {
+        if (row.bom_no) bom_numbers.add(row.bom_no);
+    });
+
+    if (bom_numbers.size === 0) {
+        $wrapper.html('<p class="text-muted">No BOM found in this Production Plan yet.</p>');
+        return;
+    }
+
+    $wrapper.html('<p class="text-muted">Loading BOM exploded items...</p>');
+
+    // 3. Fetch each BOM's full document (so we get the exploded_items child table)
+    const bom_promises = Array.from(bom_numbers).map(bom_no =>
+        frappe.db.get_doc('BOM', bom_no)
+    );
+
+    Promise.all(bom_promises)
+        .then(bom_docs => {
+            // Merge exploded_items from all fetched BOMs
+            let exploded_items = [];
+            bom_docs.forEach(bom => {
+                (bom.exploded_items || []).forEach(item => {
+                    exploded_items.push({
+                        item_code: item.item_code,
+                        stock_qty: item.stock_qty
+                    });
+                });
+            });
+            build_table($wrapper, exploded_items, pp_raw_material_codes);
+        })
+        .catch(err => {
+            console.error(err);
+            $wrapper.html('<p class="text-danger">Failed to load BOM exploded items.</p>');
+        });
+}
+
+function build_table($wrapper, exploded_items, pp_raw_material_codes) {
+    if (!exploded_items.length) {
+        $wrapper.html('<p class="text-muted">No exploded items found in the BOM.</p>');
+        return;
+    }
+
+    const YELLOW = '#fff3cd';
+    const GREEN = '#d4edda';
+
+    let rows = '';
+   exploded_items.forEach((item, index) => {
+    const already_in_pp = pp_raw_material_codes.has(item.item_code);
+    const bg_color = already_in_pp ? YELLOW : GREEN;
+
+    rows += `
+        <tr style="background-color: ${bg_color};">
+            <td style="padding:6px 10px; border:1px solid #ddd; text-align:center; width:50px;">${index + 1}</td>
+            <td style="padding:6px 10px; border:1px solid #ddd;">${frappe.utils.escape_html(item.item_code)}</td>
+            <td style="padding:6px 10px; border:1px solid #ddd; text-align:center;">${item.stock_qty}</td>
+        </tr>`;
+});
+
+   
+
+    const html = `
+        <table style="width:100%; border-collapse:collapse; font-size:13px; margin-top:5px;">
+            <thead>
+                <tr style="background-color:#f5f5f5;">
+                 <th style="padding:6px 10px; border:1px solid #ddd; width:50px;">Sr No</th>
+                    <th style="padding:6px 10px; border:1px solid #ddd; text-align:left;">Item Code</th>
+                    <th style="padding:6px 10px; border:1px solid #ddd;">Stock Qty</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${rows}
+            </tbody>
+        </table>`;
+
+    $wrapper.html(html);
+}
 frappe.ui.form.on('Production Plan', {
     onload: function (frm) {
         if (frm.doc.docstatus === 0) {
