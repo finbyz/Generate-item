@@ -1,8 +1,82 @@
-// Copyright (c) 2025, Finbyz and contributors
-// For license information, please see license.txt
+// async function get_missing_revise_component_items(frm) {
+//     if (!frm.doc.sales_order) {
+//         return [];
+//     }
+
+//     const r = await frappe.call({
+//         method: "frappe.client.get",
+//         args: {
+//             doctype: "Sales Order",
+//             name: frm.doc.sales_order
+//         }
+//     });
+
+//     const sales_order = r.message;
+
+//     if (!sales_order) {
+//         return [];
+//     }
+
+//     // Get ONLY item codes from the linked Sales Order
+//     const so_item_codes = new Set(
+//         (sales_order.items || [])
+//             .map(row => row.item_code)
+//             .filter(Boolean)
+//     );
+
+//     console.log("Sales Order Items:", [...so_item_codes]);
+
+//     const missing = [];
+
+//     // Check OMR rows
+//     (frm.doc.sales_order_item || []).forEach(row => {
+//         const rev_component_of = row.rev_component_of;
+
+//         if (
+//             rev_component_of &&
+//             !so_item_codes.has(rev_component_of)
+//         ) {
+//             missing.push({
+//                 idx: row.idx,
+//                 item: rev_component_of
+//             });
+//         }
+//     });
+
+//     console.log("Missing:", missing);
+
+//     return missing;
+// }
 
 
 
+
+async function get_missing_revise_component_items(frm) {
+    const rows = frm.doc.sales_order_item || [];
+
+    // Same rule as server: only the EFFECTIVE item per row is allowed.
+    // If item replacement is happening, the old item code drops out.
+    const allowed_item_codes = new Set();
+    rows.forEach(r => {
+        const is_free = r.is_free_item || r.rev_is_free_item;
+        if (is_free) return;
+
+        const is_replacement = !!(r.rev_item && r.rev_item !== r.item);
+        const effective_item = is_replacement ? r.rev_item : r.item;
+
+        if (effective_item) allowed_item_codes.add(effective_item);
+    });
+
+    const missing = [];
+    rows.forEach(r => {
+        const rev_component_of = r.rev_component_of;
+        if (rev_component_of && !allowed_item_codes.has(rev_component_of)) {
+            missing.push({ idx: r.idx, item: rev_component_of });
+        }
+    });
+
+    return missing;
+}
 frappe.ui.form.on("Order Modification Request", {
     refresh: function (frm) {
         toggle_drg_section(frm);
@@ -15,8 +89,31 @@ frappe.ui.form.on("Order Modification Request", {
       onload: function (frm) {
         handle_ig_return(frm);
     },
+     
+ validate: async function (frm) {
+    console.log("validate trigger")
+        if (frm.doc.type !== "Sales Order") return;
 
-   
+        const missing = await get_missing_revise_component_items(frm);
+        console.log("missiong value ---",missing)
+
+        if (missing.length) {
+            const detail = missing
+                .map(d => `${__('Row')} ${d.idx} → ${d.item}`)
+                .join(", ");
+
+            frappe.show_alert({
+                message: __(
+                    "Some 'Revise Component Of' items are not present in the Sales Order: {0}",
+                    [detail]
+                ),
+                indicator: "red"
+            }, 7);
+
+            // // Synchronous — no race condition, this reliably blocks save
+            // frappe.validated = false;
+        }
+    },
 
     type: function (frm) {
         toggle_drg_section(frm);
@@ -52,7 +149,7 @@ frappe.ui.form.on("Order Modification Request", {
         frappe.model.with_doc("Sales Order", frm.doc.sales_order, function() {
             let so = frappe.get_doc("Sales Order", frm.doc.sales_order);
 
-            // ── Commercial T&C 
+            // ── Commercial T&C
             const commercial_map = {
                 "price_basis":           "custom_price_basis",
                 "mode_of_dispatch": "custom_mode_of_dispatch",
@@ -80,15 +177,15 @@ frappe.ui.form.on("Order Modification Request", {
                 "bank_guaranty":         "custom_bank_guaranty"
             };
 
-            // ── Details 
+            // ── Details
             const details_map = {
-                "customers_purchase_order":      "po_no",     
-                "customers_purchase_order_date": "po_date"         
+                "customers_purchase_order":      "po_no",
+                "customers_purchase_order_date": "po_date"
             };
 
-            // ── Reference Data 
+            // ── Reference Data
             const reference_map = {
-                "qtn_ref_no":            "custom_qtn_ref_no",      
+                "qtn_ref_no":            "custom_qtn_ref_no",
                 "qtn_ref_date":          "custom_qtn_ref_date",
                 "loi_no":                "custom_loi_no",
                 "loi_date":              "custom_loi_date",
@@ -96,12 +193,12 @@ frappe.ui.form.on("Order Modification Request", {
                 "end_user":              "custom_end_user"
             };
 
-            // ── Terms & Conditions 
+            // ── Terms & Conditions
             const terms_map = {
-                "so_remarks": "terms"                            
+                "so_remarks": "terms"
             };
 
-            // ── Apply all maps 
+            // ── Apply all maps
             const all_maps = [
                 commercial_map,
                 details_map,
@@ -265,6 +362,11 @@ function fetch_items_dynamic(frm) {
                     row.is_free_item = item.is_free_item || 0;
                     row.component_of = item.component_of || null;
 
+                    // NEW — carry forward existing Free-Item association reference
+                    // (mirrors main_item_id / main_item already present on Sales Order Item)
+                    row.rev_main_item_id = item.main_item_id || null;
+                    row.rev_main_item = item.main_item || item.component_of || null;
+
                     let history_row = frm.add_child("original_record");
                     history_row.sales_order_item_name = item.name;
                     history_row.item = item.item_code;
@@ -382,6 +484,10 @@ function make_fields_mandatory_based_on_type(frm) {
 }
 
 
+// =====================================================================
+// FREE ITEM ASSOCIATION LOGIC  (Spec sections 3 & 4)
+// =====================================================================
+
 frappe.ui.form.on('Sales Order Item For OMR', {
 
     // ── Fires when the rev_item Link field resolves (or fails) ──
@@ -391,7 +497,7 @@ frappe.ui.form.on('Sales Order Item For OMR', {
          frappe.db.get_value('Item', row.rev_item, ['description'], (r) => {
         if (r) {
             frappe.model.set_value(cdt, cdn, 'rev_description', (r.description || "").replace(/<[^>]*>/g, ''));
-            
+
         }
     });
 
@@ -421,9 +527,13 @@ frappe.ui.form.on('Sales Order Item For OMR', {
                 }
             });
         }
+
+        // Spec 3.1 — if this row is a main item and its item changed,
+        // any Free Item still associated with this line should follow the new item.
+        sync_dependent_free_items(frm, cdn);
     },
 
-    
+
     item_generator: async function (frm, cdt, cdn) {
         try {
             const row = locals[cdt][cdn];
@@ -452,9 +562,265 @@ frappe.ui.form.on('Sales Order Item For OMR', {
             console.error('[OMR] item_generator error:', err);
             frappe.show_alert({ message: __('Error: {0}', [err.message]), indicator: 'red' }, 5);
         }
+    },
+
+    // Spec section 4 — user re-picks which line this Free Item is attached to.
+    // Triggered the same way the SO-side script (Sales Order Item.component_of)
+    // already triggers matching — reusing the existing rev_component_of field's
+    // change event rather than adding a new button/field.
+    rev_component_of: function (frm, cdt, cdn) {
+        handle_rev_component_of_change(frm, cdt, cdn);
+    },
+
+    sales_order_item_remove: function (frm, cdt, cdn) {
+        // no-op placeholder kept for parity; cleanup for removed main rows
+        // is handled centrally in sync_dependent_free_items() calls elsewhere.
+    }
+});
+
+
+function handle_rev_component_of_change(frm, cdt, cdn) {
+    const row = locals[cdt][cdn];
+
+    // Only meaningful for Free Item rows (existing or being converted via rev_is_free_item)
+    const is_free = row.is_free_item || row.rev_is_free_item;
+
+    if (!is_free || !row.rev_component_of) {
+        clear_association_fields(frm, cdt, cdn);
+        return;
     }
 
-});
+    if (row._assoc_timeout) {
+        clearTimeout(row._assoc_timeout);
+    }
+
+    row._assoc_timeout = setTimeout(() => {
+        resolve_association(frm, cdt, cdn);
+    }, 300);
+}
+
+
+function resolve_association(frm, cdt, cdn) {
+    const row = locals[cdt][cdn];
+
+    // Candidate main lines: any non-free row (existing or new) whose
+    // effective item (rev_item if set, else item) matches rev_component_of
+    const matching_rows = (frm.doc.sales_order_item || []).filter(item => {
+        if (item.name === row.name) return false;
+        if (item.is_free_item || item.rev_is_free_item) return false;
+        const effective_item = item.rev_item || item.item;
+        return effective_item === row.rev_component_of;
+    });
+
+    if (matching_rows.length === 0) {
+        handle_no_match(frm, cdt, cdn);
+    } else if (matching_rows.length === 1) {
+        apply_association(frm, cdt, cdn, matching_rows[0]);
+    } else {
+        show_association_dialog(frm, cdt, cdn, matching_rows);
+    }
+}
+
+
+function handle_no_match(frm, cdt, cdn) {
+    const row = locals[cdt][cdn];
+
+    frappe.show_alert({
+        message: __('No matching Sales Order line found for item <b>{0}</b>', [row.rev_component_of]),
+        indicator: 'orange'
+    }, 5);
+}
+
+
+function apply_association(frm, cdt, cdn, target_row) {
+    // Unique key for the target line:
+    // - existing SO line → its sales_order_item_name
+    // - newly added line (not yet on SO) → the OMR row's own temp `name`,
+    //   resolved server-side after insert (see py: _resolve_free_item_associations)
+    const line_key = target_row.sales_order_item_name || target_row.name;
+    const effective_item = target_row.rev_item || target_row.item;
+
+    frappe.model.set_value(cdt, cdn, 'rev_main_item_id', line_key);
+    frappe.model.set_value(cdt, cdn, 'rev_main_item', effective_item);
+    frappe.model.set_value(cdt, cdn, 'rev_component_of', effective_item);
+
+    frappe.show_alert({
+        message: __('Free Item associated with Row #{0} - {1}', [target_row.idx, effective_item]),
+        indicator: 'green'
+    }, 3);
+}
+
+
+function clear_association_fields(frm, cdt, cdn) {
+    const row = locals[cdt][cdn];
+    if (row.rev_main_item_id) frappe.model.set_value(cdt, cdn, 'rev_main_item_id', '');
+    if (row.rev_main_item) frappe.model.set_value(cdt, cdn, 'rev_main_item', '');
+}
+
+
+function show_association_dialog(frm, cdt, cdn, matching_rows) {
+    const row = locals[cdt][cdn];
+
+    const dialog = new frappe.ui.Dialog({
+        title: __('Select Sales Order Line for Free Item Association'),
+        size: 'large',
+        fields: [
+            {
+                fieldtype: 'HTML',
+                fieldname: 'info_section',
+                options: `
+                    <div style="margin-bottom: 12px; font-size: 13px; color: #36414c; line-height: 1.8;">
+                        <span style="color: #8d99a6;">${__('Free Item')}</span> <strong>${row.item || row.rev_item || ''}</strong><br>
+                        <span style="color: #8d99a6;">${__('Item to associate with')}</span> <strong>${row.rev_component_of}</strong>
+                        <span style="color: #8d99a6;">(${__('{0} rows found', [matching_rows.length])})</span>
+                    </div>
+                `
+            },
+            {
+                fieldtype: 'HTML',
+                fieldname: 'rows_table',
+                options: build_association_table(matching_rows)
+            }
+        ],
+        primary_action_label: __('Associate Row'),
+        primary_action() {
+            const selected_name = dialog.$wrapper.find('input[name="assoc_row"]:checked').val();
+
+            if (!selected_name) {
+                frappe.msgprint(__('Please select a row'));
+                return;
+            }
+
+            const selected = matching_rows.find(item => item.name === selected_name);
+            if (selected) {
+                apply_association(frm, cdt, cdn, selected);
+                dialog.hide();
+            }
+        }
+    });
+
+    dialog.$wrapper.on('click', '.assoc-row-clickable', function () {
+        const item_name = $(this).data('item-name');
+        dialog.$wrapper.find(`input[name="assoc_row"][value="${item_name}"]`).prop('checked', true);
+        dialog.$wrapper.find('.assoc-row-clickable').removeClass('selected-row');
+        $(this).addClass('selected-row');
+    });
+
+    dialog.$wrapper.on('dblclick', '.assoc-row-clickable', function () {
+        const item_name = $(this).data('item-name');
+        const selected = matching_rows.find(item => item.name === item_name);
+        if (selected) {
+            apply_association(frm, cdt, cdn, selected);
+            dialog.hide();
+        }
+    });
+
+    dialog.show();
+}
+
+
+function build_association_table(rows) {
+    let html = `
+        <style>
+            .assoc-selection-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 13px;
+                color: #36414c;
+            }
+            .assoc-selection-table th {
+                background: #fff;
+                padding: 10px 12px;
+                text-align: left;
+                font-weight: 600;
+                color: #8d99a6;
+                border-top: 1px solid #d1d8dd;
+                border-bottom: 1px solid #d1d8dd;
+                white-space: nowrap;
+            }
+            .assoc-selection-table td {
+                padding: 9px 12px;
+                border-bottom: 1px solid #ebeef1;
+                color: #36414c;
+            }
+            .assoc-selection-table tbody tr.assoc-row-clickable {
+                cursor: pointer;
+            }
+            .assoc-selection-table tbody tr.assoc-row-clickable:hover {
+                background-color: #f7fafc;
+            }
+            .assoc-selection-table tbody tr.selected-row {
+                background-color: #eaf2ff !important;
+            }
+        </style>
+        <table class="assoc-selection-table">
+            <thead>
+                <tr>
+                    <th style="width:36px;"></th>
+                    <th>${__('Row')}</th>
+                    <th>${__('Item Code')}</th>
+                    <th>${__('Qty')}</th>
+                    <th>${__('Rate')}</th>
+                    <th>${__('Status')}</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
+
+    rows.forEach((item, index) => {
+        const is_first = index === 0;
+        const effective_item = item.rev_item || item.item;
+        const is_new = !item.sales_order_item_name;
+        html += `
+            <tr class="assoc-row-clickable ${is_first ? 'selected-row' : ''}" data-item-name="${item.name}">
+                <td><input type="radio" name="assoc_row" value="${item.name}" ${is_first ? 'checked' : ''}></td>
+                <td>${item.idx}</td>
+                <td>${effective_item}${is_new ? ' <span style="color:#8d99a6;">(new line)</span>' : ''}</td>
+                <td>${item.rev_qty || item.qty}</td>
+                <td>${item.rev_rate || item.rate}</td>
+                <td>${item.rev_line_status || item.line_status || '-'}</td>
+            </tr>
+        `;
+    });
+
+    html += `
+            </tbody>
+        </table>
+        <div style="margin-top: 10px; color: #8d99a6; font-size: 12px;">
+            ${__('Double-click a row to select it')}
+        </div>
+    `;
+
+    return html;
+}
+
+
+// Spec 3.1 — auto-follow: when a main line's item changes, propagate the
+// new effective item to any Free Item row currently associated with that line.
+function sync_dependent_free_items(frm, changed_row_name) {
+    const main_row = (frm.doc.sales_order_item || []).find(r => r.name === changed_row_name);
+    if (!main_row || main_row.is_free_item || main_row.rev_is_free_item) return;
+
+    const line_key = main_row.sales_order_item_name || main_row.name;
+    const new_effective_item = main_row.rev_item || main_row.item;
+
+    (frm.doc.sales_order_item || []).forEach(free_row => {
+        const is_free = free_row.is_free_item || free_row.rev_is_free_item;
+        if (!is_free) return;
+        if (free_row.rev_main_item_id !== line_key) return;
+
+        if (free_row.rev_component_of !== new_effective_item) {
+            frappe.model.set_value(free_row.doctype, free_row.name, 'rev_main_item', new_effective_item);
+            frappe.model.set_value(free_row.doctype, free_row.name, 'rev_component_of', new_effective_item);
+
+            frappe.show_alert({
+                message: __('Free Item row #{0}: association item auto-updated to {1}', [free_row.idx, new_effective_item]),
+                indicator: 'blue'
+            }, 4);
+        }
+    });
+}
+
 
 // ---------------------------------------------------------------
 // Track raw keystrokes in the rev_item column so we know what
@@ -473,7 +839,7 @@ function setup_rev_item_tracking(frm) {
                  frm.fields_dict['sales_order_item'].grid;
 
     if (!grid || !grid.wrapper) return;
-    
+
 
     const observer = new MutationObserver(function (mutations) {
         mutations.forEach(function (mutation) {
@@ -536,7 +902,7 @@ function open_item_generator_for_omr(frm, cdn) {
         return;
     }
 
- 
+
     const new_doc = frappe.model.get_new_doc('Item Generator');
     new_doc.is_create_with_sales_order = 1;
     frappe.set_route('Form', 'Item Generator', new_doc.name);

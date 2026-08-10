@@ -2098,3 +2098,510 @@ function update_mismatched_batches(frm, mismatched_batches) {
             .catch(reject);
     });
 }
+
+
+
+
+function handle_component_of_change(frm, cdt, cdn) {
+    const row = locals[cdt][cdn];
+
+    // Only trigger for free items with component_of value
+    if (!row.is_free_item || !row.component_of) {
+        clear_component_fields(frm, cdt, cdn);
+        return;
+    }
+
+    // Debounce to prevent multiple rapid calls
+    if (row._component_timeout) {
+        clearTimeout(row._component_timeout);
+    }
+
+    row._component_timeout = setTimeout(() => {
+        process_component_selection(frm, cdt, cdn);
+    }, 300);
+}
+
+function process_component_selection(frm, cdt, cdn) {
+    const row = locals[cdt][cdn];
+
+    // Find all matching non-free items with same item_code
+    const matching_items = frm.doc.items.filter(item =>
+        item.name !== row.name &&
+        !item.is_free_item &&
+        item.item_code === row.component_of
+    );
+
+    if (matching_items.length === 0) {
+        handle_no_match(frm, cdt, cdn);
+        return;
+    }
+
+    if (matching_items.length === 1) {
+        handle_single_match(frm, cdt, cdn, matching_items[0]);
+        return;
+    }
+
+    // Multiple matches - show selection dialog
+    show_component_selection_dialog(frm, cdt, cdn, row, matching_items);
+}
+
+function handle_no_match(frm, cdt, cdn) {
+    const row = locals[cdt][cdn];
+
+    clear_component_fields(frm, cdt, cdn);
+
+    frappe.show_alert({
+        message: __('No matching item found for <b>{0}</b> in this order', [row.component_of]),
+        indicator: 'orange'
+    }, 5);
+
+    // Reset component_of after delay
+    setTimeout(() => {
+        const current_row = locals[cdt][cdn];
+        if (current_row.component_of && !current_row.main_item_id) {
+            frappe.model.set_value(cdt, cdn, 'component_of', '');
+        }
+    }, 2000);
+}
+
+function handle_single_match(frm, cdt, cdn, matched_item) {
+    set_component_fields(frm, cdt, cdn, matched_item);
+
+    frappe.show_alert({
+        message: __('Associated with Row #{0} - {1}', [matched_item.idx, matched_item.item_name || matched_item.item_code]),
+        indicator: 'green'
+    }, 3);
+}
+
+// ── One-time global style injection. Frappe HTML fields insert their
+//    `options` string directly into the page DOM, so a <style> tag placed
+//    inside build_selection_table()'s returned HTML is NOT scoped to the
+//    dialog — its selectors apply globally to the whole page for as long
+//    as the dialog markup exists in the DOM. That's what previously let
+//    ".row-check" leak onto Frappe's own grid row-checkbox column.
+//    Fix: (1) namespace every custom class with a "cos-" (Component Of
+//    Selection) prefix so it can never collide with Frappe's own class
+//    names, and (2) inject the <style> block exactly once, ever, via JS
+//    keyed by an id — not re-inserted into the DOM on every dialog open. ──
+function ensure_component_selection_styles() {
+    if (document.getElementById('cos-dialog-styles')) return;
+
+    const style = document.createElement('style');
+    style.id = 'cos-dialog-styles';
+    style.textContent = `
+        /* Reliably widen the modal itself, not just the table — reapplied
+           on 'shown.bs.modal' in JS in case Bootstrap resets it */
+        .cos-dialog .modal-dialog {
+            max-width: 1200px !important;
+            width: 95vw !important;
+        }
+
+        .cos-table-wrap {
+            max-height: 420px;
+            overflow-y: auto;
+            overflow-x: auto;   /* horizontal scrollbar restored */
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+        }
+        .cos-table-wrap table {
+            margin: 0;
+            width: 100%;
+            min-width: 950px;   /* keeps columns from squishing; scrolls on narrower viewports */
+            table-layout: fixed;
+        }
+        .cos-table-wrap th {
+            font-weight: 600 !important;
+            color: var(--text-color) !important;
+            background: var(--bg-color);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            border-bottom: 2px solid var(--border-color) !important;
+            white-space: nowrap;
+            padding: 10px 8px !important;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .cos-row {
+            cursor: pointer;
+            transition: background-color 0.15s ease;
+        }
+        .cos-row:hover {
+            background-color: var(--control-bg) !important;
+        }
+        .cos-row.cos-selected {
+            background-color: var(--yellow-highlight-color, #fffce7) !important;
+        }
+        .cos-row:focus {
+            outline: 2px solid var(--primary);
+            outline-offset: -2px;
+        }
+        .cos-row td {
+            padding: 12px 8px !important;
+            border-bottom: 1px solid var(--border-color) !important;
+        }
+        .cos-filter-empty {
+            display: none;
+            text-align: center;
+            padding: 24px;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+
+        /* Single check indicator — a plain span, no <input>, so there's no
+           native checkbox/radio rendering for any browser/OS/theme to get
+           wrong. One circle with an SVG tick when selected. Namespaced as
+           "cos-check" specifically so it can never collide with Frappe's
+           own grid row-checkbox class. */
+        .cos-check {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 1.5px solid #b8c4ce;
+            background: #fff;
+            box-sizing: border-box;
+            transition: all 0.15s ease;
+        }
+        .cos-check .cos-check-mark {
+            opacity: 0;
+            transform: scale(0.6);
+            transition: all 0.15s ease;
+        }
+        .cos-row:hover .cos-check {
+            border-color: var(--primary);
+        }
+        .cos-row.cos-selected .cos-check {
+            border-color: var(--primary);
+            background: var(--primary);
+        }
+        .cos-row.cos-selected .cos-check .cos-check-mark {
+            opacity: 1;
+            transform: scale(1);
+        }
+    `;
+    document.head.appendChild(style);
+}
+
+function show_component_selection_dialog(frm, cdt, cdn, row, matching_items) {
+    if (!matching_items || !matching_items.length) {
+        frappe.msgprint({
+            title: __('No Matches Found'),
+            message: __('No main item rows found for component <b>{0}</b>.', [row.component_of]),
+            indicator: 'orange'
+        });
+        return;
+    }
+
+    ensure_component_selection_styles();
+
+    const dialog = new frappe.ui.Dialog({
+        title: __('Select Main Item Row'),
+        size: 'extra-large',
+        fields: [
+            {
+                fieldtype: 'HTML',
+                fieldname: 'info_section',
+                options: `
+                    <div class="alert alert-info" style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; margin-bottom: 16px;">
+                        <div style="font-size: 20px;">📎</div>
+                        <div style="line-height: 1.6;">
+                            <div>
+                                <span class="text-muted">${__('Free Item')}</span>
+                                <span class="text-bold">${frappe.utils.escape_html(row.item_code)}</span>
+                                ${row.item_name ? `<span class="text-muted">— ${frappe.utils.escape_html(row.item_name)}</span>` : ''}
+                            </div>
+                            <div>
+                                <span class="text-muted">${__('Component of')}</span>
+                                <span class="text-bold">${frappe.utils.escape_html(row.component_of)}</span>
+                                <span class="badge badge-info" style="margin-left: 6px;">${matching_items.length} ${__('rows')}</span>
+                            </div>
+                        </div>
+                    </div>
+                `
+            },
+            {
+                fieldtype: 'Int',
+                fieldname: 'row_filter',
+                label: __('Filter by Row #'),
+                description: __('Type a row number to isolate and auto-select that row')
+            },
+            {
+                fieldtype: 'HTML',
+                fieldname: 'items_table',
+                options: build_selection_table(matching_items)
+            }
+        ],
+        primary_action_label: __('Associate'),
+        secondary_action_label: __('Cancel'),
+        primary_action(values) {
+            const selected_name = dialog.$wrapper.find('.cos-row.cos-selected').data('item-name');
+
+            if (!selected_name) {
+                frappe.show_alert({
+                    message: __('Please select a row first'),
+                    indicator: 'orange'
+                }, 3);
+                return;
+            }
+
+            const selected = matching_items.find(item => item.name === selected_name);
+            if (selected) {
+                set_component_fields(frm, cdt, cdn, selected);
+                dialog.hide();
+
+                frappe.show_alert({
+                    message: __('Associated with Row #{0} — {1}', [
+                        selected.idx,
+                        frappe.utils.escape_html(selected.item_name || selected.item_code)
+                    ]),
+                    indicator: 'green'
+                }, 4);
+            }
+        },
+        secondary_action() {
+            dialog.hide();
+        }
+    });
+
+    // ── Force extra-wide dialog (reapplied on every show, since Frappe/Bootstrap
+    //    recalculates modal sizing/position when the modal is actually shown,
+    //    which can clobber inline styles set before that point) ──
+    dialog.$wrapper.addClass('cos-dialog');
+
+    const apply_wide_layout = () => {
+        dialog.$wrapper.find('.modal-dialog').css({
+            'max-width': '1200px',
+            'width': '95vw',
+            'margin': '30px auto'
+        });
+        dialog.$wrapper.find('.modal-content').css('overflow', 'visible');
+    };
+    apply_wide_layout();
+    dialog.$wrapper.on('shown.bs.modal', apply_wide_layout);
+
+    // ── Row Click Selection (no native input at all — avoids inconsistent
+    //    browser/theme rendering of radio/checkbox controls entirely) ──
+    dialog.$wrapper.on('click', '.cos-row', function() {
+        select_row(dialog, $(this).data('item-name'));
+    });
+
+    // ── Double-Click Quick Select ──
+    dialog.$wrapper.on('dblclick', '.cos-row', function() {
+        const item_name = $(this).data('item-name');
+        const selected = matching_items.find(item => item.name === item_name);
+        if (selected) {
+            set_component_fields(frm, cdt, cdn, selected);
+            dialog.hide();
+
+            frappe.show_alert({
+                message: __('Associated with Row #{0} — {1}', [
+                    selected.idx,
+                    frappe.utils.escape_html(selected.item_name || selected.item_code)
+                ]),
+                indicator: 'green'
+            }, 4);
+        }
+    });
+
+    // ── Keyboard Navigation (only among currently visible/filtered rows) ──
+    dialog.$wrapper.on('keydown', function(e) {
+        const $rows = dialog.$wrapper.find('.cos-row:visible');
+        let index = $rows.index($rows.filter('.cos-selected'));
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            index = Math.min(index + 1, $rows.length - 1);
+            select_row(dialog, $rows.eq(index).data('item-name'));
+            $rows.eq(index)[0]?.scrollIntoView({ block: 'nearest' });
+        }
+        else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            index = Math.max(index - 1, 0);
+            select_row(dialog, $rows.eq(index).data('item-name'));
+            $rows.eq(index)[0]?.scrollIntoView({ block: 'nearest' });
+        }
+        else if (e.key === 'Enter' && $rows.filter('.cos-selected').length) {
+            e.preventDefault();
+            dialog.get_primary_btn().trigger('click');
+        }
+    });
+
+    // ── Row-number filter: isolates the matching row and auto-selects it ──
+    dialog.fields_dict.row_filter.$input.on('input', function() {
+        filter_by_row_number(dialog, $(this).val());
+    });
+
+    dialog.show();
+
+    // Focus the filter box for fast keyboard-first use
+    setTimeout(() => dialog.fields_dict.row_filter.$input.trigger('focus'), 150);
+}
+
+// ── Filter helper: shows only the row(s) matching the typed idx, and
+//    auto-selects when exactly one row remains visible ──
+function filter_by_row_number(dialog, value) {
+    const $rows = dialog.$wrapper.find('.cos-row');
+    const $empty_state = dialog.$wrapper.find('.cos-filter-empty');
+    const query = String(value || '').trim();
+
+    if (!query) {
+        $rows.show();
+        $empty_state.hide();
+        return;
+    }
+
+    let visible_count = 0;
+    let last_visible_name = null;
+
+    $rows.each(function() {
+        const $row = $(this);
+        const idx = String($row.data('row-idx'));
+        const is_match = idx === query;
+        $row.toggle(is_match);
+        if (is_match) {
+            visible_count++;
+            last_visible_name = $row.data('item-name');
+        }
+    });
+
+    $empty_state.toggle(visible_count === 0);
+
+    if (visible_count === 1 && last_visible_name) {
+        select_row(dialog, last_visible_name);
+    } else {
+        // Ambiguous or no match yet — clear stale selection
+        dialog.$wrapper.find('.cos-row').removeClass('cos-selected');
+    }
+}
+
+// ── Selection helper: toggles the "cos-selected" state and the check indicator ──
+function select_row(dialog, item_name) {
+    dialog.$wrapper.find('.cos-row').removeClass('cos-selected');
+    dialog.$wrapper.find(`.cos-row[data-item-name="${css_escape(item_name)}"]`)
+        .addClass('cos-selected');
+}
+
+function css_escape(value) {
+    return window.CSS && CSS.escape ? CSS.escape(value) : String(value).replace(/["\\]/g, '\\$&');
+}
+
+// ── Table Builder. Markup only — all CSS lives in the one-time
+//    ensure_component_selection_styles() injection above, keyed by
+//    "cos-" prefixed classes so nothing here can ever bleed into
+//    Frappe's own grid, list view, or any other page chrome. ──
+function build_selection_table(items) {
+    if (!items || !items.length) {
+        return `<div class="text-muted text-center" style="padding: 40px 20px;">
+            <div style="font-size: 32px; margin-bottom: 12px;">📭</div>
+            <div>${__('No matching rows found')}</div>
+        </div>`;
+    }
+
+    const check_svg = `
+        <svg viewBox="0 0 16 16" width="11" height="11" class="cos-check-mark">
+            <path d="M2 8.5 L6 12.5 L14 3" fill="none" stroke="#fff" stroke-width="2.4"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>`;
+
+    const rows = items.map(item => `
+        <tr class="cos-row" data-item-name="${frappe.utils.escape_html(item.name)}" data-row-idx="${item.idx}" tabindex="0">
+            <td style="width: 40px; text-align: center; vertical-align: middle;">
+                <span class="cos-check">${check_svg}</span>
+            </td>
+            <td style="width: 56px; text-align: center; vertical-align: middle;">
+                <span class="text-bold">${item.idx}</span>
+            </td>
+            <td style="vertical-align: middle; min-width: 220px; max-width: 300px; word-break: break-all;">
+                <div class="text-bold" style="font-size: 13px;">${frappe.utils.escape_html(item.item_code)}</div>
+            </td>
+            <td style="vertical-align: middle; min-width: 200px; max-width: 320px;">
+                ${item.item_name ? `<div class="text-bold" style="font-size: 12px; line-height: 1.5;">${frappe.utils.escape_html(item.item_name)}</div>` : '<div class="text-muted" style="font-size: 12px;">—</div>'}
+            </td>
+            <td style="width: 100px; text-align: right; vertical-align: middle; white-space: nowrap;">
+                <span class="text-bold">${format_number(item.qty)}</span>
+                <span class="text-muted" style="font-size: 12px;">${frappe.utils.escape_html(item.uom || 'Nos')}</span>
+            </td>
+            <td style="width: 110px; text-align: right; vertical-align: middle; white-space: nowrap;">
+                <span class="text-bold">${format_currency(item.rate, item.currency)}</span>
+            </td>
+            <td style="width: 120px; text-align: right; vertical-align: middle; white-space: nowrap;">
+                <span class="text-bold">${format_currency(item.amount, item.currency)}</span>
+            </td>
+        </tr>
+    `).join('');
+
+    return `
+        <div class="cos-table-wrap">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th style="width: 40px;"></th>
+                        <th style="width: 56px; text-align: center;">${__('Row')}</th>
+                        <th style="min-width: 220px;">${__('Item Code')}</th>
+                        <th style="min-width: 200px;">${__('Item Name')}</th>
+                        <th style="width: 100px; text-align: right;">${__('Quantity')}</th>
+                        <th style="width: 110px; text-align: right;">${__('Rate')}</th>
+                        <th style="width: 120px; text-align: right;">${__('Amount')}</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows}
+                </tbody>
+            </table>
+            <div class="cos-filter-empty">${__('No row matches that number')}</div>
+        </div>
+        <div class="text-muted" style="margin-top: 8px; font-size: 12px; text-align: center;">
+            ${__('Tip: Double-click a row to select instantly, use ↑↓ to navigate, or type a Row # above to jump straight to it.')}
+        </div>
+    `;
+}
+
+function set_component_fields(frm, cdt, cdn, item) {
+    frappe.model.set_value(cdt, cdn, 'main_item_id', item.name);
+    frappe.model.set_value(cdt, cdn, 'main_item', item.item_code);
+}
+
+function clear_component_fields(frm, cdt, cdn) {
+    const row = locals[cdt][cdn];
+
+    if (row.main_item_id) {
+        frappe.model.set_value(cdt, cdn, 'main_item_id', '');
+    }
+    if (row.main_item) {
+        frappe.model.set_value(cdt, cdn, 'main_item', '');
+    }
+}
+
+function format_currency_value(value) {
+    if (!value) return '-';
+    return frappe.format(value, { fieldtype: 'Currency' });
+}
+
+
+
+// Cleanup when item is removed from grid
+frappe.ui.form.on('Sales Order Item', {
+     component_of: function(frm, cdt, cdn) {
+        handle_component_of_change(frm, cdt, cdn);
+    },
+    items_remove: function(frm, cdt, cdn) {
+        const removed_row = locals[cdt][cdn];
+
+        // If removed row was a main item, clean up associated free items
+        if (!removed_row.is_free_item) {
+            frm.doc.items.forEach(item => {
+                if (item.main_item_id === removed_row.name) {
+                    frappe.model.set_value(item.doctype, item.name, 'component_of', '');
+                    frappe.model.set_value(item.doctype, item.name, 'main_item_id', '');
+                    frappe.model.set_value(item.doctype, item.name, 'main_item', '');
+                }
+            });
+        }
+    }
+});
+
+

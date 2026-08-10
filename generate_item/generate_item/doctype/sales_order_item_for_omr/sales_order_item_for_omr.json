@@ -35,7 +35,9 @@
   "rev_shipping_address",
   "rev_component_of",
   "rev_line_remark",
-  "bom_update_request"
+  "bom_update_request",
+  "rev_main_item",
+  "rev_main_item_id"
  ],
  "fields": [
   {
@@ -217,13 +219,25 @@
    "fieldtype": "Small Text",
    "label": "Rev Description",
    "read_only": 1
+  },
+  {
+   "fieldname": "rev_main_item",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Rev Main Item"
+  },
+  {
+   "fieldname": "rev_main_item_id",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Rev Main Item Id"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-07-01 16:07:14.356656",
+ "modified": "2026-08-07 16:56:16.268759",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Sales Order Item For OMR",

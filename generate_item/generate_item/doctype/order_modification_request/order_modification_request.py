@@ -1,3 +1,4 @@
+
 import frappe, json
 from frappe.model.document import Document
 from erpnext.controllers.accounts_controller import update_child_qty_rate
@@ -20,8 +21,8 @@ from frappe.utils import get_url_to_form
 from generate_item.generate_item.modification_task_utils.modification_task import create_bom_task_on_omr_submit
 
 class OrderModificationRequest(Document):
-    
-    
+
+
     def autoname(self):
 
         if self.type == "Sales Order":
@@ -31,10 +32,13 @@ class OrderModificationRequest(Document):
             self.name = make_autoname(f"{self.bom}-.##")
 
     def validate(self):
+
         create_history_records(self)
         _create_commercial_history(self)
         self.validate_sales_order()
         self.validate_qty_and_rev_qty()
+    
+  
 
     def on_submit(self):
         if self.type == "BOM" and self.bom:
@@ -50,14 +54,222 @@ class OrderModificationRequest(Document):
 
             elif self.modification_type == "Order Item Change":
                 # create_history_records(self)
+                self.validate_component_of_items(throw=True)
+                self.validate_free_item_association_not_removed()  
                 self.update_sales_order_values()
                 self.update_sales_order_revision()
                 create_batches_for_omr(self)
                 get_change(self)
-        
+
         create_bom_task_on_omr_submit(self)
         self.update_production_plan_sales_order_modification()
 
+
+    # def validate_component_of_items(self, throw=False):
+ 
+    #     if not self.sales_order:
+    #         return
+
+    #     # All item codes present in the linked Sales Order
+    #     so_items = set(
+    #         frappe.get_all(
+    #             "Sales Order Item",
+    #             filters={"parent": self.sales_order},
+    #             pluck="item_code",
+    #         )
+    #     )
+
+    #     invalid_rows = []
+
+    #     for row in self.sales_order_item:
+    #         component_of = (row.rev_component_of or "").strip()
+
+    #         if not component_of:
+    #             continue
+
+    #         if component_of not in so_items:
+    #             invalid_rows.append(
+    #                 _("Row {0}: <b>{1}</b>").format(row.idx, frappe.bold(component_of))
+    #             )
+
+    #     if not invalid_rows:
+    #         return
+
+    #     message = _(
+    #         """
+    #         The following <b>Revise Component Of</b> items do not exist in the linked Sales Order:<br><br>
+
+    #         {0}
+
+    #         <br><br>
+    #         Cannot modify the Sales Order because the item associated with a Free Item is being removed and will no longer be available in the Sales Order. Please update the Free Item association before proceeding.
+    #         """
+    #     ).format("<br>".join(invalid_rows))
+
+    #     if throw:
+    #         frappe.throw(message, title=_("Invalid Revise Component Of"))
+    #     else:
+    #         frappe.msgprint(
+    #             message,
+    #             title=_("Validation Warning"),
+    #             indicator="orange",
+    #         )
+
+    def validate_component_of_items(self, throw=False):
+        if not self.sales_order or not self.sales_order_item:
+            return
+
+        # For each main (non-free) row, only ONE item code is "allowed":
+        # - if item is being replaced (rev_item set and different) → ONLY rev_item
+        #   (the old item code will be gone from the SO after this OMR applies)
+        # - otherwise → the existing item code
+        allowed_item_codes = set()
+        for row in self.sales_order_item:
+            is_free_row = bool(row.is_free_item or getattr(row, "rev_is_free_item", 0))
+            if is_free_row:
+                continue
+
+            is_replacement = bool(row.rev_item and row.rev_item != row.item)
+            effective_item = row.rev_item if is_replacement else row.item
+
+            if effective_item:
+                allowed_item_codes.add(effective_item)
+
+        invalid_rows = []
+        for row in self.sales_order_item:
+            component_of = (row.rev_component_of or "").strip()
+            if not component_of:
+                continue
+            if component_of not in allowed_item_codes:
+                invalid_rows.append(
+                    _("Row {0}: <b>{1}</b>").format(row.idx, frappe.bold(component_of))
+                )
+
+        if not invalid_rows:
+            return
+
+        message = _(
+            """
+            The following <b>Revise Component Of</b> items do not exist in the linked Sales Order:<br><br>
+            {0}
+            <br><br>
+            Cannot Approve the OMR for the Sales Order because the item associated with a Free Item that is being removed and will no longer be available in the Sales Order. Please update the Free Item association before proceeding.
+            """
+        ).format("<br>".join(invalid_rows))
+
+        if throw:
+            frappe.throw(message, title=_("Invalid Revise Component Of"))
+        else:
+            frappe.msgprint(message, title=_("Validation Warning"), indicator="orange")
+
+    def validate_free_item_association_not_removed(self):
+        """
+        Spec: 'Associated Item Removed'.
+        Blocks the OMR if a Free Item row is still associated with a main
+        Sales Order line that this same OMR is cancelling — unless the Free
+        Item itself is being cancelled in the same OMR (that combination is
+        allowed, since nothing is left dangling).
+        """
+        if self.type != "Sales Order" or not self.sales_order_item:
+            return
+
+        # Map every main (non-free) row to its unique line key.
+        # Prefer sales_order_item_name (existing line); fall back to the
+        # OMR row's own name for a line newly added in this same OMR.
+        line_key_to_row = {}
+        for row in self.sales_order_item:
+            is_free = bool(row.is_free_item or getattr(row, "rev_is_free_item", 0))
+            if is_free:
+                continue
+            key = row.sales_order_item_name or row.name
+            line_key_to_row[key] = row
+
+        blocked = []
+
+        for row in self.sales_order_item:
+            is_free = bool(row.is_free_item or getattr(row, "rev_is_free_item", 0))
+            if not is_free:
+                continue
+
+            # Prefer the unique line reference; fall back to item-code match
+            # only if rev_main_item_id was never set (legacy/manual entry).
+            # line_key = getattr(row, "rev_main_item_id", None)
+
+            # if not line_key:
+            #     # Fallback: match by effective item code (same rule as the
+            #     # component-of check) — best-effort only, since item codes
+            #     # can repeat across rows.
+            #     component_of = (row.rev_component_of or row.component_of or "").strip()
+            #     if not component_of:
+            #         continue
+            #     match = next(
+            #         (
+            #             r for r in line_key_to_row.values()
+            #             if (
+            #                 (r.rev_item if (r.rev_item and r.rev_item != r.item) else r.item)
+            #                 == component_of
+            #             )
+            #         ),
+            #         None,
+            #     )
+            #     main_row = match
+            # else:
+            #     main_row = line_key_to_row.get(line_key)
+
+            line_key = getattr(row, "rev_main_item_id", None)
+            main_row = line_key_to_row.get(line_key) if line_key else None
+
+            if not main_row:
+                # Fallback: match by effective item code — covers both
+                # "rev_main_item_id never set" and "set but stale" (e.g. new
+                # main item + new Free Item added together in the same OMR).
+                component_of = (
+                    getattr(row, "rev_main_item", None)
+                    or row.rev_component_of
+                    or row.component_of
+                    or ""
+                ).strip()
+                if not component_of:
+                    continue
+                match = next(
+                    (
+                        r for r in line_key_to_row.values()
+                        if (
+                            (r.rev_item if (r.rev_item and r.rev_item != r.item) else r.item)
+                            == component_of
+                        )
+                    ),
+                    None,
+                )
+                main_row = match
+
+            if not main_row:
+                continue  # associated line not found in this OMR at all — nothing to block
+
+            rev_status = (getattr(main_row, "rev_line_status", "") or "").strip()
+            orig_status = (getattr(main_row, "line_status", "") or "").strip()
+            main_being_cancelled = rev_status == "Cancelled" or (not rev_status and orig_status == "Cancelled")
+
+            free_rev_status = (getattr(row, "rev_line_status", "") or "").strip()
+            free_being_cancelled_too = free_rev_status == "Cancelled"
+
+            if main_being_cancelled and not free_being_cancelled_too:
+                blocked.append(
+                    _("Free Item Row {0} (associated with Row {1}, Item {2})").format(
+                        row.idx, main_row.idx, main_row.item_code if hasattr(main_row, "item_code") else main_row.item
+                    )
+                )
+
+        if blocked:
+            frappe.throw(
+                _(
+                    "Cannot cancel the following Sales Order line(s) — a Free Item is "
+                    "still associated with them: {0}. Please reassign or cancel the "
+                    "Free Item first before proceeding."
+                ).format(", ".join(blocked)),
+                title=_("Free Item Association Blocked"),
+            )
+            
     def update_production_plan_sales_order_modification(self):
         frappe.db.sql(
             """
@@ -75,11 +287,11 @@ class OrderModificationRequest(Document):
                 self.sales_order,
             ),
         )
-
+    
     def update_sales_order_commercial_details(self):
         """Updates Commercial T&C + Details + Reference Data + Terms & Conditions in Sales Order"""
 
-        # ── Commercial T&C 
+        # ── Commercial T&C
         commercial_map = {
             "rev_price_basis":            "custom_price_basis",
             "rev_mode_of_dispatch":       "custom_mode_of_dispatch",
@@ -109,8 +321,8 @@ class OrderModificationRequest(Document):
 
         # ── Details
         details_map = {
-            "rev_customers_purchase_order":      "po_no",     
-            "rev_customers_purchase_order_date": "po_date",   
+            "rev_customers_purchase_order":      "po_no",
+            "rev_customers_purchase_order_date": "po_date",
         }
 
         # ── Reference Data
@@ -125,7 +337,7 @@ class OrderModificationRequest(Document):
 
         # ── Terms & Conditions
         terms_map = {
-            "rev_so_remarks": "terms",   
+            "rev_so_remarks": "terms",
         }
 
         # ── Merge all maps and build UPDATE query
@@ -152,7 +364,6 @@ class OrderModificationRequest(Document):
                 WHERE name = %(so_name)s
             """, params)
 
-          
 
 
     def update_bom_items_using_db_set(self):
@@ -185,15 +396,15 @@ class OrderModificationRequest(Document):
             # ── Qty ─────────────────────────────────────────────────────────────
             if row.rev_qty:
                 update_data["qty"] = row.rev_qty
-            
+
             if row.rev_rate:
                 update_data["rate"] = row.rev_rate
                 update_data["base_rate"] =   final_rate
 
-           
+
 
             if final_qty or final_rate :
-                
+
                 update_data["amount"] = final_qty * final_rate
                 update_data["base_amount"] = final_qty * final_rate
 
@@ -255,7 +466,7 @@ class OrderModificationRequest(Document):
 
                 if not has_any_rev_data:
                     continue
-                
+
 
                 current_max_idx += 1
 
@@ -266,7 +477,7 @@ class OrderModificationRequest(Document):
                     "parentfield": "items",
                     "item_code": effective_item,
                     "idx": current_max_idx,
-                    
+
                 }
                 new_item_dict.update(update_data)
 
@@ -332,8 +543,7 @@ class OrderModificationRequest(Document):
                     title="Invalid Rate",
                 )
 
-           
-                
+
 
     def validate_sales_order(self):
         if not self.sales_order:
@@ -396,6 +606,9 @@ class OrderModificationRequest(Document):
             ("rev_shipping_address", "custom_shipping_address"),
             ("rev_is_free_item",     "is_free_item"),
             ("rev_component_of",     "component_of"),
+            # NEW — mirror fields feeding the Free Item association
+            # (main_item_id / main_item already exist on Sales Order Item;
+            # they are resolved specially below, not via the generic passthrough)
         ]
 
         # Fields where False/0 is a valid value to write (don't skip with falsy check)
@@ -406,6 +619,10 @@ class OrderModificationRequest(Document):
         CLEARABLE_FIELDS = {
             "rev_line_status": "line_status",
         }
+
+        # Fields handled specially (Free Item association) — never pass through
+        # the generic CUSTOM_FIELD_MAP loop, resolved via _resolve_free_item_associations
+        SPECIAL_ASSOCIATION_FIELDS = {"rev_main_item_id", "rev_main_item", "rev_component_of"}
 
         so = frappe.get_doc("Sales Order", self.sales_order)
 
@@ -470,15 +687,17 @@ class OrderModificationRequest(Document):
                     "qty":       qty,
                     "rate":      rate,
                     "description": existing_description,
+
                 })
             else:
                 # New item — insert into SO
                 trans_items.append({
                     "__islocal": True,
-                    "item_code": effective_item,  
+                    "item_code": effective_item,
                     "qty":       qty,
                     "rate":      rate,
                     "description": existing_description,
+                    "branch": so.branch or self.branch,
                 })
 
         so.save(ignore_permissions=True)
@@ -490,6 +709,14 @@ class OrderModificationRequest(Document):
                 self.sales_order,
             )
 
+        # ── Step 1b: Resolve Free Item association references ────────────────────
+        # Build a map of OMR-row-level "line keys" (sales_order_item_name for
+        # existing lines, or the OMR child row's own `name` for newly added
+        # lines) to the *actual* Sales Order Item name now on the SO, and to
+        # that line's effective (current) item code. This must run AFTER
+        # update_child_qty_rate so newly inserted lines already exist on the SO.
+        line_resolution = self._resolve_free_item_line_keys()
+
         # ── Step 2: Update custom fields via direct SQL ──────────────────────────
         now  = frappe.utils.now()
         user = frappe.session.user
@@ -500,13 +727,20 @@ class OrderModificationRequest(Document):
                 continue
 
             update_fields = {}
+
+            is_free_row = bool(row.is_free_item or getattr(row, "rev_is_free_item", 0))
+
             for rev_field, so_field in CUSTOM_FIELD_MAP:
+                if rev_field in SPECIAL_ASSOCIATION_FIELDS and is_free_row:
+                    # Handled below via resolved association instead of raw passthrough
+                    continue
+
                 # FIX: Use getattr with sentinel to distinguish "not set" from False/0
                 sentinel  = object()
                 rev_value = getattr(row, rev_field, sentinel)
 
                 if rev_value is sentinel:
-                    continue  
+                    continue
 
                  # ── Clearable field logic ────────────────────────────────────────
                 original_field = CLEARABLE_FIELDS.get(rev_field)
@@ -526,6 +760,55 @@ class OrderModificationRequest(Document):
                     # Skip only if truly empty/None/blank
                     if rev_value is not None and rev_value != "":
                         update_fields[so_field] = rev_value
+
+            # ── Free Item association (spec sections 3 & 4) ──────────────────────
+            # if is_free_row:
+            #     line_key = getattr(row, "rev_main_item_id", None) or row.component_of
+            #     resolved = line_resolution.get(line_key) if line_key else None
+
+            #     if resolved:
+            #         update_fields["main_item_id"] = resolved["so_item_name"]
+            #         update_fields["main_item"] = resolved["item_code"]
+            #         update_fields["component_of"] = resolved["item_code"]
+            #     elif getattr(row, "rev_component_of", None):
+            #         # No resolvable line match — still allow a direct item-code
+            #         # override for backward compatibility, without touching main_item_id
+            #         update_fields["component_of"] = row.rev_component_of
+
+            # ── Free Item association (spec sections 3 & 4) ──────────────────────
+            if is_free_row:
+                line_key = getattr(row, "rev_main_item_id", None) or row.component_of
+                resolved = line_resolution["by_key"].get(line_key) if line_key else None
+
+                if not resolved:
+                    # Fallback for stale/local references — covers new main
+                    # item + new Free Item added together in the same OMR.
+                    fallback_item = (
+                        getattr(row, "rev_main_item", None)
+                        or getattr(row, "rev_component_of", None)
+                        or row.component_of
+                    )
+                    if fallback_item:
+                        resolved = line_resolution["by_item"].get(fallback_item)
+
+                if resolved:
+                    update_fields["main_item_id"] = resolved["so_item_name"]
+                    update_fields["main_item"] = resolved["item_code"]
+                    update_fields["component_of"] = resolved["item_code"]
+                elif getattr(row, "rev_component_of", None):
+                    update_fields["component_of"] = row.rev_component_of
+
+                # Explicitly guarantee the Free Item checkbox is set — don't
+                # rely on the generic CUSTOM_FIELD_MAP passthrough above, which
+                # can be skipped/miss for rows added in the same save as their
+                # main item.
+                update_fields["is_free_item"] = 1
+
+            # If existing item has no branch, set root level branch from Sales Order
+            current_branch = frappe.db.get_value("Sales Order Item", so_item_name, "branch")
+            if not current_branch:
+                update_fields["branch"] = so.branch or self.branch
+
 
             if not update_fields:
                 continue
@@ -553,6 +836,135 @@ class OrderModificationRequest(Document):
             })
 
         frappe.db.commit()
+
+
+    # def _resolve_free_item_line_keys(self):
+    #     """
+    #     Build a lookup: OMR-side line key → { so_item_name, item_code }
+
+    #     Line key is:
+    #       - row.sales_order_item_name, for lines that already existed on the SO
+    #       - row.name (the OMR child row's own name), for lines newly added
+    #         through this OMR (no sales_order_item_name yet)
+
+    #     Must be called after update_child_qty_rate() so new lines are already
+    #     present on the Sales Order.
+    #     """
+    #     so_items_now = frappe.get_all(
+    #         "Sales Order Item",
+    #         filters={"parent": self.sales_order},
+    #         fields=["name", "item_code", "idx"],
+    #         order_by="idx asc",
+    #     )
+
+    #     resolution = {}
+    #     used_so_names = set()
+
+    #     for row in self.sales_order_item:
+    #         is_free_row = bool(row.is_free_item or getattr(row, "rev_is_free_item", 0))
+    #         if is_free_row:
+    #             continue  # only main (non-free) rows can be association targets
+
+    #         line_key = row.sales_order_item_name or row.name
+    #         effective_item = row.rev_item or row.item
+
+    #         if row.sales_order_item_name:
+    #             so_item_name = row.sales_order_item_name
+    #         else:
+    #             # Newly added line — match by item_code among not-yet-used SO items
+    #             match = next(
+    #                 (d for d in so_items_now
+    #                  if d.item_code == effective_item and d.name not in used_so_names),
+    #                 None,
+    #             )
+    #             so_item_name = match.name if match else None
+
+    #         if not so_item_name:
+    #             continue
+
+    #         used_so_names.add(so_item_name)
+
+    #         # Prefer the item_code actually on the SO row (authoritative),
+    #         # falling back to the OMR's effective item if lookup fails.
+    #         so_item_code = frappe.db.get_value("Sales Order Item", so_item_name, "item_code") or effective_item
+
+    #         resolution[line_key] = {
+    #             "so_item_name": so_item_name,
+    #             "item_code": so_item_code,
+    #         }
+
+    #     return resolution
+
+    def _resolve_free_item_line_keys(self):
+        """
+        Build a lookup: OMR-side line key → { so_item_name, item_code }
+
+        Returns:
+        - "by_key":  line key (sales_order_item_name, or the OMR child row's
+                    own name for a newly added line) → { so_item_name, item_code }
+        - "by_item": effective item code → { so_item_name, item_code }, used as
+                    a fallback when "by_key" is missing or stale. This covers
+                    the case where a new main item and a new Free Item are
+                    both added in the same OMR: the client can only capture
+                    the main row's temporary, pre-save docname into
+                    rev_main_item_id, and that value never gets updated to
+                    the real saved name — so the by_key lookup misses.
+                    Only kept when the item code is unambiguous across rows.
+
+        Must be called after update_child_qty_rate() so new lines already exist
+        on the Sales Order.
+        """
+        so_items_now = frappe.get_all(
+            "Sales Order Item",
+            filters={"parent": self.sales_order},
+            fields=["name", "item_code", "idx"],
+            order_by="idx asc",
+        )
+
+        by_key = {}
+        by_item = {}
+        used_so_names = set()
+
+        for row in self.sales_order_item:
+            is_free_row = bool(row.is_free_item or getattr(row, "rev_is_free_item", 0))
+            if is_free_row:
+                continue  # only main (non-free) rows can be association targets
+
+            line_key = row.sales_order_item_name or row.name
+            effective_item = row.rev_item or row.item
+
+            if row.sales_order_item_name:
+                so_item_name = row.sales_order_item_name
+            else:
+                match = next(
+                    (d for d in so_items_now
+                    if d.item_code == effective_item and d.name not in used_so_names),
+                    None,
+                )
+                so_item_name = match.name if match else None
+
+            if not so_item_name:
+                continue
+
+            used_so_names.add(so_item_name)
+
+            # Prefer the *intended* item code (row.rev_item / row.item) over
+            # whatever is currently in the DB — for an existing row being
+            # replaced, the DB item_code may still be the old one at this point
+            # (the actual swap is finalized later, in get_change()).
+            so_item_code = effective_item or frappe.db.get_value(
+                "Sales Order Item", so_item_name, "item_code"
+            )
+
+            entry = {"so_item_name": so_item_name, "item_code": so_item_code}
+            by_key[line_key] = entry
+
+            if effective_item:
+                by_item[effective_item] = entry if effective_item not in by_item else None
+
+        by_item = {k: v for k, v in by_item.items() if v}  # drop ambiguous matches
+
+        return {"by_key": by_key, "by_item": by_item}
 
 
     def _find_so_item_name(self, row):
@@ -858,7 +1270,9 @@ def create_batches_for_omr(omr_doc) -> None:
             frappe.db.set_value(
                 "Sales Order Item",
                 so_item_name,
-                {"custom_batch_no": entry["batch_id"]},
+                {"custom_batch_no": entry["batch_id"],
+                "branch": so_doc.branch or ""
+                },
                 update_modified=False,
             )
 
@@ -957,7 +1371,7 @@ def update_sales_order_items(self, mismatched_rows):
                 "Item", row.rev_item, ["item_name", "description"]
             )
             description = getattr(row, "rev_description", None) or item_description
-            
+
 
             # 1️⃣ Update Sales Order Item
             frappe.db.sql(
@@ -1061,7 +1475,7 @@ def update_finish_item_bom(custom_batch_no, new_item,old_item):
     if not bom_name:
         return None
 
-    
+
 
     bom_name = bom_name[0]["name"]
     item_name, description = frappe.db.get_value(
@@ -1088,7 +1502,7 @@ def update_finish_item_bom(custom_batch_no, new_item,old_item):
 def create_order_modification_requests(updated_boms, branch):
 
     created_docs = []
-  
+
 
     for entry in updated_boms:
 
@@ -1116,7 +1530,7 @@ def create_order_modification_requests(updated_boms, branch):
         bom_custom_batch_no = bom_header.get("custom_batch_no")
         actual_batch = bom_custom_batch_no or custom_batch_no
 
-        
+
 
 
         # ── Check if Draft BOM Modification Request already exists for this BOM ──
@@ -1183,19 +1597,19 @@ def fetch_items_from_reference(doc):
     if reference_doc.items:
         for item in reference_doc.items:
             row = doc.append("items", {})
-            row.bom_item_name = item.name              
+            row.bom_item_name = item.name
             row.item = item.item_code
             if item.item_code:
                 description = frappe.db.get_value(
                     "Item", item.item_code, "description"
                 )
                 row.description = description
-            row.uom = item.uom                         
-            row.do_not_explode = item.do_not_explode     
-            row.rev_do_not_explode = item.do_not_explode 
-            row.bom_no = item.bom_no                     
+            row.uom = item.uom
+            row.do_not_explode = item.do_not_explode
+            row.rev_do_not_explode = item.do_not_explode
+            row.bom_no = item.bom_no
             row.qty = item.qty
-            row.rate = item.rate                         
+            row.rate = item.rate
             row.batch_no = item.custom_batch_no
             row.drawing_no = item.custom_drawing_no
             row.drawing_rev_no = item.custom_drawing_rev_no
@@ -1228,18 +1642,18 @@ def update_child_rows_with_omr(self, created_requests):
     if not omr_map:
         return
 
-    
+
     child_doctype = frappe.get_meta(self.doctype).get_field("sales_order_item").options
 
-    for row in self.sales_order_item:         
+    for row in self.sales_order_item:
         new_omr = omr_map.get(row.name)
         if not new_omr:
             continue
 
-        
+
         row.bom_update_request = new_omr
 
-        #  Persist to DB 
+        #  Persist to DB
         frappe.db.set_value(
             child_doctype,
             row.name,
@@ -1265,8 +1679,8 @@ def create_history_records(self):
     # Check if any rev fields are actually populated
     has_any_revision = False
     for row in self.sales_order_item:
-        if (row.rev_item or 
-            flt(row.rev_qty) > 0 or 
+        if (row.rev_item or
+            flt(row.rev_qty) > 0 or
             flt(row.rev_rate) > 0 or
             (row.rev_line_status and row.rev_line_status.strip()) or
             row.rev_delivery_date or
@@ -1275,6 +1689,7 @@ def create_history_records(self):
             row.rev_line_remark or
             row.rev_po_line_no or
             row.rev_component_of or
+            getattr(row, "rev_main_item_id", None) or
             row.rev_is_free_item not in (None, 0, False)):
             has_any_revision = True
             break
@@ -1307,7 +1722,7 @@ def create_history_records(self):
             "line_remark": row.line_remark,  # Original line remark
             "is_free_item": row.is_free_item,  # Original is_free_item
             "component_of": row.component_of,  # Original component_of
-            "description": row.get("description") if row.get("description") else None,  
+            "description": row.get("description") if row.get("description") else None,
         }
 
         # Check item change
@@ -1364,6 +1779,11 @@ def create_history_records(self):
             history_data["rev_component_of"] = row.rev_component_of
             changed = True
 
+        # Check Free Item association line change (spec section 4)
+        if getattr(row, "rev_main_item_id", None) and row.rev_main_item_id != getattr(row, "main_item_id", None):
+            history_data["rev_main_item_id"] = row.rev_main_item_id
+            changed = True
+
         # Check is_free_item change (boolean field)
         if row.rev_is_free_item not in (None, 0, False) and row.rev_is_free_item != row.is_free_item:
             history_data["rev_is_free_item"] = row.rev_is_free_item
@@ -1376,7 +1796,7 @@ def create_history_records(self):
 
 def _create_commercial_history(self):
     """Create history records for commercial-level changes - one row per changed field"""
-    
+
     COMMERCIAL_FIELD_MAP = [
         # Commercial T&C
         ("price_basis", "rev_price_basis", "Price Basis"),
@@ -1403,11 +1823,11 @@ def _create_commercial_history(self):
         ("repeat_order_ref", "rev_repeat_order_ref", "Repeat Order Ref"),
         ("payment_terms", "rev_payment_terms", "Payment Terms"),
         ("bank_guaranty", "rev_bank_guaranty", "Bank Guaranty"),
-        
+
         # Details
         ("customers_purchase_order", "rev_customers_purchase_order", "Customer's P.O."),
         ("customers_purchase_order_date", "rev_customers_purchase_order_date", "Customer's P.O. Date"),
-        
+
         # Reference Data
         ("qtn_ref_no", "rev_qtn_ref_no", "QTN Ref No"),
         ("qtn_ref_date", "rev_qtn_ref_date", "QTN Ref Date"),
@@ -1415,28 +1835,28 @@ def _create_commercial_history(self):
         ("loi_date", "rev_loi_date", "LOI Date"),
         ("customer_project_name", "rev_customer_project_name", "Customer Project Name"),
         ("end_user", "rev_end_user", "End User"),
-        
+
         # Terms & Conditions
         ("so_remarks", "rev_so_remarks", "SO Remarks"),
     ]
-    
+
     # Clear existing commercial details
     self.set("commercial_details", [])
-    
+
     # Add one row per changed field
     changes_count = 0
     for orig_field, rev_field, display_name in COMMERCIAL_FIELD_MAP:
         orig_value = self.get(orig_field)
         rev_value = self.get(rev_field)
-        
+
         # Skip if rev value is empty/None
         if rev_value is None or rev_value == "":
             continue
-        
+
         # Convert to string for comparison
         orig_str = str(orig_value) if orig_value is not None else ""
         rev_str = str(rev_value) if rev_value is not None else ""
-        
+
         # Only add row if values are different
         if orig_str != rev_str:
             row = self.append("commercial_details", {})
@@ -1444,7 +1864,7 @@ def _create_commercial_history(self):
             row.original_value = orig_str
             row.revise_value = rev_str
             changes_count += 1
-    
+
     # If no changes found, table remains empty
     if changes_count == 0:
         self.set("commercial_details", [])
