@@ -4,6 +4,7 @@
 import frappe
 import json
 
+
 @frappe.whitelist()
 def get_serial_number_options():
     meta = frappe.get_meta("Serial Number")
@@ -14,17 +15,21 @@ def get_serial_number_options():
 
     return {
         "mfg_type": get_options("mfg_type"),
-        "api_monogram_req": get_options("api_monogram_req")
+        "api_monogram_req": get_options("api_monogram_req"),
     }
+
 
 @frappe.whitelist()
 def bulk_update_by_batch(batch, mfg_type=None, api_monogram_req=None):
     """Bulk update all serial numbers belonging to a batch using optimized SQL."""
+
     if not batch:
         frappe.throw("Batch is required")
 
     if not mfg_type and not api_monogram_req:
-        frappe.throw("At least one field (mfg_type or api_monogram_req) is required")
+        frappe.throw(
+            "At least one field (mfg_type or api_monogram_req) is required"
+        )
 
     # Build SET clause dynamically based on provided values
     set_clauses = []
@@ -38,7 +43,6 @@ def bulk_update_by_batch(batch, mfg_type=None, api_monogram_req=None):
         set_clauses.append("api_monogram_req = %(api_monogram_req)s")
         values["api_monogram_req"] = api_monogram_req
 
-    
     values["batch"] = batch
 
     sql = f"""
@@ -52,82 +56,215 @@ def bulk_update_by_batch(batch, mfg_type=None, api_monogram_req=None):
 
     # Get count for confirmation message
     count = frappe.db.sql(
-        "SELECT COUNT(*) FROM `tabSerial Number` WHERE batch = %(batch)s",
-        {"batch": batch}
+        """
+        SELECT COUNT(*)
+        FROM `tabSerial Number`
+        WHERE batch = %(batch)s
+        """,
+        {"batch": batch},
     )[0][0]
 
     return f"Successfully updated {count} serial number(s) in batch '{batch}'."
 
 
 def execute(filters=None):
+    filters = filters or {}
 
-    
-    
     columns = get_columns()
     data = get_data(filters)
+
     return columns, data
 
 
 def get_columns():
-    
     return [
+        {
+            "label": "Batch No",
+            "fieldname": "batch",
+            "fieldtype": "Link",
+            "options": "Batch",
+            "width": 150,
+        },
+        {
+            "label": "Stock Entry",
+            "fieldname": "stock_entry",
+            "fieldtype": "Link",
+            "options": "Stock Entry",
+            "width": 150,
+        },
+        {
+            "label": "Branch",
+            "fieldname": "branch",
+            "fieldtype": "Link",
+            "options": "Branch",
+            "width": 150,
+        },
+        {
+            "label": "Status",
+            "fieldname": "status",
+            "fieldtype": "Data",
+            "width": 120,
+        },
 
-		{"label": "Batch No", "fieldname": "batch", "fieldtype": "Link", "options": "Batch", "width": 150},
-        {"label": "Stock Entry", "fieldname": "stock_entry", "fieldtype": "Link", "options": "Stock Entry", "width": 150},
-		{"label": "Branch", "fieldname": "branch", "fieldtype": "Link", "options": "Branch", "width": 150},
-        {"label": "Status", "fieldname": "status", "fieldtype": "Data", "width": 120},
-      
-        # {"label": "Sales Order", "fieldname": "sales_order", "fieldtype": "Link", "options": "Sales Order", "width": 150},
-        {"label": "Customer Name", "fieldname": "customer", "fieldtype": "Link", "options": "Customer", "width": 180},
-        {"label": "Item Code", "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 200},
-        {"label": "Item Description", "fieldname": "description", "fieldtype": "Data", "width": 250},
+        {
+            "label": "Customer Name",
+            "fieldname": "customer",
+            "fieldtype": "Link",
+            "options": "Customer",
+            "width": 180,
+        },
+        {
+            "label": "Item Code",
+            "fieldname": "item_code",
+            "fieldtype": "Link",
+            "options": "Item",
+            "width": 200,
+        },
+        {
+            "label": "Item Description",
+            "fieldname": "description",
+            "fieldtype": "Data",
+            "width": 250,
+        },
 
-        {"label": "Valve Type", "fieldname": "valve_type", "fieldtype": "Data", "width": 150},
-        {"label": "Size Inch", "fieldname": "size", "fieldtype": "Data", "width": 120},
-        {"label": "Class", "fieldname": "valve_class", "fieldtype": "Data", "width": 120},
-        {"label": "Valve End", "fieldname": "valve_end", "fieldtype": "Data", "width": 150},
-        {"label": "Operation", "fieldname": "operation", "fieldtype": "Data", "width": 180},
-        {"label": "Material (Shell)", "fieldname": "shell_moc", "fieldtype": "Data", "width": 180},
-		{"label": "Valve Serial No", "fieldname": "serial_no", "fieldtype": "Link", "options": "Serial Number", "width": 150},
+        {
+            "label": "Valve Type",
+            "fieldname": "valve_type",
+            "fieldtype": "Data",
+            "width": 150,
+        },
+        {
+            "label": "Size Inch",
+            "fieldname": "size",
+            "fieldtype": "Data",
+            "width": 120,
+        },
+        {
+            "label": "Class",
+            "fieldname": "valve_class",
+            "fieldtype": "Data",
+            "width": 120,
+        },
+        {
+            "label": "Valve End",
+            "fieldname": "valve_end",
+            "fieldtype": "Data",
+            "width": 150,
+        },
+        {
+            "label": "Operation",
+            "fieldname": "operation",
+            "fieldtype": "Data",
+            "width": 180,
+        },
+        {
+            "label": "Material (Shell)",
+            "fieldname": "shell_moc",
+            "fieldtype": "Data",
+            "width": 180,
+        },
+        {
+            "label": "Valve Serial No",
+            "fieldname": "serial_no",
+            "fieldtype": "Link",
+            "options": "Serial Number",
+            "width": 150,
+        },
         {
             "label": "MFG Type",
             "fieldname": "mfg_type",
             "fieldtype": "Data",
-            "width": 140
+            "width": 140,
         },
         {
             "label": "API Monogram",
             "fieldname": "api_monogram_req",
             "fieldtype": "Data",
-            "width": 140
+            "width": 140,
         },
-
-        
     ]
 
 
-def get_data(filters):
-    conditions = ""
-    values = {}
+def get_sales_order_conditions(filters, values):
+    """
+    Build filters that apply ONLY to Sales Order (`so`).
 
+    These conditions are intentionally prefixed with `so.` so that
+    filters such as customer and branch are applied against Sales Order
+    and not against Serial Number / Sales Order Item.
+    """
+
+    conditions = ""
+
+    # Sales Order
     if filters.get("sales_order"):
         conditions += " AND so.name = %(sales_order)s"
         values["sales_order"] = filters.get("sales_order")
 
+    # Customer from Sales Order
     if filters.get("customer"):
         conditions += " AND so.customer = %(customer)s"
         values["customer"] = filters.get("customer")
 
+    # Branch from Sales Order
     if filters.get("branch"):
         conditions += " AND so.branch = %(branch)s"
         values["branch"] = filters.get("branch")
 
+    # Company from Sales Order
+    if filters.get("company"):
+        conditions += " AND so.company = %(company)s"
+        values["company"] = filters.get("company")
+
+    # Sales Order status
+    if filters.get("status"):
+        conditions += " AND so.status = %(status)s"
+        values["status"] = filters.get("status")
+
+    # Transaction date
+    if filters.get("transaction_date"):
+        conditions += " AND so.transaction_date = %(transaction_date)s"
+        values["transaction_date"] = filters.get("transaction_date")
+
+    # Delivery date
+    if filters.get("delivery_date"):
+        conditions += " AND so.delivery_date = %(delivery_date)s"
+        values["delivery_date"] = filters.get("delivery_date")
+
+    # Customer PO
+    if filters.get("po_no"):
+        conditions += " AND so.po_no = %(po_no)s"
+        values["po_no"] = filters.get("po_no")
+
+    return conditions
+
+
+def get_data(filters):
+    filters = filters or {}
+
+    conditions = ""
+    values = {}
+
+    # ==========================================================
+    # SALES ORDER FILTERS
+    # ==========================================================
+    #
+    # All filters returned here are explicitly applied to
+    # the Sales Order table using the `so` alias.
+    #
+    conditions += get_sales_order_conditions(filters, values)
+
+    # ==========================================================
+    # SERIAL NUMBER / BATCH FILTER
+    # ==========================================================
+
     if filters.get("batch"):
-        # frappe.log_error("filters---",filters)
         conditions += " AND sn.batch = %(batch)s"
         values["batch"] = filters.get("batch")
 
-    
+    # ==========================================================
+    # MAIN QUERY
+    # ==========================================================
 
     query = f"""
         SELECT
@@ -135,7 +272,6 @@ def get_data(filters):
 
             so.branch,
             so.status,
-            # so.name AS sales_order,
             so.customer,
 
             soi.item_code,
@@ -164,23 +300,29 @@ def get_data(filters):
         LEFT JOIN `tabItem Generator` ig
             ON ig.created_item = soi.item_code
 
-        WHERE 1=1
-        AND sn.docstatus != 2
-        {conditions}
+        WHERE 1 = 1
+
+            AND sn.docstatus != 2
+
+            {conditions}
 
         ORDER BY sn.creation DESC
     """
 
-    return frappe.db.sql(query, values, as_dict=1)
+    return frappe.db.sql(
+        query,
+        values,
+        as_dict=True,
+    )
 
 
 @frappe.whitelist()
 def update_serial_numbers(updates):
-    #  
     if isinstance(updates, str):
         updates = json.loads(updates)
+
     for row in updates:
-        
+
         if not row.get("serial_number"):
             continue
 
@@ -189,8 +331,8 @@ def update_serial_numbers(updates):
             row["serial_number"],
             {
                 "mfg_type": row.get("mfg_type"),
-                "api_monogram_req": row.get("api_monogram_req")
-            }
+                "api_monogram_req": row.get("api_monogram_req"),
+            },
         )
 
     frappe.db.commit()
