@@ -1,54 +1,3 @@
-// async function get_missing_revise_component_items(frm) {
-//     if (!frm.doc.sales_order) {
-//         return [];
-//     }
-
-//     const r = await frappe.call({
-//         method: "frappe.client.get",
-//         args: {
-//             doctype: "Sales Order",
-//             name: frm.doc.sales_order
-//         }
-//     });
-
-//     const sales_order = r.message;
-
-//     if (!sales_order) {
-//         return [];
-//     }
-
-//     // Get ONLY item codes from the linked Sales Order
-//     const so_item_codes = new Set(
-//         (sales_order.items || [])
-//             .map(row => row.item_code)
-//             .filter(Boolean)
-//     );
-
-//     console.log("Sales Order Items:", [...so_item_codes]);
-
-//     const missing = [];
-
-//     // Check OMR rows
-//     (frm.doc.sales_order_item || []).forEach(row => {
-//         const rev_component_of = row.rev_component_of;
-
-//         if (
-//             rev_component_of &&
-//             !so_item_codes.has(rev_component_of)
-//         ) {
-//             missing.push({
-//                 idx: row.idx,
-//                 item: rev_component_of
-//             });
-//         }
-//     });
-
-//     console.log("Missing:", missing);
-
-//     return missing;
-// }
-
-
 
 
 async function get_missing_revise_component_items(frm) {
@@ -92,29 +41,29 @@ frappe.ui.form.on("Order Modification Request", {
      
  validate: async function (frm) {
     console.log("validate trigger")
-        if (frm.doc.type !== "Sales Order") return;
+    if (frm.doc.type !== "Sales Order") return;
 
-        const missing = await get_missing_revise_component_items(frm);
-        console.log("missiong value ---",missing)
+    const missing = await get_missing_revise_component_items(frm);
+    console.log("missing value ---", missing)
 
-        if (missing.length) {
-            const detail = missing
-                .map(d => `${__('Row')} ${d.idx} → ${d.item}`)
-                .join(", ");
+    if (missing.length) {
+        const detail = missing
+            .map(d => `${__('Row')} ${d.idx} → ${d.item}`)
+            .join("<br>");
 
-            frappe.show_alert({
-                message: __(
-                    "Some 'Revise Component Of' items are not present in the Sales Order: {0}",
-                    [detail]
-                ),
-                indicator: "red"
-            }, 7);
+        frappe.msgprint({
+            title: __('Missing Revise Components'),
+            message: __(
+                "Some 'Revise Component Of' items are not present in the Sales Order:<br><br>{0}<br><br>Cannot Approve the OMR for the Sales Order because the item associated with a Free Item that is being removed and will no longer be available in the Sales Order. Please update the Free Item association before proceeding.",
+                [detail]
+            ),
+            indicator: "red"
+        });
+          await new Promise(resolve => setTimeout(resolve, 2000));
 
-            // // Synchronous — no race condition, this reliably blocks save
-            // frappe.validated = false;
-        }
-    },
-
+        // frappe.validated = false;
+    }
+},
     type: function (frm) {
         toggle_drg_section(frm);
         make_fields_mandatory_based_on_type(frm);

@@ -250,15 +250,14 @@
    "fieldtype": "Link",
    "label": "Rev UOM",
    "no_copy": 1,
-   "options": "UOM",
-   "read_only": 1
+   "options": "UOM"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-07-07 17:23:26.234874",
+ "modified": "2026-08-11 13:39:15.291700",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Order Modification Request Detail",
