@@ -426,7 +426,10 @@ def bulk_assign(sales_orders, assign_to, description=None):
 
 @frappe.whitelist()
 def export_excel(filters=None, sales_orders=None):
-	"""Server-side export as a colour-coded .xlsx, matching dashboard badges."""
+	"""Server-side export as a colour-coded .xlsx, matching dashboard badges.
+	Only Pending and Critical statuses are highlighted; Updated, Not Required,
+	and Waiting are left as plain/default cells.
+	"""
 	if sales_orders:
 		if isinstance(sales_orders, str):
 			sales_orders = json.loads(sales_orders)
@@ -500,32 +503,60 @@ def export_excel(filters=None, sales_orders=None):
 			_clean(remark),
 		]
 
-		colored_cols = set()
 		for col_idx, val in enumerate(values, start=1):
 			cell = ws.cell(row=row_idx, column=col_idx, value=val)
 			cell.border = border
 			cell.alignment = Alignment(vertical="center")
 
+		colored_cols = set()
+
 		for col_idx, badge_key in BADGE_COL_MAP.items():
 			badge = r.get(badge_key)
-			if badge and badge.get("key") in BADGE_FILL_HEX:
-				hexcode = BADGE_FILL_HEX[badge["key"]]
-				cell = ws.cell(row=row_idx, column=col_idx)
-				cell.fill = PatternFill(start_color=hexcode, end_color=hexcode, fill_type="solid")
-				cell.font = Font(color="FFFFFF", bold=True)
-				cell.alignment = Alignment(horizontal="center", vertical="center")
-				colored_cols.add(col_idx)
+			if not badge:
+				continue
+			key = badge.get("key")
 
+			# -----------------------------------------------------------
+			# Only color Pending and Critical badges. Updated (green),
+			# Not Required (blue), and Waiting (grey) are intentionally
+			# left uncolored per request - commented out, not removed,
+			# so they can be re-enabled later if needed.
+			# -----------------------------------------------------------
+			if key not in ("pending", "critical"):
+				continue
+			# if key in ("updated", "not_required", "waiting"):
+			#     continue
+
+			hexcode = BADGE_FILL_HEX[key]
+			cell = ws.cell(row=row_idx, column=col_idx)
+			cell.fill = PatternFill(start_color=hexcode, end_color=hexcode, fill_type="solid")
+			cell.font = Font(color="FFFFFF", bold=True)
+			cell.alignment = Alignment(horizontal="center", vertical="center")
+			colored_cols.add(col_idx)
+
+		# -----------------------------------------------------------
+		# Severity column: only color Critical. Other severities
+		# (High/amber, Medium/blue, Waiting/grey, Low/green) are
+		# intentionally left uncolored - commented out, not removed.
+		# -----------------------------------------------------------
 		sev = r.get("severity")
-		if sev in SEVERITY_FILL_HEX:
+		if sev == "Critical":
 			hexcode = SEVERITY_FILL_HEX[sev]
 			cell = ws.cell(row=row_idx, column=SEVERITY_COL)
 			cell.fill = PatternFill(start_color=hexcode, end_color=hexcode, fill_type="solid")
-			cell.font = Font(color="1A1300" if sev == "High" else "FFFFFF", bold=True)
+			cell.font = Font(color="FFFFFF", bold=True)
 			cell.alignment = Alignment(horizontal="center", vertical="center")
 			colored_cols.add(SEVERITY_COL)
+		# elif sev in SEVERITY_FILL_HEX:
+		#     hexcode = SEVERITY_FILL_HEX[sev]
+		#     cell = ws.cell(row=row_idx, column=SEVERITY_COL)
+		#     cell.fill = PatternFill(start_color=hexcode, end_color=hexcode, fill_type="solid")
+		#     cell.font = Font(color="1A1300" if sev == "High" else "FFFFFF", bold=True)
+		#     cell.alignment = Alignment(horizontal="center", vertical="center")
+		#     colored_cols.add(SEVERITY_COL)
 
-		# Light red tint across the rest of a Critical row, echoing the left-border indicator in the UI
+		# Light red tint across the rest of a Critical row, echoing the
+		# left-border indicator in the UI. Still only triggers for Critical.
 		if sev == "Critical":
 			tint = PatternFill(start_color="FDEDED", end_color="FDEDED", fill_type="solid")
 			for col_idx in range(1, len(columns) + 1):
@@ -546,7 +577,7 @@ def export_excel(filters=None, sales_orders=None):
 	frappe.response["filecontent"] = buf.getvalue()
 	frappe.response["content_type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	frappe.response["type"] = "download"
-
+	
 @frappe.whitelist()
 def export_csv(filters=None):
     """Server-side export of the full filtered result set."""
