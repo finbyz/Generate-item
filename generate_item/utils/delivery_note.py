@@ -937,7 +937,6 @@ def set_remaining_actual_taxes(delivery_name):
     
     _calculate_and_set_remaining_taxes(doc)
     doc.save()
-    frappe.db.commit()
     
     return {
         "success": True,
