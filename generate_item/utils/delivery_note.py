@@ -1190,90 +1190,142 @@ def fetch_po_line_no_from_sales_order(doc, method=None):
         frappe.log_error('DN Fetch PO Line No', f'Error populating po_line_no on DN {getattr(doc, "name", "Unsaved")}: {str(e)}')
         
 
+
 def validate_free_items(doc):
-    """
-    Validation Rules:
-
-    1. If parent item is not being delivered in DN:
-       -> Ignore its free items.
-
-    2. If parent item is being delivered in DN:
-       -> All corresponding free items from SO must be present in DN.
-       -> DN free item qty must exactly match SO free item qty.
-
-    3. Free items linked to other parent items should not affect validation.
-    """
-
     errors = []
 
-    # All item codes present in Delivery Note
-    dn_item_codes = {d.item_code for d in doc.items}
+    dn_lines_by_so_detail = {}
+    for d in doc.items:
+        so_detail = getattr(d, "so_detail", None)
+        if not so_detail:
+            continue
+        dn_lines_by_so_detail.setdefault(so_detail, []).append(d)
 
-    # Map DN free items
-    # {(SO, item_code): qty}
-    dn_free_qty_map = {
-        (d.against_sales_order, d.item_code): flt(d.qty)
-        for d in doc.items
-        if d.is_free_item and d.component_of
-    }
-
-    # Sales Orders referenced in DN
-    so_names = {
-        d.against_sales_order
-        for d in doc.items
-        if d.against_sales_order
-    }
+    so_names = {d.against_sales_order for d in doc.items if d.against_sales_order}
 
     for so_name in so_names:
-
         so = frappe.get_doc("Sales Order", so_name)
+        so_items_by_name = {row.name: row for row in so.items}
 
         for so_item in so.items:
-            
-
-            # Only free items
-            if not (so_item.is_free_item and so_item.component_of):
+            if not (so_item.is_free_item and so_item.main_item_id):
                 continue
 
-            parent_item = so_item.component_of
+            parent_row = so_items_by_name.get(so_item.main_item_id)
+            if not parent_row:
+                continue  # no parent to check against — nothing to validate
 
-            # Parent item not present in DN
-            # Skip validation completely
-            if parent_item not in dn_item_codes:
-                continue
+            if not dn_lines_by_so_detail.get(parent_row.name):
+                continue  # parent line genuinely not being delivered
 
-            # Free item should exist in DN
-            so_qty        = flt(so_item.qty)
-            so_del_qty    = flt(so_item.delivered_qty)
-            so_remaining  = so_qty - so_del_qty
-            # Free item already fully delivered
+            so_remaining = flt(so_item.qty) - flt(so_item.delivered_qty)
             if so_remaining <= 0:
                 continue
-            dn_qty = dn_free_qty_map.get(
-                (so_name, so_item.item_code)
-            )
+
+            free_dn_lines = dn_lines_by_so_detail.get(so_item.name)
+            dn_qty = sum(flt(d.qty) for d in free_dn_lines) if free_dn_lines else None
+
+            parent_label = f"{parent_row.item_code} (SO Row {parent_row.idx})"
+            free_label = f"{so_item.item_code} (SO Row {so_item.idx})"
 
             if dn_qty is None:
                 errors.append(
-                    f"• Free Item <b>{so_item.item_code}</b> is required with "
-                    f"<b>{parent_item}</b>"
+                    f"• Free Item <b>{free_label}</b> is required with <b>{parent_label}</b>"
                 )
-                continue
-
-            # Quantity must exactly match SO
-            if flt(dn_qty) != flt(so_remaining):
+            elif flt(dn_qty) != flt(so_remaining):
                 errors.append(
-                    f"• Free Item <b>{so_item.item_code}</b> linked with "
-                    f"<b>{parent_item}</b> has quantity <b>{dn_qty}</b> in "
-                    f"Delivery Note but should be <b>{so_item.qty}</b> as per "
-                    f"Sales Order <b>{so_name}</b>."
+                    f"• Free Item <b>{free_label}</b> linked with <b>{parent_label}</b> "
+                    f"has quantity <b>{dn_qty}</b> in Delivery Note but should be "
+                    f"<b>{so_remaining}</b> as per Sales Order <b>{so_name}</b>."
                 )
 
     if errors:
-        frappe.throw(
-            "<br>".join(errors),
-            title=_("Free Item Validation Failed")
-        )
+        frappe.throw("<br>".join(errors), title=_("Free Item Validation Failed"))
+              
+# def validate_free_items(doc):
+#     """
+#     Validation Rules:
+
+#     1. If parent item is not being delivered in DN:
+#        -> Ignore its free items.
+
+#     2. If parent item is being delivered in DN:
+#        -> All corresponding free items from SO must be present in DN.
+#        -> DN free item qty must exactly match SO free item qty.
+
+#     3. Free items linked to other parent items should not affect validation.
+#     """
+
+#     errors = []
+
+#     # All item codes present in Delivery Note
+#     dn_item_codes = {d.item_code for d in doc.items}
+
+#     # Map DN free items
+#     # {(SO, item_code): qty}
+#     dn_free_qty_map = {
+#         (d.against_sales_order, d.item_code): flt(d.qty)
+#         for d in doc.items
+#         if d.is_free_item and d.component_of
+#     }
+
+#     # Sales Orders referenced in DN
+#     so_names = {
+#         d.against_sales_order
+#         for d in doc.items
+#         if d.against_sales_order
+#     }
+
+#     for so_name in so_names:
+
+#         so = frappe.get_doc("Sales Order", so_name)
+
+#         for so_item in so.items:
+            
+
+#             # Only free items
+#             if not (so_item.is_free_item and so_item.component_of):
+#                 continue
+
+#             parent_item = so_item.component_of
+
+#             # Parent item not present in DN
+#             # Skip validation completely
+#             if parent_item not in dn_item_codes:
+#                 continue
+
+#             # Free item should exist in DN
+#             so_qty        = flt(so_item.qty)
+#             so_del_qty    = flt(so_item.delivered_qty)
+#             so_remaining  = so_qty - so_del_qty
+#             # Free item already fully delivered
+#             if so_remaining <= 0:
+#                 continue
+#             dn_qty = dn_free_qty_map.get(
+#                 (so_name, so_item.item_code)
+#             )
+
+#             if dn_qty is None:
+#                 errors.append(
+#                     f"• Free Item <b>{so_item.item_code}</b> is required with "
+#                     f"<b>{parent_item}</b>"
+#                 )
+#                 continue
+
+#             # Quantity must exactly match SO
+#             if flt(dn_qty) != flt(so_remaining):
+#                 errors.append(
+#                     f"• Free Item <b>{so_item.item_code}</b> linked with "
+#                     f"<b>{parent_item}</b> has quantity <b>{dn_qty}</b> in "
+#                     f"Delivery Note but should be <b>{so_item.qty}</b> as per "
+#                     f"Sales Order <b>{so_name}</b>."
+#                 )
+
+#     if errors:
+#         frappe.throw(
+#             "<br>".join(errors),
+#             title=_("Free Item Validation Failed")
+#         )
 
 
 @frappe.whitelist()

@@ -32,11 +32,11 @@ class OrderModificationRequest(Document):
             self.name = make_autoname(f"{self.bom}-.##")
 
     def validate(self):
-
         create_history_records(self)
         _create_commercial_history(self)
         self.validate_sales_order()
         self.validate_qty_and_rev_qty()
+        self.validate_free_item_self_association()
     
   
 
@@ -54,6 +54,7 @@ class OrderModificationRequest(Document):
 
             elif self.modification_type == "Order Item Change":
                 # create_history_records(self)
+
                 self.validate_component_of_items(throw=True)
                 self.validate_free_item_association_not_removed()  
                 self.update_sales_order_values()
@@ -64,56 +65,6 @@ class OrderModificationRequest(Document):
         create_bom_task_on_omr_submit(self)
         self.update_production_plan_sales_order_modification()
 
-
-    # def validate_component_of_items(self, throw=False):
- 
-    #     if not self.sales_order:
-    #         return
-
-    #     # All item codes present in the linked Sales Order
-    #     so_items = set(
-    #         frappe.get_all(
-    #             "Sales Order Item",
-    #             filters={"parent": self.sales_order},
-    #             pluck="item_code",
-    #         )
-    #     )
-
-    #     invalid_rows = []
-
-    #     for row in self.sales_order_item:
-    #         component_of = (row.rev_component_of or "").strip()
-
-    #         if not component_of:
-    #             continue
-
-    #         if component_of not in so_items:
-    #             invalid_rows.append(
-    #                 _("Row {0}: <b>{1}</b>").format(row.idx, frappe.bold(component_of))
-    #             )
-
-    #     if not invalid_rows:
-    #         return
-
-    #     message = _(
-    #         """
-    #         The following <b>Revise Component Of</b> items do not exist in the linked Sales Order:<br><br>
-
-    #         {0}
-
-    #         <br><br>
-    #         Cannot modify the Sales Order because the item associated with a Free Item is being removed and will no longer be available in the Sales Order. Please update the Free Item association before proceeding.
-    #         """
-    #     ).format("<br>".join(invalid_rows))
-
-    #     if throw:
-    #         frappe.throw(message, title=_("Invalid Revise Component Of"))
-    #     else:
-    #         frappe.msgprint(
-    #             message,
-    #             title=_("Validation Warning"),
-    #             indicator="orange",
-    #         )
 
     def validate_component_of_items(self, throw=False):
         if not self.sales_order or not self.sales_order_item:
@@ -161,6 +112,76 @@ class OrderModificationRequest(Document):
             frappe.throw(message, title=_("Invalid Revise Component Of"))
         else:
             frappe.msgprint(message, title=_("Validation Warning"), indicator="orange")
+    
+    def validate_free_item_self_association(self):
+        """
+        Block a Free Item row's Revise Component Of when it self-references:
+        1. rev_component_of == component_of  → no actual change
+        2. rev_component_of == item          → free item points at its own item code
+        3. rev_component_of == rev_item      → free item points at its own revised item code
+
+        Case 1 is resolved using the actual TARGET ROW (rev_main_item_id) against
+        the live Sales Order's current association, not just item-code text —
+        because multiple main rows can legitimately share the same item code
+        (e.g. same item on two different batches/lines). Comparing text alone
+        would wrongly block a valid re-association from one such row to another.
+        """
+        if not self.sales_order_item:
+            return
+
+        errors = []
+
+        for row in self.sales_order_item:
+            is_free_row = bool(row.is_free_item or getattr(row, "rev_is_free_item", 0))
+            if not is_free_row:
+                continue
+
+            rev_component_of = (getattr(row, "rev_component_of", None) or "").strip()
+            if not rev_component_of:
+                continue
+
+            item = (row.item or "").strip()
+            rev_item = (getattr(row, "rev_item", None) or "").strip()
+            component_of = (row.component_of or "").strip()
+
+            # Case 2 — self-reference to own item code (unambiguous, no row-identity needed)
+            if item and rev_component_of == item:
+                errors.append(
+                    _("Row {0}: Revised Component Of cannot be the Free Item's own item code ({1}).")
+                    .format(row.idx, frappe.bold(item))
+                )
+                continue
+
+            # Case 3 — self-reference to own revised item code
+            if rev_item and rev_component_of == rev_item:
+                errors.append(
+                    _("Row {0}: Revised Component Of cannot be the Free Item's own revised item code ({1}).")
+                    .format(row.idx, frappe.bold(rev_item))
+                )
+                continue
+
+            # Case 1 — "no real change"
+            if component_of and rev_component_of == component_of:
+                rev_main_item_id = getattr(row, "rev_main_item_id", None)
+                truly_unchanged = True
+
+                if rev_main_item_id and row.sales_order_item_name:
+                    live_main_item_id = frappe.db.get_value(
+                        "Sales Order Item", row.sales_order_item_name, "main_item_id"
+                    )
+                    if live_main_item_id and rev_main_item_id != live_main_item_id:
+                        # Item code text matches, but the TARGET ROW differs —
+                        # genuine re-association across duplicate-item rows. Allow it.
+                        truly_unchanged = False
+
+                if truly_unchanged:
+                    errors.append(
+                        _("Row {0}: Revised Component Of is the same as the current Component Of ({1}) — no change is being made.")
+                        .format(row.idx, frappe.bold(component_of))
+                    )
+
+        if errors:
+            frappe.throw("<br>".join(errors), title=_("Invalid Free Item Association"))
 
     def validate_free_item_association_not_removed(self):
         """

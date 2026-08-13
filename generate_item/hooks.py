@@ -33,7 +33,17 @@ app_license = "mit"
 
 app_include_js = [
     "/assets/generate_item/js/report_export.js?v=6.0",
+     "/assets/generate_item/js/login_redirect.js?v=1.4"
 ]
+# --- Login Redirect feature --------------------------------------------------
+
+# Adds login_redirect_enabled / login_redirect_route to frappe.boot for the
+# current user (see overrides/boot.py). Runs on every boot request.
+
+boot_session = "generate_item.overrides.boot.boot_session"
+
+
+
 
 # include js, css files in header of desk.html
 # app_include_css = "/assets/generate_item/css/generate_item.css"

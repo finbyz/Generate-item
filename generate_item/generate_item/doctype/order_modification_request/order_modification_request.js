@@ -1,4 +1,49 @@
+async function get_free_item_self_association_issues(frm) {
+    const rows = frm.doc.sales_order_item || [];
+    const issues = [];
 
+    for (const row of rows) {
+        const is_free = row.is_free_item || row.rev_is_free_item;
+        if (!is_free || !row.rev_component_of) continue;
+
+        // Case 2 / 3 — unambiguous, item-code comparison is enough
+        if (row.item && row.rev_component_of === row.item) {
+            issues.push({ idx: row.idx, reason: __("is the Free Item's own item code ({0})", [row.item]) });
+            continue;
+        }
+        if (row.rev_item && row.rev_component_of === row.rev_item) {
+            issues.push({ idx: row.idx, reason: __("is the Free Item's own revised item code ({0})", [row.rev_item]) });
+            continue;
+        }
+
+        // Case 1 — resolve via the actual target row, not item-code text alone,
+        // since duplicate item codes across main rows make text ambiguous.
+        if (row.component_of && row.rev_component_of === row.component_of) {
+            let truly_unchanged = true;
+
+            if (row.rev_main_item_id && row.sales_order_item_name) {
+                try {
+                    const r = await frappe.db.get_value(
+                        "Sales Order Item", row.sales_order_item_name, "main_item_id"
+                    );
+                    const live_main_item_id = r && r.message ? r.message.main_item_id : null;
+
+                    if (live_main_item_id && row.rev_main_item_id !== live_main_item_id) {
+                        truly_unchanged = false; // re-associated to a different row, same item code
+                    }
+                } catch (e) {
+                    // lookup failed — fall back to the text-only result (truly_unchanged stays true)
+                }
+            }
+
+            if (truly_unchanged) {
+                issues.push({ idx: row.idx, reason: __("is unchanged from the current Component Of ({0})", [row.component_of]) });
+            }
+        }
+    }
+
+    return issues;
+}
 
 async function get_missing_revise_component_items(frm) {
     const rows = frm.doc.sales_order_item || [];
@@ -33,38 +78,79 @@ frappe.ui.form.on("Order Modification Request", {
         make_fields_mandatory_based_on_type(frm);
         handle_ig_return(frm);
         setup_rev_item_tracking(frm);
+        // setup_rev_component_of_query(frm); 
     },
 
       onload: function (frm) {
         handle_ig_return(frm);
     },
      
- validate: async function (frm) {
-    console.log("validate trigger")
-    if (frm.doc.type !== "Sales Order") return;
+//  validate: async function (frm) {
+//     console.log("validate trigger")
+//     if (frm.doc.type !== "Sales Order") return;
 
-    const missing = await get_missing_revise_component_items(frm);
-    console.log("missing value ---", missing)
+//     const missing = await get_missing_revise_component_items(frm);
+//     console.log("missing value ---", missing)
 
-    if (missing.length) {
-        const detail = missing
-            .map(d => `${__('Row')} ${d.idx} → ${d.item}`)
-            .join("<br>");
+//     if (missing.length) {
+//         const detail = missing
+//             .map(d => `${__('Row')} ${d.idx} → ${d.item}`)
+//             .join("<br>");
 
-        frappe.msgprint({
-            title: __('Missing Revise Components'),
-            message: __(
-                "Some 'Revise Component Of' items are not present in the Sales Order:<br><br>{0}<br><br>Cannot Approve the OMR for the Sales Order because the item associated with a Free Item that is being removed and will no longer be available in the Sales Order. Please update the Free Item association before proceeding.",
-                [detail]
-            ),
-            indicator: "red"
-        });
-          await new Promise(resolve => setTimeout(resolve, 2000));
+//         frappe.msgprint({
+//             title: __('Missing Revise Components'),
+//             message: __(
+//                 "Some 'Revise Component Of' items are not present in the Sales Order:<br><br>{0}<br><br>Cannot Approve the OMR for the Sales Order because the item associated with a Free Item that is being removed and will no longer be available in the Sales Order. Please update the Free Item association before proceeding.",
+//                 [detail]
+//             ),
+//             indicator: "red"
+//         });
+//           await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // frappe.validated = false;
-    }
-},
-    type: function (frm) {
+//         // frappe.validated = false;
+//     }
+// },
+
+// validate: async function (frm) {
+//     if (frm.doc.type !== "Sales Order") return;
+
+//      const missing = await get_missing_revise_component_items(frm);
+//     const self_assoc_issues = await get_free_item_self_association_issues(frm); // now awaited
+
+
+//     if (missing.length) {
+//         const detail = missing
+//             .map(d => `${__('Row')} ${d.idx} → ${d.item}`)
+//             .join("<br>");
+
+//         frappe.msgprint({
+//             title: __('Missing Revise Components'),
+//             message: __(
+//                 "Some 'Revise Component Of' items are not present in the Sales Order:<br><br>{0}",
+//                 [detail]
+//             ),
+//             indicator: "red"
+//         });
+//         // still non-blocking, as in your original code
+//     }
+
+//     if (self_assoc_issues.length) {
+//         const detail = self_assoc_issues
+//             .map(d => `${__('Row')} ${d.idx} → ${d.reason}`)
+//             .join("<br>");
+
+//         frappe.msgprint({
+//             title: __('Invalid Free Item Association'),
+//             message: __("Revise Component Of is invalid for the following row(s):<br><br>{0}", [detail]),
+//             indicator: "red"
+//         });
+//           await new Promise(resolve => setTimeout(resolve, 2000));
+
+//         // frappe.validated = false;   // this one actually blocks save, as requested
+//     }
+// },   
+
+type: function (frm) {
         toggle_drg_section(frm);
         make_fields_mandatory_based_on_type(frm);
     },
@@ -528,13 +614,51 @@ frappe.ui.form.on('Sales Order Item For OMR', {
 });
 
 
+// function handle_rev_component_of_change(frm, cdt, cdn) {
+//     const row = locals[cdt][cdn];
+
+//     // Only meaningful for Free Item rows (existing or being converted via rev_is_free_item)
+//     const is_free = row.is_free_item || row.rev_is_free_item;
+
+//     if (!is_free || !row.rev_component_of) {
+//         clear_association_fields(frm, cdt, cdn);
+//         return;
+//     }
+
+//     if (row._assoc_timeout) {
+//         clearTimeout(row._assoc_timeout);
+//     }
+
+//     row._assoc_timeout = setTimeout(() => {
+//         resolve_association(frm, cdt, cdn);
+//     }, 300);
+// }
+
 function handle_rev_component_of_change(frm, cdt, cdn) {
     const row = locals[cdt][cdn];
-
-    // Only meaningful for Free Item rows (existing or being converted via rev_is_free_item)
     const is_free = row.is_free_item || row.rev_is_free_item;
 
     if (!is_free || !row.rev_component_of) {
+        clear_association_fields(frm, cdt, cdn);
+        return;
+    }
+
+    // Case 2 / Case 3 — immediate self-association guard
+    if (row.item && row.rev_component_of === row.item) {
+        frappe.show_alert({
+            message: __('Row #{0}: A Free Item cannot be a component of its own item ({1}).', [row.idx, row.item]),
+            indicator: 'red'
+        }, 6);
+        frappe.model.set_value(cdt, cdn, 'rev_component_of', '');
+        clear_association_fields(frm, cdt, cdn);
+        return;
+    }
+    if (row.rev_item && row.rev_component_of === row.rev_item) {
+        frappe.show_alert({
+            message: __('Row #{0}: A Free Item cannot be a component of its own revised item ({1}).', [row.idx, row.rev_item]),
+            indicator: 'red'
+        }, 6);
+        frappe.model.set_value(cdt, cdn, 'rev_component_of', '');
         clear_association_fields(frm, cdt, cdn);
         return;
     }
@@ -547,7 +671,6 @@ function handle_rev_component_of_change(frm, cdt, cdn) {
         resolve_association(frm, cdt, cdn);
     }, 300);
 }
-
 
 function resolve_association(frm, cdt, cdn) {
     const row = locals[cdt][cdn];
@@ -928,3 +1051,54 @@ function handle_ig_return(frm) {
         sessionStorage.removeItem('omr_ig_result');
     }
 }
+
+
+// function compute_allowed_component_of_item_codes(frm, current_row) {
+//     const rows = frm.doc.sales_order_item || [];
+//     const codes = new Set();
+
+//     rows.forEach(r => {
+//         const is_free = r.is_free_item || r.rev_is_free_item;
+//         if (is_free) return; // only main (non-free) rows are valid association targets
+
+//         // Exclude lines being cancelled in this revision — same rule as validate_component_of_items
+//         const rev_status = (r.rev_line_status || '').trim();
+//         const orig_status = (r.line_status || '').trim();
+//         const being_cancelled = rev_status === 'Cancelled' || (!rev_status && orig_status === 'Cancelled');
+//         if (being_cancelled) return;
+
+//         // Same "effective item" rule used everywhere else in this doctype
+//         const effective_item = (r.rev_item && r.rev_item !== r.item) ? r.rev_item : r.item;
+//         if (!effective_item) return;
+
+//         // Skip rows with no meaningful qty (mirrors flt(row.amount) > 0 in the BOM example)
+//         const effective_qty = flt(r.rev_qty) > 0 ? flt(r.rev_qty) : flt(r.qty);
+//         if (effective_qty <= 0) return;
+
+//         // Self-association guard (cases 1–3) — never offer the current row's own values
+//         if (current_row) {
+//             if (current_row.item && effective_item === current_row.item) return;
+//             if (current_row.rev_item && effective_item === current_row.rev_item) return;
+//             if (current_row.component_of && effective_item === current_row.component_of) return;
+//         }
+
+//         codes.add(effective_item);
+//     });
+
+//     return Array.from(codes);
+// }
+
+// function setup_rev_component_of_query(frm) {
+//     if (!frm.fields_dict['sales_order_item']) return;
+
+//     frm.fields_dict['sales_order_item'].grid.get_field('rev_component_of').get_query = function (doc, cdt, cdn) {
+//         const current_row = locals[cdt][cdn];
+//         const item_codes = compute_allowed_component_of_item_codes(frm, current_row);
+
+//         return {
+//             filters: [
+//                 ["name", "in", item_codes]
+//             ]
+//         };
+//     };
+// }
