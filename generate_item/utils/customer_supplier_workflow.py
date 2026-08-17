@@ -179,13 +179,14 @@ def _ensure_disabled_field_available(doctype):
 
 
 def _validate_branch_selected(doc):
-    if not doc.get(CF_BRANCH):
-        frappe.throw(
-            _("Please select a {0} before saving this {1}.").format(
-                frappe.bold("Branch"), doc.doctype
-            ),
-            frappe.ValidationError,
-        )
+    pass
+#     if not doc.get(CF_BRANCH):
+#         frappe.throw(
+#             _("Please select a {0} before saving this {1}.").format(
+#                 frappe.bold("Branch"), doc.doctype
+#             ),
+#             frappe.ValidationError,
+#         )
 
 
 def _guard_status_tampering(doc):
