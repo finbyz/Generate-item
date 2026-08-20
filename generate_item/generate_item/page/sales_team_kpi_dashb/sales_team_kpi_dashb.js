@@ -54,7 +54,45 @@ frappe.pages['sales-team-kpi-dashb'].on_page_load = function(wrapper) {
 	
 }
 
+// ========================================================================
+// URL FILTER HANDLER - Add this at the top of your file
+// ========================================================================
 
+// Function to get filters from URL
+function getFiltersFromURL() {
+    const params = new URLSearchParams(window.location.search);
+    const filters = {};
+    
+    if (params.has('from_date')) filters.from_date = params.get('from_date');
+    if (params.has('to_date')) filters.to_date = params.get('to_date');
+    if (params.has('branch')) filters.branch = params.get('branch');
+    
+    return filters;
+}
+
+// Store URL filters in sessionStorage if user is not logged in
+const urlFilters = getFiltersFromURL();
+const hasFilters = Object.keys(urlFilters).length > 0;
+
+if (hasFilters) {
+    // Check if user is logged in
+    const isLoggedIn = frappe.session && frappe.session.user && frappe.session.user !== "Guest";
+    
+    if (isLoggedIn) {
+        // User is logged in, store for dashboard to apply
+        sessionStorage.setItem('dashboard_url_filters', JSON.stringify(urlFilters));
+    } else {
+        // User is not logged in, store for after login
+        sessionStorage.setItem('dashboard_url_filters', JSON.stringify(urlFilters));
+        
+        // Show message
+        frappe.msgprint({
+            title: "Login Required",
+            message: "Please login to view the dashboard with your filters.",
+            indicator: "blue"
+        });
+    }
+}
 class OrderChangeDashboard {
 	constructor(wrapper) {
 		this.wrapper = wrapper;
@@ -73,6 +111,8 @@ class OrderChangeDashboard {
 		this.inject_styles();
 		this.render_shell();
 		this.bind_events();
+		//  Apply URL filters
+    	this.applyFiltersFromURL();
 		this.load_data();
 	}
 
@@ -84,6 +124,79 @@ class OrderChangeDashboard {
 		s.textContent = OCD_CSS;
 		document.head.appendChild(s);
 	}
+	// Add this method inside the OrderChangeDashboard class
+applyFiltersFromURL() {
+    // Check if we have stored filters
+    const stored = sessionStorage.getItem('dashboard_url_filters');
+    if (!stored) return;
+    
+    try {
+        const filters = JSON.parse(stored);
+        let hasFilter = false;
+        
+        // Apply branch filter
+        if (filters.branch) {
+            this.filters.branch = filters.branch;
+            hasFilter = true;
+            
+            // Update branch dropdown UI
+            const branchSelect = this.wrapper.querySelector("[data-role='branch-select']");
+            if (branchSelect) {
+                const options = branchSelect.querySelectorAll('.ocd-custom-option');
+                const text = branchSelect.querySelector('.ocd-custom-select-text');
+                options.forEach(o => {
+                    o.classList.remove('selected');
+                    if (o.dataset.value === filters.branch) {
+                        o.classList.add('selected');
+                        text.textContent = o.textContent;
+                    }
+                });
+            }
+        }
+        
+        // Apply date filters
+        if (filters.from_date && filters.to_date) {
+            this.filters.preset = "Custom";
+            this.filters.from_date = filters.from_date;
+            this.filters.to_date = filters.to_date;
+            hasFilter = true;
+            
+            // Update date inputs
+            const fromInput = this.wrapper.querySelector("[data-role='from-date']");
+            const toInput = this.wrapper.querySelector("[data-role='to-date']");
+            if (fromInput && toInput) {
+                fromInput.value = filters.from_date;
+                toInput.value = filters.to_date;
+                fromInput.disabled = false;
+                toInput.disabled = false;
+            }
+            
+            // Update preset dropdown
+            const presetSelect = this.wrapper.querySelector("[data-role='date-preset']");
+            if (presetSelect) {
+                const options = presetSelect.querySelectorAll('.ocd-custom-option');
+                const text = presetSelect.querySelector('.ocd-custom-select-text');
+                options.forEach(o => {
+                    o.classList.remove('selected');
+                    if (o.dataset.value === "Custom") {
+                        o.classList.add('selected');
+                        text.textContent = o.textContent;
+                    }
+                });
+            }
+        }
+        
+        // Clear stored filters after applying
+        sessionStorage.removeItem('dashboard_url_filters');
+        
+        if (hasFilter) {
+            console.log('Applied filters from URL:', filters);
+        }
+        
+    } catch(e) {
+        console.error('Error applying filters:', e);
+    }
+}
 
 	get_theme() { return localStorage.getItem("ocd_theme") || "light"; }
 
@@ -649,34 +762,51 @@ class OrderChangeDashboard {
 
 	// ------------------------------------------------------------------ data
 	load_data() {
-		if (this.filters.preset !== "Custom") {
-			const { from_date, to_date } = this.resolve_preset(this.filters.preset);
-			this.filters.from_date = from_date;
-			this.filters.to_date   = to_date;
-		} else {
-			this.sync_custom_dates();
-		}
-		this.show_loading();
+    // ADD THIS AT THE START - Check for URL filters before loading
+    const stored = sessionStorage.getItem('dashboard_url_filters');
+    if (stored) {
+        try {
+            const filters = JSON.parse(stored);
+            if (filters.from_date && filters.to_date) {
+                this.filters.preset = "Custom";
+                this.filters.from_date = filters.from_date;
+                this.filters.to_date = filters.to_date;
+                sessionStorage.removeItem('dashboard_url_filters');
+            }
+        } catch(e) {
+            console.error('Error:', e);
+        }
+    }
+    
+    // Rest of your existing load_data code...
+    if (this.filters.preset !== "Custom") {
+        const { from_date, to_date } = this.resolve_preset(this.filters.preset);
+        this.filters.from_date = from_date;
+        this.filters.to_date   = to_date;
+    } else {
+        this.sync_custom_dates();
+    }
+    this.show_loading();
 
-		const prevRange = this.resolve_previous_range(this.filters.preset, this.filters.from_date, this.filters.to_date);
+    const prevRange = this.resolve_previous_range(this.filters.preset, this.filters.from_date, this.filters.to_date);
 
-		const fetch = (from_date, to_date) => new Promise((resolve) => {
-			frappe.call({
-				method: OCD_API_METHOD,
-				args: { branch: this.filters.branch, from_date, to_date },
-				callback: (r) => resolve((r && r.message) || null),
-				error: () => resolve(null),
-			});
-		});
+    const fetch = (from_date, to_date) => new Promise((resolve) => {
+        frappe.call({
+            method: OCD_API_METHOD,
+            args: { branch: this.filters.branch, from_date, to_date },
+            callback: (r) => resolve((r && r.message) || null),
+            error: () => resolve(null),
+        });
+    });
 
-		Promise.all([
-			fetch(this.filters.from_date, this.filters.to_date),
-			fetch(prevRange.from_date, prevRange.to_date),
-		]).then(([data, prevData]) => {
-			if (!data) { this.show_error(__("No data returned.")); return; }
-			this.render_data(data, prevData || {});
-		});
-	}
+    Promise.all([
+        fetch(this.filters.from_date, this.filters.to_date),
+        fetch(prevRange.from_date, prevRange.to_date),
+    ]).then(([data, prevData]) => {
+        if (!data) { this.show_error(__("No data returned.")); return; }
+        this.render_data(data, prevData || {});
+    });
+}
 
 	show_loading() {
 		this.wrapper.querySelector('[data-field="summary"]').textContent = __("Loading…");
@@ -1644,6 +1774,21 @@ render_batch_buckets(buckets, prevBuckets = {}) {
 		`;
 	}
 }
+
+// Add this at the very bottom of your file
+// Listen for login events to apply stored filters
+$(document).on('frappe-ui-page-change', function() {
+    const user = frappe.session.user;
+    if (user && user !== "Guest") {
+        const stored = sessionStorage.getItem('dashboard_url_filters');
+        if (stored) {
+            // If dashboard exists, apply filters
+            if (window.ocd_dashboard) {
+                window.ocd_dashboard.applyFiltersFromURL();
+            }
+        }
+    }
+});
 
 // ---------------------------------------------------------------------------
 // CSS

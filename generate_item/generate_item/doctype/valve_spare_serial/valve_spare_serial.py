@@ -64,7 +64,7 @@ def _sync_valve_spare_serials_for_batch(batch_id: str, target_qty: int, branch: 
 			vss.insert(ignore_permissions=True)
 			vss.submit()
 			created.append(vss.name)
-		frappe.db.commit()
+
 		return {"created": len(created), "cancelled": 0, "short_by": 0}
 
 	# diff < 0  -> qty decreased, cancel the excess
@@ -96,7 +96,7 @@ def _sync_valve_spare_serials_for_batch(batch_id: str, target_qty: int, branch: 
 			""",
 			[frappe.utils.now(), frappe.session.user] + to_cancel,
 		)
-		frappe.db.commit()
+
 
 	return {"created": 0, "cancelled": len(to_cancel), "short_by": short_by}
 

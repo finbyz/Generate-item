@@ -440,7 +440,6 @@ class BomModificationRequest(Document):
 		
         # bom_doc.db_update()
         bom_doc.save(ignore_permissions=True)
-        frappe.db.commit()
 
 
 

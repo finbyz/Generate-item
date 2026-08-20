@@ -22,6 +22,7 @@ from __future__ import unicode_literals
 
 import json
 import io
+from datetime import datetime, timedelta
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -38,7 +39,8 @@ from frappe.utils import (
 	get_last_day,
 	getdate,
 	nowdate,
-	pretty_date, 
+	pretty_date,
+	now_datetime,
 )
 
 
@@ -54,29 +56,26 @@ BADGES = {
 	"waiting": {"key": "waiting", "emoji": "", "label": "Waiting", "color": "grey"},
 }
 
-SEVERITY_ORDER = ["Critical", "High", "Medium", "Waiting", "Low"]
+
+SEVERITY_ORDER = ["Critical", "High", "Low"]
 SEVERITY_COLOR = {
 	"Critical": "red",
 	"High": "amber",
-	"Medium": "blue",
-	"Waiting": "grey",
 	"Low": "green",
-}
-# Same hex values as the dashboard's CSS variables, so Excel matches the UI exactly
-BADGE_FILL_HEX = {
-	"updated": "5EBB63",       # green
-	"pending": "F5A623",       # amber
-	"critical": "E86161",      # red
-	"not_required": "4C9CE2",  # blue
-	"waiting": "98A6BF",       # grey
 }
 SEVERITY_FILL_HEX = {
 	"Critical": "E86161",
 	"High": "F5A623",
-	"Medium": "4C9CE2",
-	"Waiting": "98A6BF",
 	"Low": "5EBB63",
 }
+BADGE_FILL_HEX = {
+	"updated": "5EBB63",
+	"pending": "F5A623",
+	"critical": "E86161",
+	"not_required": "4C9CE2",
+	"waiting": "98A6BF",
+}
+
 
 STAGE_KEYS = ["so", "omr", "bmr", "pp", "wo", "completed"]
 STAGE_LABEL = {
@@ -231,33 +230,14 @@ def get_row_detail(sales_order, filters=None):
 			],
 		)
 
-	# ------------------------------------------------------------------ #
-	# FIX (Work Order count consistency): Production Plan / Work Order
-	# data now comes from ONE place - _fetch_maps() - the exact same
-	# helper the grid uses to build report rows. Previously this endpoint
-	# ran a second, independent PP/WO lookup here (with slightly
-	# different filters/joins) just to build `pps`/`wos`, while the
-	# accordion counts and badges were built from a *different*
-	# computation (`row`, via _fetch_maps). Two implementations of the
-	# same lookup will eventually disagree - which is exactly what
-	# produced a popup Work Order count that didn't match the report
-	# row. There is now a single source of truth, so they cannot drift
-	# apart again.
-	# ------------------------------------------------------------------ #
 	filtered_pp = filters.get("production_plan") if filters else None
 	maps = _fetch_maps([sales_order], filtered_pp=filtered_pp)
 	row = _compute_row(so, maps)
 
-	# The one Production Plan chosen for this Sales Order (the filtered
-	# PP, or - with no filter - the most recently created PP linked to
-	# this SO). This is the exact same PP shown in the report row.
 	chosen_pp = maps["pp"].get(sales_order)
 	pps = [chosen_pp] if chosen_pp else []
-	# Work Orders belonging ONLY to that chosen Production Plan - never a
-	# sum across every Production Plan the Sales Order has ever had.
 	wos = row["wo_list"]
 
-	# ---- plain-English "what's still pending" list -----------------------
 	pending_actions = []
 	if row["omr_exists"] and not row["omr_approved"]:
 		pending_actions.append(_("Get Order Modification Request {0} approved.").format(row["omr"]["name"]))
@@ -272,7 +252,6 @@ def get_row_detail(sales_order, filters=None):
 	if not pending_actions:
 		pending_actions.append(_("Nothing pending - fully synchronised. ✅"))
 
-	# ---- combined chronological history -----------------------------------
 	history = []
 	for o in omrs:
 		history.append({
@@ -340,7 +319,6 @@ def refresh_row(sales_order, filters=None):
 def get_charts_data(filters=None):
 	rows = _get_computed_rows(_parse_filters(filters), limit=2000)
 
-	# 1) pending updates by branch --------------------------------------
 	by_branch = {}
 	for r in rows:
 		b = r["branch"] or _("Unassigned")
@@ -352,12 +330,10 @@ def get_charts_data(filters=None):
 	branch_pending = [by_branch[b]["pending"] for b in branch_labels]
 	branch_total = [by_branch[b]["total"] for b in branch_labels]
 
-	# 2) status / severity distribution ----------------------------------
 	sev_counts = {s: 0 for s in SEVERITY_ORDER}
 	for r in rows:
 		sev_counts[r["severity"]] += 1
 
-	# 3) manufacturing funnel ---------------------------------------------
 	funnel = {
 		"SO": len(rows),
 		"OMR": sum(1 for r in rows if r["omr_exists"]),
@@ -367,7 +343,6 @@ def get_charts_data(filters=None):
 		"Completed": sum(1 for r in rows if r["severity"] == "Low" and r["omr_exists"]),
 	}
 
-	# 4) 30 day trend -----------------------------------------------------
 	trend = {}
 	start_date = getdate(add_days(nowdate(), -29))
 	d = start_date
@@ -381,7 +356,6 @@ def get_charts_data(filters=None):
 		if created and cstr(created) in trend:
 			trend[cstr(created)] += 1
 
-	# 5) branch performance --------------------------------------------
 	branch_perf = []
 	for b in branch_labels:
 		total = by_branch[b]["total"]
@@ -426,10 +400,7 @@ def bulk_assign(sales_orders, assign_to, description=None):
 
 @frappe.whitelist()
 def export_excel(filters=None, sales_orders=None):
-	"""Server-side export as a colour-coded .xlsx, matching dashboard badges.
-	Only Pending and Critical statuses are highlighted; Updated, Not Required,
-	and Waiting are left as plain/default cells.
-	"""
+	"""Server-side export as a colour-coded .xlsx, matching dashboard badges."""
 	if sales_orders:
 		if isinstance(sales_orders, str):
 			sales_orders = json.loads(sales_orders)
@@ -445,12 +416,12 @@ def export_excel(filters=None, sales_orders=None):
 	else:
 		rows = _get_computed_rows(_parse_filters(filters), limit=5000)
 
+	# Updated columns for export
 	columns = [
-		"Sales Order", "Customer", "OMR", "OMR Status",
-		"BMR", "BMR Status", "Production Plan",
-		"PP Update Req.", "PP Updated", "Work Order",
-		"WO Update Req.", "WO Updated",
-		"Pending At", "Severity", "Updated By", "Updated Time", "Remarks",
+		"Sales Order", "Customer", "Pending At", "OMR", "OMR Status",
+		"BMR", "BMR Status", "Production Plan", "PP Status",
+		"Work Order", "WO Status", "Severity", "Remarks",
+		"Updated By", "Updated Time",
 	]
 
 	wb = Workbook()
@@ -472,35 +443,31 @@ def export_excel(filters=None, sales_orders=None):
 	ws.freeze_panes = "A2"
 	ws.auto_filter.ref = "A1:{0}1".format(get_column_letter(len(columns)))
 
-	# Columns that get badge-colour highlighting (1-indexed)
-	BADGE_COL_MAP = {4: "omr_badge", 6: "bmr_badge", 8: "pp_required_badge",
-					  9: "pp_updated_badge", 11: "wo_required_badge", 12: "wo_updated_badge"}
-	SEVERITY_COL = 14
+	BADGE_COL_MAP = {5: "omr_badge", 7: "bmr_badge", 9: "pp_status_badge", 11: "wo_status_badge"}
+	SEVERITY_COL = 12
 
 	row_idx = 2
 	for r in rows:
 		bmr_list = [b["name"] for b in r.get("bmr_list", [])]
 		wo_list = [w["name"] for w in r.get("wo_list", [])]
-		remark = "Awaiting action at {0}".format(r.get("current_stage") or "") if r.get("is_pending") else ""
+		remark = r.get("remarks", "")
 
 		values = [
 			_clean(r.get("sales_order")),
 			_clean(r.get("customer_name")),
+			_clean(r.get("pending_at")),
 			_clean(r["omr"]["name"] if r.get("omr") else ""),
 			_clean(r["omr_badge"]["label"] if r.get("omr_badge") else ""),
 			_clean(_format_doc_list(bmr_list)),
 			_clean(r["bmr_badge"]["label"] if r.get("bmr_badge") else ""),
 			_clean(r["pp"]["name"] if r.get("pp") else ""),
-			_clean(r["pp_required_badge"]["label"] if r.get("pp_required_badge") else ""),
-			_clean(r["pp_updated_badge"]["label"] if r.get("pp_updated_badge") else ""),
+			_clean(r["pp_status_badge"]["label"] if r.get("pp_status_badge") else ""),
 			_clean(_format_doc_list(wo_list)),
-			_clean(r["wo_required_badge"]["label"] if r.get("wo_required_badge") else ""),
-			_clean(r["wo_updated_badge"]["label"] if r.get("wo_updated_badge") else ""),
-			_clean(r.get("pending_at")),
+			_clean(r["wo_status_badge"]["label"] if r.get("wo_status_badge") else ""),
 			_clean(r.get("severity")),
+			_clean(remark),
 			_clean(r.get("modified_by")),
 			_clean(pretty_date(r.get("modified")) if r.get("modified") else ""),
-			_clean(remark),
 		]
 
 		for col_idx, val in enumerate(values, start=1):
@@ -515,17 +482,8 @@ def export_excel(filters=None, sales_orders=None):
 			if not badge:
 				continue
 			key = badge.get("key")
-
-			# -----------------------------------------------------------
-			# Only color Pending and Critical badges. Updated (green),
-			# Not Required (blue), and Waiting (grey) are intentionally
-			# left uncolored per request - commented out, not removed,
-			# so they can be re-enabled later if needed.
-			# -----------------------------------------------------------
 			if key not in ("pending", "critical"):
 				continue
-			# if key in ("updated", "not_required", "waiting"):
-			#     continue
 
 			hexcode = BADGE_FILL_HEX[key]
 			cell = ws.cell(row=row_idx, column=col_idx)
@@ -534,11 +492,6 @@ def export_excel(filters=None, sales_orders=None):
 			cell.alignment = Alignment(horizontal="center", vertical="center")
 			colored_cols.add(col_idx)
 
-		# -----------------------------------------------------------
-		# Severity column: only color Critical. Other severities
-		# (High/amber, Medium/blue, Waiting/grey, Low/green) are
-		# intentionally left uncolored - commented out, not removed.
-		# -----------------------------------------------------------
 		sev = r.get("severity")
 		if sev == "Critical":
 			hexcode = SEVERITY_FILL_HEX[sev]
@@ -547,16 +500,7 @@ def export_excel(filters=None, sales_orders=None):
 			cell.font = Font(color="FFFFFF", bold=True)
 			cell.alignment = Alignment(horizontal="center", vertical="center")
 			colored_cols.add(SEVERITY_COL)
-		# elif sev in SEVERITY_FILL_HEX:
-		#     hexcode = SEVERITY_FILL_HEX[sev]
-		#     cell = ws.cell(row=row_idx, column=SEVERITY_COL)
-		#     cell.fill = PatternFill(start_color=hexcode, end_color=hexcode, fill_type="solid")
-		#     cell.font = Font(color="1A1300" if sev == "High" else "FFFFFF", bold=True)
-		#     cell.alignment = Alignment(horizontal="center", vertical="center")
-		#     colored_cols.add(SEVERITY_COL)
 
-		# Light red tint across the rest of a Critical row, echoing the
-		# left-border indicator in the UI. Still only triggers for Critical.
 		if sev == "Critical":
 			tint = PatternFill(start_color="FDEDED", end_color="FDEDED", fill_type="solid")
 			for col_idx in range(1, len(columns) + 1):
@@ -565,7 +509,7 @@ def export_excel(filters=None, sales_orders=None):
 
 		row_idx += 1
 
-	widths = [16, 22, 16, 14, 34, 14, 16, 14, 14, 34, 14, 14, 22, 12, 14, 14, 30]
+	widths = [16, 22, 22, 16, 14, 34, 14, 16, 14, 34, 14, 12, 30, 14, 14]
 	for i, w in enumerate(widths, start=1):
 		ws.column_dimensions[get_column_letter(i)].width = w
 
@@ -577,94 +521,27 @@ def export_excel(filters=None, sales_orders=None):
 	frappe.response["filecontent"] = buf.getvalue()
 	frappe.response["content_type"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 	frappe.response["type"] = "download"
-	
-@frappe.whitelist()
-def export_csv(filters=None):
-    """Server-side export of the full filtered result set."""
-    rows = _get_computed_rows(_parse_filters(filters), limit=5000)
-
-
-
-    columns = [
-        "Sales Order", "Customer", "OMR", "OMR Status",
-        "BMR", "BMR Status", "Production Plan",
-        "PP Update Req.", "PP Updated", "Work Order",
-        "WO Update Req.", "WO Updated",
-        "Pending At", "Severity", "Updated By", "Updated Time", "Remarks",
-    ]
-
-    lines = [",".join(columns)]
-
-    for r in rows:
-        bmr_list = [b["name"] for b in r.get("bmr_list", [])]
-        wo_list = [w["name"] for w in r.get("wo_list", [])]
-		 # Match JS drawer/grid logic exactly:
-        # r.is_pending ? "Awaiting action at " + r.current_stage : "—"
-        if r.get("is_pending"):
-            remark = "Awaiting action at {0}".format(r.get("current_stage") or "")
-        else:
-            remark = ""
-
-        vals = [
-            _csv_escape(_clean(r.get("sales_order"))),
-            _csv_escape(_clean(r.get("customer_name"))),
-            _csv_escape(_clean(r["omr"]["name"] if r.get("omr") else "")),
-            _csv_escape(_clean(r["omr_badge"]["label"] if r.get("omr_badge") else "")),
-            _csv_escape(_clean(_format_doc_list(bmr_list))),
-            _csv_escape(_clean(r["bmr_badge"]["label"] if r.get("bmr_badge") else "")),
-            _csv_escape(_clean(r["pp"]["name"] if r.get("pp") else "")),
-            _csv_escape(_clean(r["pp_required_badge"]["label"] if r.get("pp_required_badge") else "")),
-            _csv_escape(_clean(r["pp_updated_badge"]["label"] if r.get("pp_updated_badge") else "")),
-            _csv_escape(_clean(_format_doc_list(wo_list))),
-            _csv_escape(_clean(r["wo_required_badge"]["label"] if r.get("wo_required_badge") else "")),
-            _csv_escape(_clean(r["wo_updated_badge"]["label"] if r.get("wo_updated_badge") else "")),
-            _csv_escape(_clean(r.get("pending_at"))),
-            _csv_escape(_clean(r.get("severity"))),
-            _csv_escape(_clean(r.get("modified_by"))),
-			_csv_escape(_clean(pretty_date(r.get("modified")) if r.get("modified") else "")),  
-			_csv_escape(_clean(remark)),
-        ]
-        lines.append(",".join(vals))
-
-    content = "\n".join(lines)
-    frappe.response["doctype"] = "Production Plan WO Control Report"
-    frappe.response["filename"] = "production_plan_wo_control_report.csv"
-    frappe.response["filecontent"] = content
-    frappe.response["type"] = "download"
 
 
 def _clean(value):
-    """Normalise 'empty' placeholder values so exported cells are truly
-    blank instead of containing literal dash characters that some CSV
-    readers misrender (e.g. '—' showing up as 'â€"')."""
-    if value is None:
-        return ""
-    value = cstr(value).strip()
-    if value in ("—", "-", "--", "N/A", "n/a", "None"):
-        return ""
-    return value
+	"""Normalise 'empty' placeholder values."""
+	if value is None:
+		return ""
+	value = cstr(value).strip()
+	if value in ("—", "-", "--", "N/A", "n/a", "None"):
+		return ""
+	return value
 
 
 def _format_doc_list(names):
-    """Format a list of linked document names for CSV display as a
-    single line, pipe-separated, e.g.
-    'BOM-SA-AD8S38...-01|BOM-SA-AD8S31...-01|BOM-SA-AD8S22...-01'
-    """
-    if not names:
-        return ""
-    return "|".join(names)
+	"""Format a list of linked document names for display."""
+	if not names:
+		return ""
+	return "|".join(names)
 
-def _csv_escape(value):
-    """Escape CSV values. Preserves internal newlines as \\r\\n so Excel
-    renders them as line breaks within a single cell instead of new rows."""
-    if value is None:
-        return '""'
-    value = cstr(value).replace('"', '""')
-    value = value.replace("\r\n", "\n").replace("\n", "\r\n")
-    return '"{}"'.format(value)
 
 # --------------------------------------------------------------------------- #
-# Internal helpers - ALL FILTERS USE EXACT MATCH (==)
+# Internal helpers
 # --------------------------------------------------------------------------- #
 
 
@@ -680,8 +557,7 @@ def _parse_filters(filters):
 
 
 def _resolve_period_range(filters):
-	"""Turn the client's named `period` into an actual (from_date, to_date)
-	pair, computed against the SERVER's current date."""
+	"""Turn the client's named `period` into an actual (from_date, to_date) pair."""
 	period = (filters.get("period") or "").strip().lower()
 	if not period or period in ("all", "any", "all_time"):
 		return None
@@ -718,11 +594,7 @@ def _resolve_period_range(filters):
 
 
 def _resolve_link_filters(filters):
-	"""
-	Turn omr / bmr / production_plan / work_order filters into a single
-	restricted set of Sales Order names (or None = no restriction).
-	ALL filters use EXACT MATCH (==), not LIKE.
-	"""
+	"""Turn link filters into a restricted set of Sales Order names."""
 	restrict = None
 
 	def _intersect(names):
@@ -730,37 +602,33 @@ def _resolve_link_filters(filters):
 		names = set(names)
 		restrict = names if restrict is None else (restrict & names)
 
-	# OMR filter - EXACT match
 	if filters.get("omr"):
 		so = frappe.db.get_value("Order Modification Request", filters["omr"], "sales_order")
 		_intersect([so] if so else [])
 
-	# BMR filter - EXACT match
 	if filters.get("bmr"):
 		parents = frappe.get_all(
 			"Sales Order Item For OMR",
-			filters={"bom_update_request": filters["bmr"]},  # EXACT match
+			filters={"bom_update_request": filters["bmr"]},
 			pluck="parent",
 		)
 		sos = []
 		if parents:
 			sos = frappe.get_all(
 				"Order Modification Request", 
-				filters={"name": ["in", parents]},  # EXACT match
+				filters={"name": ["in", parents]},
 				pluck="sales_order"
 			)
 		_intersect(sos)
 
-	# Production Plan filter - EXACT match
 	if filters.get("production_plan"):
 		sos = frappe.get_all(
 			"Production Plan Sales Order", 
-			filters={"parent": filters["production_plan"]},  # EXACT match
+			filters={"parent": filters["production_plan"]},
 			pluck="sales_order"
 		)
 		_intersect(sos)
 
-		# Work Order filter - EXACT match
 	if filters.get("work_order"):
 		pp = frappe.db.get_value("Work Order", filters["work_order"], "production_plan")
 		if pp:
@@ -781,9 +649,7 @@ def _resolve_link_filters(filters):
 
 
 def _get_filtered_sales_orders(filters):
-	"""
-	Build the base Sales Order query with ALL filters using EXACT MATCH (==).
-	"""
+	"""Build the base Sales Order query with all filters."""
 	so = frappe.qb.DocType("Sales Order")
 	query = (
 		frappe.qb.from_(so)
@@ -795,22 +661,19 @@ def _get_filtered_sales_orders(filters):
 		.where(so.docstatus == 1)
 	)
 
-	# ALL link filters use EXACT match (==)
 	if filters.get("company"):
-		query = query.where(so.company == filters["company"])  # EXACT match
+		query = query.where(so.company == filters["company"])
 	if filters.get("branch"):
-		query = query.where(so.branch == filters["branch"])  # EXACT match
+		query = query.where(so.branch == filters["branch"])
 	if filters.get("customer"):
-		query = query.where(so.customer == filters["customer"])  # EXACT match
+		query = query.where(so.customer == filters["customer"])
 	if filters.get("sales_order"):
-		query = query.where(so.name == filters["sales_order"])  # EXACT match
+		query = query.where(so.name == filters["sales_order"])
 
-	# Date Period filter
 	period_range = _resolve_period_range(filters)
 	if period_range:
 		query = query.where(so.transaction_date[cstr(period_range[0]):cstr(period_range[1])])
 
-	# Resolve OMR/BMR/PP/WO filters (all exact match internally)
 	restrict = _resolve_link_filters(filters)
 	if restrict is not None:
 		if not restrict:
@@ -821,161 +684,136 @@ def _get_filtered_sales_orders(filters):
 	return query.run(as_dict=True)
 
 
+
 def _fetch_maps(so_names, filtered_pp=None):
-    """
-    Batch-fetch every related doctype for the given Sales Orders.
-    
-    When filtered_pp is provided, only that specific PP and its WOs are
-    included, ensuring the grid respects the Production Plan filter exactly.
-    Flow: SO → PP (via Production Plan Sales Order table) → WO (via production_plan field)
+	"""Batch-fetch every related doctype for the given Sales Orders."""
+	maps = {
+		"omr": {},
+		"omr_all": {},
+		"omr_bmr": {},
+		"omr_items": {},  # Store OMR items for change type detection
+		"bmr": {},
+		"pp": {},
+		"wo": {},
+	}
+	if not so_names:
+		return maps
 
-    IMPORTANT: a Sales Order can have MORE THAN ONE Production Plan. This
-    report displays exactly one Production Plan per Sales Order row (the
-    filtered one, or - with no filter applied - the most recently created
-    one). Work Orders must be counted for that SAME Production Plan only;
-    they must never be summed across every Production Plan the Sales Order
-    has ever had, or the count shown will not match the Production Plan
-    displayed (this was the root cause of inflated / inconsistent Work
-    Order counts, e.g. showing "170" for a row that only shows one PP).
-    """
-    maps = {
-        "omr": {},        # so -> latest OMR dict
-        "omr_all": {},    # so -> list of all OMR dicts
-        "omr_bmr": {},    # omr name -> list of bmr names
-        "bmr": {},        # bmr name -> bmr dict
-        "pp": {},         # so -> latest linked PP dict
-        "wo": {},         # so -> list of WO dicts (only WOs created from PPs)
-    }
-    if not so_names:
-        return maps
+	# Fetch OMRs with additional fields
+	omrs = frappe.get_all(
+		"Order Modification Request",
+		filters={"sales_order": ["in", so_names]},
+		fields=[
+			"name", "sales_order", "workflow_state", "docstatus", 
+			"modification_type", "type", "creation", "modified", "modified_by"
+		],
+		order_by="creation desc",
+	)
+	for o in omrs:
+		maps["omr_all"].setdefault(o.sales_order, []).append(o)
+		if o.sales_order not in maps["omr"]:
+			maps["omr"][o.sales_order] = o
 
-    # Fetch OMRs
-    omrs = frappe.get_all(
-        "Order Modification Request",
-        filters={"sales_order": ["in", so_names]},
-        fields=["name", "sales_order", "workflow_state", "docstatus", "creation", "modified", "modified_by"],
-        order_by="creation desc",
-    )
-    for o in omrs:
-        maps["omr_all"].setdefault(o.sales_order, []).append(o)
-        if o.sales_order not in maps["omr"]:
-            maps["omr"][o.sales_order] = o
+	omr_names = [o.name for o in omrs]
+	if omr_names:
+		# Fetch all OMR items (not just those with BMR requests)
+		items = frappe.get_all(
+			"Sales Order Item For OMR",
+			filters={"parent": ["in", omr_names]},
+			fields=[
+				"parent", "item", "rev_item", "description", "rev_description",
+				"qty", "rev_qty", "bom_update_request", "tag_no", 
+				"line_status", "rev_line_status", "parenttype", "parentfield"
+			],
+		)
+		
+		# Store items by OMR name
+		for item in items:
+			maps["omr_items"].setdefault(item.parent, []).append(item)
+			
+			# Also build the BMR mapping for items that have BMR requests
+			if item.get("bom_update_request"):
+				maps["omr_bmr"].setdefault(item.parent, [])
+				if item.bom_update_request not in maps["omr_bmr"][item.parent]:
+					maps["omr_bmr"][item.parent].append(item.bom_update_request)
 
-    # Fetch BMRs through OMR items
-    omr_names = [o.name for o in omrs]
-    if omr_names:
-        items = frappe.get_all(
-            "Sales Order Item For OMR",
-            filters={"parent": ["in", omr_names], "bom_update_request": ["is", "set"]},
-            fields=["parent", "bom_update_request"],
-        )
-        for it in items:
-            if it.bom_update_request:
-                maps["omr_bmr"].setdefault(it.parent, [])
-                if it.bom_update_request not in maps["omr_bmr"][it.parent]:
-                    maps["omr_bmr"][it.parent].append(it.bom_update_request)
+		# Fetch BMRs if they exist
+		bmr_names = sorted({n for names in maps["omr_bmr"].values() for n in names})
+		if bmr_names:
+			bmrs = frappe.get_all(
+				"Bom Modification Request",
+				filters={"name": ["in", bmr_names]},
+				fields=[
+					"name", "workflow_state", "docstatus", "fg_item_code", 
+					"fg_item_name", "item_description", "reason_for_change",
+					"batch_no_ref", "creation", "modified", "modified_by"
+				],
+			)
+			for b in bmrs:
+				maps["bmr"][b.name] = b
 
-        bmr_names = sorted({n for names in maps["omr_bmr"].values() for n in names})
-        if bmr_names:
-            bmrs = frappe.get_all(
-                "Bom Modification Request",
-                filters={"name": ["in", bmr_names]},
-                fields=["name", "workflow_state", "docstatus", "fg_item_code", "creation", "modified"],
-            )
-            for b in bmrs:
-                maps["bmr"][b.name] = b
+	# Fetch Production Plan links
+	pp_link_filters = {"sales_order": ["in", so_names]}
+	if filtered_pp:
+		pp_link_filters["parent"] = filtered_pp
 
-    # Fetch Production Plans linked to Sales Orders
-    # =====================================================================
-    # When a specific PP is filtered, ONLY fetch that PP's link instead of
-    # all PPs for the SO. This ensures the correct PP is used in the
-    # computed row and only its WOs are fetched below.
-    # =====================================================================
-    pp_link_filters = {"sales_order": ["in", so_names]}
-    if filtered_pp:
-        pp_link_filters["parent"] = filtered_pp  # Restrict to the filtered PP only
+	pp_links = frappe.get_all(
+		"Production Plan Sales Order",
+		filters=pp_link_filters,
+		fields=["parent", "sales_order", "creation"],
+		order_by="creation desc",
+	)
 
-    pp_links = frappe.get_all(
-        "Production Plan Sales Order",
-        filters=pp_link_filters,
-        fields=["parent", "sales_order", "creation"],
-        order_by="creation desc",
-    )
+	pp_names_all = sorted({p.parent for p in pp_links})
+	pps_by_name = {}
+	if pp_names_all:
+		pps = frappe.get_all(
+			"Production Plan",
+			filters={"name": ["in", pp_names_all]},
+			fields=[
+				"name", "status", "sales_order_modification", "production_plan_updated",
+				"work_order_updated", "bom_modification", "branch", "modified",
+				"modified_by", "creation", "docstatus"
+			],
+		)
+		pps_by_name = {p.name: p for p in pps}
 
-    # Collect every PP name touched by these links, so we can fetch their
-    # details in one batch query. NOTE: this can still contain MULTIPLE
-    # PPs per Sales Order when no filter is applied - that's expected,
-    # we just haven't picked the "chosen" one per SO yet.
-    pp_names_all = sorted({p.parent for p in pp_links})
-    pps_by_name = {}
-    if pp_names_all:
-        pps = frappe.get_all(
-            "Production Plan",
-            filters={"name": ["in", pp_names_all]},
-            fields=[
-                "name", "status", "sales_order_modification", "production_plan_updated",
-                "work_order_updated", "bom_modification", "branch", "modified",
-            ],
-        )
-        pps_by_name = {p.name: p for p in pps}
+	for link in pp_links:
+		if link.sales_order not in maps["pp"] and link.parent in pps_by_name:
+			maps["pp"][link.sales_order] = pps_by_name[link.parent]
 
-    # Choose exactly ONE Production Plan per Sales Order - the filtered
-    # one (only one is possible once pp_link_filters restricts by
-    # `parent`), or the most recently created one when no filter is
-    # applied (pp_links is ordered by creation desc, so the first link
-    # seen per SO is the latest PP for that SO).
-    for link in pp_links:
-        if link.sales_order not in maps["pp"] and link.parent in pps_by_name:
-            maps["pp"][link.sales_order] = pps_by_name[link.parent]
+	# Fetch Work Orders linked to chosen PPs
+	so_by_chosen_pp = {pp["name"]: so for so, pp in maps["pp"].items()}
+	chosen_pp_names = list(so_by_chosen_pp.keys())
 
-    # =====================================================================
-    # FIX: Work Orders are now scoped strictly to each Sales Order's
-    # CHOSEN Production Plan (built above), not to every Production Plan
-    # ever linked to that Sales Order. Previously, when no PP filter was
-    # applied, `pp_names` held every PP for every SO in scope, and a
-    # Work Order was attributed to a Sales Order whenever its
-    # `sales_order` field matched - regardless of which of that SO's
-    # several Production Plans the Work Order actually came from. That
-    # silently summed Work Orders across sibling Production Plans into
-    # one inflated count, while the row/popup only ever displayed a
-    # single Production Plan - hence the mismatch.
-    # =====================================================================
-    so_by_chosen_pp = {pp["name"]: so for so, pp in maps["pp"].items()}
-    chosen_pp_names = list(so_by_chosen_pp.keys())
+	if chosen_pp_names:
+		wos = frappe.get_all(
+			"Work Order",
+			filters={
+				"production_plan": ["in", chosen_pp_names],
+				"docstatus": ["!=", 2],
+			},
+			fields=[
+				"name", "sales_order", "production_plan", "status", 
+				"modification_status",
+				"qty", "produced_qty", "production_item", "item_name", "bom_no",
+				"docstatus", "creation", "modified", "modified_by", "planned_start_date"
+			],
+		)
 
-    if chosen_pp_names:
-        wos = frappe.get_all(
-            "Work Order",
-            filters={
-                "production_plan": ["in", chosen_pp_names],  # only the chosen PP(s)
-                "docstatus": ["!=", 2],  # Not cancelled
-            },
-            fields=[
-                "name", "sales_order", "production_plan", "status", "modification_status",
-                "qty", "produced_qty", "production_item", "item_name", "bom_no",
-                "docstatus", "creation", "modified", "modified_by", "planned_start_date",
-            ],
-        )
+		for w in wos:
+			target_so = so_by_chosen_pp.get(w.production_plan)
+			if not target_so or target_so not in so_names:
+				continue
+			wo_so = w.sales_order or target_so
+			if wo_so == target_so:
+				maps["wo"].setdefault(target_so, []).append(w)
 
-        for w in wos:
-            # The Sales Order this Work Order's Production Plan is
-            # "assigned to" for this report - the single source of truth.
-            target_so = so_by_chosen_pp.get(w.production_plan)
-            if not target_so or target_so not in so_names:
-                continue
-            # A Production Plan can aggregate items from more than one
-            # Sales Order. Only attribute this Work Order to target_so if
-            # the Work Order's own sales_order agrees (or is blank, in
-            # which case we trust the PP -> SO link resolved above).
-            wo_so = w.sales_order or target_so
-            if wo_so == target_so:
-                maps["wo"].setdefault(target_so, []).append(w)
-
-    return maps
+	return maps
 
 
 def _compute_row(so, maps):
-	"""Compute all derived status fields for a single Sales Order."""
+	"""Compute all derived status fields for a single Sales Order with time-based stage logic."""
 	so_name = so["name"] if isinstance(so, dict) else so.name
 	get = so.get if isinstance(so, dict) else (lambda k, d=None: getattr(so, k, d))
 
@@ -986,46 +824,347 @@ def _compute_row(so, maps):
 	)
 	omr_dict = dict(omr) if omr else None
 
+	# Determine OMR change type based on actual data
+	omr_change_type = None
+	if omr_dict:
+		# Check for modification_type field
+		omr_change_type = omr_dict.get("modification_type") or omr_dict.get("type")
+		
+		# Check if any items have rev_qty different from qty (indicating quantity change)
+		has_qty_change = False
+		has_item_replacement = False
+		
+		omr_items = maps.get("omr_items", {}).get(omr_dict.get("name"), [])
+		for item in omr_items:
+			# Check for quantity change (rev_qty differs from qty)
+			if item.get("rev_qty") is not None and flt(item.get("rev_qty")) != flt(item.get("qty")):
+				has_qty_change = True
+			# Check for BOM update request (item replacement)
+			if item.get("bom_update_request"):
+				has_item_replacement = True
+			# Check for item replacement (rev_item differs from item)
+			if item.get("rev_item") and item.get("rev_item") != item.get("item"):
+				has_item_replacement = True
+		
+		# Determine change type based on actual data
+		if has_item_replacement:
+			omr_change_type = "Item Replacement"
+		elif has_qty_change:
+			omr_change_type = "Quantity Change"
+		else:
+			# Fallback to modification_type if available
+			if "Quantity" in str(omr_change_type or ""):
+				omr_change_type = "Quantity Change"
+			elif "Replacement" in str(omr_change_type or ""):
+				omr_change_type = "Item Replacement"
+			else:
+				# Default to Item Replacement for safety
+				omr_change_type = "Item Replacement"
+	else:
+		# No OMR exists
+		omr_change_type = "No Change"
+
 	bmr_names = maps["omr_bmr"].get(omr["name"] if omr_dict else None, []) if omr_dict else []
 	bmr_list = [dict(maps["bmr"][n]) for n in bmr_names if n in maps["bmr"]]
 	bmr_exists = len(bmr_list) > 0
-	bmr_approved_list = [b for b in bmr_list if b.get("workflow_state") == "Approved"]
-	bmr_pending_list = [b for b in bmr_list if b.get("workflow_state") != "Approved"]
+	
+	# Enhanced BMR state detection
+	bmr_draft_list = []
+	bmr_submitted_list = []
+	bmr_approved_list = []
+	bmr_rejected_list = []
+	
+	for b in bmr_list:
+		docstatus = cint(b.get("docstatus", 0))
+		workflow_state = b.get("workflow_state", "")
+		
+		if docstatus == 0:
+			bmr_draft_list.append(b)
+		elif docstatus == 1:
+			if workflow_state == "Approved":
+				bmr_approved_list.append(b)
+			elif workflow_state in ("Rejected", "Cancelled"):
+				bmr_rejected_list.append(b)
+			else:
+				bmr_submitted_list.append(b)
+		elif docstatus == 2:
+			bmr_rejected_list.append(b)
+	
 	bmr_any_approved = len(bmr_approved_list) > 0
-	bmr_all_approved = bmr_exists and len(bmr_pending_list) == 0
+	bmr_all_approved = bmr_exists and len(bmr_approved_list) == len(bmr_list)
+	bmr_any_draft = len(bmr_draft_list) > 0
+	bmr_any_submitted = len(bmr_submitted_list) > 0
+	bmr_any_rejected = len(bmr_rejected_list) > 0
+	bmr_pending_list = bmr_draft_list + bmr_submitted_list
 
 	pp = maps["pp"].get(so_name)
 	pp_dict = dict(pp) if pp else None
 	pp_exists = bool(pp_dict)
-	pp_updated_flag = bool(pp_dict and cint(pp_dict.get("production_plan_updated")))
 
-	# PP Update Required: BMR approved but PP not updated yet
-	pp_update_required = bmr_any_approved and not pp_updated_flag
+	# Check PP modification and update flags - SAFE ACCESS
+	pp_is_old = False
+	pp_has_modification = False
+	pp_updated_flag = False
+	pp_wo_updated_flag = False
+	pp_is_updated = False
 
-	# Get WOs linked to this SO (only those created from PPs)
+	if pp_dict:
+		# SAFELY get sales_order_modification (dict or object access)
+		sales_order_mod = (
+			pp_dict.get("sales_order_modification")
+			if isinstance(pp_dict, dict)
+			else getattr(pp_dict, "sales_order_modification", None)
+		)
+
+		# Normalize to a clean uppercase string regardless of source type
+		# (handles None, "", "  ", bool True/False, int 0/1, "Yes"/"no", etc.)
+		if sales_order_mod is None:
+			sales_order_mod_str = ""
+		elif isinstance(sales_order_mod, bool):
+			# Guard against bool being stringified as "True"/"False" instead of "1"/"0"
+			sales_order_mod_str = "1" if sales_order_mod else "0"
+		else:
+			sales_order_mod_str = cstr(sales_order_mod).strip()
+
+		sales_order_mod_upper = sales_order_mod_str.upper()
+
+		if sales_order_mod_upper == "":
+			# OLD PP - no modification tracking on this record at all
+			pp_is_old = True
+			pp_has_modification = False
+		elif sales_order_mod_upper in ("YES", "1", "TRUE"):
+			pp_has_modification = True
+		elif sales_order_mod_upper in ("NO", "0", "FALSE"):
+			pp_has_modification = False
+		else:
+			# Unrecognized value - treat as old/untracked PP rather than erroring
+			pp_is_old = True
+			pp_has_modification = False
+
+		# SAFELY get production_plan_updated
+		prod_plan_updated = (
+			pp_dict.get("production_plan_updated")
+			if isinstance(pp_dict, dict)
+			else getattr(pp_dict, "production_plan_updated", 0)
+		)
+		pp_updated_flag = bool(cint(prod_plan_updated or 0))
+
+		# SAFELY get work_order_updated
+		wo_updated = (
+			pp_dict.get("work_order_updated")
+			if isinstance(pp_dict, dict)
+			else getattr(pp_dict, "work_order_updated", 0)
+		)
+		pp_wo_updated_flag = bool(cint(wo_updated or 0))
+
+		# ---- Final PP status decision (matches required table exactly) ----
+		if pp_updated_flag:
+			# Get Update was clicked (production_plan_updated = 1)
+			pp_is_updated = True
+		elif pp_is_old:
+			# Old PP, no modification tracking -> treat as Updated
+			pp_is_updated = True
+		elif not pp_has_modification:
+			# sales_order_modification resolves to "NO" -> Get Update cleared it
+			pp_is_updated = True
+		else:
+			# sales_order_modification is "YES" and Get Update not clicked yet
+			pp_is_updated = False
+	else:
+		# No PP exists at all
+		pp_is_updated = False
+		pp_wo_updated_flag = False
+
 	wo_list = [dict(w) for w in maps["wo"].get(so_name, [])]
-	wo_pending_list = [w for w in wo_list if w.get("modification_status") == "Yes"]
 	wo_exists = len(wo_list) > 0
-	wo_synced = wo_exists and len(wo_pending_list) == 0
 	
-	# WO Update Required: PP is updated but WOs still have modification_status = "Yes"
-	wo_update_required = pp_updated_flag and len(wo_pending_list) > 0
+	# Determine WO sync status
+	wo_synced = False
+	if wo_exists:
+		if pp_wo_updated_flag:
+			# PP indicates WO has been updated
+			wo_synced = True
+		else:
+			# Check individual WO modification_status
+			wo_pending = []
+			for w in wo_list:
+				# SAFELY get modification_status
+				mod_status = w.get("modification_status") if isinstance(w, dict) else getattr(w, "modification_status", None)
+				
+				if mod_status is not None:
+					mod_status_str = cstr(mod_status).strip()
+					if mod_status_str.upper() == "YES":
+						wo_pending.append(w)
+				# If modification_status is None or empty, WO is considered synced
+			wo_synced = len(wo_pending) == 0
 
-	# ---------------- severity -------------------------------------------
-	if pp_update_required:
-		severity = "Critical"
-	elif wo_update_required:
-		severity = "High"
-	elif omr_approved and bmr_exists and not bmr_all_approved:
-		severity = "Medium"
-	elif omr_exists and not omr_approved:
-		severity = "Waiting"
+	# ---------------- PRECISE STATUS CALCULATION LOGIC ----------------------
+	# Initialize statuses based on the state machine
+	bmr_status = None
+	pp_status = None
+	work_order_status = None
+
+	if not omr_exists:
+		# No OMR exists - regular Sales Order
+		bmr_status = "Not Created"
+		
+		if not pp_exists:
+			pp_status = "Not Created"
+			work_order_status = "Not Created"
+		elif pp_is_updated:
+			pp_status = "Updated"
+			if not wo_exists:
+				work_order_status = "Not Created"
+			elif wo_synced:
+				work_order_status = "Updated"
+			else:
+				work_order_status = "Pending"
+		else:
+			pp_status = "Pending"
+			work_order_status = "Not Created" if not wo_exists else "Not Started"
+		
+	elif omr_change_type == "Quantity Change":
+		# Quantity Change: BMR not required
+		bmr_status = "Not Created"
+		
+		if not pp_exists:
+			pp_status = "Not Created"
+			work_order_status = "Not Created"
+		elif pp_is_updated:
+			pp_status = "Updated"
+			if not wo_exists:
+				work_order_status = "Not Created"
+			elif wo_synced:
+				work_order_status = "Updated"
+			else:
+				work_order_status = "Pending"
+		else:
+			pp_status = "Pending"
+			work_order_status = "Not Created" if not wo_exists else "Not Started"
+			
+	elif omr_change_type == "Item Replacement":
+		# Item Replacement flow
+		
+		if not bmr_exists:
+			bmr_status = "Not Created"
+			pp_status = "Not Required"
+			work_order_status = "Not Created" if not wo_exists else "Not Started"
+			
+		elif bmr_any_draft:
+			bmr_status = "Draft"
+			pp_status = "Not Required"
+			work_order_status = "Not Created" if not wo_exists else "Not Started"
+			
+		elif bmr_any_submitted:
+			bmr_status = "Pending"
+			pp_status = "Not Required"
+			work_order_status = "Not Created" if not wo_exists else "Not Started"
+			
+		elif bmr_any_rejected and not bmr_any_approved:
+			bmr_status = "Rejected"
+			pp_status = "Not Required"
+			work_order_status = "Not Created" if not wo_exists else "Not Started"
+			
+		elif bmr_all_approved:
+			bmr_status = "Updated"
+			
+			if not pp_exists:
+				pp_status = "Not Created"
+				work_order_status = "Not Created"
+			elif not pp_is_updated:
+				pp_status = "Pending"
+				work_order_status = "Not Created" if not wo_exists else "Not Started"
+			else:
+				pp_status = "Updated"
+				if not wo_exists:
+					work_order_status = "Not Created"
+				elif wo_synced:
+					work_order_status = "Updated"
+				else:
+					work_order_status = "Pending"
+		else:
+			bmr_status = "Pending"
+			pp_status = "Not Required"
+			work_order_status = "Not Created" if not wo_exists else "Not Started"
+			
+	else:
+		# Unknown change type
+		if not bmr_exists:
+			bmr_status = "Not Created"
+		elif bmr_any_draft:
+			bmr_status = "Draft"
+		elif bmr_any_submitted:
+			bmr_status = "Pending"
+		elif bmr_all_approved:
+			bmr_status = "Updated"
+		else:
+			bmr_status = "Pending"
+		
+		pp_status = "Not Created" if not pp_exists else ("Pending" if not pp_is_updated else "Updated")
+		work_order_status = "Not Created" if not wo_exists else ("Pending" if not wo_synced else "Updated")
+
+	# ---------------- SEVERITY LOGIC (WEEK-BASED) -------------------
+	from datetime import datetime as dt
+	from datetime import date as date_type
+	
+	now = now_datetime()
+	
+	start_time = None
+	
+	if omr_dict and omr_dict.get("creation"):
+		start_time = omr_dict.get("creation")
+	else:
+		start_time = get("creation") or get("transaction_date") or get("modified")
+	
+	if start_time:
+		if isinstance(start_time, str):
+			for fmt in ["%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d"]:
+				try:
+					start_time = dt.strptime(start_time, fmt)
+					break
+				except (ValueError, TypeError):
+					continue
+		elif isinstance(start_time, date_type) and not isinstance(start_time, dt):
+			start_time = dt.combine(start_time, dt.min.time())
+	
+	if start_time and isinstance(start_time, dt):
+		time_elapsed = now - start_time
+		days_elapsed = time_elapsed.total_seconds() / 86400
+		weeks_elapsed = days_elapsed / 7
+		hours_elapsed = time_elapsed.total_seconds() / 3600
+	else:
+		days_elapsed = 0
+		weeks_elapsed = 0
+		hours_elapsed = 0
+	
+	# Determine if pending
+	is_pending = False
+	if work_order_status in ("Pending", "Not Started", "Not Created"):
+		is_pending = True
+	elif pp_status in ("Pending", "Not Created"):
+		is_pending = True
+	elif bmr_status in ("Draft", "Pending", "Rejected", "Not Created"):
+		is_pending = True
+	
+	# For no OMR case
+	if not omr_exists:
+		if pp_status == "Updated" and work_order_status == "Updated":
+			is_pending = False
+		elif pp_status == "Not Created" or work_order_status == "Not Created":
+			is_pending = True
+	
+	# Week-based severity
+	if is_pending:
+		if weeks_elapsed >= 4:
+			severity = "Critical"
+		elif weeks_elapsed >= 2:
+			severity = "High"
+		else:
+			severity = "Low"
 	else:
 		severity = "Low"
 
-	is_pending = severity in ("Critical", "High", "Medium", "Waiting")
-
-	# ---------------- badges ----------------------------------------------
+	# ---------------- BADGES -------------------
 	if not omr_exists:
 		omr_badge = _badge("not_required")
 	elif omr_approved:
@@ -1033,42 +1172,42 @@ def _compute_row(so, maps):
 	else:
 		omr_badge = _badge("pending")
 
-	if not bmr_exists:
+	if bmr_status == "Not Created":
 		bmr_badge = _badge("not_required")
-	elif bmr_all_approved:
+	elif bmr_status == "Draft":
+		bmr_badge = _badge("pending")
+	elif bmr_status == "Pending":
+		bmr_badge = _badge("pending")
+	elif bmr_status == "Rejected":
+		bmr_badge = _badge("critical")
+	elif bmr_status == "Updated":
 		bmr_badge = _badge("updated")
 	else:
-		bmr_badge = _badge("pending")
+		bmr_badge = _badge("not_required")
 
-	if pp_update_required:
-		pp_required_badge = _badge("critical")
-	elif bmr_any_approved:
-		pp_required_badge = _badge("not_required")
+	if pp_status == "Not Created":
+		pp_status_badge = _badge("not_required")
+	elif pp_status == "Not Required":
+		pp_status_badge = _badge("not_required")
+	elif pp_status == "Pending":
+		pp_status_badge = _badge("pending")
+	elif pp_status == "Updated":
+		pp_status_badge = _badge("updated")
 	else:
-		pp_required_badge = _badge("not_required")
+		pp_status_badge = _badge("not_required")
 
-	if not bmr_any_approved:
-		pp_updated_badge = _badge("not_required")
-	elif pp_updated_flag:
-		pp_updated_badge = _badge("updated")
+	if work_order_status == "Not Created":
+		wo_status_badge = _badge("not_required")
+	elif work_order_status == "Not Started":
+		wo_status_badge = _badge("not_required")
+	elif work_order_status == "Pending":
+		wo_status_badge = _badge("pending")
+	elif work_order_status == "Updated":
+		wo_status_badge = _badge("updated")
 	else:
-		pp_updated_badge = _badge("pending")
+		wo_status_badge = _badge("not_required")
 
-	if wo_update_required:
-		wo_required_badge = _badge("critical") if severity == "High" else _badge("pending")
-	else:
-		wo_required_badge = _badge("not_required")
-
-	if not pp_updated_flag:
-		wo_updated_badge = _badge("not_required")
-	elif not wo_exists:
-		wo_updated_badge = _badge("waiting")
-	elif wo_synced:
-		wo_updated_badge = _badge("updated")
-	else:
-		wo_updated_badge = _badge("pending")
-
-	# ---------------- stage timeline ---------------------------------------
+	# ---------------- STAGE TIMELINE -------------------
 	stages = []
 	stages.append({"key": "so", "label": "SO", "state": "completed"})
 
@@ -1080,48 +1219,78 @@ def _compute_row(so, maps):
 		omr_state = "pending"
 	stages.append({"key": "omr", "label": "OMR", "state": omr_state})
 
-	if not bmr_exists:
+	if bmr_status in ("Not Created", "Not Required"):
 		bmr_state = "not_required"
-	elif bmr_all_approved:
+	elif bmr_status == "Draft":
+		bmr_state = "pending"
+	elif bmr_status == "Pending":
+		bmr_state = "pending"
+	elif bmr_status == "Rejected":
+		bmr_state = "blocked"
+	elif bmr_status == "Updated":
 		bmr_state = "completed"
 	else:
-		bmr_state = "pending"
+		bmr_state = "not_required"
 	stages.append({"key": "bmr", "label": "BMR", "state": bmr_state})
 
-	if not bmr_any_approved:
+	if pp_status in ("Not Created", "Not Required"):
 		pp_state = "not_required"
-	elif pp_updated_flag:
+	elif pp_status == "Pending":
+		pp_state = "blocked"
+	elif pp_status == "Updated":
 		pp_state = "completed"
 	else:
-		pp_state = "blocked"  # BMR approved but PP not updated - needs "Get Update" click
+		pp_state = "not_required"
 	stages.append({"key": "pp", "label": "PP", "state": pp_state})
 
-	if not pp_updated_flag:
+	if work_order_status in ("Not Created", "Not Started"):
 		wo_state = "not_required"
-	elif wo_synced:
+	elif work_order_status == "Pending":
+		wo_state = "blocked"
+	elif work_order_status == "Updated":
 		wo_state = "completed"
 	else:
-		wo_state = "blocked" if wo_exists else "pending"
+		wo_state = "not_required"
 	stages.append({"key": "wo", "label": "WO", "state": wo_state})
 
-	completed_state = "completed" if severity == "Low" else "pending"
+	completed_state = "completed" if severity == "Low" and not is_pending else "pending"
 	stages.append({"key": "completed", "label": "Completed", "state": completed_state})
 
-	# ---------------- pending-at / current stage ---------------------------
+	# ---------------- PENDING-AT / REMARKS -------------------
 	pending_at = "—"
 	current_stage = "Completed"
-	for st in stages:
-		if st["key"] in ("so", "completed"):
-			continue
-		if st["state"] in ("pending", "blocked"):
-			pending_at = {
-				"omr": _("OMR Approval"),
-				"bmr": _("BMR Approval"),
-				"pp": _("Production Plan Update (Click 'Get Update')"),
-				"wo": _("Work Order Update"),
-			}[st["key"]]
-			current_stage = STAGE_LABEL[st["key"]]
-			break
+	remarks = ""
+	
+	if bmr_status == "Draft":
+		pending_at = _("BMR Draft Submission")
+		current_stage = "BMR"
+	elif bmr_status == "Pending":
+		pending_at = _("BMR Approval")
+		current_stage = "BMR"
+	elif bmr_status == "Rejected":
+		pending_at = _("BMR Rejection Resolution")
+		current_stage = "BMR"
+	elif bmr_status == "Not Created" and omr_change_type == "Item Replacement":
+		# pending_at = _("BMR Creation")
+		current_stage = "BMR"
+	elif pp_status == "Not Created":
+		pending_at = _("Production Plan Creation")
+		current_stage = "PP"
+	elif pp_status == "Pending":
+		pending_at = _("Production Plan Update (Get Update)")
+		current_stage = "PP"
+	elif work_order_status == "Not Created":
+		pending_at = _("Work Order Creation")
+		current_stage = "WO"
+	elif work_order_status == "Pending":
+		pending_at = _("Work Order Update")
+		current_stage = "WO"
+
+	if is_pending:
+		elapsed_str = _format_elapsed_time_weeks(weeks_elapsed)
+		remarks = _("Pending for {0} at {1}").format(elapsed_str, pending_at)
+	else:
+		remarks = _("Completed")
 
 	return {
 		"sales_order": so_name,
@@ -1140,9 +1309,19 @@ def _compute_row(so, maps):
 		"omr_exists": omr_exists,
 		"omr_approved": omr_approved,
 		"omr_badge": omr_badge,
+		"omr_change_type": omr_change_type,
+
+		# Three calculated statuses
+		"bmr_status": bmr_status,
+		"pp_status": pp_status,
+		"work_order_status": work_order_status,
 
 		"bmr_list": bmr_list,
 		"bmr_pending": bmr_pending_list,
+		"bmr_draft": bmr_draft_list,
+		"bmr_submitted": bmr_submitted_list,
+		"bmr_approved": bmr_approved_list,
+		"bmr_rejected": bmr_rejected_list,
 		"bmr_exists": bmr_exists,
 		"bmr_all_approved": bmr_all_approved,
 		"bmr_any_approved": bmr_any_approved,
@@ -1151,16 +1330,17 @@ def _compute_row(so, maps):
 		"pp": pp_dict,
 		"pp_exists": pp_exists,
 		"pp_updated_flag": pp_updated_flag,
-		"pp_update_required": pp_update_required,
-		"pp_required_badge": pp_required_badge,
-		"pp_updated_badge": pp_updated_badge,
+		"pp_is_updated": pp_is_updated,
+		"pp_is_old": pp_is_old,
+		"pp_has_modification": pp_has_modification,
+		"pp_update_required": pp_status in ("Pending", "Not Created"),
+		"pp_status_badge": pp_status_badge,
 
 		"wo_list": wo_list,
 		"wo_exists": wo_exists,
 		"wo_synced": wo_synced,
-		"wo_update_required": wo_update_required,
-		"wo_required_badge": wo_required_badge,
-		"wo_updated_badge": wo_updated_badge,
+		"wo_update_required": work_order_status in ("Pending", "Not Created"),
+		"wo_status_badge": wo_status_badge,
 
 		"severity": severity,
 		"severity_color": SEVERITY_COLOR[severity],
@@ -1168,41 +1348,77 @@ def _compute_row(so, maps):
 		"stages": stages,
 		"pending_at": pending_at,
 		"current_stage": current_stage,
+		"remarks": remarks,
+		"hours_elapsed": round(hours_elapsed, 1),
+		"days_elapsed": round(days_elapsed, 1),
+		"weeks_elapsed": round(weeks_elapsed, 1),
 	}
+
+def _format_elapsed_time_weeks(weeks):
+	"""Format elapsed time in weeks for display."""
+	if weeks < 0.14:  # Less than 1 day
+		return _("less than 1 day")
+	elif weeks < 1:  # Less than 1 week
+		days = int(weeks * 7)
+		if days == 1:
+			return _("1 day")
+		else:
+			return _("{0} days").format(days)
+	elif weeks < 2:  # 1-2 weeks
+		return _("1 week")
+	elif weeks < 3:  # 2-3 weeks
+		return _("2 weeks")
+	elif weeks < 4:  # 3-4 weeks
+		return _("3 weeks")
+	else:  # 4+ weeks
+		return _("{0} weeks").format(int(weeks))
+def _format_elapsed_time(hours):
+	"""Format elapsed time in a human-readable format."""
+	if hours < 1:
+		return _("less than 1 hour")
+	elif hours < 24:
+		return _("{0} hours").format(int(hours))
+	else:
+		days = int(hours / 24)
+		remaining_hours = int(hours % 24)
+		if remaining_hours > 0:
+			return _("{0} days {1} hours").format(days, remaining_hours)
+		else:
+			return _("{0} days").format(days)
 
 
 def _get_computed_rows(filters, limit=2000):
-    """Get all rows with computed status, then apply post-filters."""
-    sos = _get_filtered_sales_orders(filters)
-    if not sos:
-        return []
+	"""Get all rows with computed status, then apply post-filters.
+	IMPORTANT: Only include rows where OMR exists."""
+	sos = _get_filtered_sales_orders(filters)
+	if not sos:
+		return []
 
-    so_names = [s.name for s in sos]
-    # KEY FIX: Pass the production_plan filter so _fetch_maps restricts
-    # to that specific PP and only fetches its WOs
-    filtered_pp = filters.get("production_plan")
-    maps = _fetch_maps(so_names, filtered_pp=filtered_pp)
-    rows = [_compute_row(s, maps) for s in sos]
+	so_names = [s.name for s in sos]
+	filtered_pp = filters.get("production_plan")
+	maps = _fetch_maps(so_names, filtered_pp=filtered_pp)
+	rows = [_compute_row(s, maps) for s in sos]
+	
+	# FILTER: Only include rows with OMR
+	rows = [r for r in rows if r["omr_exists"]]
 
-    # Apply post-computation filters
-    if cint(filters.get("pending_only")):
-        rows = [r for r in rows if r["is_pending"]]
+	if cint(filters.get("pending_only")):
+		rows = [r for r in rows if r["is_pending"]]
 
-    if cint(filters.get("critical_only")):
-        rows = [r for r in rows if r["severity"] == "Critical"]
+	if cint(filters.get("critical_only")):
+		rows = [r for r in rows if r["severity"] == "Critical"]
 
-    # KPI card filters
-    status_filter = filters.get("status")
-    if status_filter and status_filter != "Any":
-        if status_filter == "Fully Synced":
-            rows = [r for r in rows if r["severity"] == "Low"]
-        elif status_filter == "Pending Update":
-            rows = [r for r in rows if r["is_pending"]]
-        elif status_filter == "Waiting on Approval":
-            rows = [r for r in rows if r["severity"] == "Waiting"]
+	status_filter = filters.get("status")
+	if status_filter and status_filter != "Any":
+		if status_filter == "Fully Synced":
+			rows = [r for r in rows if r["severity"] == "Low"]
+		elif status_filter == "Pending Update":
+			rows = [r for r in rows if r["is_pending"]]
+		elif status_filter == "Waiting on Approval":
+			rows = [r for r in rows if r["severity"] == "Waiting"]
 
-    priority_filter = filters.get("priority")
-    if priority_filter and priority_filter != "Any":
-        rows = [r for r in rows if r["severity"] == priority_filter]
+	priority_filter = filters.get("priority")
+	if priority_filter and priority_filter != "Any":
+		rows = [r for r in rows if r["severity"] == priority_filter]
 
-    return rows[:limit]
+	return rows[:limit]

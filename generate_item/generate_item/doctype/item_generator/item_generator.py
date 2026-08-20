@@ -105,33 +105,6 @@ class ItemGenerator(Document):
                 self.db_set("short_description", final_desc, update_modified=False)
                 self.db_set("custom_conditional_description", final_desc, update_modified=False)
 
-        # if cus_description:
-        #     suffix = ""
-        #     if getattr(self, "duplicated_subassembly", 0) == 1:
-        #         suffix = " SUB ASSY KIT"
-        #     elif getattr(self, "duplicated_machining_kit", 0) == 1:
-        #         suffix = " M/C KIT"
-
-        #     final_desc = cus_description.strip()
-        #     if suffix:
-        #         room = 140 - len(suffix)
-        #         final_desc = (final_desc[:room].rstrip() + suffix).strip()
-        #     else:
-        #         final_desc = final_desc[:140]
-
-        #     self.short_description = final_desc
-        #     self.custom_conditional_description = final_desc
-
-        #     # Prevent validation issues
-        #     self.flags.ignore_validate = True
-        #     if not hasattr(self.flags, "ignore_validate_fields") or self.flags.ignore_validate_fields is None:
-        #         self.flags.ignore_validate_fields = []
-        #     if "short_description" not in self.flags.ignore_validate_fields:
-        #         self.flags.ignore_validate_fields.append("short_description")
-
-        #     if not self.is_new():
-        #         self.db_set("short_description", final_desc, update_modified=False)
-        #         self.db_set("custom_conditional_description", final_desc, update_modified=False)
 
 
     def after_insert(self):
@@ -242,7 +215,7 @@ def update_item_master(item_generator_name):
             update_modified=True
         )
 
-        frappe.db.commit()
+
 
         return {
             "success": True,

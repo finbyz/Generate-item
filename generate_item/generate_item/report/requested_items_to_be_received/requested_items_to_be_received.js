@@ -483,7 +483,7 @@ $(function () {
     setInterval(function () {
         try {
             if (frappe.query_report && frappe.query_report.data) {
-                bind_header_checkbox();     // 👈 THIS LINE IS IMPORTANT
+                bind_header_checkbox();     //  THIS LINE IS IMPORTANT
                 listner_to_checkbox();
 
                 // update total line count below the report

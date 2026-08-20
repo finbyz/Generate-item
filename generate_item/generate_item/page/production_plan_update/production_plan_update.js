@@ -1,6 +1,6 @@
-const PPWO_API = "generate_item.generate_item.page.production_plan_&_wo.production_plan_&_wo";
+const PPWO_API = "generate_item.generate_item.page.production_plan_update.production_plan_update";
 
-frappe.pages["production-plan-&-wo"].on_page_load = function (wrapper) {
+frappe.pages["production-plan-update"].on_page_load = function (wrapper) {
 	frappe.ui.make_app_page({
 		parent: wrapper,
 		title: "Production Plan & Work Order Update Control Report",
@@ -34,13 +34,12 @@ class PPWOControlReport {
 		this.resize_observer = null;
 		this.inject_styles();
 		this.build_layout();
-		// this.bind_page_actions();
 		this.load_filter_options().then(() => this.refresh_all());
 		this.setup_responsive_handling();
 	}
 
 	// ------------------------------------------------------------------ //
-	// Responsive Handling
+	// Responsive Handling (unchanged)
 	// ------------------------------------------------------------------ //
 	setup_responsive_handling() {
 		let resize_timeout;
@@ -96,7 +95,7 @@ class PPWOControlReport {
 			$table.find('thead th').each((i, th) => {
 				const $th = $(th);
 				const col_idx = i;
-				if ([2, 4, 6, 8, 10, 12, 14, 16, 17, 18].includes(col_idx)) {
+				if ([4, 6, 8, 10, 12, 14].includes(col_idx)) {
 					$th.css('display', 'none');
 					$table.find(`tbody tr td:nth-child(${col_idx + 1})`).css('display', 'none');
 				} else {
@@ -108,7 +107,7 @@ class PPWOControlReport {
 			$table.find('thead th').each((i, th) => {
 				const $th = $(th);
 				const col_idx = i;
-				if ([4, 6, 8, 12, 14, 16, 17, 18].includes(col_idx)) {
+				if ([4, 6, 8, 10, 12].includes(col_idx)) {
 					$th.css('display', 'none');
 					$table.find(`tbody tr td:nth-child(${col_idx + 1})`).css('display', 'none');
 				} else {
@@ -123,7 +122,7 @@ class PPWOControlReport {
 	}
 
 	// ------------------------------------------------------------------ //
-	// Styles
+	// Styles (unchanged)
 	// ------------------------------------------------------------------ //
 	inject_styles() {
 		if (document.getElementById("ppwo-styles")) return;
@@ -159,9 +158,6 @@ class PPWOControlReport {
 		.ppwo-glass{background:var(--ppwo-surface); backdrop-filter:blur(16px) saturate(140%); -webkit-backdrop-filter:blur(16px) saturate(140%);
 			border:1px solid var(--ppwo-border); border-radius:var(--ppwo-radius); box-shadow:var(--ppwo-shadow);}
 		
-		/* ================================================================= */
-		/* FIX: Filter bar z-index & overflow — dropdowns must not be clipped */
-		/* ================================================================= */
 		.ppwo-filterbar{
 			top:0;
 			display:grid; grid-template-columns:repeat(4, 1fr);
@@ -176,20 +172,17 @@ class PPWOControlReport {
 			isolation:isolate;
 		}
 	
-		/* Ensure no parent in Frappe's page layout clips the dropdown */
 		.layout-main-section,
 		.layout-main-section > .ppwo-root,
 		.layout-main-wrapper {
 			overflow:visible !important;
 		}
 	
-		/* Boost Frappe's autocomplete dropdown above all our glass surfaces */
 		.frappe-autocomplete,
 		body > .frappe-autocomplete,
 		.ui-autocomplete {
 			z-index:10000 !important;
 		}
-		/* ================================================================= */
 	
 		.ppwo-filterbar .ppwo-field{min-width:0; width:100%; overflow:visible;}
 		.ppwo-filterbar .ppwo-field label{font-size:11px; text-transform:uppercase; letter-spacing:.05em;
@@ -220,7 +213,6 @@ class PPWOControlReport {
 			color:#fff; border-color:transparent;
 			box-shadow:0 4px 14px rgba(36,144,239,.35);}
 		
-		/* Responsive filter bar */
 		@media (max-width:1200px){
 			.ppwo-filterbar{grid-template-columns:repeat(4, 1fr);}
 		}
@@ -239,7 +231,6 @@ class PPWOControlReport {
 			.ppwo-filterbar .ppwo-toggle-pills-wrap{grid-column:span 1; justify-content:center;}
 		}
 		
-		/* KPI Cards */
 		.ppwo-kpi-row{display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:10px; margin-bottom:18px; min-height:82px;}
 		@media (max-width:640px){.ppwo-kpi-row{grid-template-columns:repeat(3, 1fr); gap:6px;}}
 		@media (max-width:480px){.ppwo-kpi-row{grid-template-columns:repeat(2, 1fr); gap:4px;}}
@@ -254,7 +245,6 @@ class PPWOControlReport {
 		.ppwo-kpi .ppwo-kpi-bar{height:2px; border-radius:2px; margin-top:8px; background:var(--ppwo-border); overflow:hidden;}
 		.ppwo-kpi .ppwo-kpi-bar span{display:block; height:100%; border-radius:2px; transition:width .8s cubic-bezier(.22,1,.36,1);}
 		
-		/* Progress */
 		.ppwo-progress-row{display:flex; align-items:center; gap:16px; padding:14px 18px; margin-bottom:18px;}
 		.ppwo-ring{width:52px; height:52px; flex-shrink:0;}
 		.ppwo-ring circle.bg{stroke:var(--ppwo-border); fill:none; stroke-width:6;}
@@ -265,7 +255,6 @@ class PPWOControlReport {
 		.ppwo-progress-bar-inner{height:100%; border-radius:6px; background:linear-gradient(90deg,var(--ppwo-primary),var(--ppwo-primary-2));
 			transition:width 1s cubic-bezier(.22,1,.36,1); box-shadow:0 0 12px rgba(36,144,239,.5);}
 		
-		/* Grid */
 		.ppwo-grid-wrap{overflow:auto; max-height:66vh; border-radius:var(--ppwo-radius); position:relative;}
 		table.ppwo-grid{width:100%; border-collapse:separate; border-spacing:0; font-size:12px; table-layout:auto;}
 		table.ppwo-grid thead th{position:sticky; top:0; background:var(--ppwo-surface-solid); z-index:5; text-align:left; padding:9px 10px;
@@ -274,7 +263,6 @@ class PPWOControlReport {
 		table.ppwo-grid td{padding:7px 10px; border-bottom:1px solid var(--ppwo-border); white-space:nowrap; vertical-align:middle;
 			max-width:180px; overflow:hidden; text-overflow:ellipsis;}
 		
-		/* Charts - 2x2 Grid */
 		.ppwo-charts-row{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px;}
 		.ppwo-chart-card{padding:14px 16px; min-height:220px;}
 		.ppwo-chart-card h4{font-family:var(--ppwo-font-display); font-size:13px; margin:0 0 10px; font-weight:600;}
@@ -295,7 +283,6 @@ class PPWOControlReport {
 			.ppwo-chart-card.full-width{grid-column:1;}
 		}
 		
-		/* Branch Performance */
 		.ppwo-branch-perf-item{display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:11.5px;}
 		.ppwo-branch-perf-item .branch-name{width:100px; flex-shrink:0; overflow:hidden; text-overflow:ellipsis; font-weight:500;}
 		.ppwo-branch-perf-item .branch-bar{flex:1; height:6px; border-radius:6px; background:var(--ppwo-border); overflow:hidden;}
@@ -310,7 +297,6 @@ class PPWOControlReport {
 			.ppwo-branch-perf-item .branch-count{width:60px; font-size:9px;}
 		}
 		
-		/* Other styles */
 		.ppwo-mono{font-family:var(--ppwo-font-mono); font-size:11px;}
 		.ppwo-badge{display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:999px; font-size:10px; font-weight:600; white-space:nowrap;}
 		.ppwo-chip-btn{display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:999px; font-size:11px; font-weight:600;
@@ -408,7 +394,6 @@ class PPWOControlReport {
 	// ------------------------------------------------------------------ //
 	build_layout() {
 		this.$body.html(`
-			<div class="ppwo-filterbar ppwo-glass"></div>
 			<div class="ppwo-kpi-row"></div>
 			<div class="ppwo-progress-row ppwo-glass">
 				<svg class="ppwo-ring" viewBox="0 0 64 64">
@@ -421,6 +406,7 @@ class PPWOControlReport {
 					<div class="ppwo-progress-bar-outer"><div class="ppwo-progress-bar-inner" style="width:0%"></div></div>
 				</div>
 			</div>
+			<div class="ppwo-filterbar ppwo-glass"></div>
 			<div class="ppwo-toolbar ppwo-glass">
 				<div class="ppwo-toolbar-left" style="font-size:12.5px;color:var(--ppwo-text-dim);font-weight:600;"></div>
 				<div class="ppwo-toolbar-right" style="display:flex;gap:8px;"></div>
@@ -445,21 +431,6 @@ class PPWOControlReport {
 		this.bind_drawer_events();
 	}
 
-	bind_page_actions() {
-		this.page.set_secondary_action(
-			this.state.theme === "dark" ? "☀️ Light" : "🌙 Dark",
-			() => this.toggle_theme(),
-			null
-		);
-	}
-
-	toggle_theme() {
-		this.state.theme = this.state.theme === "dark" ? "light" : "dark";
-		localStorage.setItem("ppwo_theme", this.state.theme);
-		document.documentElement.setAttribute("data-ppwo-theme", this.state.theme);
-		this.page.set_secondary_action(this.state.theme === "dark" ? "☀️ Light" : "🌙 Dark", () => this.toggle_theme());
-	}
-
 	ripple(el, ev) {
 		const r = document.createElement("span");
 		r.className = "ppwo-ripple";
@@ -472,7 +443,7 @@ class PPWOControlReport {
 	}
 
 	// ------------------------------------------------------------------ //
-	// Filter bar
+	// Filter bar (unchanged)
 	// ------------------------------------------------------------------ //
 	build_filterbar() {
 		const $bar = this.$body.find(".ppwo-filterbar");
@@ -497,7 +468,7 @@ class PPWOControlReport {
 				<select class="form-control period-select">
 					
 					<option value="today" selected >Today</option>
-					<option value="this_week">This Week</option>
+						<option value="this_week">This Week</option>
 					<option value="last_week">Last Week</option>
 					<option value="this_month">This Month</option>
 					<option value="last_month">Last Month</option>
@@ -611,14 +582,14 @@ class PPWOControlReport {
 	}
 
 	load_filter_options() {
-    return frappe.call({ method: `${PPWO_API}.get_filter_options` }).then((r) => {
-        const d = r.message || {};
-        this.$body.find(".date-from").val(d.default_from || "");
-        this.$body.find(".date-to").val(d.default_to || "");
-        this.update_date_fields();
-        this.on_filters_changed();
-    });
-}
+		return frappe.call({ method: `${PPWO_API}.get_filter_options` }).then((r) => {
+			const d = r.message || {};
+			this.$body.find(".date-from").val(d.default_from || "");
+			this.$body.find(".date-to").val(d.default_to || "");
+			this.update_date_fields();
+			this.on_filters_changed();
+		});
+	}
 
 	collect_filters() {
 		const f = {};
@@ -642,12 +613,12 @@ class PPWOControlReport {
 		this.state.filters = this.collect_filters();
 		this.state.start = 0;
 		this.state.cache = {};
-		this.state.selected.clear(); // ADD THIS LINE
+		this.state.selected.clear();
 		this.refresh_all();
 	}
 
 	// ------------------------------------------------------------------ //
-	// KPI cards
+	// KPI cards (unchanged)
 	// ------------------------------------------------------------------ //
 	build_kpis() {
 		const defs = [
@@ -663,7 +634,7 @@ class PPWOControlReport {
 			defs
 				.map(
 					(d) => `
-			<div class="ppwo-kpi ppwo-glass" data-key="${d.key}">
+			<div style="margin-top:15px;" class="ppwo-kpi ppwo-glass" data-key="${d.key}">
 				<div class="ppwo-kpi-label">${d.label}</div>
 				<div class="ppwo-kpi-value" data-value="0">0</div>
 				<div class="ppwo-kpi-bar"><span style="background:${d.color};width:0%"></span></div>
@@ -740,7 +711,7 @@ class PPWOControlReport {
 	}
 
 	// ------------------------------------------------------------------ //
-	// Toolbar
+	// Toolbar (unchanged)
 	// ------------------------------------------------------------------ //
 	build_toolbar() {
 		const $right = this.$body.find(".ppwo-toolbar-right");
@@ -760,178 +731,65 @@ class PPWOControlReport {
 			if (act === "export") this.export_csv();
 			
 		});
-		// ADD these handlers in build_toolbar after the existing click handler:
 		$right.on("click", ".ppwo-btn[data-act='export_selected']", (e) => {
 			this.ripple(e.currentTarget, e);
 			this.export_selected_csv();
 		});
 	}
 
-	// REPLACE the entire export_csv function:
-// export_csv() {
-//     // Always export all filtered rows via server
-//     const params = new URLSearchParams({
-//         cmd: `${PPWO_API}.export_csv`,
-//         filters: JSON.stringify(this.state.filters),
-//     });
-//     window.open(`/api/method/${PPWO_API}.export_csv?${params.toString()}`, "_blank");
-// }
+	export_csv() {
+		const params = new URLSearchParams({
+			cmd: `${PPWO_API}.export_excel`,
+			filters: JSON.stringify(this.state.filters),
+		});
+		window.open(`/api/method/${PPWO_API}.export_excel?${params.toString()}`, "_blank");
+	}
 
-// // REPLACE the entire export_selected_csv function:
-// export_selected_csv() {
-//     if (this.state.selected.size === 0) {
-//         frappe.msgprint(__("Please select at least one row to export."));
-//         return;
-//     }
-
-//     const selected_rows = this.state.rows.filter(r => this.state.selected.has(r.sales_order));
-
-//     if (selected_rows.length === 0) {
-//         frappe.msgprint(__("No selected rows found in current view."));
-//         return;
-//     }
-
-//     // Same column set as the server-side export_csv (Stage skipped, consistent order)
-//     const columns = [
-//         "Sales Order", "Customer", "OMR", "OMR Status",
-//         "BMR", "BMR Status", "Production Plan",
-//         "PP Update Req.", "PP Updated", "Work Order",
-//         "WO Update Req.", "WO Updated",
-//         "Pending At", "Severity", "Updated By", "Updated Time", "Remarks",
-//     ];
-
-//     let csv = columns.join(",") + "\r\n";
-
-//     selected_rows.forEach(r => {
-//         const bmr_names = (r.bmr_list || []).map(b => b.name);
-//         const wo_names = (r.wo_list || []).map(w => w.name);
-
-//         const vals = [
-//             this._csv_value(this._clean(r.sales_order)),
-//             this._csv_value(this._clean(r.customer_name)),
-//             this._csv_value(this._clean(r.omr ? r.omr.name : "")),
-//             this._csv_value(this._clean(r.omr_badge ? r.omr_badge.label : "")),
-//             this._csv_value(this._clean(this._format_doc_list(bmr_names))),
-//             this._csv_value(this._clean(r.bmr_badge ? r.bmr_badge.label : "")),
-//             this._csv_value(this._clean(r.pp ? r.pp.name : "")),
-//             this._csv_value(this._clean(r.pp_required_badge ? r.pp_required_badge.label : "")),
-//             this._csv_value(this._clean(r.pp_updated_badge ? r.pp_updated_badge.label : "")),
-//             this._csv_value(this._clean(this._format_doc_list(wo_names))),
-//             this._csv_value(this._clean(r.wo_required_badge ? r.wo_required_badge.label : "")),
-//             this._csv_value(this._clean(r.wo_updated_badge ? r.wo_updated_badge.label : "")),
-//             this._csv_value(this._clean(r.pending_at)),
-//             this._csv_value(this._clean(r.severity)),
-//             this._csv_value(this._clean(r.modified_by)),
-//             this._csv_value(this._clean(r.modified ? frappe.datetime.prettyDate(r.modified) : "")),   
-//             this._csv_value(this._clean(r.is_pending ? ("Awaiting action at " + r.current_stage) : "")),
-//         ];
-//         csv += vals.join(",") + "\r\n";
-//     });
-
-//     // Prepend UTF-8 BOM so Excel opens it with correct encoding
-//     const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
-//     const link = document.createElement("a");
-//     link.href = URL.createObjectURL(blob);
-//     link.download = `production_plan_wo_selected_${frappe.datetime.now_date()}.csv`;
-//     document.body.appendChild(link);
-//     link.click();
-//     document.body.removeChild(link);
-//     URL.revokeObjectURL(link.href);
-
-//     frappe.show_alert({
-//         message: __("Exported {0} selected rows", [selected_rows.length]),
-//         indicator: "green"
-//     });
-// }
-
-export_csv() {
-    const params = new URLSearchParams({
-        cmd: `${PPWO_API}.export_excel`,
-        filters: JSON.stringify(this.state.filters),
-    });
-    window.open(`/api/method/${PPWO_API}.export_excel?${params.toString()}`, "_blank");
-}
-
-export_selected_csv() {
-    if (this.state.selected.size === 0) {
-        frappe.msgprint(__("Please select at least one row to export."));
-        return;
-    }
-    const params = new URLSearchParams({
-        cmd: `${PPWO_API}.export_excel`,
-        sales_orders: JSON.stringify(Array.from(this.state.selected)),
-    });
-    window.open(`/api/method/${PPWO_API}.export_excel?${params.toString()}`, "_blank");
-    frappe.show_alert({ message: __("Exporting {0} selected rows…", [this.state.selected.size]), indicator: "green" });
-}
-
-// ADD this new helper — joins names one per line inside a single cell
-
-_format_doc_list(names) {
-    if (!names || !names.length) return "";
-    return names.join("|");
-}
-
-// ADD this new helper — normalises '—' / '-' / 'N/A' placeholders to blank
-_clean(value) {
-    if (value === null || value === undefined) return "";
-    const str = String(value).trim();
-    if (["—", "-", "--", "N/A", "n/a", "None"].includes(str)) return "";
-    return str;
-}
-
-// REPLACE the existing _csv_value function (needs to preserve \r\n inside quotes):
-_csv_value(val) {
-    if (val === null || val === undefined) return '""';
-    const str = String(val).replace(/"/g, '""');
-    return `"${str}"`;
-}
-
-	bulk_assign_dialog() {
-		if (!this.state.selected.size) {
-			frappe.msgprint(__("Select one or more rows first."));
+	export_selected_csv() {
+		if (this.state.selected.size === 0) {
+			frappe.msgprint(__("Please select at least one row to export."));
 			return;
 		}
-		const d = new frappe.ui.Dialog({
-			title: __("Assign Selected Sales Orders"),
-			fields: [
-				{ fieldtype: "Link", fieldname: "assign_to", label: "Assign To", options: "User", reqd: 1 },
-				{ fieldtype: "Small Text", fieldname: "description", label: "Note" },
-			],
-			primary_action_label: __("Assign"),
-			primary_action: (values) => {
-				frappe
-					.call({
-						method: `${PPWO_API}.bulk_assign`,
-						args: {
-							sales_orders: JSON.stringify(Array.from(this.state.selected)),
-							assign_to: values.assign_to,
-							description: values.description,
-						},
-					})
-					.then((r) => {
-						frappe.show_alert({ message: __("Assigned {0} sales orders", [r.message.created]), indicator: "green" });
-						d.hide();
-					});
-			},
+		const params = new URLSearchParams({
+			cmd: `${PPWO_API}.export_excel`,
+			sales_orders: JSON.stringify(Array.from(this.state.selected)),
 		});
-		d.show();
+		window.open(`/api/method/${PPWO_API}.export_excel?${params.toString()}`, "_blank");
+		frappe.show_alert({ message: __("Exporting {0} selected rows…", [this.state.selected.size]), indicator: "green" });
+	}
+
+	_format_doc_list(names) {
+		if (!names || !names.length) return "";
+		return names.join("|");
+	}
+
+	_clean(value) {
+		if (value === null || value === undefined) return "";
+		const str = String(value).trim();
+		if (["—", "-", "--", "N/A", "n/a", "None"].includes(str)) return "";
+		return str;
+	}
+
+	_csv_value(val) {
+		if (val === null || val === undefined) return '""';
+		const str = String(val).replace(/"/g, '""');
+		return `"${str}"`;
 	}
 
 	// ------------------------------------------------------------------ //
 	// Grid
 	// ------------------------------------------------------------------ //
 	build_grid_head() {
+		// New column order: Pending At at 3rd position, Remarks after Severity
 		const cols = [
-			"", "Sales Order", "Customer", "OMR", "OMR Status", "BMR", "BMR Status", "Production Plan",
-			"PP Update Req.", "PP Updated", "Work Order", "WO Update Req.", "WO Updated",
-			"Stage", "Pending At", "Severity", "Updated By", "Updated Time", "Remarks",
+			"", "Sales Order", "Customer", "Pending At", "OMR", "OMR Status", "BMR", "BMR Status", "Production Plan",
+			"PP Status", "Work Order", "WO Status", "Stage", "Severity", "Remarks", "Updated By", "Updated Time"
 		];
 		
 		this.$body.find("table.ppwo-grid thead").html(`<tr>
-    <th><input type="checkbox" class="ppwo-select-all" title="Select/Deselect All"></th>
-    ${cols.slice(1).map((c) => `<th>${c}</th>`).join("")}
-</tr>`);
+			<th><input type="checkbox" class="ppwo-select-all" title="Select/Deselect All"></th>
+			${cols.slice(1).map((c) => `<th>${c}</th>`).join("")}
+		</tr>`);
 	}
 
 	bind_grid_events() {
@@ -943,14 +801,13 @@ _csv_value(val) {
 			if ($(e.target).is("input.ppwo-row-check")) return;
 			this.open_drawer($(e.currentTarget).data("so"));
 		});
-		// REPLACE the existing ppwo-row-check handler:
-this.$body.on("click", ".ppwo-row-check", (e) => {
-    e.stopPropagation();
-    const so = $(e.currentTarget).closest("tr").data("so");
-    if (e.currentTarget.checked) this.state.selected.add(so);
-    else this.state.selected.delete(so);
-    this._update_export_buttons();
-});
+		this.$body.on("click", ".ppwo-row-check", (e) => {
+			e.stopPropagation();
+			const so = $(e.currentTarget).closest("tr").data("so");
+			if (e.currentTarget.checked) this.state.selected.add(so);
+			else this.state.selected.delete(so);
+			this._update_export_buttons();
+		});
 		this.$body.on("click", ".ppwo-row-action", (e) => {
 			e.stopPropagation();
 			const $t = $(e.currentTarget);
@@ -971,55 +828,53 @@ this.$body.on("click", ".ppwo-row-check", (e) => {
 			frappe.route_options = filters;
 			frappe.set_route("List", doctype, "list");
 		});
-		// ADD these event handlers in bind_grid_events:
-this.$body.on("click", ".ppwo-select-all", (e) => {
-    e.stopPropagation();
-    const checked = e.currentTarget.checked;
-    const $checkboxes = this.$body.find("tbody tr .ppwo-row-check");
-    $checkboxes.prop("checked", checked);
-    
-    if (checked) {
-        this.$body.find("tbody tr[data-so]").each((i, tr) => {
-            this.state.selected.add($(tr).data("so"));
-        });
-    } else {
-        this.$body.find("tbody tr[data-so]").each((i, tr) => {
-            this.state.selected.delete($(tr).data("so"));
-        });
-    }
-    this._update_export_buttons();
-});
+		this.$body.on("click", ".ppwo-select-all", (e) => {
+			e.stopPropagation();
+			const checked = e.currentTarget.checked;
+			const $checkboxes = this.$body.find("tbody tr .ppwo-row-check");
+			$checkboxes.prop("checked", checked);
+			
+			if (checked) {
+				this.$body.find("tbody tr[data-so]").each((i, tr) => {
+					this.state.selected.add($(tr).data("so"));
+				});
+			} else {
+				this.$body.find("tbody tr[data-so]").each((i, tr) => {
+					this.state.selected.delete($(tr).data("so"));
+				});
+			}
+			this._update_export_buttons();
+		});
 	}
-	// ADD this new function:
-_update_export_buttons() {
-    const selected_count = this.state.selected.size;
-    const $export_all = this.$body.find('.ppwo-btn[data-act="export"]');
-    const $export_selected = this.$body.find('.ppwo-btn[data-act="export_selected"]');
-    
-    if (selected_count > 0) {
-        $export_all.hide();
-        $export_selected.show().text(`⇩ Export Selected (${selected_count})`);
-    } else {
-        $export_all.show();
-        $export_selected.hide();
-    }
-    
-    // Update select all checkbox state
-    const total_visible = this.$body.find("tbody tr[data-so]").length;
-    const checked_visible = this.$body.find("tbody tr .ppwo-row-check:checked").length;
-    const $select_all = this.$body.find(".ppwo-select-all");
-    
-    if (total_visible > 0 && checked_visible === total_visible) {
-        $select_all.prop("checked", true).prop("indeterminate", false);
-    } else if (checked_visible > 0) {
-        $select_all.prop("checked", false).prop("indeterminate", true);
-    } else {
-        $select_all.prop("checked", false).prop("indeterminate", false);
-    }
-}
+
+	_update_export_buttons() {
+		const selected_count = this.state.selected.size;
+		const $export_all = this.$body.find('.ppwo-btn[data-act="export"]');
+		const $export_selected = this.$body.find('.ppwo-btn[data-act="export_selected"]');
+		
+		if (selected_count > 0) {
+			$export_all.hide();
+			$export_selected.show().text(`⇩ Export Selected (${selected_count})`);
+		} else {
+			$export_all.show();
+			$export_selected.hide();
+		}
+		
+		const total_visible = this.$body.find("tbody tr[data-so]").length;
+		const checked_visible = this.$body.find("tbody tr .ppwo-row-check:checked").length;
+		const $select_all = this.$body.find(".ppwo-select-all");
+		
+		if (total_visible > 0 && checked_visible === total_visible) {
+			$select_all.prop("checked", true).prop("indeterminate", false);
+		} else if (checked_visible > 0) {
+			$select_all.prop("checked", false).prop("indeterminate", true);
+		} else {
+			$select_all.prop("checked", false).prop("indeterminate", false);
+		}
+	}
 
 	render_skeleton_rows(n = 8) {
-		const cols = 19;
+		const cols = 17; // Updated column count
 		let rows = "";
 		for (let i = 0; i < n; i++) {
 			rows += `<tr>${Array(cols)
@@ -1059,31 +914,29 @@ _update_export_buttons() {
 		const omr_cell = this.doc_ref_cell("Order Modification Request", r.omr ? [r.omr] : [], { sales_order: r.sales_order });
 		const bmr_cell = this.doc_ref_cell("Bom Modification Request", r.bmr_list, { name: ["in", (r.bmr_list || []).map((b) => b.name)] });
 		const pp_cell = this.doc_ref_cell("Production Plan", r.pp ? [r.pp] : [], { name: ["in", r.pp ? [r.pp.name] : []] });
-		// FIX: WO list-view now filters by production_plan (PP→WO flow), not by sales_order
 		const wo_cell = this.doc_ref_cell("Work Order", r.wo_list, r.pp ? { production_plan: r.pp.name } : { sales_order: r.sales_order });
 		const row_class_map = { Critical: "ppwo-row-critical", High: "ppwo-row-high", Medium: "ppwo-row-medium", Waiting: "ppwo-row-waiting" };
 		const row_class = row_class_map[r.severity] || "";
-	
+		
+		// New column order with consolidated PP/WO status
 		return `<tr data-so="${r.sales_order}" class="${row_class}">
 			<td><input type="checkbox" class="ppwo-row-check"></td>
 			<td>${so_link}</td>
 			<td title="${frappe.utils.escape_html(r.customer_name || "")}">${frappe.utils.escape_html(r.customer_name || "")}</td>
+			<td>${r.pending_at || "—"}</td>
 			<td>${omr_cell}</td>
 			<td>${this.badge(r.omr_badge)}</td>
 			<td>${bmr_cell}</td>
 			<td>${this.badge(r.bmr_badge)}</td>
 			<td>${pp_cell}</td>
-			<td>${this.badge(r.pp_required_badge)}</td>
-			<td>${this.badge(r.pp_updated_badge)}</td>
+			<td>${this.badge(r.pp_status_badge)}</td>
 			<td>${wo_cell}</td>
-			<td>${this.badge(r.wo_required_badge)}</td>
-			<td>${this.badge(r.wo_updated_badge)}</td>
+			<td>${this.badge(r.wo_status_badge)}</td>
 			<td class="ppwo-nowrap-safe">${this.stage_rail(r.stages)}</td>
-			<td>${r.pending_at}</td>
 			<td><span class="ppwo-sev ${r.severity}">${r.severity}</span></td>
+			<td title="${frappe.utils.escape_html(r.remarks || "")}">${frappe.utils.escape_html(r.remarks || "")}</td>
 			<td title="${frappe.utils.escape_html(r.modified_by || "")}">${frappe.utils.escape_html(r.modified_by || "")}</td>
 			<td class="ppwo-mono" style="font-size:11px;">${frappe.datetime.prettyDate(r.modified)}</td>
-			<td title="${r.is_pending ? "Awaiting action at " + r.current_stage : ""}">${r.is_pending ? "Awaiting action at " + r.current_stage : '<span class="ppwo-dash">—</span>'}</td>
 		</tr>`;
 	}
 
@@ -1095,42 +948,36 @@ _update_export_buttons() {
 	}
 
 	fetch_grid(append) {
-    this.state.loading = true;
-    if (!append) this.render_skeleton_rows();
-    return frappe
-        .call({
-            method: `${PPWO_API}.get_grid_data`,
-            args: { filters: JSON.stringify(this.state.filters), start: this.state.start, page_length: this.state.page_length },
-        })
-        .then((r) => {
-            const data = r.message || { rows: [], total: 0 };
-            this.state.total = data.total;
-            this.state.rows = append ? this.state.rows.concat(data.rows) : data.rows;
-            const $tbody = this.$body.find("table.ppwo-grid tbody");
-            if (append) $tbody.append(data.rows.map((row) => this.render_row(row)).join(""));
-            else $tbody.html(this.state.rows.map((row) => this.render_row(row)).join("") || `<tr><td colspan="19" style="text-align:center;padding:30px;color:var(--ppwo-text-dim);">No rows match these filters. </td></tr>`);
-            this.$body.find("#ppwo-load-more").toggle(this.state.rows.length < this.state.total);
-            
-            // ============ ADD HERE - AFTER the above line ============
-            // Reset select all checkbox
-            this.$body.find(".ppwo-select-all").prop("checked", false).prop("indeterminate", false);
-            
-            // Restore checked state for previously selected rows
-            this.state.selected.forEach(so => {
-                this.$body.find(`tr[data-so="${so}"] .ppwo-row-check`).prop("checked", true);
-            });
-            
-            // Update button states
-            this._update_export_buttons();
-            // =========================================================
-            
-            this.state.loading = false;
-        })
-        .catch((e) => {
-            this.state.loading = false;
-            console.error("PPWO get_grid_data failed:", e);
-        });
-}
+		this.state.loading = true;
+		if (!append) this.render_skeleton_rows();
+		return frappe
+			.call({
+				method: `${PPWO_API}.get_grid_data`,
+				args: { filters: JSON.stringify(this.state.filters), start: this.state.start, page_length: this.state.page_length },
+			})
+			.then((r) => {
+				const data = r.message || { rows: [], total: 0 };
+				this.state.total = data.total;
+				this.state.rows = append ? this.state.rows.concat(data.rows) : data.rows;
+				const $tbody = this.$body.find("table.ppwo-grid tbody");
+				if (append) $tbody.append(data.rows.map((row) => this.render_row(row)).join(""));
+				else $tbody.html(this.state.rows.map((row) => this.render_row(row)).join("") || `<tr><td colspan="17" style="text-align:center;padding:30px;color:var(--ppwo-text-dim);">No rows match these filters. </td></tr>`);
+				this.$body.find("#ppwo-load-more").toggle(this.state.rows.length < this.state.total);
+				
+				this.$body.find(".ppwo-select-all").prop("checked", false).prop("indeterminate", false);
+				
+				this.state.selected.forEach(so => {
+					this.$body.find(`tr[data-so="${so}"] .ppwo-row-check`).prop("checked", true);
+				});
+				
+				this._update_export_buttons();
+				this.state.loading = false;
+			})
+			.catch((e) => {
+				this.state.loading = false;
+				console.error("PPWO get_grid_data failed:", e);
+			});
+	}
 
 	fetch_charts() {
 		return frappe
@@ -1142,12 +989,12 @@ _update_export_buttons() {
 	refresh_all(user_triggered) {
 		if (user_triggered) frappe.show_alert({ message: __("Refreshing…"), indicator: "blue" });
 		this.state.start = 0;
-		this.state.selected.clear(); // ADD THIS LINE
+		this.state.selected.clear();
 		return Promise.all([this.fetch_dashboard(), this.fetch_grid(false), this.fetch_charts()]);
 	}
 
 	// ------------------------------------------------------------------ //
-	// Charts
+	// Charts (unchanged)
 	// ------------------------------------------------------------------ //
 	render_charts(d) {
 		this.render_chart_compact(".c-branch", { type: "bar" }, d.branch && {
@@ -1171,7 +1018,6 @@ _update_export_buttons() {
 			datasets: [{ name: "Pending opened", values: d.trend.values }],
 		}, ["#2490EF"]);
 
-		// Render Branch Performance
 		const $perf = this.$body.find(".c-branch-perf").empty();
 		(d.branch_performance || []).forEach((b) => {
 			$perf.append(`
@@ -1213,7 +1059,7 @@ _update_export_buttons() {
 	}
 
 	// ------------------------------------------------------------------ //
-	// Drawer
+	// Drawer (updated for consolidated columns)
 	// ------------------------------------------------------------------ //
 	bind_drawer_events() {
 		this.$body.find(".ppwo-drawer-overlay, .ppwo-drawer .close-btn").on("click", () => this.close_drawer());
@@ -1223,22 +1069,22 @@ _update_export_buttons() {
 	}
 
 	open_drawer(sales_order) {
-    this.$body.find(".ppwo-drawer-overlay").addClass("open");
-    this.$body.find(".ppwo-drawer").addClass("open");
-    this.$body.find(".ppwo-drawer-content").html(`<div class="ppwo-skel" style="height:20px;width:60%;margin-bottom:14px;"></div>
-        <div class="ppwo-skel" style="height:100px;width:100%;"></div>`);
-    
-    // FIX: Use collect_filters() instead of this.state.filters to get current filter state
-    const filters = this.collect_filters();
-    
-    frappe.call({ 
-        method: `${PPWO_API}.get_row_detail`, 
-        args: { 
-            sales_order, 
-            filters: JSON.stringify(filters) 
-        } 
-    }).then((r) => this.render_drawer(r.message));
-}
+		this.$body.find(".ppwo-drawer-overlay").addClass("open");
+		this.$body.find(".ppwo-drawer").addClass("open");
+		this.$body.find(".ppwo-drawer-content").html(`<div class="ppwo-skel" style="height:20px;width:60%;margin-bottom:14px;"></div>
+			<div class="ppwo-skel" style="height:100px;width:100%;"></div>`);
+		
+		const filters = this.collect_filters();
+		
+		frappe.call({ 
+			method: `${PPWO_API}.get_row_detail`, 
+			args: { 
+				sales_order, 
+				filters: JSON.stringify(filters) 
+			} 
+		}).then((r) => this.render_drawer(r.message));
+	}
+
 	close_drawer() {
 		this.$body.find(".ppwo-drawer-overlay").removeClass("open");
 		this.$body.find(".ppwo-drawer").removeClass("open");
@@ -1278,96 +1124,94 @@ _update_export_buttons() {
 	}
 
 	render_drawer(d) {
-    if (!d) return;
-    const { so, row, pending_actions, history } = d;
-    const $c = this.$body.find(".ppwo-drawer-content");
-    
-    // Safety checks for all data
-    const pp_docs = (row && row.pp) ? [row.pp] : [];
-    const wo_docs = (row && row.wo_list) || [];
-    const stages = (row && row.stages) || [];
-    const severity = (row && row.severity) || "Low";
-    const omr_badge = (row && row.omr_badge) || { key: "not_required", emoji: "", label: "Not Required" };
-    const omr = (row && row.omr) || null;
-    
-    $c.html(`
-        <h3>${so.name || ""}</h3>
-        <div style="color:var(--ppwo-text-dim);font-size:13px;margin-bottom:8px;">${frappe.utils.escape_html(so.customer_name || "")} · ${so.branch || "—"}</div>
-        <span class="ppwo-sev ${severity}">${severity}</span> ${this.badge(omr_badge)}
+		if (!d) return;
+		const { so, row, pending_actions, history } = d;
+		const $c = this.$body.find(".ppwo-drawer-content");
+		
+		const pp_docs = (row && row.pp) ? [row.pp] : [];
+		const wo_docs = (row && row.wo_list) || [];
+		const stages = (row && row.stages) || [];
+		const severity = (row && row.severity) || "Low";
+		const omr_badge = (row && row.omr_badge) || { key: "not_required", emoji: "", label: "Not Required" };
+		const omr = (row && row.omr) || null;
+		
+		$c.html(`
+			<h3>${so.name || ""}</h3>
+			<div style="color:var(--ppwo-text-dim);font-size:13px;margin-bottom:8px;">${frappe.utils.escape_html(so.customer_name || "")} · ${so.branch || "—"}</div>
+			<span class="ppwo-sev ${severity}">${severity}</span> ${this.badge(omr_badge)}
 
-        <div class="section-title">Stage Rail</div>
-        ${this.stage_rail(stages)}
+			<div class="section-title">Stage Rail</div>
+			${this.stage_rail(stages)}
 
-        <div class="section-title">Pending Actions</div>
-        ${(pending_actions || []).map((a) => `<div class="ppwo-pending-action">⚠️ ${frappe.utils.escape_html(a)}</div>`).join("")}
+			<div class="section-title">Pending Actions</div>
+			${(pending_actions || []).map((a) => `<div class="ppwo-pending-action">⚠️ ${frappe.utils.escape_html(a)}</div>`).join("")}
 
-        <div class="section-title">Linked Documents</div>
-        ${omr ? this.create_accordion_section("Order Modification Request", [omr], "Order Modification Request", { sales_order: so.name }) : ""}
-        ${(row && row.bmr_list && row.bmr_list.length) ? this.create_accordion_section("BOM Modification Requests", row.bmr_list, "Bom Modification Request", { sales_order: so.name }) : ""}
-        ${pp_docs.length ? this.create_accordion_section("Production Plans", pp_docs, "Production Plan", { sales_order: so.name }) : ""}
-        ${wo_docs.length ? this.create_accordion_section("Work Orders", wo_docs, "Work Order", (row && row.pp) ? { production_plan: row.pp.name } : { sales_order: so.name }) : ""}
+			<div class="section-title">Linked Documents</div>
+			${omr ? this.create_accordion_section("Order Modification Request", [omr], "Order Modification Request", { sales_order: so.name }) : ""}
+			${(row && row.bmr_list && row.bmr_list.length) ? this.create_accordion_section("BOM Modification Requests", row.bmr_list, "Bom Modification Request", { sales_order: so.name }) : ""}
+			${pp_docs.length ? this.create_accordion_section("Production Plans", pp_docs, "Production Plan", { sales_order: so.name }) : ""}
+			${wo_docs.length ? this.create_accordion_section("Work Orders", wo_docs, "Work Order", (row && row.pp) ? { production_plan: row.pp.name } : { sales_order: so.name }) : ""}
 
-        <div class="section-title">History</div>
-        <div class="ppwo-history-section" style="max-height:300px; overflow-y:auto;">
-            ${(history || []).length ? history
-                .map(
-                    (h) => `<div class="ppwo-timeline-item"><div class="dot"></div>
-                    <div><b>${h.doctype || ""}</b> ${h.name || ""} — ${h.event || ""}${h.state ? " (" + h.state + ")" : ""}<br>
-                    <span style="color:var(--ppwo-text-dim);">${h.time ? frappe.datetime.prettyDate(h.time) : ""} · ${h.user || ""}</span></div></div>`
-                )
-                .join("") : '<div style="color:var(--ppwo-text-dim); padding:10px;">No history available</div>'}
-        </div>
+			<div class="section-title">History</div>
+			<div class="ppwo-history-section" style="max-height:300px; overflow-y:auto;">
+				${(history || []).length ? history
+					.map(
+						(h) => `<div class="ppwo-timeline-item"><div class="dot"></div>
+						<div><b>${h.doctype || ""}</b> ${h.name || ""} — ${h.event || ""}${h.state ? " (" + h.state + ")" : ""}<br>
+						<span style="color:var(--ppwo-text-dim);">${h.time ? frappe.datetime.prettyDate(h.time) : ""} · ${h.user || ""}</span></div></div>`
+					)
+					.join("") : '<div style="color:var(--ppwo-text-dim); padding:10px;">No history available</div>'}
+			</div>
 
-        <div style="margin-top:20px;display:flex;gap:8px;flex-wrap:wrap;">
-            <button class="ppwo-btn ppwo-drawer-refresh">↻ Refresh Status</button>
-            <button class="ppwo-btn primary ppwo-drawer-open-so">Open Sales Order</button>
-        </div>
-    `);
-    
-    // Rest of the drawer bindings remain the same...
-    $c.find(".ppwo-accordion-toggle").on("click", function() {
-        $(this).toggleClass("active");
-        $(this).next(".ppwo-accordion-content").slideToggle(200);
-    });
-    
-    $c.find(".ppwo-drawer-refresh").on("click", (e) => {
-        this.ripple(e.currentTarget, e);
-        const filters = this.collect_filters();
-        frappe.call({ 
-            method: `${PPWO_API}.refresh_row`, 
-            args: { 
-                sales_order: so.name, 
-                filters: JSON.stringify(filters) 
-            } 
-        }).then(() => this.open_drawer(so.name));
-    });
-    
-    $c.find(".ppwo-drawer-open-so").on("click", () => frappe.set_route("Form", "Sales Order", so.name));
-    
-    $c.find(".ppwo-doc-link").on("click", (e) => {
-        e.stopPropagation();
-        const doctype = $(e.currentTarget).data("doctype");
-        const name = $(e.currentTarget).data("name");
-        if (doctype && name) frappe.set_route("Form", doctype, name);
-    });
-    
-    $c.find(".ppwo-view-all-btn").on("click", (e) => {
-        e.stopPropagation();
-        const $btn = $(e.currentTarget);
-        const doctype = $btn.data("doctype");
-        let filters = {};
-        try {
-            filters = JSON.parse($btn.attr("data-filters"));
-        } catch (err) {
-            filters = {};
-        }
-        frappe.route_options = filters;
-        frappe.set_route("List", doctype, "list");
-    });
-}
+			<div style="margin-top:20px;display:flex;gap:8px;flex-wrap:wrap;">
+				<button class="ppwo-btn ppwo-drawer-refresh">↻ Refresh Status</button>
+				<button class="ppwo-btn primary ppwo-drawer-open-so">Open Sales Order</button>
+			</div>
+		`);
+		
+		$c.find(".ppwo-accordion-toggle").on("click", function() {
+			$(this).toggleClass("active");
+			$(this).next(".ppwo-accordion-content").slideToggle(200);
+		});
+		
+		$c.find(".ppwo-drawer-refresh").on("click", (e) => {
+			this.ripple(e.currentTarget, e);
+			const filters = this.collect_filters();
+			frappe.call({ 
+				method: `${PPWO_API}.refresh_row`, 
+				args: { 
+					sales_order: so.name, 
+					filters: JSON.stringify(filters) 
+				} 
+			}).then(() => this.open_drawer(so.name));
+		});
+		
+		$c.find(".ppwo-drawer-open-so").on("click", () => frappe.set_route("Form", "Sales Order", so.name));
+		
+		$c.find(".ppwo-doc-link").on("click", (e) => {
+			e.stopPropagation();
+			const doctype = $(e.currentTarget).data("doctype");
+			const name = $(e.currentTarget).data("name");
+			if (doctype && name) frappe.set_route("Form", doctype, name);
+		});
+		
+		$c.find(".ppwo-view-all-btn").on("click", (e) => {
+			e.stopPropagation();
+			const $btn = $(e.currentTarget);
+			const doctype = $btn.data("doctype");
+			let filters = {};
+			try {
+				filters = JSON.parse($btn.attr("data-filters"));
+			} catch (err) {
+				filters = {};
+			}
+			frappe.route_options = filters;
+			frappe.set_route("List", doctype, "list");
+		});
+	}
 
 	// ------------------------------------------------------------------ //
-	// Celebration
+	// Celebration (unchanged)
 	// ------------------------------------------------------------------ //
 	celebrate() {
 		frappe.show_alert({ message: __("🎉 Everything is fully synchronized!"), indicator: "green" });

@@ -4,7 +4,7 @@
  "docstatus": 0,
  "doctype": "Page",
  "idx": 0,
- "modified": "2026-04-14 15:51:30.975237",
+ "modified": "2026-08-20 11:59:41.798876",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "director-dashboard",
@@ -12,7 +12,7 @@
  "page_name": "director-dashboard",
  "roles": [
   {
-   "role": "System Manager"
+   "role": "Tester"
   }
  ],
  "script": null,

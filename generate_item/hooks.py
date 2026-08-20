@@ -208,6 +208,10 @@ doc_events = {
     "Batch":{
         "before_save":"generate_item.utils.batch.before_save",
     },
+    "Batch":{
+        "before_save":"generate_item.utils.serial_no.update_warranty_period",
+        "before_validate":"generate_item.utils.serial_no.update_warranty_expiry_date",
+    },
     "Purchase Receipt": {
         "before_save": "generate_item.utils.purchase_receipt.before_save",
         "validate": "generate_item.utils.purchase_receipt.validate",
@@ -334,9 +338,13 @@ scheduler_events = {
 	"weekly": [
 		"generate_item.scheduler_events.advance_mr_without_batch_weekly.process_advance_mr_without_batch"
 	],
-	# "monthly": [
-	# 	"generate_item.tasks.monthly"
-	# ],
+	
+
+    "monthly": [
+        "generate_item.scheduler_events.send_monthly_dashboard_email.send_monthly_dashboard_email"
+    ],
+
+
     "daily_long": [
         "generate_item.generate_item.doctype.serial_number.serial_number.process_sales_orders_for_serial_creation"
     ],

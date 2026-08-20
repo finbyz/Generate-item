@@ -52,7 +52,7 @@ def bulk_update_by_batch(batch, mfg_type=None, api_monogram_req=None):
     """
 
     frappe.db.sql(sql, values)
-    frappe.db.commit()
+
 
     # Get count for confirmation message
     count = frappe.db.sql(
@@ -335,4 +335,3 @@ def update_serial_numbers(updates):
             },
         )
 
-    frappe.db.commit()

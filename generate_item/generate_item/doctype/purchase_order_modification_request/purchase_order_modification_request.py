@@ -162,7 +162,7 @@ class PurchaseOrderModificationRequest(Document):
                 frappe.utils.now(),
                 update_modified=False,
             )
-            frappe.db.commit()
+
 
         # ── Payment Schedule Sync ──────────────────────────────────────────────
         if payment_terms_changed:
@@ -217,7 +217,7 @@ class PurchaseOrderModificationRequest(Document):
             frappe.utils.now(),
             update_modified=False,
         )
-        frappe.db.commit()
+  
 
     def update_purchase_order_values(self):
         _now  = now()
@@ -429,7 +429,7 @@ class PurchaseOrderModificationRequest(Document):
         self._sync_item_description_from_master(_now, _user)
 
         self.update_order_qty()
-        frappe.db.commit()
+
 
     # ── NEW METHOD ────────────────────────────────────────────────────────────────
     def _sync_item_description_from_master(self, _now, _user):

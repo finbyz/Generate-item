@@ -559,9 +559,7 @@ def bulk_update_production_plan(material_request, updates):
             update_modified=False,
         )
 
-    # No explicit frappe.db.commit() — Frappe auto-commits at the end of a
-    # successful whitelisted request; committing manually mid-request risks
-    # persisting a partial change if a later line throws.
+   
 
     # Count only rows that actually received a Production Plan — a row left
     # blank in the dialog was submitted but not really "updated".

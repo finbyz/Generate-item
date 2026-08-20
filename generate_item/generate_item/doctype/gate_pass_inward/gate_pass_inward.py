@@ -227,7 +227,7 @@ def create_stock_entry(doc):
                WHERE name = %s""",
             (se.name, doc.name)
         )
-        frappe.db.commit()
+
 
         _throw_se_error(se.name, str(e))
 

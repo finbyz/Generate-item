@@ -78,7 +78,7 @@ def _on_gpo_before_cancel(doc, method=None):
        
       
 
-        frappe.db.commit()
+
 
     except Exception:
         frappe.log_error(
@@ -205,7 +205,7 @@ def create_stock_entry(doc):
                WHERE name = %s""",
             (se.name, doc.name)
         )
-        frappe.db.commit()  
+
 
         _throw_se_error(se.name, purpose, str(e))
 

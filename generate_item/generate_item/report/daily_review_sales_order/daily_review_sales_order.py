@@ -683,7 +683,7 @@ def bulk_update_batch(batch_name, fieldname, value):
         """,
         {"value": value, "now": now_datetime(), "user": frappe.session.user, "batch": batch_name},
     )
-    frappe.db.commit()
+
     return {"status": "ok", "updated": count, "batch": batch_name, "field": fieldname}
 
 # ---------------------------------------------------------------------------
@@ -721,7 +721,7 @@ def bulk_update_batch_multifield(batch_name, field_value_map):
         """,
         params,
     )
-    frappe.db.commit()
+
     return {"status": "ok", "updated": count, "batch": batch_name, "fields": list(field_value_map.keys())}
 # ---------------------------------------------------------------------------
 # PUBLIC API 3 : ROW-WISE UPDATE (one SN + propagate to batch siblings)
@@ -757,7 +757,7 @@ def row_update_and_propagate(sn_name, fieldname, value, propagate_to_batch=True)
                 """,
                 {"value": value, "now": now_datetime(), "user": frappe.session.user, "sn_name": sn_name},
             )
-            frappe.db.commit()
+
             return {"status": "ok", "updated": 1, "propagated": False, "sn": sn_name}
     except Exception:
         frappe.db.rollback()
@@ -814,7 +814,7 @@ def bulk_update_batch_chunked(batch_name, fieldname, value):
             """,
             [value, now_datetime(), frappe.session.user] + chunk,
         )
-        frappe.db.commit()
+
         updated += len(chunk)
         chunks  += 1
 
@@ -958,7 +958,7 @@ def bulk_update_by_reference(select_type, reference, field_value_map):
                 """,
                 set_positional,
             )
-            frappe.db.commit()
+
             total_updated += len(chunk)
             chunks += 1
             updated_by_doctype[doctype] += len(chunk)   # NEW

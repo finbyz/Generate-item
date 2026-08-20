@@ -162,7 +162,7 @@ def _upsert_rates(rates, active_currencies):
                 message=frappe.get_traceback()
             )
 
-    frappe.db.commit()
+
     return success, failed
 
 
@@ -227,7 +227,7 @@ def _delete_old_records():
             force=True
         )
 
-    frappe.db.commit()
+
 
 
 

@@ -486,6 +486,10 @@ function sync_row_warranty_period(frm, cdt, cdn, force_from_parent) {
 
 frappe.ui.form.on('Sales Order', {
     refresh: function (frm) {
+         // Defer so this runs after ERPNext core's refresh handler has added its buttons
+        setTimeout(() => {
+            frm.remove_custom_button("Update Items");
+        }, 0);
 
 
         frm.fields_dict["items"].grid.get_field("component_of").get_query = function (doc, cdt, cdn) {

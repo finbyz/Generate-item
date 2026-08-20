@@ -368,7 +368,7 @@ def create_purchase_order_by_supplier(grouped_items, company, po_series=None, br
 			
 			# Set flags to ignore mandatory fields and validations
 			purchase_order.flags.ignore_mandatory = True
-			purchase_order.flags.ignore_validate = False  
+			purchase_order.flags.ignore_validate = False
 			purchase_order.flags.ignore_permissions = True
 			
 			# Save as draft
@@ -381,7 +381,7 @@ def create_purchase_order_by_supplier(grouped_items, company, po_series=None, br
 				"status": "Success"
 			})
 			
-			frappe.db.commit()
+
 		
 		if created_orders:
 			frappe.msgprint(_("Successfully created {0} Purchase Order(s)").format(len(created_orders)))

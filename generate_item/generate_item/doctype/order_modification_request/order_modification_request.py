@@ -1,24 +1,38 @@
-
-import frappe, json
-from frappe.model.document import Document
-from erpnext.controllers.accounts_controller import update_child_qty_rate
-from frappe.desk.form.linked_with import (
-    get_linked_doctypes,
-    get_linked_docs,
-)
-from frappe import _
-
-import frappe
+import json
 import re
 
-from frappe.utils import today, now, flt
+import frappe
+from frappe import _
 from frappe.model.document import Document
 from frappe.model.naming import make_autoname
+from frappe.utils import flt, get_url_to_form, now, today
 
-from frappe.utils import get_url_to_form
+from erpnext.controllers.accounts_controller import update_child_qty_rate
+from frappe.desk.form.linked_with import get_linked_doctypes, get_linked_docs
+from generate_item.generate_item.modification_task_utils.modification_task import (
+    create_bom_task_on_omr_submit,
+)
 
-
-from generate_item.generate_item.modification_task_utils.modification_task import create_bom_task_on_omr_submit
+# ---------------------------------------------------------------------------
+# Refactor notes (raw SQL -> Frappe-safe DB API)
+# ---------------------------------------------------------------------------
+# Every `frappe.db.sql("UPDATE ...")` / `frappe.db.sql("SELECT ... LIMIT 1")`
+# in this file has been replaced with the equivalent Frappe DB API call
+# (frappe.db.set_value / frappe.db.get_value / frappe.qb) for the same
+# reasons Frappe recommends it:
+#   - No manual quoting/escaping of table or column names -> removes a class
+#     of SQL-injection risk (this mattered here because some of the old
+#     UPDATE statements built the SET clause dynamically from field names).
+#   - Automatically parameterises values (still true of raw frappe.db.sql
+#     with %s placeholders, but ORM calls remove the need to hand-write SQL
+#     at all).
+#   - Portable across DB backends supported by Frappe (MariaDB/Postgres).
+#   - Shorter, more readable, and consistent with the rest of the codebase,
+#     which already uses frappe.db.get_value / frappe.db.set_value /
+#     frappe.get_all in most places.
+# Behaviour (including whether `modified` / `modified_by` get touched) is
+# preserved exactly at every call site — see the inline comments below.
+# ---------------------------------------------------------------------------
 
 class OrderModificationRequest(Document):
 
@@ -44,24 +58,24 @@ class OrderModificationRequest(Document):
         if self.type == "BOM" and self.bom:
             self.update_bom_items_using_db_set()
 
-        # if self.type == "Sales Order" and self.sales_order:
-        # 	self.update_sales_order_items_using_db_set()
+
 
         if self.type == "Sales Order" and self.sales_order:
             if self.modification_type == "Order Change":
                 self.update_sales_order_commercial_details()
-                # self.update_so_commercial_fields()
+
 
             elif self.modification_type == "Order Item Change":
-                # create_history_records(self)
+ 
 
                 self.validate_component_of_items(throw=True)
                 self.validate_free_item_association_not_removed()  
                 self.update_sales_order_values()
-                self.update_sales_order_revision()
+              
                 create_batches_for_omr(self)
                 get_change(self)
-
+        
+        self.update_sales_order_revision()
         create_bom_task_on_omr_submit(self)
         self.update_production_plan_sales_order_modification()
 
@@ -70,10 +84,7 @@ class OrderModificationRequest(Document):
         if not self.sales_order or not self.sales_order_item:
             return
 
-        # For each main (non-free) row, only ONE item code is "allowed":
-        # - if item is being replaced (rev_item set and different) → ONLY rev_item
-        #   (the old item code will be gone from the SO after this OMR applies)
-        # - otherwise → the existing item code
+
         allowed_item_codes = set()
         for row in self.sales_order_item:
             is_free_row = bool(row.is_free_item or getattr(row, "rev_is_free_item", 0))
@@ -212,30 +223,6 @@ class OrderModificationRequest(Document):
             if not is_free:
                 continue
 
-            # Prefer the unique line reference; fall back to item-code match
-            # only if rev_main_item_id was never set (legacy/manual entry).
-            # line_key = getattr(row, "rev_main_item_id", None)
-
-            # if not line_key:
-            #     # Fallback: match by effective item code (same rule as the
-            #     # component-of check) — best-effort only, since item codes
-            #     # can repeat across rows.
-            #     component_of = (row.rev_component_of or row.component_of or "").strip()
-            #     if not component_of:
-            #         continue
-            #     match = next(
-            #         (
-            #             r for r in line_key_to_row.values()
-            #             if (
-            #                 (r.rev_item if (r.rev_item and r.rev_item != r.item) else r.item)
-            #                 == component_of
-            #             )
-            #         ),
-            #         None,
-            #     )
-            #     main_row = match
-            # else:
-            #     main_row = line_key_to_row.get(line_key)
 
             line_key = getattr(row, "rev_main_item_id", None)
             main_row = line_key_to_row.get(line_key) if line_key else None
@@ -292,22 +279,45 @@ class OrderModificationRequest(Document):
             )
             
     def update_production_plan_sales_order_modification(self):
-        frappe.db.sql(
-            """
-            UPDATE `tabProduction Plan` pp
-            INNER JOIN `tabProduction Plan Item` ppi
-                ON ppi.parent = pp.name
-            SET
-                pp.sales_order_modification = %s
-            WHERE
-                pp.docstatus in (0,1)
-                AND ppi.sales_order = %s
-            """,
-            (
+        """
+        Flags every Production Plan (draft or submitted) that has at least
+        one Production Plan Item referencing this Sales Order.
+
+        Refactor: the raw `UPDATE ... INNER JOIN ...` is replaced with a
+        frappe.qb SELECT (safe, parameterised, no hand-written JOIN SQL) to
+        find the matching Production Plan names, followed by
+        frappe.db.set_value() per document. The result is identical: every
+        Production Plan with docstatus in (0, 1) that has a Production Plan
+        Item row for this Sales Order gets sales_order_modification = "YES".
+        """
+        if not self.sales_order:
+            # Original SQL used `ppi.sales_order = %s` with a None param,
+            # which never matches any row in MySQL -> effectively a no-op.
+            # Returning early here reproduces that same no-op explicitly.
+            return
+
+        ProductionPlan = frappe.qb.DocType("Production Plan")
+        ProductionPlanItem = frappe.qb.DocType("Production Plan Item")
+
+        plan_names = (
+            frappe.qb.from_(ProductionPlan)
+            .inner_join(ProductionPlanItem)
+            .on(ProductionPlanItem.parent == ProductionPlan.name)
+            .where(ProductionPlan.docstatus.isin([0, 1]))
+            .where(ProductionPlanItem.sales_order == self.sales_order)
+            .select(ProductionPlan.name)
+            .distinct()
+        ).run(pluck="name")
+
+        for plan_name in plan_names:
+            # Original SQL never touched modified/modified_by -> update_modified=False
+            frappe.db.set_value(
+                "Production Plan",
+                plan_name,
+                "sales_order_modification",
                 "YES",
-                self.sales_order,
-            ),
-        )
+                update_modified=False,
+            )
     
     def update_sales_order_commercial_details(self):
         """Updates Commercial T&C + Details + Reference Data + Terms & Conditions in Sales Order"""
@@ -361,7 +371,7 @@ class OrderModificationRequest(Document):
             "rev_so_remarks": "terms",
         }
 
-        # ── Merge all maps and build UPDATE query
+        # ── Merge all maps and build the update dict
         all_maps = {
             **commercial_map,
             **details_map,
@@ -369,21 +379,25 @@ class OrderModificationRequest(Document):
             **terms_map,
         }
 
-        updates = []
-        params = {"so_name": self.sales_order}
+        update_values = {}
 
         for omr_field, so_field in all_maps.items():
             val = self.get(omr_field)
             if val is not None and val != "":
-                updates.append(f"`{so_field}` = %({omr_field})s")
-                params[omr_field] = val
+                update_values[so_field] = val
 
-        if updates:
-            frappe.db.sql(f"""
-                UPDATE `tabSales Order`
-                SET {", ".join(updates)}
-                WHERE name = %(so_name)s
-            """, params)
+        if update_values:
+            # Refactor: frappe.db.set_value() with a field/value dict replaces
+            # the dynamically built raw UPDATE (which interpolated column
+            # names straight into the SQL string). update_modified=False
+            # preserves the original behaviour, which never touched
+            # modified/modified_by for this bulk commercial-fields update.
+            frappe.db.set_value(
+                "Sales Order",
+                self.sales_order,
+                update_values,
+                update_modified=False,
+            )
 
 
 
@@ -534,8 +548,8 @@ class OrderModificationRequest(Document):
 
             if qty == 0 and rev_qty == 0:
                 frappe.throw(
-                    f"Row {row.idx}: Rev Qty cannot be 0 when Qty is 0",
-                    title="Invalid Quantity",
+                    _("Row {0}: Rev Qty cannot be 0 when Qty is 0").format(row.idx),
+                    title=_("Invalid Quantity"),
                 )
               #  Normalize values
             # rev_rate = row.rev_rate
@@ -560,8 +574,8 @@ class OrderModificationRequest(Document):
             #  3. Block: Not cancelled + 0 rate
             if rev_status != "Cancelled" and rev_rate == 0:
                 frappe.throw(
-                    f"Row {row.idx}: Rev Rate cannot be 0 when Rev Line Status is not 'Cancelled'",
-                    title="Invalid Rate",
+                    _("Row {0}: Rev Rate cannot be 0 when Rev Line Status is not 'Cancelled'").format(row.idx),
+                    title=_("Invalid Rate"),
                 )
 
 
@@ -592,28 +606,19 @@ class OrderModificationRequest(Document):
         if not self.sales_order:
             return
 
-        # Get Sales Order
-
-
-        now_time = now()
-        user = frappe.session.user
-
-
-        frappe.db.sql("""
-        UPDATE `tabSales Order`
-        SET
-            latest_rev_no = %s,
-            rev_date = %s,
-            modified = %s,
-            modified_by = %s
-        WHERE name = %s
-    """, (
-        self.name,
-        today(),
-        now_time,
-        user,
-        self.sales_order
-    ))
+        # Refactor: frappe.db.set_value() replaces the raw UPDATE.
+        # update_modified defaults to True, which internally sets
+        # modified = now() and modified_by = frappe.session.user — the exact
+        # values the original code computed by hand (now_time / user) and
+        # wrote via SQL.
+        frappe.db.set_value(
+            "Sales Order",
+            self.sales_order,
+            {
+                "latest_rev_no": self.name,
+                "rev_date": today(),
+            },
+        )
 
 
     def update_sales_order_values(self):
@@ -668,10 +673,7 @@ class OrderModificationRequest(Document):
             effective_item = row.rev_item if is_new_item else row.item
             # ── Always carry forward the existing SO item description ────────────
             existing_description = ""
-            # if row.sales_order_item_name:
-            #     existing_description = frappe.db.get_value(
-            #         "Sales Order Item", row.sales_order_item_name, "description"
-            #     ) or ""
+           
             # Fallback to Item master if SO description is empty
             # if not existing_description:
             lookup_item = row.rev_item or row.item
@@ -738,7 +740,7 @@ class OrderModificationRequest(Document):
         # update_child_qty_rate so newly inserted lines already exist on the SO.
         line_resolution = self._resolve_free_item_line_keys()
 
-        # ── Step 2: Update custom fields via direct SQL ──────────────────────────
+        # ── Step 2: Update custom fields via frappe.db.set_value() ───────────────
         now  = frappe.utils.now()
         user = frappe.session.user
 
@@ -782,20 +784,7 @@ class OrderModificationRequest(Document):
                     if rev_value is not None and rev_value != "":
                         update_fields[so_field] = rev_value
 
-            # ── Free Item association (spec sections 3 & 4) ──────────────────────
-            # if is_free_row:
-            #     line_key = getattr(row, "rev_main_item_id", None) or row.component_of
-            #     resolved = line_resolution.get(line_key) if line_key else None
-
-            #     if resolved:
-            #         update_fields["main_item_id"] = resolved["so_item_name"]
-            #         update_fields["main_item"] = resolved["item_code"]
-            #         update_fields["component_of"] = resolved["item_code"]
-            #     elif getattr(row, "rev_component_of", None):
-            #         # No resolvable line match — still allow a direct item-code
-            #         # override for backward compatibility, without touching main_item_id
-            #         update_fields["component_of"] = row.rev_component_of
-
+           
             # ── Free Item association (spec sections 3 & 4) ──────────────────────
             if is_free_row:
                 line_key = getattr(row, "rev_main_item_id", None) or row.component_of
@@ -834,87 +823,27 @@ class OrderModificationRequest(Document):
             if not update_fields:
                 continue
 
-            set_clause = ", ".join([
-                f"`{so_field}` = %({so_field})s"
-                for so_field in update_fields
-            ])
+            # Refactor: frappe.db.set_value() with a field/value dict replaces
+            # the dynamically built raw UPDATE (which interpolated column
+            # names into the SQL string). `modified` / `modified_by` are
+            # passed through explicitly so every row updated in this loop
+            # keeps the same shared timestamp/user the original code used
+            # (`now` / `user`, computed once above) instead of a fresh
+            # timestamp per row. `so_item_name` already uniquely identifies
+            # the row, so the extra `parent =` guard from the raw SQL isn't
+            # needed here.
+            frappe.db.set_value(
+                "Sales Order Item",
+                so_item_name,
+                update_fields,
+                modified=now,
+                modified_by=user,
+            )
 
-            frappe.db.sql(f"""
-                UPDATE `tabSales Order Item`
-                SET
-                    {set_clause},
-                    `modified`    = %(modified)s,
-                    `modified_by` = %(modified_by)s
-                WHERE
-                    `name`   = %(name)s
-                    AND `parent` = %(parent)s
-            """, {
-                **update_fields,
-                "name":        so_item_name,
-                "parent":      self.sales_order,
-                "modified":    now,
-                "modified_by": user,
-            })
-
-        frappe.db.commit()
+        # frappe.db.commit()
 
 
-    # def _resolve_free_item_line_keys(self):
-    #     """
-    #     Build a lookup: OMR-side line key → { so_item_name, item_code }
-
-    #     Line key is:
-    #       - row.sales_order_item_name, for lines that already existed on the SO
-    #       - row.name (the OMR child row's own name), for lines newly added
-    #         through this OMR (no sales_order_item_name yet)
-
-    #     Must be called after update_child_qty_rate() so new lines are already
-    #     present on the Sales Order.
-    #     """
-    #     so_items_now = frappe.get_all(
-    #         "Sales Order Item",
-    #         filters={"parent": self.sales_order},
-    #         fields=["name", "item_code", "idx"],
-    #         order_by="idx asc",
-    #     )
-
-    #     resolution = {}
-    #     used_so_names = set()
-
-    #     for row in self.sales_order_item:
-    #         is_free_row = bool(row.is_free_item or getattr(row, "rev_is_free_item", 0))
-    #         if is_free_row:
-    #             continue  # only main (non-free) rows can be association targets
-
-    #         line_key = row.sales_order_item_name or row.name
-    #         effective_item = row.rev_item or row.item
-
-    #         if row.sales_order_item_name:
-    #             so_item_name = row.sales_order_item_name
-    #         else:
-    #             # Newly added line — match by item_code among not-yet-used SO items
-    #             match = next(
-    #                 (d for d in so_items_now
-    #                  if d.item_code == effective_item and d.name not in used_so_names),
-    #                 None,
-    #             )
-    #             so_item_name = match.name if match else None
-
-    #         if not so_item_name:
-    #             continue
-
-    #         used_so_names.add(so_item_name)
-
-    #         # Prefer the item_code actually on the SO row (authoritative),
-    #         # falling back to the OMR's effective item if lookup fails.
-    #         so_item_code = frappe.db.get_value("Sales Order Item", so_item_name, "item_code") or effective_item
-
-    #         resolution[line_key] = {
-    #             "so_item_name": so_item_name,
-    #             "item_code": so_item_code,
-    #         }
-
-    #     return resolution
+   
 
     def _resolve_free_item_line_keys(self):
         """
@@ -1121,7 +1050,7 @@ def _delete_batch_if_exists(batch_id: str) -> None:
     if existing:
         try:
             frappe.delete_doc("Batch", existing, force=True, ignore_permissions=True)
-            frappe.db.commit()
+            # frappe.db.commit()
         except Exception as e:
             frappe.log_error(
                 title="OMR – could not delete existing batch",
@@ -1158,7 +1087,7 @@ def _create_batch(
         }
     )
     batch_doc.insert(ignore_permissions=True)
-    frappe.db.commit()
+    # frappe.db.commit()
     return batch_doc.name
 
 
@@ -1297,7 +1226,7 @@ def create_batches_for_omr(omr_doc) -> None:
                 update_modified=False,
             )
 
-    frappe.db.commit()
+    # frappe.db.commit()
 
     if errors:
         frappe.msgprint(
@@ -1395,19 +1324,17 @@ def update_sales_order_items(self, mismatched_rows):
 
 
             # 1️⃣ Update Sales Order Item
-            frappe.db.sql(
-                """
-                UPDATE `tabSales Order Item`
-                SET item_code = %s,
-                    item_name = %s,
-                    description = %s,
-                    modified = %s,
-                    modified_by = %s
-                WHERE name = %s
-                AND parent = %s
-            """,
-                (row.rev_item, item_name,description, frappe.utils.now(), frappe.session.user,
-                row.sales_order_item_name, self.sales_order),
+            # Refactor: frappe.db.set_value() replaces the raw UPDATE.
+            # update_modified defaults to True, giving the same fresh
+            # frappe.utils.now() / frappe.session.user the original SQL wrote.
+            frappe.db.set_value(
+                "Sales Order Item",
+                row.sales_order_item_name,
+                {
+                    "item_code": row.rev_item,
+                    "item_name": item_name,
+                    "description": description,
+                },
             )
 
             updated.append(row.sales_order_item_name)
@@ -1430,10 +1357,10 @@ def update_sales_order_items(self, mismatched_rows):
                             "custom_batch_no": custom_batch_no,
                         })
 
-                    # updated_boms.append({"row_name": row.name, "bom": bom_name, "custom_batch_no": custom_batch_no})
 
-    if updated or updated_boms:
-        frappe.db.commit()
+
+    # if updated or updated_boms:
+    #     frappe.db.commit()
 
     return updated, updated_boms
 
@@ -1458,22 +1385,22 @@ def update_batch_item(batch_name, new_item_code):
 
     item_name = frappe.db.get_value("Item", new_item_code, "item_name")
 
-    frappe.db.sql(
-        """
-        UPDATE `tabBatch`
-        SET item = %s,
-            item_name = %s
-        WHERE name = %s
-    """,
-        (new_item_code, item_name, batch_name),
+    # Refactor: frappe.db.set_value() replaces the raw UPDATE.
+    # update_modified=False preserves the original behaviour, which never
+    # touched modified/modified_by on the Batch record.
+    frappe.db.set_value(
+        "Batch",
+        batch_name,
+        {"item": new_item_code, "item_name": item_name},
+        update_modified=False,
     )
 
     return True
 
 
-def update_finish_item_bom(custom_batch_no, new_item,old_item):
+def update_finish_item_bom(custom_batch_no, new_item, old_item):
     """
-    Update submitted BOM using direct SQL.
+    Update submitted BOM using safe Frappe DB API calls.
     Returns updated BOM name.
     """
 
@@ -1481,41 +1408,34 @@ def update_finish_item_bom(custom_batch_no, new_item,old_item):
         return None
 
     # Get BOM name
-    bom_name = frappe.db.sql(
-        """
-        SELECT name
-        FROM `tabBOM`
-        WHERE custom_batch_no = %s
-        AND item = %s
-        LIMIT 1
-    """,
-        (custom_batch_no,old_item),
-        as_dict=True,
+    # Refactor: frappe.db.get_value() with a filter dict replaces the raw
+    # SELECT ... LIMIT 1 — get_value already returns just the first match,
+    # exactly like the original LIMIT 1 query.
+    bom_name = frappe.db.get_value(
+        "BOM",
+        {"custom_batch_no": custom_batch_no, "item": old_item},
+        "name",
     )
 
     if not bom_name:
         return None
 
-
-
-    bom_name = bom_name[0]["name"]
     item_name, description = frappe.db.get_value(
-                    "Item", new_item, ["item_name", "description"]
-                )
-
-    # Update finished item directly
-    frappe.db.sql(
-        """
-        UPDATE `tabBOM`
-        SET item = %s,
-            item_name = %s,
-            description = %s
-        WHERE name = %s
-    """,
-        (new_item,item_name,description, bom_name),
+        "Item", new_item, ["item_name", "description"]
     )
 
-    frappe.db.commit()
+    # Update finished item directly
+    # Refactor: frappe.db.set_value() replaces the raw UPDATE.
+    # update_modified=False preserves the original behaviour, which never
+    # touched modified/modified_by on the BOM record.
+    frappe.db.set_value(
+        "BOM",
+        bom_name,
+        {"item": new_item, "item_name": item_name, "description": description},
+        update_modified=False,
+    )
+
+    # frappe.db.commit()
 
     return bom_name
 
@@ -1588,7 +1508,7 @@ def create_order_modification_requests(updated_boms, branch):
 
         doc.save(ignore_permissions=True)
 
-        frappe.db.commit()
+        # frappe.db.commit()
 
         created_docs.append({"row": row_name, "new_omr": doc.name, "action": action})
 

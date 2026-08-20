@@ -4,16 +4,40 @@ import frappe
 
 
 # ------------------------------------------------------------------
-# Set the fixed recipient email address here.
-# Every weekly report will be sent ONLY to this address.
+# Name of the Email Group (Setup > Email > Email Group) that holds the
+# recipient list for this report. Manage members from the UI — no code
+# change or deploy needed when recipients change.
 # ------------------------------------------------------------------
-HARDCODED_EMAIL = "dhanvant.marathe@finbyz.tech"  # <-- replace with the actual recipient
+RECIPIENT_EMAIL_GROUP = "Advance MR Without Batch Alert"
+
+
+def get_recipients():
+    """Fetch recipient emails from the configured Email Group (Setup > Email
+    > Email Group), instead of a hardcoded address.
+
+    Only active (non-unsubscribed) members are returned. If the Email Group
+    itself doesn't exist yet, this returns an empty list (and the caller
+    logs + skips the send) rather than raising, so a missing/renamed group
+    fails soft instead of breaking the scheduler.
+    """
+    if not frappe.db.exists("Email Group", RECIPIENT_EMAIL_GROUP):
+        frappe.logger().warning(
+            f"Email Group '{RECIPIENT_EMAIL_GROUP}' does not exist. "
+            f"Create it under Setup > Email > Email Group and add members."
+        )
+        return []
+
+    return frappe.get_all(
+        "Email Group Member",
+        filters={"email_group": RECIPIENT_EMAIL_GROUP, "unsubscribed": 0},
+        pluck="email",
+    )
 
 
 def process_advance_mr_without_batch():
     """
     Weekly scheduled job to find Advance MRs with items missing batch numbers
-    and send ONE consolidated email to a hardcoded recipient.
+    and send ONE consolidated email to the members of RECIPIENT_EMAIL_GROUP.
     """
 
     # Get all Advance MRs that are not cancelled
@@ -61,28 +85,40 @@ def process_advance_mr_without_batch():
         )
         return
 
+    recipients = get_recipients()
+
+    if not recipients:
+        frappe.logger().warning(
+            f"No recipients found in Email Group '{RECIPIENT_EMAIL_GROUP}'; "
+            f"skipping send even though {len(all_items_without_batch)} items "
+            f"without batch were found."
+        )
+        return
+
     try:
         send_notification_email(
-            recipient_email=HARDCODED_EMAIL,
+            recipients=recipients,
             items_data=all_items_without_batch
         )
 
         frappe.logger().info(
-            f"Consolidated email sent to {HARDCODED_EMAIL} "
+            f"Consolidated email sent to {', '.join(recipients)} "
             f"({len(all_items_without_batch)} items from {total_mrs_processed} MRs)"
         )
     except Exception as e:
 
         frappe.log_error(
-            message=f"Failed to send email to {HARDCODED_EMAIL}: {str(e)}",
+            message=f"Failed to send email to {', '.join(recipients)}: {str(e)}",
             title="Advance MR Weekly Report Error"
         )
 
 
-def send_notification_email(recipient_email, items_data):
+def send_notification_email(recipients, items_data):
     """
     Send ONE formatted consolidated email with a table of items missing batch numbers.
     Columns: Sr No, Material Request Name, Transaction Date, Item Code, Qty
+
+    recipients: list of email addresses (from the Email Group).
     """
 
     # Build table rows
@@ -173,7 +209,7 @@ def send_notification_email(recipient_email, items_data):
     """
 
     frappe.sendmail(
-        recipients=[recipient_email],
+        recipients=recipients,
         subject=(
             f"Weekly Report: Advance Material Request Items Without Batch - "
             f"{frappe.utils.now_datetime().strftime('%Y-%m-%d')}"

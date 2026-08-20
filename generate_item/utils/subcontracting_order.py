@@ -126,7 +126,7 @@ def update_supplied_items_in_db(parent, data):
                 "bom_reference": row.get("bom_reference", "")
             }
         )
-    frappe.db.commit()
+    # frappe.db.commit()
     return "Supplied items updated successfully in DB."
 
 
