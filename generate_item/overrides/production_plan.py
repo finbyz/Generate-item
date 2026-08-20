@@ -28,6 +28,112 @@ class ProductionPlan(_ProductionPlan):
             except Exception as e:
                 frappe.log_error("Production Plan Init Cleanup", f"Cleanup error in __init__: {str(e)}")
 
+    def _get_warehouse_mapping_for_work_order(self, branch, production_item):
+        """Get warehouse mapping for Work Order creation - Same logic as JS set_wo_warehouses"""
+        WAREHOUSE_MAP = {
+            "Sanand|Sub Assembly": {
+                "source_warehouse": "Sanand Order Allocated - SVIPL",
+                "fg_warehouse": "Sanand Semi Finished - SVIPL",
+                "wip_warehouse": "Sanand WIP - SVIPL"
+            },
+            "Sanand|Finished Goods": {
+                "source_warehouse": "Sanand Order Allocated - SVIPL",
+                "fg_warehouse": "Sanand Finished Goods - SVIPL",
+                "wip_warehouse": "Sanand WIP - SVIPL"
+            },
+            "Rabale|Sub Assembly": {
+                "source_warehouse": "Rabale Order Allocated - SVIPL",
+                "fg_warehouse": "Rabale Semi Finished - SVIPL",
+                "wip_warehouse": "Rabale WIP - SVIPL"
+            },
+            "Rabale|Finished Goods": {
+                "source_warehouse": "Rabale Order Allocated - SVIPL",
+                "fg_warehouse": "Rabale Finished Goods - SVIPL",
+                "wip_warehouse": "Rabale WIP - SVIPL"
+            },
+            "Nandikoor|Sub Assembly": {
+                "source_warehouse": "Nandikoor Order Allocated - SVIPL",
+                "fg_warehouse": "Nandikoor Semi Finished - SVIPL",
+                "wip_warehouse": "Nandikoor WIP - SVIPL"
+            },
+            "Nandikoor|Finished Goods": {
+                "source_warehouse": "Nandikoor Order Allocated - SVIPL",
+                "fg_warehouse": "Nandikoor Finished Goods - SVIPL",
+                "wip_warehouse": "Nandikoor WIP - SVIPL"
+            }
+        }
+        
+        if not branch or not production_item:
+            return {}
+        
+        item_group = frappe.db.get_value("Item", production_item, "item_group")
+        if not item_group:
+            return {}
+        
+        if item_group == "Sub Assembly":
+            key = f"{branch}|Sub Assembly"
+            if key in WAREHOUSE_MAP:
+                return WAREHOUSE_MAP[key]
+        else:
+            is_fg = self._is_under_finished_goods(item_group)
+            if is_fg:
+                key = f"{branch}|Finished Goods"
+                if key in WAREHOUSE_MAP:
+                    return WAREHOUSE_MAP[key]
+        
+        return {}
+
+    def _is_under_finished_goods(self, item_group):
+        """Check if item group is under 'Finished Goods' - Same logic as JS"""
+        try:
+            item_group_doc = frappe.get_doc("Item Group", item_group)
+            
+            if item_group_doc.name == "Finished Goods":
+                return True
+            
+            parent_group = item_group_doc.parent_item_group
+            max_depth = 10
+            depth = 0
+            
+            while parent_group and depth < max_depth:
+                if parent_group == "Finished Goods":
+                    return True
+                
+                parent_doc = frappe.get_doc("Item Group", parent_group)
+                parent_group = parent_doc.parent_item_group
+                depth += 1
+            
+            return False
+            
+        except Exception as e:
+            frappe.log_error("Item Group Check Error", f"Error checking item group {item_group}: {str(e)}")
+            return False
+
+    def _apply_warehouse_mapping(self, work_order_data, production_item):
+        """Apply warehouse mapping to work order data - Same logic as JS apply_mapping"""
+        branch = work_order_data.get("branch") or getattr(self, "branch", None)
+        
+        if not branch and getattr(self, "po_items", None):
+            for po_item in self.po_items:
+                if po_item.item_code == production_item and getattr(po_item, "branch", None):
+                    branch = po_item.branch
+                    break
+        
+        if not branch:
+            return work_order_data
+        
+        warehouse_mapping = self._get_warehouse_mapping_for_work_order(branch, production_item)
+        
+        if warehouse_mapping:
+            if warehouse_mapping.get("source_warehouse"):
+                work_order_data["source_warehouse"] = warehouse_mapping["source_warehouse"]
+            if warehouse_mapping.get("fg_warehouse"):
+                work_order_data["fg_warehouse"] = warehouse_mapping["fg_warehouse"]
+            if warehouse_mapping.get("wip_warehouse"):
+                work_order_data["wip_warehouse"] = warehouse_mapping["wip_warehouse"]
+        
+        return work_order_data
+
     @frappe.whitelist()
     def get_open_sales_orders(self):
         """Override to add branch filtering and populate branch in sales_orders table"""
@@ -443,6 +549,14 @@ class ProductionPlan(_ProductionPlan):
                 item["use_multi_level_bom"] = 0
 
             set_default_warehouses_local(item, default_warehouses)
+            # Apply warehouse mapping based on item group and branch - Same as JS
+            # item = self._apply_warehouse_mapping(item, item.get("production_item"))
+
+            # # Fallback to default if mapping not applied
+            # if not item.get("wip_warehouse"):
+            #     item["wip_warehouse"] = default_warehouses.get("wip_warehouse")
+            # if not item.get("fg_warehouse"):
+            #     item["fg_warehouse"] = default_warehouses.get("fg_warehouse")
             
             # --- Custom Logic Injection ---
             
@@ -1014,6 +1128,18 @@ class ProductionPlan(_ProductionPlan):
                 "fg_warehouse": default_warehouses.get("fg_warehouse"),
                 "company": self.get("company"),
             }
+            # work_order_data = {
+            #     "company": self.get("company"),
+            # }
+
+            # # Apply warehouse mapping based on item group and branch - Same as JS
+            # work_order_data = self._apply_warehouse_mapping(work_order_data, getattr(row, "production_item", None))
+
+            # # Fallback to default if mapping not applied
+            # if not work_order_data.get("wip_warehouse"):
+            #     work_order_data["wip_warehouse"] = default_warehouses.get("wip_warehouse")
+            # if not work_order_data.get("fg_warehouse"):
+            #     work_order_data["fg_warehouse"] = default_warehouses.get("fg_warehouse")
 
             if flt(row.qty) <= flt(row.ordered_qty):
                 continue
@@ -1085,7 +1211,7 @@ class ProductionPlan(_ProductionPlan):
                         row.production_plan_item = None
                         if row.get("name"):
                             frappe.db.set_value(row.doctype, row.name, "production_plan_item", None)
-                            frappe.db.commit()
+
             except Exception as e:
                 frappe.log_error("Production Plan Item Check Error", f"Error checking Production Plan Item existence for {sub_item_name}: {str(e)}")
                 row.production_plan_item = None
@@ -1183,7 +1309,7 @@ class ProductionPlan(_ProductionPlan):
                     row.production_plan_item = None
                     if row.get("name"):
                         frappe.db.set_value(row.doctype, row.name, "production_plan_item", None)
-                        frappe.db.commit()
+
             
             if not production_plan_item and hasattr(row, 'production_item'):
                 for po_item in self.po_items:
@@ -1256,7 +1382,7 @@ class ProductionPlan(_ProductionPlan):
                     row.production_plan_item = None
                     if row.get("name"):
                         frappe.db.set_value(row.doctype, row.name, "production_plan_item", None)
-                        frappe.db.commit()
+
 
             if not production_plan_item and hasattr(row, 'production_item') and row.production_item:
                 pp_items = frappe.get_all(
@@ -2256,7 +2382,7 @@ def cleanup_all_orphaned_references(production_plan):
                     sub_item.production_plan_item = None
                     if sub_item.get("name"):
                         frappe.db.set_value(sub_item.doctype, sub_item.name, "production_plan_item", None)
-                        frappe.db.commit()
+  
         
         if hasattr(production_plan, 'mr_items') and production_plan.mr_items:
             for mr_item in production_plan.mr_items:
@@ -2270,7 +2396,7 @@ def cleanup_all_orphaned_references(production_plan):
                     mr_item.production_plan_item = None
                     if mr_item.get("name"):
                         frappe.db.set_value(mr_item.doctype, mr_item.name, "production_plan_item", None)
-                        frappe.db.commit()
+ 
         
         frappe.log_error("Production Plan Cleanup", "Completed comprehensive cleanup of orphaned references")
         
