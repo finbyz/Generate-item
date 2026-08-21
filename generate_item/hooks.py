@@ -205,13 +205,7 @@ doc_events = {
     "Supplier Scorecard Period": {
         "before_validate": ["generate_item.utils.supplier_scorecard.import_file"],
     },
-    "Batch":{
-        "before_save":"generate_item.utils.batch.before_save",
-    },
-    "Batch":{
-        "before_save":"generate_item.utils.serial_no.update_warranty_period",
-        "before_validate":"generate_item.utils.serial_no.update_warranty_expiry_date",
-    },
+    
     "Purchase Receipt": {
         "before_save": "generate_item.utils.purchase_receipt.before_save",
         "validate": "generate_item.utils.purchase_receipt.validate",
@@ -233,7 +227,11 @@ doc_events = {
         "before_save": "generate_item.utils.sales_order.before_save",
         "validate": "generate_item.utils.sales_order.validate",
         "before_validate":"generate_item.utils.sales_order.before_validate",
-        "on_cancel": "generate_item.generate_item.doctype.serial_number.serial_number.on_cancel_sales_order",
+        # "on_cancel": "generate_item.generate_item.doctype.serial_number.serial_number.on_cancel_sales_order",
+         "on_cancel": [
+        "generate_item.generate_item.doctype.serial_number.serial_number.on_cancel_sales_order",
+        "generate_item.generate_item.doctype.valve_spare_serial.valve_spare_serial.cancel_valve_spare_serials_for_so",
+    ],
         "before_cancel": "generate_item.generate_item.doctype.serial_number.serial_number.before_cancel_sales_order",
          "on_update_after_submit": "generate_item.generate_item.doctype.serial_number.serial_number.on_update_sales_order",
     },
@@ -257,6 +255,8 @@ doc_events = {
     "Sales Invoice": {
         "after_insert": "generate_item.utils.sales_invoice.after_insert",
         "validate": "generate_item.utils.sales_invoice.validate",
+        "on_submit": "generate_item.utils.sales_invoice.on_submit_update_warranty"
+    
     },
     "Production Plan":{
         "before_save": "generate_item.utils.production_plan.before_save"
@@ -310,9 +310,16 @@ doc_events = {
         ],
         "onload": "generate_item.utils.customer_supplier_workflow.set_cs_onload",
     },
+    
     "Batch": {
-        "after_insert":   "generate_item.generate_item.doctype.valve_spare_serial.valve_spare_serial.after_insert_batch"
-    },  
+    "after_insert": "generate_item.generate_item.doctype.valve_spare_serial.valve_spare_serial.after_insert_batch",
+    # "before_validate": "generate_item.utils.serial_no.update_warranty_expiry_date",
+    "before_save": [
+        "generate_item.utils.batch.before_save",
+        # "generate_item.utils.serial_no.update_warranty_period",
+    ],
+   
+},
 }
 # 	"*": {
 # 		"on_update": "method",

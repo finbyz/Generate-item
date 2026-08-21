@@ -94,6 +94,15 @@ class PendingAdvanceMaterialRequestPage {
 			fieldtype: 'Date',
 			change: () => this.refresh(),
 		});
+
+		this.status_field = this.page.add_field({
+        fieldname: 'status',
+        label: __('Status'),
+        fieldtype: 'Select',
+        options: ['Pending', 'All'],
+        default: 'Pending',
+        change: () => this.refresh(),
+    });
 	}
 
 	get_filters() {
@@ -101,6 +110,7 @@ class PendingAdvanceMaterialRequestPage {
 			company: this.company_field.get_value(),
 			from_date: this.from_date_field.get_value(),
 			to_date: this.to_date_field.get_value(),
+			status: this.status_field.get_value(),
 		};
 	}
 

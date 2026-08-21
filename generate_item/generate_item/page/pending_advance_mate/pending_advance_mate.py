@@ -23,6 +23,10 @@ def get_data(filters=None):
     if filters.get("to_date"):
         conditions.append("mr.transaction_date <= %(to_date)s")
 
+    status = filters.get("status") or "Pending"
+    if status == "Pending":
+        conditions.append("(mri.production_plan IS NULL OR mri.production_plan = '')")
+
     condition_sql = ""
     if conditions:
         condition_sql = " AND " + " AND ".join(conditions)

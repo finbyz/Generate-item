@@ -1,5 +1,6 @@
 {
  "actions": [],
+ "allow_bulk_edit": 1,
  "allow_rename": 1,
  "autoname": "field:serial_number",
  "creation": "2026-03-13 17:28:08.368181",
@@ -36,6 +37,7 @@
   "design_remarks",
   "engg_bom_created_by",
   "release_date_expected",
+  "warranty_expiry_date",
   "reason_for_delay"
  ],
  "fields": [
@@ -265,13 +267,20 @@
    "fieldtype": "Select",
    "label": "AFTER GAD CHANGE BOM Update or NOT",
    "options": "\n00\n01\n02\n03\n04\n05\n06\n07\n01-UPDATED\n02-UPDATED\n03-UPDATED\n04-UPDATED\n05-UPDATED\n06-UPDATED"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "warranty_expiry_date",
+   "fieldtype": "Date",
+   "label": "Warranty Expiry Date",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-05-20 11:18:12.179579",
+ "modified": "2026-08-21 15:54:44.712544",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Serial Number",

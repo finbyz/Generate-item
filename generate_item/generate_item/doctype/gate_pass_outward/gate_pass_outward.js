@@ -106,14 +106,14 @@ frappe.ui.form.on("Gate Pass Outward Item", {
             frappe.db.get_value(
                 "Gatepass Component",
                 row.sub_component,
-                ["description", "remarks"]
+                ["sub_component_name", "remarks"]
             ).then(r => {
                 if (r.message) {
                     frappe.model.set_value(
                         cdt,
                         cdn,
                         "description",
-                        r.message.description || ""
+                        r.message.sub_component_name || ""
                     );
 
                     frappe.model.set_value(

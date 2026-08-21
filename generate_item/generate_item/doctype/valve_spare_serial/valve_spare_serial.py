@@ -101,48 +101,65 @@ def _sync_valve_spare_serials_for_batch(batch_id: str, target_qty: int, branch: 
 	return {"created": 0, "cancelled": len(to_cancel), "short_by": short_by}
 
 
-def _create_valve_spare_serials_for_batch(batch_id: str):
-    """
-    Runs on Batch after_insert — first-time creation.
-    """
-    so_item = frappe.db.get_value(
-        "Sales Order Item",
-        {"custom_batch_no": batch_id},
-        ["parent", "item_code", "qty"],
-        as_dict=True,
-    )
-    if not so_item:
-        return
+def _create_valve_spare_serials_for_batch(batch_doc):
+	"""
+	Runs on Batch after_insert — first-time creation.
 
-    product_type = frappe.db.get_value(
-        "Item Generator", so_item.item_code, "attribute_1_value"
-    )
-    if product_type != "Valve Spare":
-        return
+	Uses fields already present on the Batch doc itself
+	(reference_doctype, reference_name, item, branch) instead of a
+	reverse-lookup via custom_batch_no on Sales Order Item, which is only
+	written back *after* the batch is created client-side and would
+	silently miss on every new Sales Order.
+	"""
+	batch_id = batch_doc.name
 
-    branch = frappe.db.get_value("Sales Order", so_item.parent, "branch")
-    if not branch:
-        frappe.log_error(
-            f"Branch not set on Sales Order {so_item.parent}. "
-            f"Skipping Valve Spare Serial creation for batch {batch_id}."
-        )
-        return
+	# Only act when the batch is created directly from a Sales Order
+	if batch_doc.get("reference_doctype") != "Sales Order":
+		return
 
-    result = _sync_valve_spare_serials_for_batch(batch_id, so_item.qty, branch)
+	so_name = batch_doc.get("reference_name")
+	item_code = batch_doc.get("item")
+	if not so_name or not item_code:
+		return
 
-    frappe.logger().info(
-        f"Valve Spare Serial: batch '{batch_id}' (SO {so_item.parent}, "
-        f"item {so_item.item_code}) — created {result['created']}."
-    )
+	product_type = frappe.db.get_value(
+		"Item Generator", item_code, "attribute_1_value"
+	)
+	if product_type != "Valve Spare":
+		return
+
+	# Resolve qty from the matching SO Item row
+	so_item_qty = frappe.db.get_value(
+		"Sales Order Item",
+		{"parent": so_name, "item_code": item_code},
+		"qty",
+	)
+	if not so_item_qty:
+		return
+
+	# branch comes from the Batch doc first; fall back to Sales Order
+	branch = batch_doc.get("branch") or frappe.db.get_value(
+		"Sales Order", so_name, "branch"
+	)
+	if not branch:
+		frappe.log_error(
+			f"Branch not set on Batch {batch_id} or Sales Order {so_name}. "
+			f"Skipping Valve Spare Serial creation.",
+			"Valve Spare Serial: Missing Branch",
+		)
+		return
+
+	result = _sync_valve_spare_serials_for_batch(batch_id, so_item_qty, branch)
+
+	frappe.logger().info(
+		f"Valve Spare Serial: batch '{batch_id}' (SO {so_name}, "
+		f"item {item_code}) — created {result['created']}."
+	)
 
 
 def after_insert_batch(doc, method):
-	try: 
-		frappe.log_error(
-			f"Valve Spare Serial: calling {doc.name}",
-		)
-
-		_create_valve_spare_serials_for_batch(doc.name)
+	try:
+		_create_valve_spare_serials_for_batch(doc)
 	except Exception:
 		frappe.log_error(
 			frappe.get_traceback(),
@@ -210,3 +227,37 @@ def _handle_valve_spare_qty_changes(so_doc):
             title=_("Valve Spare Serial — Qty Sync"),
             indicator="blue",
         )
+
+
+
+# ---------------------------------------------------------------------------
+# handle Sales Order cancellation — cancel all live serials for its batches
+# ---------------------------------------------------------------------------
+def cancel_valve_spare_serials_for_so(so_doc, method=None):
+    """
+    Wire to Sales Order on_cancel. Zeroes out every Valve Spare batch on
+    the SO so no live serials are left pointing at a cancelled order.
+    """
+    branch = so_doc.get("branch")
+    if not branch:
+        return
+
+    for row in so_doc.get("items", []):
+        batch_id = row.get("custom_batch_no")
+        if not batch_id:
+            continue
+
+        product_type = frappe.db.get_value(
+            "Item Generator", row.get("item_code"), "attribute_1_value"
+        )
+        if product_type != "Valve Spare":
+            continue
+
+        try:
+            _sync_valve_spare_serials_for_batch(batch_id, 0, branch)
+        except Exception:
+            frappe.log_error(
+                frappe.get_traceback(),
+                f"Valve Spare Serial: cancel-cleanup failed for batch {batch_id} "
+                f"(SO {so_doc.name} cancelled)",
+            )

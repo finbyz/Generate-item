@@ -548,15 +548,15 @@ class ProductionPlan(_ProductionPlan):
             if self.sub_assembly_items:
                 item["use_multi_level_bom"] = 0
 
-            set_default_warehouses_local(item, default_warehouses)
+            # set_default_warehouses_local(item, default_warehouses)
             # Apply warehouse mapping based on item group and branch - Same as JS
-            # item = self._apply_warehouse_mapping(item, item.get("production_item"))
+            item = self._apply_warehouse_mapping(item, item.get("production_item"))
 
-            # # Fallback to default if mapping not applied
-            # if not item.get("wip_warehouse"):
-            #     item["wip_warehouse"] = default_warehouses.get("wip_warehouse")
-            # if not item.get("fg_warehouse"):
-            #     item["fg_warehouse"] = default_warehouses.get("fg_warehouse")
+            # Fallback to default if mapping not applied
+            if not item.get("wip_warehouse"):
+                item["wip_warehouse"] = default_warehouses.get("wip_warehouse")
+            if not item.get("fg_warehouse"):
+                item["fg_warehouse"] = default_warehouses.get("fg_warehouse")
             
             # --- Custom Logic Injection ---
             
@@ -1123,23 +1123,23 @@ class ProductionPlan(_ProductionPlan):
             if row.type_of_manufacturing == "Material Request":
                 continue
 
-            work_order_data = {
-                "wip_warehouse": default_warehouses.get("wip_warehouse"),
-                "fg_warehouse": default_warehouses.get("fg_warehouse"),
-                "company": self.get("company"),
-            }
             # work_order_data = {
+            #     "wip_warehouse": default_warehouses.get("wip_warehouse"),
+            #     "fg_warehouse": default_warehouses.get("fg_warehouse"),
             #     "company": self.get("company"),
             # }
+            work_order_data = {
+                "company": self.get("company"),
+            }
 
-            # # Apply warehouse mapping based on item group and branch - Same as JS
-            # work_order_data = self._apply_warehouse_mapping(work_order_data, getattr(row, "production_item", None))
+            # Apply warehouse mapping based on item group and branch - Same as JS
+            work_order_data = self._apply_warehouse_mapping(work_order_data, getattr(row, "production_item", None))
 
-            # # Fallback to default if mapping not applied
-            # if not work_order_data.get("wip_warehouse"):
-            #     work_order_data["wip_warehouse"] = default_warehouses.get("wip_warehouse")
-            # if not work_order_data.get("fg_warehouse"):
-            #     work_order_data["fg_warehouse"] = default_warehouses.get("fg_warehouse")
+            # Fallback to default if mapping not applied
+            if not work_order_data.get("wip_warehouse"):
+                work_order_data["wip_warehouse"] = default_warehouses.get("wip_warehouse")
+            if not work_order_data.get("fg_warehouse"):
+                work_order_data["fg_warehouse"] = default_warehouses.get("fg_warehouse")
 
             if flt(row.qty) <= flt(row.ordered_qty):
                 continue
