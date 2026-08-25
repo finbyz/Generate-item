@@ -2,7 +2,8 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import nowdate
+from frappe.utils import defaultdict, nowdate
+from collections import defaultdict
 
 
 class GatePassInward(Document):
@@ -50,93 +51,128 @@ class GatePassInward(Document):
             alert=True, indicator="green"
         )
 
+    
+
     def _update_stock_item_qtys(self, gpo, cancel):
         outward_map_by_name = {row.name: row for row in gpo.item_detail}
-        outward_map_by_item = {row.item: row for row in gpo.item_detail}
+
+        outward_rows_by_item = defaultdict(list)
+        for row in gpo.item_detail:
+            outward_rows_by_item[row.item].append(row)
+        for rows in outward_rows_by_item.values():
+            rows.sort(key=lambda r: r.idx)
 
         for gpi_row in self.item_detail:
             item_code    = gpi_row.item
             gpo_row_name = gpi_row.get("gate_pass_outward_detail")
+            qty_change   = gpi_row.qty or 0
 
             if gpo_row_name and gpo_row_name in outward_map_by_name:
-                gpo_row = outward_map_by_name[gpo_row_name]
-            elif item_code in outward_map_by_item:
-                gpo_row = outward_map_by_item[item_code]
+                target_rows = [outward_map_by_name[gpo_row_name]]
+            elif item_code in outward_rows_by_item:
+                target_rows = outward_rows_by_item[item_code]
             else:
                 frappe.throw(
                     _(f"Item <b>{item_code}</b> not found in "
                     f"Gate Pass Outward {self.gate_pass_outward}")
                 )
 
-            qty_change = gpi_row.qty or 0
+            remaining = qty_change
+            for gpo_row in target_rows:
+                if remaining <= 0:
+                    break
 
-            if cancel:
-                gpo_row.received_qty = max((gpo_row.received_qty or 0) - qty_change, 0)
-            else:
-                new_received = (gpo_row.received_qty or 0) + qty_change
-                if new_received > (gpo_row.qty or 0):
-                    frappe.throw(
-                        _(f"Receiving qty for <b>{item_code}</b> exceeds sent qty "
-                        f"in {self.gate_pass_outward}. "
-                        f"(Sent: {gpo_row.qty}, "
-                        f"Already received: {gpo_row.received_qty}, "
-                        f"Receiving now: {qty_change})")
-                    )
-                gpo_row.received_qty = new_received
+                if cancel:
+                    capacity = gpo_row.received_qty or 0
+                    if capacity <= 0:
+                        continue
+                    consume = min(remaining, capacity)
+                    gpo_row.received_qty = (gpo_row.received_qty or 0) - consume
+                else:
+                    capacity = (gpo_row.qty or 0) - (gpo_row.received_qty or 0)
+                    if capacity <= 0:
+                        continue
+                    consume = min(remaining, capacity)
+                    gpo_row.received_qty = (gpo_row.received_qty or 0) + consume
 
-            gpo_row.pending_qty = (gpo_row.qty or 0) - (gpo_row.received_qty or 0)
+                gpo_row.pending_qty = (gpo_row.qty or 0) - (gpo_row.received_qty or 0)
+                frappe.db.set_value(
+                    "Gate Pass Outward Detail", gpo_row.name,
+                    {
+                        "received_qty": gpo_row.received_qty,
+                        "pending_qty" : gpo_row.pending_qty,
+                    }
+                )
+                remaining -= consume
 
-            frappe.db.set_value(
-                "Gate Pass Outward Detail", gpo_row.name,
-                {
-                    "received_qty": gpo_row.received_qty,
-                    "pending_qty" : gpo_row.pending_qty,
-                }
-            )
+            if remaining > 0 and not cancel:
+                frappe.throw(
+                    _(f"Receiving qty for <b>{item_code}</b> exceeds sent qty "
+                    f"in {self.gate_pass_outward}. "
+                    f"(Requested: {qty_change}, could not allocate: {remaining})")
+                )
+
+
     def _update_sub_component_qtys(self, gpo, cancel):
         outward_map_by_name = {row.name: row for row in gpo.items}
-        outward_map_by_sc   = {row.sub_component: row for row in gpo.items}
+
+        outward_rows_by_sc = defaultdict(list)
+        for row in gpo.items:
+            outward_rows_by_sc[row.sub_component].append(row)
+        for rows in outward_rows_by_sc.values():
+            rows.sort(key=lambda r: r.idx)
 
         for gpi_row in self.items:
             sc           = gpi_row.sub_component
             gpo_row_name = gpi_row.get("gate_pass_outward_item")
+            qty_change   = gpi_row.sent_qty or 0
 
             if gpo_row_name and gpo_row_name in outward_map_by_name:
-                gpo_row = outward_map_by_name[gpo_row_name]
-            elif sc in outward_map_by_sc:
-                gpo_row = outward_map_by_sc[sc]
+                target_rows = [outward_map_by_name[gpo_row_name]]
+            elif sc in outward_rows_by_sc:
+                target_rows = outward_rows_by_sc[sc]
             else:
                 frappe.throw(
                     _(f"Sub Component <b>{sc}</b> not found in "
                     f"Gate Pass Outward {self.gate_pass_outward}")
                 )
 
-            qty_change = gpi_row.sent_qty or 0
+            remaining = qty_change
+            for gpo_row in target_rows:
+                if remaining <= 0:
+                    break
 
-            if cancel:
-                gpo_row.received_qty = max((gpo_row.received_qty or 0) - qty_change, 0)
-            else:
-                new_received = (gpo_row.received_qty or 0) + qty_change
-                if new_received > (gpo_row.qty or 0):
-                    frappe.throw(
-                        _(f"Receiving qty for <b>{sc}</b> exceeds sent qty "
-                        f"in {self.gate_pass_outward}. "
-                        f"(Sent: {gpo_row.qty}, "
-                        f"Already received: {gpo_row.received_qty}, "
-                        f"Receiving now: {qty_change})")
-                    )
-                gpo_row.received_qty = new_received
+                if cancel:
+                    capacity = gpo_row.received_qty or 0
+                    if capacity <= 0:
+                        continue
+                    consume = min(remaining, capacity)
+                    gpo_row.received_qty = (gpo_row.received_qty or 0) - consume
+                else:
+                    capacity = (gpo_row.qty or 0) - (gpo_row.received_qty or 0)
+                    if capacity <= 0:
+                        continue
+                    consume = min(remaining, capacity)
+                    gpo_row.received_qty = (gpo_row.received_qty or 0) + consume
 
-            gpo_row.pending_qty = (gpo_row.qty or 0) - (gpo_row.received_qty or 0)
+                gpo_row.pending_qty = (gpo_row.qty or 0) - (gpo_row.received_qty or 0)
+                frappe.db.set_value(
+                    "Gate Pass Outward Item", gpo_row.name,
+                    {
+                        "received_qty": gpo_row.received_qty,
+                        "pending_qty" : gpo_row.pending_qty,
+                    }
+                )
+                remaining -= consume
 
-            frappe.db.set_value(
-                "Gate Pass Outward Item", gpo_row.name,
-                {
-                    "received_qty": gpo_row.received_qty,
-                    "pending_qty" : gpo_row.pending_qty,
-                }
-            )
-
+            if remaining > 0 and not cancel:
+                frappe.throw(
+                    _(f"Receiving qty for <b>{sc}</b> exceeds sent qty "
+                    f"in {self.gate_pass_outward}. "
+                    f"(Requested: {qty_change}, could not allocate: {remaining})")
+                )
+            
+            
 # ─────────────────────────────────────────────────────────────────────────────
 # STOCK ENTRY — exact same pattern as GPO working code
 # ─────────────────────────────────────────────────────────────────────────────
