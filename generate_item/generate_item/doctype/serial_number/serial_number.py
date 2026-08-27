@@ -719,14 +719,14 @@ def cancel_serial_numbers_for_sales_order(sales_order_name: str):
 
 def get_cancelled_line_items(so_doc) -> list:
     """
-    Returns items from SO where line_status == 'Cancelled' and batch exists.
+    Returns items from SO where line_status == 'Cancelled' or 'Closed' and batch exists.
     Used to determine which serials to cancel after a status update.
     """
     cancelled = []
     for row in so_doc.get("items", []):
         line_status = (row.get("line_status") or "").strip().lower()
         batch_id    = row.get("custom_batch_no") or ""
-        if line_status == "cancelled"  and batch_id:
+        if line_status in ["cancelled", "closed"]  and batch_id:
             cancelled.append({
                 "item_code": row.get("item_code") or "",
                 "batch_id":  batch_id,

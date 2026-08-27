@@ -1064,7 +1064,8 @@ function show_dispatchable_so_dialog(frm) {
                     return {
                         query:   'generate_item.utils.delivery_note.get_dispatchable_so_for_query',
                         filters: {
-                            customer: frm.doc.customer
+                            customer: frm.doc.customer,
+                            branch:frm.doc.branch
                         }
                        
                     };

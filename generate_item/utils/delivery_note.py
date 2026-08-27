@@ -356,7 +356,7 @@ from frappe.utils import flt
 
 
 @frappe.whitelist()
-def get_dispatchable_so(customer=None):
+def get_dispatchable_so(customer=None,branch=None):
     """
     Return dispatchable Sales Orders.
     Checks ALL submitted SOs that are not fully delivered and have available stock.
@@ -372,6 +372,10 @@ def get_dispatchable_so(customer=None):
     if customer:
         conditions += " AND customer = %s"
         params.append(customer)
+    if branch:
+        conditions += " AND branch = %s"
+        params.append(branch)
+        
     eligible_sos = frappe.db.sql(
         f"""
         SELECT name, set_warehouse
@@ -514,7 +518,8 @@ def get_dispatchable_so_for_query(doctype, txt, searchfield, start, page_len, fi
     if isinstance(filters, str):
         filters = frappe.parse_json(filters)
     customer = filters.get("customer") if filters else None
-    so_names = [so["name"] for so in get_dispatchable_so(customer=customer)]
+    branch = filters.get("branch") if filters else None
+    so_names = [so["name"] for so in get_dispatchable_so(customer=customer,branch=branch)]
 
     if not so_names:
         return []

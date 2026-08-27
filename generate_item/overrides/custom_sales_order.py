@@ -51,6 +51,10 @@ class CustomSalesOrder(SalesOrder):
         # self.status now reflects the real, final status after the call.
         new_line_status = STATUS_TO_LINE_STATUS.get(self.status, "")
         self._sync_item_line_status(new_line_status)
+        
+        if new_line_status in ["Cancelled", "Closed"]:
+            from generate_item.generate_item.doctype.serial_number.serial_number import _handle_cancelled_lines
+            _handle_cancelled_lines(self)
 
     def _sync_item_line_status(self, line_status):
         if not self.get("items"):

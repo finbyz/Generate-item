@@ -60,7 +60,7 @@ def submit_for_l1_approval(doctype, docname):
     _assert_status(doc, STATUS_DRAFT, "submit for L1 Approval")
 
     if not _can_bypass_approval(settings):
-        rule = _get_branch_rule(doc, settings, doctype_key)
+        rule = _get_rule(doc, settings, doctype_key)
         _assert_has_role(
             rule.who_create,
             _("Only users with role {0} can submit this {1} for L1 Approval.").format(
@@ -84,7 +84,7 @@ def l1_approve(doctype, docname):
     _assert_status(doc, STATUS_PENDING_L1, "give L1 Approval")
 
     if not _can_bypass_approval(settings):
-        rule = _get_branch_rule(doc, settings, doctype_key)
+        rule = _get_rule(doc, settings, doctype_key)
         _assert_has_role(
             rule.l1_approver,
             _("Only users with role {0} can give L1 Approval for this {1}.").format(
@@ -109,7 +109,7 @@ def final_approve(doctype, docname):
     _assert_status(doc, STATUS_PENDING_FINAL, "give Final Approval")
 
     if not _can_bypass_approval(settings):
-        rule = _get_branch_rule(doc, settings, doctype_key)
+        rule = _get_rule(doc, settings, doctype_key)
         _assert_has_role(
             rule.final_approver,
             _("Only users with role {0} can give Final Approval for this {1}.").format(
@@ -127,7 +127,7 @@ def _validate_cs_doc(doc, doctype_key):
 
     1. Guard: exit early when the workflow is not enabled for this doctype.
     2. Auto-create required custom fields when the setting flag is on.
-    3. New records with an active branch rule require the 'Who Create' role.
+    3. New records with an active rule require the 'Who Create' role.
     4. New records without a matching rule save as Draft/disabled.
     5. Existing records: prevent manual tampering of cs_approval_status.
     6. Sync the standard `disabled` flag to reflect the current status.
@@ -138,7 +138,10 @@ def _validate_cs_doc(doc, doctype_key):
 
     _ensure_custom_fields(doc.doctype, settings, doctype_key)
     _ensure_disabled_field_available(doc.doctype)
-    _validate_branch_selected(doc)
+
+    # Branch validation only for Supplier
+    if doctype_key == "supplier":
+        _validate_branch_selected(doc)
 
     user_roles = _get_user_roles()
     if doc.is_new():
@@ -150,8 +153,8 @@ def _validate_cs_doc(doc, doctype_key):
 
 
 def _validate_new_record(doc, settings, doctype_key, user_roles):
-    """Enforce creator role only when an active branch rule exists."""
-    rule = _find_branch_rule(doc, settings, doctype_key)
+    """Enforce creator role when an active rule exists."""
+    rule = _find_rule(doc, settings, doctype_key)
     if not rule:
         doc.set(CF_APPROVAL_STATUS, STATUS_DRAFT)
         return
@@ -218,7 +221,7 @@ def _build_approval_control(doc):
             "can_final_approve": current == STATUS_PENDING_FINAL,
         }
 
-    rule = _find_branch_rule(doc, settings, doctype_key)
+    rule = _find_rule(doc, settings, doctype_key)
     if not rule:
         return {
             "enabled": True,
@@ -272,7 +275,11 @@ def _cleanup_workflow_for_disabled_doctype(doctype):
 
 def _ensure_custom_fields(doctype, settings=None, doctype_key=None):
     """Ensure workflow fields exist with the required metadata."""
-    _ensure_branch_field(doctype)
+    # Branch field only needed for Supplier
+    if doctype_key == "supplier":
+        _ensure_branch_field(doctype)
+
+    insert_after = CF_BRANCH if doctype_key == "supplier" else "disabled"
 
     _ensure_single_custom_field(
         dt=doctype,
@@ -280,7 +287,7 @@ def _ensure_custom_fields(doctype, settings=None, doctype_key=None):
         fieldtype="Select",
         label="Approval Status",
         options=_APPROVAL_STATUS_OPTIONS,
-        insert_after=CF_BRANCH,
+        insert_after=insert_after,
         default=STATUS_DRAFT,
         read_only=1,
         in_list_view=1,
@@ -508,15 +515,70 @@ def _doctype_key(doctype):
     )
 
 
+# ── Customer rule lookup (branch-free) ──────────────────────────────────────
+
+class _CustomerRule:
+    """Simple namespace to hold customer approval roles from settings fields."""
+    __slots__ = ("who_create", "l1_approver", "final_approver")
+
+    def __init__(self, who_create, l1_approver, final_approver):
+        self.who_create = who_create
+        self.l1_approver = l1_approver
+        self.final_approver = final_approver
+
+
+def _get_customer_rule(settings):
+    """Return the customer approval rule from direct settings fields, or None
+    if the roles are not fully configured."""
+    wc = settings.get("customer_who_create")
+    l1 = settings.get("customer_l1_approver")
+    fa = settings.get("customer_final_approver")
+    if wc and l1 and fa:
+        return _CustomerRule(wc, l1, fa)
+    return None
+
+
+# ── Unified rule lookup ─────────────────────────────────────────────────────
+
+def _find_rule(doc, settings, doctype_key):
+    """Return the active rule for the document.
+    - Customer: reads roles directly from settings fields (no branch).
+    - Supplier: matches branch from the child table (existing logic).
+    """
+    if doctype_key == "customer":
+        return _get_customer_rule(settings)
+    return _find_branch_rule(doc, settings, doctype_key)
+
+
+def _get_rule(doc, settings, doctype_key):
+    """Return the active rule for the document.
+    Raises frappe.ValidationError if no rule is configured.
+    - Customer: reads roles directly from settings fields.
+    - Supplier: matches branch from the child table.
+    """
+    if doctype_key == "customer":
+        rule = _get_customer_rule(settings)
+        if rule:
+            return rule
+        frappe.throw(
+            _(
+                "Customer approval roles are not configured in {0}. "
+                "Please set Who Create, L1 Approver, and Final Approver roles."
+            ).format(frappe.bold("Customer Supplier Workflow Settings")),
+            frappe.ValidationError,
+        )
+    return _get_branch_rule(doc, settings, doctype_key)
+
+
+# ── Supplier branch-based rule lookup (unchanged) ───────────────────────────
+
 def _find_branch_rule(doc, settings, doctype_key):
     """Return the active rule row matching the document's branch, or None."""
     branch = doc.get(CF_BRANCH)
     if not branch:
         return None
 
-    rules_fieldname = (
-        "customer_approval_rules" if doctype_key == "customer" else "supplier_approval_rules"
-    )
+    rules_fieldname = "supplier_approval_rules"
 
     for row in settings.get(rules_fieldname) or []:
         if row.branch == branch and not cint(row.disabled):

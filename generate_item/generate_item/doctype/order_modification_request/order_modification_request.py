@@ -842,6 +842,12 @@ class OrderModificationRequest(Document):
 
         # frappe.db.commit()
 
+        # Reload the Sales Order to get the updated line_status from DB
+        so.reload()
+        # Trigger serial number cancellation for any newly cancelled lines
+        from generate_item.generate_item.doctype.serial_number.serial_number import _handle_cancelled_lines
+        _handle_cancelled_lines(so)
+
 
    
 

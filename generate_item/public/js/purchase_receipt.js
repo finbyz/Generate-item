@@ -123,12 +123,12 @@ frappe.ui.form.on('Purchase Receipt', {
                     supplier: frm.doc.supplier,
                     schedule_date: undefined,
                 },
-                get_query_filters: {
+                get_query_filters: Object.assign({
                     docstatus: 1,
                     status: ['not in', ['Closed', 'On Hold']],
                     per_received: ['<', 99.9999],
                     company: frm.doc.company,
-                },
+                }, frm.doc.branch ? { branch: frm.doc.branch } : {}),
                 allow_child_item_selection: true,
                 child_fieldname: 'items',
                 child_columns: ['po_line_no', 'item_code', 'item_name', 'qty', 'received_qty']
@@ -147,14 +147,16 @@ frappe.ui.form.on('Purchase Receipt', {
                     options: 'Purchase Order',
                     reqd: 1,
                     get_query: function () {
-                        return {
-                            filters: {
-                                supplier: frm.doc.supplier,
-                                status: ["not in", ["Completed", "Closed", "Cancelled"]],
-                                docstatus: 1
-                            }
+                        let filters = {
+                            supplier: frm.doc.supplier,
+                            status: ["not in", ["Completed", "Closed", "Cancelled"]],
+                            docstatus: 1
                         };
-    }
+                        if (frm.doc.branch) {
+                            filters.branch = frm.doc.branch;
+                        }
+                        return { filters: filters };
+                    }
                 }
             ], function(values) {
 

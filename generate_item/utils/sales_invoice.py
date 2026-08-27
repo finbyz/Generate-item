@@ -856,14 +856,6 @@ def process_warranty_for_invoice(sales_invoice):
             )
             continue  # move on to the next item no matter what
 
-    try:
-        frappe.db.commit()
-    except Exception:
-        frappe.log_error(
-            title=f"Warranty Update: final commit failed for {sales_invoice}",
-            message=frappe.get_traceback(),
-        )
-
 
 def _process_batch(si_item, batch, sales_invoice):
     # STEP 1: serial numbers for this batch, stock_entry set, expiry not set
