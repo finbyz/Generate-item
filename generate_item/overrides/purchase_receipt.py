@@ -101,8 +101,33 @@ class CustomBuyingController(BuyingController):
                             d.received_stock_qty, d.precision("received_stock_qty")
                         )
 
+RATE_FIELDS = [
+    "rate", "po_rate"
+]
 
 class CustomPurchaseReceipt(CustomBuyingController, PurchaseReceipt):
+    def __setup__(self):
+        super().__setup__()
+        if not getattr(self, "flags", None):
+            self.flags = frappe._dict()
+        if not self.flags.get("ignore_permlevel_for_fields"):
+            self.flags.ignore_permlevel_for_fields = []
+        self.flags.ignore_permlevel_for_fields.extend(RATE_FIELDS)
+        for item in self.get("items") or []:
+            if not getattr(item, "flags", None):
+                item.flags = frappe._dict()
+            if not item.flags.get("ignore_permlevel_for_fields"):
+                item.flags.ignore_permlevel_for_fields = []
+            item.flags.ignore_permlevel_for_fields.extend(RATE_FIELDS)
+    def before_validate(self):
+        super().before_validate()
+        for item in self.get("items") or []:
+            if not getattr(item, "flags", None):
+                item.flags = frappe._dict()
+            if not item.flags.get("ignore_permlevel_for_fields"):
+                item.flags.ignore_permlevel_for_fields = []
+            item.flags.ignore_permlevel_for_fields.extend(RATE_FIELDS)
+
     def validate(self):
         # frappe.log_error("custom called-- CustomPurchaseReceipt validate")
         # frappe.throw(_("Custom validation logic executed"), alert=True)  # Debug message
