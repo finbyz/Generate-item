@@ -53,47 +53,59 @@ def boot_session(bootinfo):
 	if not user or user == "Guest":
 		return
 
-	row = frappe.db.get_value(
-		"User",
-		user,
-		["custom_enable_login_redirect", "custom_login_redirect_route"],
-		as_dict=True,
-	)
+	try:
+		# Check if custom fields exist in the database before querying
+		if not (
+			frappe.db.has_column("User", "custom_enable_login_redirect")
+			and frappe.db.has_column("User", "custom_login_redirect_route")
+		):
+			return
 
-	# Covers: user predates the custom fields, columns not yet migrated,
-	# or the user simply never configured anything. All of these must
-	# behave exactly like normal Frappe today.
-	if not row:
-		return
-
-	enabled = row.get("custom_enable_login_redirect")
-	route = (row.get("custom_login_redirect_route") or "").strip()
-
-	if not enabled or not route:
-		return
-
-	# Normalize route to always start with /app
-	if route.startswith("app/"):
-		route = "/" + route
-	elif route.startswith("desk/"):
-		route = "/app/" + route[5:]
-	elif not (route == "/app" or route.startswith("/app/")):
-		if route.startswith("/"):
-			route = "/app" + route
-		else:
-			route = "/app/" + route
-
-	
-
-	if not is_safe_internal_route(route):
-		frappe.log_error(
-			title="Login Redirect: unsafe route ignored",
-			message=f"User {user!r} has an invalid Login Redirect Route configured: {route!r}",
+		row = frappe.db.get_value(
+			"User",
+			user,
+			["custom_enable_login_redirect", "custom_login_redirect_route"],
+			as_dict=True,
 		)
-		return
 
-	bootinfo.login_redirect_enabled = 1
-	bootinfo.login_redirect_route = route
+		# Covers: user predates the custom fields, columns not yet migrated,
+		# or the user simply never configured anything. All of these must
+		# behave exactly like normal Frappe today.
+		if not row:
+			return
+
+		enabled = row.get("custom_enable_login_redirect")
+		route = (row.get("custom_login_redirect_route") or "").strip()
+
+		if not enabled or not route:
+			return
+
+		# Normalize route to always start with /app
+		if route.startswith("app/"):
+			route = "/" + route
+		elif route.startswith("desk/"):
+			route = "/app/" + route[5:]
+		elif not (route == "/app" or route.startswith("/app/")):
+			if route.startswith("/"):
+				route = "/app" + route
+			else:
+				route = "/app/" + route
+
+		if not is_safe_internal_route(route):
+			frappe.log_error(
+				title="Login Redirect: unsafe route ignored",
+				message=f"User {user!r} has an invalid Login Redirect Route configured: {route!r}",
+			)
+			return
+
+		bootinfo.login_redirect_enabled = 1
+		bootinfo.login_redirect_route = route
+
+	except Exception:
+		# Graceful fallback: never fail desk boot/login if any database or schema issue occurs
+		frappe.logger("generate_item").warning(
+			f"Could not load login redirect config for user {user}", exc_info=True
+		)
 
 
 def is_safe_internal_route(route: str) -> bool:
