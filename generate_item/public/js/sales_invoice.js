@@ -3,6 +3,9 @@ frappe.ui.form.on("Sales Invoice", {
         if (frm.is_new() && frm.doc.items?.some(d => d.sales_order)) {
             fetch_and_update_taxes(frm);
         }
+        if (frm.is_new() && frm.doc.currency) {
+            fetch_and_set_fresh_exchange_rate(frm);
+        }
         if (
             !frm.doc.is_return &&
             (frm.doc.status !== "Closed" || frm.is_new()) &&
@@ -66,7 +69,29 @@ frappe.ui.form.on("Sales Invoice", {
                 __("Get Items From")
             );
         }
+
+        // Fix: if customer is blank on a new SI that was mapped from a SO, set it now
+        if (frm.is_new() && !frm.doc.customer) {
+            _set_customer_from_so(frm);
+        }
     },
+
+    onload(frm) {
+        // Fix: on first load of a new SI mapped from SO, customer may still be blank
+        if (frm.is_new() && !frm.doc.customer) {
+            _set_customer_from_so(frm);
+        }
+        if (frm.is_new() && frm.doc.currency) {
+            fetch_and_set_fresh_exchange_rate(frm);
+        }
+    },
+
+    posting_date(frm) {
+        if (frm.doc.currency && frm.doc.docstatus === 0) {
+            fetch_and_set_fresh_exchange_rate(frm);
+        }
+    },
+
     // Also handle case where user adds items after opening new form
     items_add(frm, cdt, cdn) {
         const row = locals[cdt][cdn];
@@ -82,6 +107,67 @@ frappe.ui.form.on("Sales Invoice", {
         }
     }
 });
+
+/**
+ * If a new Sales Invoice was opened via SO→SI mapping but customer is blank,
+ * fetch the customer from the first linked Sales Order and set it on the form.
+ */
+function _set_customer_from_so(frm) {
+    const so_name = (frm.doc.items || []).map(d => d.sales_order).find(Boolean);
+    if (!so_name) return;
+
+    frappe.db.get_value("Sales Order", so_name, ["customer", "customer_name"], (values) => {
+        if (values && values.customer && !frm.doc.customer) {
+            frm.set_value("customer", values.customer).then(() => {
+                if (values.customer_name) {
+                    frm.set_value("customer_name", values.customer_name);
+                }
+            });
+        }
+    });
+}
+
+/**
+ * Fetch and set fresh exchange rate for Sales Invoice based on its posting_date.
+ */
+function fetch_and_set_fresh_exchange_rate(frm) {
+    if (!frm.doc.currency || !frm.doc.company || frm.doc.docstatus !== 0) return;
+
+    frappe.db.get_value("Company", frm.doc.company, "default_currency", (r) => {
+        const company_currency = r && r.default_currency;
+        if (!company_currency) return;
+
+        if (frm.doc.currency === company_currency) {
+            if (flt(frm.doc.conversion_rate) !== 1.0) {
+                frm.set_value("conversion_rate", 1.0);
+            }
+            if (frm.doc.price_list_currency === company_currency && flt(frm.doc.plc_conversion_rate) !== 1.0) {
+                frm.set_value("plc_conversion_rate", 1.0);
+            }
+            return;
+        }
+
+        const posting_date = frm.doc.posting_date || frappe.datetime.get_today();
+        frappe.call({
+            method: "erpnext.setup.utils.get_exchange_rate",
+            args: {
+                transaction_date: posting_date,
+                from_currency: frm.doc.currency,
+                to_currency: company_currency,
+                args: "for_selling",
+            },
+            callback: function (res) {
+                const fresh_rate = flt(res.message);
+                if (fresh_rate && fresh_rate > 0 && fresh_rate !== flt(frm.doc.conversion_rate)) {
+                    frm.set_value("conversion_rate", fresh_rate);
+                    if (frm.doc.price_list_currency === frm.doc.currency) {
+                        frm.set_value("plc_conversion_rate", fresh_rate);
+                    }
+                }
+            },
+        });
+    });
+}
 
 function fetch_and_update_taxes(frm) {    // Avoid multiple triggers in same session
     if (frm.__fetching_remaining_taxes) return;

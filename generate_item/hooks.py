@@ -253,6 +253,7 @@ doc_events = {
         "validate":"generate_item.utils.material_request.validate"
     },
     "Sales Invoice": {
+        "before_insert": "generate_item.utils.sales_invoice.before_insert",
         "after_insert": "generate_item.utils.sales_invoice.after_insert",
         "validate": "generate_item.utils.sales_invoice.validate",
         "on_submit": "generate_item.utils.sales_invoice.on_submit_update_warranty"

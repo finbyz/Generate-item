@@ -314,8 +314,10 @@ class OrderModificationRequest(Document):
             frappe.db.set_value(
                 "Production Plan",
                 plan_name,
-                "sales_order_modification",
-                "YES",
+                {
+                    "sales_order_modification": "YES",
+                    "production_plan_updated": 0,
+                },
                 update_modified=False,
             )
     
@@ -1546,11 +1548,11 @@ def fetch_items_from_reference(doc):
             row = doc.append("items", {})
             row.bom_item_name = item.name
             row.item = item.item_code
-            if item.item_code:
-                description = frappe.db.get_value(
-                    "Item", item.item_code, "description"
-                )
-                row.description = description
+            # Prefer BOM item description; fall back to Item master when BOM description is blank
+            bom_description = getattr(item, "description", None)
+            if not bom_description and item.item_code:
+                bom_description = frappe.db.get_value("Item", item.item_code, "description")
+            row.description = bom_description or ""
             row.uom = item.uom
             row.do_not_explode = item.do_not_explode
             row.rev_do_not_explode = item.do_not_explode

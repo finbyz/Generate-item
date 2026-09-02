@@ -217,23 +217,81 @@ def clear_custom_fields_on_cancel(doc, method):
                 title="BOM Cannot Be Cancelled",
             )
     
-    for row in doc.items:
-        if row.bom_no:
-            bom_ref = frappe.get_doc("BOM", row.bom_no)
-            bom_ref.custom_batch_no = ""
-            bom_ref.sales_order = ""
-            bom_ref.db_update()
+    if getattr(doc, "name", None):
+        clear_batch_and_so_from_child_boms(doc.name)
 
     doc.custom_batch_no = ""
     doc.sales_order = ""
     doc.db_update()
     
-def on_submit(self,method):
-    for row in self.items:
-        if row.bom_no and self.sales_order and self.custom_batch_no:
-            data = frappe.get_doc("BOM", row.bom_no)
-            data.db_set("custom_batch_no",self.custom_batch_no)
-            data.db_set("sales_order",self.sales_order) 
+def propagate_batch_and_so_to_child_boms(bom_name, sales_order, custom_batch_no, visited=None):
+    """
+    Recursively propagate sales_order and custom_batch_no to all descendant child BOMs.
+    """
+    if visited is None:
+        visited = set()
+
+    if not bom_name or bom_name in visited:
+        return
+
+    visited.add(bom_name)
+
+    child_boms = frappe.get_all(
+        "BOM Item",
+        filters={"parent": bom_name, "bom_no": ["is", "set"]},
+        pluck="bom_no"
+    )
+
+    for child_bom in set(child_boms):
+        if child_bom and child_bom not in visited and frappe.db.exists("BOM", child_bom):
+            frappe.db.set_value(
+                "BOM",
+                child_bom,
+                {
+                    "custom_batch_no": custom_batch_no,
+                    "sales_order": sales_order
+                },
+                update_modified=False
+            )
+            propagate_batch_and_so_to_child_boms(child_bom, sales_order, custom_batch_no, visited)
+
+
+def clear_batch_and_so_from_child_boms(bom_name, visited=None):
+    """
+    Recursively clear custom_batch_no and sales_order from all descendant child BOMs.
+    """
+    if visited is None:
+        visited = set()
+
+    if not bom_name or bom_name in visited:
+        return
+
+    visited.add(bom_name)
+
+    child_boms = frappe.get_all(
+        "BOM Item",
+        filters={"parent": bom_name, "bom_no": ["is", "set"]},
+        pluck="bom_no"
+    )
+
+    for child_bom in set(child_boms):
+        if child_bom and child_bom not in visited and frappe.db.exists("BOM", child_bom):
+            frappe.db.set_value(
+                "BOM",
+                child_bom,
+                {
+                    "custom_batch_no": "",
+                    "sales_order": ""
+                },
+                update_modified=False
+            )
+            clear_batch_and_so_from_child_boms(child_bom, visited)
+
+
+def on_submit(self, method=None):
+    if self.sales_order and self.custom_batch_no and getattr(self, "name", None):
+        propagate_batch_and_so_to_child_boms(self.name, self.sales_order, self.custom_batch_no)
+ 
 
 
 def before_save(doc,method):

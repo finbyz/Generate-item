@@ -136,11 +136,82 @@ def get_remaining_taxes_for_draft(sales_orders, current_invoice_name=None):
 #         row.idx = i
 
 
+def before_insert(doc, method=None):
+    """
+    Called before Sales Invoice is inserted into database.
+    Ensures that fresh exchange rate is applied for the invoice posting date.
+    """
+    update_exchange_rate_for_posting_date(doc)
+
+
 def after_insert(doc, method=None):
     """
     Called automatically after Sales Invoice is inserted
     """
     _calculate_and_set_remaining_taxes(doc)
+
+
+def update_exchange_rate_for_posting_date(doc):
+    """
+    Updates conversion_rate and plc_conversion_rate on Sales Invoice based on posting_date
+    using ERPNext core get_exchange_rate. Recalculates item base amounts and totals.
+    """
+    if not doc.get("currency") or not doc.get("company"):
+        return
+
+    from erpnext import get_company_currency
+    from erpnext.setup.utils import get_exchange_rate
+    from frappe.utils import flt, nowdate
+
+    company_currency = get_company_currency(doc.company)
+    if not company_currency:
+        return
+
+    if doc.currency == company_currency:
+        if flt(doc.conversion_rate) != 1.0:
+            doc.conversion_rate = 1.0
+        if doc.get("price_list_currency") == company_currency and flt(doc.plc_conversion_rate) != 1.0:
+            doc.plc_conversion_rate = 1.0
+        return
+
+    posting_date = doc.get("posting_date") or nowdate()
+    fresh_rate = get_exchange_rate(
+        doc.currency,
+        company_currency,
+        transaction_date=posting_date,
+        args="for_selling",
+    )
+
+    if fresh_rate and flt(fresh_rate) > 0:
+        new_rate = flt(fresh_rate)
+        doc.conversion_rate = new_rate
+
+        if doc.get("price_list_currency") == doc.currency:
+            doc.plc_conversion_rate = new_rate
+        elif doc.get("price_list_currency") and doc.price_list_currency != company_currency:
+            plc_rate = get_exchange_rate(
+                doc.price_list_currency,
+                company_currency,
+                transaction_date=posting_date,
+                args="for_selling",
+            )
+            if plc_rate:
+                doc.plc_conversion_rate = flt(plc_rate)
+        elif doc.get("price_list_currency") == company_currency:
+            doc.plc_conversion_rate = 1.0
+
+        # Recalculate item base values
+        for item in doc.get("items") or []:
+            if item.get("rate") is not None:
+                item.base_rate = flt(item.rate) * new_rate
+            if item.get("amount") is not None:
+                item.base_amount = flt(item.amount) * new_rate
+            if item.get("net_rate") is not None:
+                item.base_net_rate = flt(item.net_rate) * new_rate
+            if item.get("net_amount") is not None:
+                item.base_net_amount = flt(item.net_amount) * new_rate
+
+        doc.calculate_taxes_and_totals()
 
 
 def _calculate_and_set_remaining_taxes(doc):
@@ -945,22 +1016,22 @@ def _update_serial_no(serial_no, warranty_expiry_date):
 
 
 # def update_serial_no_warranty(doc):
-    for item in doc.items:
-        if not item.warranty_period or not item.serial_no:
-            continue
-
-        serial_nos = [s.strip() for s in item.serial_no.split("\n") if s.strip()]
-        if not serial_nos:
-            continue
-
-        for serial_no in serial_nos:
-
-            frappe.db.set_value(
-                "Serial No",
-                serial_no,
-                {
-                    "warranty_period": item.warranty_period,
-                   
-                },
-                update_modified=False
-            )
+#     for item in doc.items:
+#         if not item.warranty_period or not item.serial_no:
+#             continue
+#
+#         serial_nos = [s.strip() for s in item.serial_no.split("\n") if s.strip()]
+#         if not serial_nos:
+#             continue
+#
+#         for serial_no in serial_nos:
+#
+#             frappe.db.set_value(
+#                 "Serial No",
+#                 serial_no,
+#                 {
+#                     "warranty_period": item.warranty_period,
+#                     "warranty_expiry_date": frappe.utils.add_days(doc.posting_date, (item.warranty_period) - 1),
+#                 },
+#                 update_modified=False,
+#             )

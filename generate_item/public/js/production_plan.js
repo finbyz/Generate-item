@@ -242,24 +242,17 @@ function add_create_material_request_button(frm, group) {
 
 // ============================================================
 // Client Script - Doctype: Production Plan
-// Renders a 2-column table (Item Code, Stock Qty) from the
+// Renders a 2-column table (Item Code, Required Qty) from the
 // exploded_items of the BOM(s) linked in this Production Plan.
 // Row color: YELLOW if item_code already exists in this PP's
-// raw material tables (mr_items / tracking_raw_materials),
+// raw material tables (mr_items )
 // GREEN if it does not.
 // ============================================================
 
-frappe.ui.form.on('Production Plan', {
-    onload: function (frm) {
-        render_bom_exploded_table(frm);
-    },
-    refresh: function (frm) {
-        render_bom_exploded_table(frm);
-    }
-});
+
 
 function render_bom_exploded_table(frm) {
-    // >>> CHANGE THIS to the actual fieldname of your HTML field <<<
+  
     const HTML_FIELDNAME = 'raw_materials';
 
     if (!frm.fields_dict[HTML_FIELDNAME]) {
@@ -271,49 +264,70 @@ function render_bom_exploded_table(frm) {
 
     // 1. Collect item_codes already present as raw materials in this PP
     const pp_raw_material_codes = new Set();
-
     (frm.doc.mr_items || []).forEach(row => {
         if (row.item_code) pp_raw_material_codes.add(row.item_code);
     });
 
-    
+    // 2. Collect BOM + planned_qty pairs from po_items.
+    //    planned_qty = qty of the finished item this PP intends to produce
+    //    using that particular BOM.
+    const bom_rows = (frm.doc.po_items || [])
+        .filter(row => row.bom_no)
+        .map(row => ({
+            bom_no: row.bom_no,
+            planned_qty: to_float(row.planned_qty)
+        }));
 
-    // 2. Collect the BOM(s) used by the main item(s) in this PP
-    const bom_numbers = new Set();
-    (frm.doc.po_items || []).forEach(row => {
-        if (row.bom_no) bom_numbers.add(row.bom_no);
-    });
-
-    if (bom_numbers.size === 0) {
+    if (bom_rows.length === 0) {
         $wrapper.html('<p class="text-muted">No BOM found in this Production Plan yet.</p>');
         return;
     }
 
     $wrapper.html('<p class="text-muted">Loading BOM exploded items...</p>');
 
-    // 3. Fetch each BOM's full document (so we get the exploded_items child table)
-    const bom_promises = Array.from(bom_numbers).map(bom_no =>
-        frappe.db.get_doc('BOM', bom_no)
-    );
+    const unique_bom_numbers = [...new Set(bom_rows.map(r => r.bom_no))];
 
-    Promise.all(bom_promises)
+    // 3. Fetch each BOM's full document (so we get exploded_items + quantity)
+    Promise.all(unique_bom_numbers.map(bom_no => frappe.db.get_doc('BOM', bom_no)))
         .then(bom_docs => {
-            // Merge exploded_items from all fetched BOMs
-            let exploded_items = [];
-            bom_docs.forEach(bom => {
+            const bom_map = {};
+            bom_docs.forEach(bom => { bom_map[bom.name] = bom; });
+
+            // 4. Build required_qty per item_code, scaled by planned_qty,
+            //    summed across all BOM rows that produce that raw material.
+            const required_map = {}; 
+
+            bom_rows.forEach(row => {
+                const bom = bom_map[row.bom_no];
+                if (!bom) return;
+
+                const ratio = row.planned_qty ;
+
                 (bom.exploded_items || []).forEach(item => {
-                    exploded_items.push({
-                        item_code: item.item_code,
-                        stock_qty: item.stock_qty
-                    });
+                    const required_qty = to_float(item.stock_qty) * ratio;
+                    if (!required_map[item.item_code]) {
+                        required_map[item.item_code] = 0;
+                    }
+                    required_map[item.item_code] += required_qty;
                 });
             });
+
+            const exploded_items = Object.keys(required_map).map(item_code => ({
+                item_code,
+                required_qty: required_map[item_code]
+            }));
+
             build_table($wrapper, exploded_items, pp_raw_material_codes);
         })
         .catch(err => {
             console.error(err);
             $wrapper.html('<p class="text-danger">Failed to load BOM exploded items.</p>');
         });
+}
+
+function to_float(v) {
+    const n = parseFloat(v);
+    return isNaN(n) ? 0 : n;
 }
 
 function build_table($wrapper, exploded_items, pp_raw_material_codes) {
@@ -323,30 +337,46 @@ function build_table($wrapper, exploded_items, pp_raw_material_codes) {
     }
 
     const YELLOW = '#fff3cd';
+    const YELLOW_BORDER = '#d9b76c';
     const GREEN = '#d4edda';
+    const GREEN_BORDER = '#7cc28f';
 
     let rows = '';
-   exploded_items.forEach((item, index) => {
-    const already_in_pp = pp_raw_material_codes.has(item.item_code);
-    const bg_color = already_in_pp ? YELLOW : GREEN;
+    exploded_items.forEach((item, index) => {
+        const already_in_pp = pp_raw_material_codes.has(item.item_code);
+        const bg_color = already_in_pp ? YELLOW : GREEN;
 
-    rows += `
-        <tr style="background-color: ${bg_color};">
-            <td style="padding:6px 10px; border:1px solid #ddd; text-align:center; width:50px;">${index + 1}</td>
-            <td style="padding:6px 10px; border:1px solid #ddd;">${frappe.utils.escape_html(item.item_code)}</td>
-            <td style="padding:6px 10px; border:1px solid #ddd; text-align:center;">${item.stock_qty}</td>
-        </tr>`;
-});
+        rows += `
+            <tr style="background-color: ${bg_color};">
+                <td style="padding:6px 10px; border:1px solid #ddd; text-align:center; width:50px;">${index + 1}</td>
+                <td style="padding:6px 10px; border:1px solid #ddd;">${frappe.utils.escape_html(item.item_code)}</td>
+                <td style="padding:6px 10px; border:1px solid #ddd; text-align:center;">${to_float(item.required_qty).toFixed(2)}</td>
+            </tr>`;
+    });
 
-   
+    // Legend with small round color indicators (info only)
+    const legend = `
+        <div style="display:flex; align-items:center; gap:18px; margin-bottom:8px; font-size:12px; color:#555;">
+            <span style="display:flex; align-items:center; gap:6px;">
+                <span style="display:inline-block; width:12px; height:12px; border-radius:50%;
+                    background-color:${YELLOW}; border:1px solid ${YELLOW_BORDER};"></span>
+                Already in Raw Materials
+            </span>
+            <span style="display:flex; align-items:center; gap:6px;">
+                <span style="display:inline-block; width:12px; height:12px; border-radius:50%;
+                    background-color:${GREEN}; border:1px solid ${GREEN_BORDER};"></span>
+                Not Yet Added
+            </span>
+        </div>`;
 
     const html = `
+        ${legend}
         <table style="width:100%; border-collapse:collapse; font-size:13px; margin-top:5px;">
             <thead>
                 <tr style="background-color:#f5f5f5;">
-                 <th style="padding:6px 10px; border:1px solid #ddd; width:50px;">Sr No</th>
-                    <th style="padding:6px 10px; border:1px solid #ddd; text-align:left;">Item Code</th>
-                    <th style="padding:6px 10px; border:1px solid #ddd;">Stock Qty</th>
+                    <th style="padding:6px 10px; border:1px solid #ddd; width:50px;">Sr No</th>
+                    <th style="padding:6px 10px; border:1px solid #ddd; text-align:center;">Item Code</th>
+                    <th style="padding:6px 10px; border:1px solid #ddd; text-align:center;">Required Qty</th>
                 </tr>
             </thead>
             <tbody>
@@ -356,8 +386,10 @@ function build_table($wrapper, exploded_items, pp_raw_material_codes) {
 
     $wrapper.html(html);
 }
+
 frappe.ui.form.on('Production Plan', {
     onload: function (frm) {
+        render_bom_exploded_table(frm);
         if (frm.doc.docstatus === 0) {
             update_actual_qty_for_items(frm);
         }
@@ -365,8 +397,11 @@ frappe.ui.form.on('Production Plan', {
     
 
     },
+    
+    
 
     refresh: function (frm) {
+        render_bom_exploded_table(frm);
         const UPDATE_GROUP = __("Update");
         if (frm.doc.docstatus === 1  ) {
     
@@ -374,12 +409,8 @@ frappe.ui.form.on('Production Plan', {
         add_get_update_button(frm, UPDATE_GROUP);
         add_create_material_request_button(frm, UPDATE_GROUP);
     
-           
-        
         }
         
-        
-
          custom_transfer_materials(frm)
 
 

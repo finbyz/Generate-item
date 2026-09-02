@@ -71,21 +71,7 @@ frappe.ui.form.on("Bom Modification Request", {
     },
     get_item(frm) {
 
-        if (!frm.doc.bom) {frappe.ui.form.on("Bom Modification Request", {
-    refresh(frm) {
-        frm.fields_dict.items.grid.get_field("bom").get_query = function(doc, cdt, cdn) {
-            let row = locals[cdt][cdn];
-
-            return {
-                filters: {
-                    item: row.revised_item,
-                    is_active: 1,
-                    docstatus: 1
-                }
-            };
-        };
-    }
-});
+        if (!frm.doc.bom) {
             frappe.msgprint(`Please select BOM No first`);
             return;
         }
@@ -152,11 +138,15 @@ function fetch_items_dynamic(frm) {
             // BOM
             frm.clear_table("items");
             if (r.message.items) {
+                // Track rows that need description fallback from Item master
+                let items_needing_description = [];
+
                 (r.message.items || []).forEach(item => {
                     let row = frm.add_child("items");
                     row.bom_item_name = item.name;
                     row.item = item.item_code;
-                    row.description = item.description;
+                    // Use BOM item description first; fallback to Item master handled below
+                    row.description = item.description || "";
                     row.uom = item.uom;
                     row.do_not_explode = item.do_not_explode;
                     row.rev_do_not_explode = item.do_not_explode;
@@ -171,8 +161,29 @@ function fetch_items_dynamic(frm) {
                     row.purchase_specification_no = item.custom_purchase_specification_no;
                     row.purchase_specification_rev_no = item.custom_purchase_specification_rev_no;
 
+                    // If BOM item has no description, queue a fallback to Item master
+                    if (!item.description && item.item_code) {
+                        items_needing_description.push({
+                            cdn: row.name,
+                            item_code: item.item_code
+                        });
+                    }
                 });
                 frm.refresh_field("items");
+
+                // Fallback: fetch description from Item master for items that had none in BOM
+                items_needing_description.forEach(entry => {
+                    frappe.db.get_value("Item", entry.item_code, "description", function(r) {
+                        if (r && r.description) {
+                            frappe.model.set_value(
+                                "Order Modification Request Detail",
+                                entry.cdn,
+                                "description",
+                                r.description
+                            );
+                        }
+                    });
+                });
             }
         }
     });
