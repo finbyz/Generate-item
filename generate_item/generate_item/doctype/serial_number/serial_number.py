@@ -162,8 +162,7 @@ def create_serial_numbers_for_sales_order(sales_order_name: str):
                 )
             )
 
-    if to_cancel:
-        frappe.db.commit()
+ 
 
     if skipped_details:
         frappe.msgprint(
@@ -225,7 +224,7 @@ def create_serial_numbers_for_sales_order(sales_order_name: str):
                 branch_row_name,
                 {"total_counter": old_total, "sub_counter": old_sub},
             )
-            frappe.db.commit()
+
         frappe.log_error(frappe.get_traceback(), "Serial Number Generation Failed")
         frappe.throw(
             _("Serial number generation failed. Counter has been rolled back. "
@@ -460,7 +459,7 @@ def get_next_naming_series_number(branch: str, qty: int):
         branch_row.name,
         {"total_counter": new_total, "sub_counter": new_sub},
     )
-    frappe.db.commit()
+
 
     series_info = {
         "prefix":       prefix,
@@ -600,7 +599,7 @@ def _generate_and_insert(
 
             rows = generate_serial_ids(series_info, sliced, user,branch)
             _bulk_insert_serials(rows)
-            frappe.db.commit()
+
 
             total_inserted += slice_qty
 
@@ -649,7 +648,7 @@ def _get_or_create_branch_row(config, branch: str):
         "total_counter": 0,
     })
     config.save(ignore_permissions=True)
-    frappe.db.commit()
+
     return row
 
 # cancel serial numbers 
@@ -696,7 +695,7 @@ def cancel_serial_numbers_for_sales_order(sales_order_name: str):
         """,
         [frappe.session.user] + batch_ids + [branch],
     )
-    frappe.db.commit()
+
 
     # Count how many were cancelled for feedback
     cancelled_count = frappe.db.sql(
@@ -720,14 +719,14 @@ def cancel_serial_numbers_for_sales_order(sales_order_name: str):
 
 def get_cancelled_line_items(so_doc) -> list:
     """
-    Returns items from SO where line_status == 'Cancelled' and batch exists.
+    Returns items from SO where line_status == 'Cancelled' or 'Closed' and batch exists.
     Used to determine which serials to cancel after a status update.
     """
     cancelled = []
     for row in so_doc.get("items", []):
         line_status = (row.get("line_status") or "").strip().lower()
         batch_id    = row.get("custom_batch_no") or ""
-        if line_status == "cancelled"  and batch_id:
+        if line_status in ["cancelled", "closed"]  and batch_id:
             cancelled.append({
                 "item_code": row.get("item_code") or "",
                 "batch_id":  batch_id,
@@ -779,7 +778,7 @@ def cancel_serials_for_items(items_with_batch: list, branch: str) -> dict:
         [frappe.session.user] + batch_ids + [branch],
     )
 
-    frappe.db.commit()
+
 
     return {
         "cancelled": qty_to_reduce,
@@ -1179,7 +1178,7 @@ def _process_single_so_for_serial_creation(so_name: str):
             cancel_short += result["short_by"]
 
         if cancel_total or cancel_short:
-            frappe.db.commit()
+
             frappe.logger().info(
                 f"Serial Scheduler: SO {so_name} — cancelled {cancel_total} serial(s) "
                 f"for decreased quantities"
@@ -1246,7 +1245,7 @@ def _process_single_so_for_serial_creation(so_name: str):
                 branch_row_name,
                 {"total_counter": old_total, "sub_counter": old_sub},
             )
-            frappe.db.commit()
+
 
         frappe.log_error(
             frappe.get_traceback(),

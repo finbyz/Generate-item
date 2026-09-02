@@ -5,6 +5,8 @@ from frappe.utils import cint, flt, get_datetime, getdate, nowdate
 from erpnext.stock.get_item_details import get_conversion_factor
 from frappe.utils import flt
 from erpnext.controllers.buying_controller import BuyingController
+from erpnext.controllers.accounts_controller import InvalidQtyError
+
 
 # class PurchaseReceipt(_PurchaseReceipt):
 
@@ -99,8 +101,33 @@ class CustomBuyingController(BuyingController):
                             d.received_stock_qty, d.precision("received_stock_qty")
                         )
 
+RATE_FIELDS = [
+    "rate", "po_rate"
+]
 
 class CustomPurchaseReceipt(CustomBuyingController, PurchaseReceipt):
+    def __setup__(self):
+        super().__setup__()
+        if not getattr(self, "flags", None):
+            self.flags = frappe._dict()
+        if not self.flags.get("ignore_permlevel_for_fields"):
+            self.flags.ignore_permlevel_for_fields = []
+        self.flags.ignore_permlevel_for_fields.extend(RATE_FIELDS)
+        for item in self.get("items") or []:
+            if not getattr(item, "flags", None):
+                item.flags = frappe._dict()
+            if not item.flags.get("ignore_permlevel_for_fields"):
+                item.flags.ignore_permlevel_for_fields = []
+            item.flags.ignore_permlevel_for_fields.extend(RATE_FIELDS)
+    def before_validate(self):
+        super().before_validate()
+        for item in self.get("items") or []:
+            if not getattr(item, "flags", None):
+                item.flags = frappe._dict()
+            if not item.flags.get("ignore_permlevel_for_fields"):
+                item.flags.ignore_permlevel_for_fields = []
+            item.flags.ignore_permlevel_for_fields.extend(RATE_FIELDS)
+
     def validate(self):
         # frappe.log_error("custom called-- CustomPurchaseReceipt validate")
         # frappe.throw(_("Custom validation logic executed"), alert=True)  # Debug message
@@ -133,6 +160,21 @@ class CustomPurchaseReceipt(CustomBuyingController, PurchaseReceipt):
         self.reset_default_field_value("set_from_warehouse", "items", "from_warehouse")
         if self.is_new():
             update_stock_uom_qty(self)
+    
+    def validate_qty_is_not_zero(self):
+        for item in self.items:
+            if not flt(item.qty):
+                is_stock_item = frappe.db.get_value("Item", item.item_code, "is_stock_item")
+                if is_stock_item:
+                    # keep original behavior for stock items
+                    frappe.throw(
+                        msg=_("Row #{0}: Quantity for Item {1} cannot be zero.").format(
+                            item.idx, frappe.bold(item.item_code)
+                        ),
+                        title=_("Invalid Quantity"),
+                        exc=InvalidQtyError,
+                    )
+            # else: non-stock item (Maintain Stock = 0) — silently allow qty = 0
         # update_accepted_qty(self)
 
     # def on_submit(self):

@@ -23,11 +23,21 @@ frappe.dom.set_style(`
 frappe.query_reports["Serial Number Register"] = {
     filters: [
         {
-            fieldname: "sales_order",
-            label: "Sales Order",
-            fieldtype: "Link",
-            options: "Sales Order"
+            "fieldname": "sales_order",
+            "label": __("Sales Order"),
+            "fieldtype": "Link",
+            "options": "Sales Order",
+            "width": "150",
+            "get_query": function() {
+                return {
+                    filters: {
+                        docstatus: ["!=", 2]   // Exclude Cancelled
+                    }
+                };
+            },
+            "on_change": () => frappe.query_report.refresh()
         },
+    
         {
             fieldname: "customer",
             label: "Customer",

@@ -228,7 +228,7 @@ def remove_bom_no_from_sales_order(sales_order_name):
         # Save the document
         if items_updated > 0 or branch_updated > 0:
             doc.save(ignore_permissions=False)
-            frappe.db.commit()
+
         
         # Build message
         messages = []

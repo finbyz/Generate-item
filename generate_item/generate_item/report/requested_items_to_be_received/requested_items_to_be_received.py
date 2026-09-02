@@ -130,22 +130,18 @@ def get_data(filters):
         conditions.append("po.branch = %(branch)s")
         values["branch"] = filters["branch"]
 
-    # branch restriction from User Permissions
     if filters.get("allowed_branches"):
         branch_list = [b.strip() for b in filters["allowed_branches"].split(",") if b.strip()]
         if branch_list:
             conditions.append("po.branch IN %(allowed_branches)s")
             values["allowed_branches"] = tuple(branch_list)
 
-
-    # filter by created by (multi or single)
     created_by = filters.get("created_by")
     if created_by:
         if isinstance(created_by, str):
             created_by_list = [u.strip() for u in created_by.replace(",", "\n").split("\n") if u.strip()]
         else:
             created_by_list = created_by
-
         if created_by_list:
             conditions.append("po.owner IN %(created_by)s")
             values["created_by"] = tuple(created_by_list)
@@ -157,7 +153,6 @@ def get_data(filters):
     if filters.get("to_date"):
         conditions.append("po.transaction_date <= %(to_date)s")
         values["to_date"] = filters["to_date"]
-
 
     where_clause = " AND ".join(conditions)
     if where_clause:
@@ -185,7 +180,6 @@ def get_data(filters):
             IFNULL(poi.received_qty, 0) AS received_qty,
             poi.stock_qty AS po_qty_stock_uom,
             IFNULL(poi.received_qty_in_stock_uom, 0) AS receipt_qty_stock_uom,
-         
 
             poi.rate,
             poi.warehouse,
@@ -196,10 +190,10 @@ def get_data(filters):
             poi.material_request,
             poi.material_request_item,
             poi.name as item_id,
-			poi.custom_pattern_drawing_no,
-			poi.custom_pattern_drawing_rev_no,
-			poi.custom_purchase_specification_no,
-			poi.custom_purchase_specification_rev_no
+            poi.custom_pattern_drawing_no,
+            poi.custom_pattern_drawing_rev_no,
+            poi.custom_purchase_specification_no,
+            poi.custom_purchase_specification_rev_no
 
         FROM `tabPurchase Order` po
         INNER JOIN `tabPurchase Order Item` poi
@@ -213,12 +207,13 @@ def get_data(filters):
 
     rows = frappe.db.sql(query, values, as_dict=True)
 
+    if not rows:
+        return []
+
     # ---------------------------
     # Draft Purchase Receipt Qty (Stock UOM)
     # ---------------------------
-
     po_item_ids = list(set([row.purchase_order_item for row in rows]))
-
     draft_pr_qty_map = {}
 
     if po_item_ids:
@@ -241,10 +236,7 @@ def get_data(filters):
         for d in draft_pr_rows:
             draft_pr_qty_map[d.purchase_order_item] = flt(d.draft_received_qty)
 
-    # Collect item codes from submitted PO rows
     item_codes = list(set([row.item_code for row in rows]))
-
-    # Always define dictionary
     draft_qty_map = {}
 
     if item_codes:
@@ -268,49 +260,80 @@ def get_data(filters):
 
         for d in draft_rows:
             draft_qty_map[d.item_code] = flt(d.draft_qty)
-   
 
+    # ---------------------------
+    # NEW: Service Item pending logic
+    # ---------------------------
+    include_service_items = frappe.db.get_single_value(
+        "Buying Settings", "include_service_items_in_pending_purchase_receipt"
+    )
 
+    stock_item_map = {}
+    if item_codes:
+        for d in frappe.db.get_all(
+            "Item",
+            filters={"item_code": ["in", item_codes]},
+            fields=["item_code", "is_stock_item"],
+        ):
+            stock_item_map[d.item_code] = bool(d.is_stock_item)
 
+    # Pass 1: compute pending_qty_stock_uom for every row, and figure out
+    # per-PO whether any Stock Item is still pending.
+    po_has_pending_stock_item = {}
 
+    for row in rows:
+        draft_received_qty = draft_pr_qty_map.get(row.purchase_order_item, 0)
+        po_qty_stock = flt(row.po_qty_stock_uom)
+        received_stock = (
+            flt(row.receipt_qty_stock_uom) if row.stock_uom != row.uom else flt(row.received_qty)
+        )
+        total_received_stock = received_stock + draft_received_qty
+        pending_qty_stock_uom = po_qty_stock - total_received_stock
+
+        row["pending_qty_stock_uom"] = pending_qty_stock_uom
+        row["_is_stock_item"] = stock_item_map.get(row.item_code, True)
+
+        if row["_is_stock_item"] and pending_qty_stock_uom > 0:
+            po_has_pending_stock_item[row.name] = True
+
+    # Pass 2: filter + build final rows
     data = []
     today = getdate(nowdate())
+
     for row in rows:
+        is_stock = row["_is_stock_item"]
+        pending_qty_stock_uom = row["pending_qty_stock_uom"]
+
+        if is_stock:
+            # Stock Items: unchanged, standard behaviour
+            if pending_qty_stock_uom <= 0:
+                continue
+        else:
+            # Service / non-stock items
+            if include_service_items:
+                if pending_qty_stock_uom <= 0 and not po_has_pending_stock_item.get(row.name):
+                    continue
+                # else: show even though its own pending qty is 0
+            else:
+                # Setting disabled -> pure standard behaviour
+                if pending_qty_stock_uom <= 0:
+                    continue
 
         draft_qty_stock = draft_qty_map.get(row.item_code, 0)
         draft_received_qty = draft_pr_qty_map.get(row.purchase_order_item, 0)
-
-        # -------- STOCK UOM Pending Logic --------
-        po_qty_stock = flt(row.po_qty_stock_uom)
-        received_stock = flt(row.receipt_qty_stock_uom) if row.stock_uom != row.uom else flt(row.received_qty)
-        total_received_stock = received_stock + draft_received_qty
-
-        pending_qty_stock_uom = po_qty_stock - total_received_stock
-
-        #  Skip fully received rows
-        if pending_qty_stock_uom <= 0:
-            continue
-
-
         pending_qty = flt(row.po_qty) - flt(row.received_qty)
-
-        # if pending_qty <= 0:
-        #     continue
-        
         age = (today - getdate(row.item_schedule_date)).days if row.item_schedule_date else 0
-
 
         row.update({
             "draft_po_qty_stock_uom": draft_qty_stock,
             "draft_received_qty_in_stock_uom": draft_received_qty,
-            "pending_qty_stock_uom": pending_qty_stock_uom,
             "pending_qty": pending_qty,
             "age": age,
-			"range_0_30": pending_qty if age <= 30 else 0,
-			"range_31_60": pending_qty if 31 <= age <= 60 else 0,
-			"range_61_90": pending_qty if 61 <= age <= 90 else 0,
-			"range_91_120": pending_qty if 91 <= age <= 120 else 0,
-			"range_121_above": pending_qty if age > 120 else 0,
+            "range_0_30": pending_qty if age <= 30 else 0,
+            "range_31_60": pending_qty if 31 <= age <= 60 else 0,
+            "range_61_90": pending_qty if 61 <= age <= 90 else 0,
+            "range_91_120": pending_qty if 91 <= age <= 120 else 0,
+            "range_121_above": pending_qty if age > 120 else 0,
         })
 
         data.append(row)
@@ -448,7 +471,7 @@ def create_purchase_receipt_by_supplier(grouped_items, company, pr_series=None, 
                 "item_data": items
             })
 
-            frappe.db.commit()
+
 
         if created_receipts:
             frappe.msgprint(_("Successfully created {0} Purchase Receipt(s)").format(len(created_receipts)))

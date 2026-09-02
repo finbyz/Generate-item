@@ -2,52 +2,146 @@ import frappe
 import json
 from erpnext.controllers.stock_controller import make_quality_inspections as original_make_qis
 from frappe.utils import flt
+from frappe import _
+from frappe.model.mapper import get_mapped_doc
 
 
 @frappe.whitelist()
 def make_purchase_receipt(source_name, target_doc=None, args=None):
-    """Create Purchase Receipt from Purchase Order while mapping custom_batch_no → batch_no.
-
-    This wraps the core method and then copies `custom_batch_no` from the source
-    Purchase Order Item into the `batch_no` field on the target Purchase Receipt Item.
     """
-    from erpnext.buying.doctype.purchase_order.purchase_order import (
-        make_purchase_receipt as core_make_purchase_receipt,
+    PO -> PR override (Create button + Get Items, same function backs both).
+
+    WHY THE OLD CODE FAILED:
+    Calling erpnext's core make_purchase_receipt() first means its own internal
+    `condition` (pending_qty > 0 only) has ALREADY dropped every Service Item
+    sitting at 0 pending qty before this function even sees `pr.items`. No
+    post-processing afterward can restore a row that was never mapped in the
+    first place. Fix: call get_mapped_doc() ourselves with a custom condition.
+
+    RULE (per requirement):
+      - Stock Items: unaffected, standard pending-qty logic.
+      - Service/Non-stock Items: if Buying Settings.include_service_items_in_pending_pr
+        is enabled AND any Stock Item on this PO has pending_qty_in_stock_uom > 0,
+        include ALL non-stock items at qty 0, regardless of their own pending qty.
+        Once every Stock Item is fully received, non-stock items are excluded.
+      - Setting disabled: pure standard ERPNext behaviour, no override.
+    """
+
+    include_service_items = frappe.db.get_single_value(
+        "Buying Settings", "include_service_items_in_pending_purchase_receipt"
+    )
+    frappe.log_error("include_service_items_in_pending_purchase_receipt pr creaation is call")
+
+    po_doc = frappe.get_doc("Purchase Order", source_name)
+
+    stock_item_flags = {}  # item_code -> is_stock_item, cached for this call
+
+    def is_stock_item(item_code):
+        val = stock_item_flags.get(item_code)
+        if val is None:
+            val = bool(frappe.db.get_value("Item", item_code, "is_stock_item"))
+            stock_item_flags[item_code] = val
+        return val
+
+    def pending_qty_in_stock_uom(row):
+        cf = flt(row.conversion_factor) or 1.0
+        return (flt(row.qty) - flt(row.received_qty)) * cf
+
+    # Is ANY Stock Item on this PO still pending, measured in stock UOM?
+    any_stock_item_pending = False
+    if include_service_items:
+        for row in po_doc.items:
+            if is_stock_item(row.item_code):
+                if pending_qty_in_stock_uom(row) > 0:
+                    any_stock_item_pending = True
+                    break
+
+    # PO Item row names included purely as a non-stock item riding along -
+    # must survive the final qty>0 filter later even though qty = 0.
+    service_ride_along = set()
+
+    def condition(doc):
+        # doc = Purchase Order Item row being evaluated for inclusion
+        if is_stock_item(doc.item_code):
+            # Stock Items: always standard behaviour, never touched.
+            return pending_qty_in_stock_uom(doc) > 0
+
+        if not include_service_items:
+            return pending_qty_in_stock_uom(doc) > 0  # setting OFF -> standard
+        
+        if pending_qty_in_stock_uom(doc) > 0:
+            return True
+
+        # Non-stock item, setting ON: own pending qty is irrelevant.
+        if any_stock_item_pending:
+            service_ride_along.add(doc.name)
+            return True
+        return False
+
+    def update_item(source, target, source_parent):
+        pending = pending_qty_in_stock_uom(source)
+        cf = flt(source.conversion_factor) or 1.0
+        target.qty = (pending / cf) if pending > 0 else 0
+        target.stock_qty = target.qty * cf
+        target.amount = target.qty * flt(source.rate)
+        target.base_amount = target.amount * flt(source_parent.conversion_rate)
+
+    doc = get_mapped_doc(
+        "Purchase Order",
+        source_name,
+        {
+            "Purchase Order": {
+                "doctype": "Purchase Receipt",
+                "field_map": {
+                    "party_account_currency": "party_account_currency",
+                    "supplier_warehouse": "supplier_warehouse",
+                },
+                "validation": {"docstatus": ["=", 1]},
+            },
+            "Purchase Order Item": {
+                "doctype": "Purchase Receipt Item",
+                "field_map": {
+                    "name": "purchase_order_item",
+                    "parent": "purchase_order",
+                    "bom": "bom",
+                    "material_request": "material_request",
+                    "material_request_item": "material_request_item",
+                },
+                "postprocess": update_item,
+                "condition": condition,
+            },
+            "Purchase Taxes and Charges": {
+                "doctype": "Purchase Taxes and Charges",
+                "add_if_empty": True,
+            },
+        },
+        target_doc,
     )
 
-    # Create the Purchase Receipt using core logic first
-    # Pass through args to maintain compatibility with mapper flows
-    pr = core_make_purchase_receipt(source_name=source_name, target_doc=target_doc, args=args)
-
-    # Adjust quantities to consider Draft PRs as consumed, and map custom_batch_no
+    # ---- Draft-PR-aware remaining qty + custom_batch_no carry-over ----
     items_to_keep = []
-    for item in pr.items or []:
+    for item in doc.items or []:
         po_item_name = getattr(item, "purchase_order_item", None)
         if not po_item_name:
             items_to_keep.append(item)
             continue
 
-        # Fetch source PO Item values needed for accurate remaining computation
         po_item = frappe.db.get_value(
             "Purchase Order Item",
             po_item_name,
-            ["qty", "received_qty", "conversion_factor", "custom_batch_no","stock_qty"],
+            ["qty", "received_qty", "conversion_factor", "custom_batch_no", "stock_qty"],
             as_dict=True,
         )
-
-        # Default to current mapped qty if lookup fails for any reason
         if not po_item:
             items_to_keep.append(item)
             continue
 
-        po_qty = frappe.utils.flt(po_item.qty)
-        received_qty = frappe.utils.flt(po_item.received_qty)
-        po_cf = frappe.utils.flt(po_item.conversion_factor) or 1.0
+        po_qty = flt(po_item.qty)
+        received_qty = flt(po_item.received_qty)
+        po_cf = flt(po_item.conversion_factor) or 1.0
 
-        # Base remaining in stock units from Submitted PRs
-        base_remaining_stock_qty = max((po_qty - received_qty), 0) * po_cf
+        base_remaining_stock_qty = max(po_qty - received_qty, 0) * po_cf
 
-        # Add quantities already present in Draft PRs for the same PO Item (in stock units)
         draft_pr_stock_qty = frappe.db.sql(
             """
             SELECT COALESCE(SUM(pri.stock_qty), 0)
@@ -59,31 +153,28 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
             (po_item_name,),
         )[0][0]
 
-        remaining_stock_qty = max(base_remaining_stock_qty - frappe.utils.flt(draft_pr_stock_qty), 0)
+        remaining_stock_qty = max(base_remaining_stock_qty - flt(draft_pr_stock_qty), 0)
 
-        # Use target item's conversion factor to set displayed qty
-        item_cf = frappe.utils.flt(getattr(item, "conversion_factor", None)) or 1.0
+        item_cf = flt(getattr(item, "conversion_factor", None)) or 1.0
         new_qty = remaining_stock_qty / item_cf if item_cf else 0
+
         item.qty = new_qty
         item.stock_qty = remaining_stock_qty
-
-        # 🔹 ADDED: map PO stock_qty → PR stock_uom_qty
         if po_item.stock_qty:
             item.qty_in_stock_uom = po_item.stock_qty
 
-        # Map custom_batch_no from PO Item to PR Item.batch_no if empty
         if po_item.custom_batch_no and not getattr(item, "batch_no", None):
             item.batch_no = po_item.custom_batch_no
 
-        # Keep only rows with positive qty
-        if new_qty and new_qty > 0:
+        # Keep the row if it has real remaining qty, OR it's a non-stock item
+        # deliberately included at qty 0 because a Stock Item is still pending.
+        if (new_qty and new_qty > 0) or (po_item_name in service_ride_along):
             items_to_keep.append(item)
 
-    # Replace items with filtered list to avoid zero-qty rows
-    if pr.items is not None:
-        pr.items = items_to_keep
+    if doc.items is not None:
+        doc.items = items_to_keep
 
-    return pr
+    return doc
 
 
 def before_save(doc, method):

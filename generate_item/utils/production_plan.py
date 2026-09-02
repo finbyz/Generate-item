@@ -168,7 +168,7 @@ def set_actual_qty_for_child_row(cdt, cdn):
     # Set actual_qty = planned_qty only if actual_qty is 0 or None
     if not actual_qty:
         frappe.db.set_value(cdt, cdn, 'actual_qty', planned_qty)
-        frappe.db.commit()
+
 
 
 import frappe
@@ -367,7 +367,7 @@ def get_update_for_submitted_pp(docname):
     # --- Step 11: Set status Re-open ---
     pp.set_status(close=False, update_bin=True)
 
-    frappe.db.commit()
+    # frappe.db.commit()
     return {
         "success": True,
         "planned_qty_updated": changed,
@@ -384,8 +384,7 @@ def get_update_for_submitted_pp(docname):
 #     if was_submitted:
 #         pp.db_set("docstatus", 0, update_modified=False)
 #         pp.reload()
-#         pp.flags.ignore_validate = True
-#         pp.flags.ignore_validate_update_after_submit = True
+
 #         pp.flags.ignore_permissions = True
 
 #     captured = _capture_original_data_if_needed(pp)
@@ -425,7 +424,6 @@ def get_update_for_submitted_pp(docname):
 #     # this flow. MR creation now happens ONLY via the explicit "Create
 #     # Material Request" button -> create_material_request_for_pending_items().
 
-#     frappe.db.commit()
 #     return {
 #         "success": True,
 #         "planned_qty_updated": changed,
@@ -698,7 +696,7 @@ def create_material_request_for_pending_items(docname):
         ]
         frappe.db.set_value("Production Plan", pp.name, "production_plan_updated", 0, update_modified=False)
 
-        frappe.db.commit()
+
 
         return {
             "created": True,
@@ -758,3 +756,207 @@ def validate_work_orders_before_update(production_plan):
             ).format(work_order.name, work_order.status),
             title=_("Update Not Allowed"),
         )
+# =============================================================================
+# Control Tower Dashboard — Modification Status Summary
+# =============================================================================
+
+@frappe.whitelist()
+def get_modification_status_summary(branch=None, status=None, limit=200):
+    """
+    Returns one row per non-cancelled Production Plan with its overall
+    modification status plus rollup counts for linked Work Orders and MRs.
+
+    Supports branch filter (respects Branch User Permission) and status
+    filter matching one of the five overall_status values.
+    """
+    user = frappe.session.user
+
+    # --- Branch Permission ---
+    from generate_item.generate_item.modification_task_utils.modification_task_permission import get_user_branches
+    user_branches = get_user_branches(user)
+
+    pp_filters = {"docstatus": ["!=", 2]}  # not cancelled
+
+    if branch:
+        pp_filters["branch"] = branch
+    elif user_branches:
+        pp_filters["branch"] = ["in", user_branches]
+
+    pp_fields = [
+        "name", "branch", "sales_order_modification", "bom_modification",
+        "production_plan_updated", "original_data", "modified",
+    ]
+
+    # Pull all Production Plans in one query
+    pp_list = frappe.get_all(
+        "Production Plan",
+        filters=pp_filters,
+        fields=pp_fields,
+        limit=limit,
+        order_by="modified desc",
+    )
+
+    if not pp_list:
+        return []
+
+    pp_names = [p.name for p in pp_list]
+
+    # --- Find the primary Sales Order for each PP ---
+    pp_so_map = _get_pp_primary_sales_order(pp_names)
+
+    # --- Pull Work Order counts in one grouped query ---
+    wo_raw = frappe.db.get_all(
+        "Work Order",
+        filters={
+            "production_plan": ["in", pp_names],
+            "docstatus": ["!=", 2],
+        },
+        fields=["production_plan", "modification_status", "name"],
+    )
+
+    # Aggregate WO counts per PP
+    wo_counts = {}  # {pp_name: {"total": N, "pending": N}}
+    for w in wo_raw:
+        pp_name = w.production_plan
+        if pp_name not in wo_counts:
+            wo_counts[pp_name] = {"total": 0, "pending": 0}
+        wo_counts[pp_name]["total"] += 1
+        if w.modification_status == "Yes":
+            wo_counts[pp_name]["pending"] += 1
+
+    # --- Build rows ---
+    result = []
+    status_counts = {}  # for summary strip on client side if needed
+
+    for pp in pp_list:
+        pp_name = pp.name
+        wo = wo_counts.get(pp_name, {"total": 0, "pending": 0})
+        wo_total = wo["total"]
+        wo_pending = wo["pending"]
+        wo_synced = wo_total - wo_pending
+
+        # Compute overall_status per priority rules
+        overall_status = _compute_overall_status(pp, wo_pending)
+
+        # If no higher-priority flags, compute MR pending count
+        pending_mr_count = 0
+        if overall_status in ("Up To Date", "WO Sync Pending"):
+            try:
+                mr_pending = get_pending_mr_items(pp_name)
+                pending_mr_count = mr_pending.get("pending_count", 0) if mr_pending else 0
+                if pending_mr_count > 0 and overall_status == "Up To Date":
+                    overall_status = "MR Pending"
+            except Exception:
+                pending_mr_count = 0
+
+        row = {
+            "production_plan": pp_name,
+            "sales_order": pp_so_map.get(pp_name, ""),
+            "branch": pp.branch or "",
+            "sales_order_modification": pp.sales_order_modification or "",
+            "bom_modification": pp.bom_modification or "",
+            "production_plan_updated": pp.production_plan_updated or 0,
+            "overall_status": overall_status,
+            "wo_total": wo_total,
+            "wo_pending": wo_pending,
+            "wo_synced": wo_synced,
+            "pending_mr_count": pending_mr_count,
+            "modified": str(pp.modified) if pp.modified else "",
+        }
+        result.append(row)
+
+        # Track status counts
+        status_counts[overall_status] = status_counts.get(overall_status, 0) + 1
+
+    # --- Server-side status filter ---
+    if status and status != "All":
+        result = [r for r in result if r["overall_status"] == status]
+
+    return result
+
+
+@frappe.whitelist()
+def get_single_pp_status(docname):
+    """
+    Lightweight single-row variant for re-fetching one PP's row after
+    an action button update. Returns the same shape as one element of
+    get_modification_status_summary's list.
+    """
+    pp = frappe.get_doc("Production Plan", docname)
+    if pp.docstatus == 2:
+        frappe.throw(_("Cannot fetch status for a cancelled Production Plan."))
+
+    wo_total = frappe.db.count("Work Order", {
+        "production_plan": docname,
+        "docstatus": ["!=", 2],
+    })
+    wo_pending = frappe.db.count("Work Order", {
+        "production_plan": docname,
+        "docstatus": ["!=", 2],
+        "modification_status": "Yes",
+    })
+    wo_synced = wo_total - wo_pending
+
+    overall_status = _compute_overall_status(pp, wo_pending)
+
+    pending_mr_count = 0
+    if overall_status in ("Up To Date", "WO Sync Pending"):
+        try:
+            mr_pending = get_pending_mr_items(docname)
+            pending_mr_count = mr_pending.get("pending_count", 0) if mr_pending else 0
+            if pending_mr_count > 0 and overall_status == "Up To Date":
+                overall_status = "MR Pending"
+        except Exception:
+            pending_mr_count = 0
+
+    pp_so_map = _get_pp_primary_sales_order([docname])
+
+    return {
+        "production_plan": docname,
+        "sales_order": pp_so_map.get(docname, ""),
+        "branch": pp.branch or "",
+        "sales_order_modification": pp.sales_order_modification or "",
+        "bom_modification": pp.bom_modification or "",
+        "production_plan_updated": pp.production_plan_updated or 0,
+        "overall_status": overall_status,
+        "wo_total": wo_total,
+        "wo_pending": wo_pending,
+        "wo_synced": wo_synced,
+        "pending_mr_count": pending_mr_count,
+        "modified": str(pp.modified) if pp.modified else "",
+    }
+
+
+def _compute_overall_status(pp, wo_pending):
+    """Priority-ordered status computation (section 2 of build spec)."""
+    if pp.sales_order_modification == "YES":
+        return "Update Required — Sales Order"
+    if pp.bom_modification == "YES":
+        return "Update Required — BOM"
+    if wo_pending > 0:
+        return "WO Sync Pending"
+    return "Up To Date"  # MR Pending may override this in caller
+
+
+def _get_pp_primary_sales_order(pp_names):
+    """
+    Resolve the primary Sales Order for each Production Plan by looking
+    at po_items. Returns a dict {pp_name: sales_order}.
+    """
+    if not pp_names:
+        return {}
+
+    ppi = frappe.get_all(
+        "Production Plan Item",
+        filters={"parent": ["in", pp_names]},
+        fields=["parent", "sales_order"],
+        order_by="idx asc",
+    )
+
+    so_map = {}
+    for row in ppi:
+        if row.sales_order and row.parent not in so_map:
+            so_map[row.parent] = row.sales_order
+
+    return so_map
+

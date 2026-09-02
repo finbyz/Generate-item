@@ -10,7 +10,12 @@
   "customer_tab",
   "customer_section",
   "enable_customer_approval",
-  "customer_approval_rules",
+  "customer_roles_section",
+  "customer_who_create",
+  "customer_col_break_1",
+  "customer_l1_approver",
+  "customer_col_break_2",
+  "customer_final_approver",
   "supplier_tab",
   "supplier_section",
   "enable_supplier_approval",
@@ -24,13 +29,13 @@
   },
   {
    "default": "0",
-   "description": "When enabled, System Manager can perform each approval step without matching the configured branch approval roles. The workflow still moves through Draft, Pending L1, Pending Final, and Approved.",
+   "description": "When enabled, System Manager can perform each approval step without matching the configured approval roles. The workflow still moves through Draft, Pending L1, Pending Final, and Approved.",
    "fieldname": "allow_system_manager_approval_bypass",
    "fieldtype": "Check",
    "label": "Allow System Manager Approval Bypass"
   },
   {
-   "description": "Users with this role can perform each approval step without matching the configured branch approval roles. The workflow still moves through Draft, Pending L1, Pending Final, and Approved.",
+   "description": "Users with this role can perform each approval step without matching the configured approval roles. The workflow still moves through Draft, Pending L1, Pending Final, and Approved.",
    "fieldname": "approval_bypass_role",
    "fieldtype": "Link",
    "label": "Approval Bypass Role",
@@ -55,11 +60,44 @@
   },
   {
    "depends_on": "eval:doc.enable_customer_approval",
-   "fieldname": "customer_approval_rules",
-   "fieldtype": "Table",
-   "label": "Customer Approval Rules",
-   "options": "Customer Approval Rule",
-   "description": "One row per Branch: define Who Creates, L1 Approver, and Final Approver roles."
+   "fieldname": "customer_roles_section",
+   "fieldtype": "Section Break",
+   "label": "Customer Approval Roles"
+  },
+  {
+   "depends_on": "eval:doc.enable_customer_approval",
+   "fieldname": "customer_who_create",
+   "fieldtype": "Link",
+   "label": "Who Create",
+   "options": "Role",
+   "mandatory_depends_on": "eval:doc.enable_customer_approval",
+   "description": "Role allowed to create new Customers"
+  },
+  {
+   "fieldname": "customer_col_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.enable_customer_approval",
+   "fieldname": "customer_l1_approver",
+   "fieldtype": "Link",
+   "label": "L1 Approver",
+   "options": "Role",
+   "mandatory_depends_on": "eval:doc.enable_customer_approval",
+   "description": "Role allowed to give L1 Approval"
+  },
+  {
+   "fieldname": "customer_col_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.enable_customer_approval",
+   "fieldname": "customer_final_approver",
+   "fieldtype": "Link",
+   "label": "Final Approver",
+   "options": "Role",
+   "mandatory_depends_on": "eval:doc.enable_customer_approval",
+   "description": "Role allowed to give Final Approval"
   },
   {
    "fieldname": "supplier_tab",
@@ -91,7 +129,7 @@
  "index_web_pages_for_search": 1,
  "issingle": 1,
  "links": [],
- "modified": "2026-07-01 00:00:00.000000",
+ "modified": "2026-08-26 12:40:00.000000",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Customer Supplier Workflow Settings",

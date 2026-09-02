@@ -286,7 +286,7 @@ def update_heat_no(name, used):
         WHERE  name = %s
     """, (used, frappe.session.user, name))
 
-    frappe.db.commit()
+
 
     return {"status": "ok", "updated": name}
 

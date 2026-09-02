@@ -306,7 +306,7 @@ def _reset_production_plan_status(production_plan_name, logger=None):
                 'status',
                 'Material Requested'
             )
-            frappe.db.commit()
+
             logger.info(f"Production Plan {production_plan_name} status -> 'Material Requested'")
 
     except Exception as e:
@@ -325,8 +325,9 @@ from erpnext.manufacturing.doctype.work_order.work_order import stop_unstop
 @frappe.whitelist()
 def get_update_for_work_order(docname):
     wo = frappe.get_doc("Work Order", docname)
+    _block_if_pp_has_pending_modifications(wo.production_plan, wo.name)
     result = _update_single_work_order(wo)
-    frappe.db.commit()
+
     return result
 
 
@@ -344,6 +345,7 @@ def clear_work_order_updated(docname):
 
 @frappe.whitelist()
 def get_update_for_production_plan(docname):
+    _block_if_pp_has_pending_modifications(docname)
     """
     Run the same BOM sync logic for every Work Order linked to this
     Production Plan. Each WO is updated independently — if one is
@@ -377,7 +379,7 @@ def get_update_for_production_plan(docname):
                 message=frappe.get_traceback(),
             )
 
-    frappe.db.commit()
+
 
     return {
         "total": len(results),
@@ -528,9 +530,6 @@ def remove_modification_task_link(doc, method=None):
             },
             update_modified=True,
         )
-
-    if linked_tasks:
-        frappe.db.commit()
 
 
 
@@ -735,7 +734,7 @@ def export_work_orders(work_orders):
     ws.freeze_panes = "A2"
  
     # Add Filter
-    ws.auto_filter.ref = ws.dimensions
+    # ws.auto_filter.ref = ws.dimensions
  
     # Create Table
     table = Table(
@@ -770,3 +769,48 @@ def export_work_orders(work_orders):
         file_doc.save(ignore_permissions=True)
  
     return file_doc.file_url
+
+# =============================================================================
+# Production Plan modification gating for Work Order updates
+# =============================================================================
+
+def _block_if_pp_has_pending_modifications(production_plan, wo_name=None):
+    """
+    Check whether the linked Production Plan has a pending SO or BOM
+    modification that must be absorbed first. Raises frappe.throw if so.
+
+    Called before any Work Order update (single or bulk) to enforce the
+    sequencing rule: Production Plan must absorb its own changes before
+    Work Orders can be updated.
+    """
+    if not production_plan:
+        return
+
+    flags = frappe.db.get_value(
+        "Production Plan",
+        production_plan,
+        ["sales_order_modification", "bom_modification"],
+        as_dict=True,
+    )
+
+    if not flags:
+        return
+
+    blocked_by = []
+    if flags.sales_order_modification == "YES":
+        blocked_by.append("Sales Order Modification")
+    if flags.bom_modification == "YES":
+        blocked_by.append("BOM Modification")
+
+    if blocked_by:
+        wo_ref = wo_name or _("this Work Order")
+        frappe.throw(
+            _(
+                "Cannot update {0}: the linked Production Plan <b>{1}</b> "
+                "still has pending changes ({2}) that must be absorbed first. "
+                "Please run <b>Get Update</b> on the Production Plan before "
+                "updating Work Orders."
+            ).format(wo_ref, production_plan, ", ".join(blocked_by)),
+            title=_("Production Plan Not Updated"),
+        )
+

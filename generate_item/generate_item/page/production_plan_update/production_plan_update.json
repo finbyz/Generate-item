@@ -1,0 +1,19 @@
+{
+ "content": null,
+ "creation": "2026-08-06 11:35:04.349412",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-08-06 11:35:04.349412",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "production-plan-update",
+ "owner": "Administrator",
+ "page_name": "production-plan-update",
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Production Plan & Work Order Update Control Report"
+}

@@ -171,6 +171,6 @@ def update_inspection_row(qi_name, mtc_status=None, mtc_remark=None,
     """
 
     frappe.db.sql(sql, set_values)
-    frappe.db.commit()
+
 
     return {"status": "ok", "updated": qi_name}

@@ -178,7 +178,7 @@ def apply_work_order_custom_fields(stock_entry_name, work_order_name):
                     item.custom_batch_no = batch_no
 
         doc.save(ignore_permissions=True)
-        frappe.db.commit()
+
         return {"status": "success", "message": "Custom fields applied successfully."}
 
     except Exception as e:
@@ -223,7 +223,7 @@ def on_submit(doc, method=None):
         """,
         [doc.name, frappe.session.user, *serial_nos],
     )
-    frappe.db.commit()
+
 
     
     frappe.msgprint(

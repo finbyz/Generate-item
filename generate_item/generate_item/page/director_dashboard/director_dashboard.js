@@ -44,6 +44,33 @@ frappe.pages['director-dashboard'].on_page_load = function (wrapper) {
         options:  'Branch',
         change:   load_data
     });
+    // -------------------- 2b. Apply URL date filters (NEW) --------------------
+    function get_dashboard_url_filters() {
+        const params = new URLSearchParams(window.location.search);
+        const read = (key) => {
+            if (frappe.route_options && frappe.route_options[key] !== undefined) {
+                const val = frappe.route_options[key];
+                delete frappe.route_options[key];
+                return val;
+            }
+            return params.get(key) || undefined;
+        };
+        const filters = {
+            from_date: read('from_date'),
+            to_date: read('to_date'),
+            branch: read('branch'),
+        };
+        if (frappe.route_options && Object.keys(frappe.route_options).length === 0) {
+            frappe.route_options = null;
+        }
+        return filters;
+    }
+
+    const url_filters = get_dashboard_url_filters();
+    if (url_filters.from_date) from_date.set_value(url_filters.from_date);
+    if (url_filters.to_date) to_date.set_value(url_filters.to_date);
+    if (url_filters.branch) branch.set_value(url_filters.branch);
+
 
     const type_selector = page.add_field({
         fieldtype: 'Select',

@@ -2,6 +2,11 @@ import frappe
 import frappe
 from frappe import _
 
+
+import frappe
+from frappe.utils import add_days, nowdate
+
+
 @frappe.whitelist()
 def set_remaining_actual_taxes(invoice_name):
     """
@@ -20,7 +25,7 @@ def set_remaining_actual_taxes(invoice_name):
     
     # Save and reload
     doc.save()
-    frappe.db.commit()
+    # frappe.db.commit()
     
     return {
         "success": True,
@@ -131,11 +136,82 @@ def get_remaining_taxes_for_draft(sales_orders, current_invoice_name=None):
 #         row.idx = i
 
 
+def before_insert(doc, method=None):
+    """
+    Called before Sales Invoice is inserted into database.
+    Ensures that fresh exchange rate is applied for the invoice posting date.
+    """
+    update_exchange_rate_for_posting_date(doc)
+
+
 def after_insert(doc, method=None):
     """
     Called automatically after Sales Invoice is inserted
     """
     _calculate_and_set_remaining_taxes(doc)
+
+
+def update_exchange_rate_for_posting_date(doc):
+    """
+    Updates conversion_rate and plc_conversion_rate on Sales Invoice based on posting_date
+    using ERPNext core get_exchange_rate. Recalculates item base amounts and totals.
+    """
+    if not doc.get("currency") or not doc.get("company"):
+        return
+
+    from erpnext import get_company_currency
+    from erpnext.setup.utils import get_exchange_rate
+    from frappe.utils import flt, nowdate
+
+    company_currency = get_company_currency(doc.company)
+    if not company_currency:
+        return
+
+    if doc.currency == company_currency:
+        if flt(doc.conversion_rate) != 1.0:
+            doc.conversion_rate = 1.0
+        if doc.get("price_list_currency") == company_currency and flt(doc.plc_conversion_rate) != 1.0:
+            doc.plc_conversion_rate = 1.0
+        return
+
+    posting_date = doc.get("posting_date") or nowdate()
+    fresh_rate = get_exchange_rate(
+        doc.currency,
+        company_currency,
+        transaction_date=posting_date,
+        args="for_selling",
+    )
+
+    if fresh_rate and flt(fresh_rate) > 0:
+        new_rate = flt(fresh_rate)
+        doc.conversion_rate = new_rate
+
+        if doc.get("price_list_currency") == doc.currency:
+            doc.plc_conversion_rate = new_rate
+        elif doc.get("price_list_currency") and doc.price_list_currency != company_currency:
+            plc_rate = get_exchange_rate(
+                doc.price_list_currency,
+                company_currency,
+                transaction_date=posting_date,
+                args="for_selling",
+            )
+            if plc_rate:
+                doc.plc_conversion_rate = flt(plc_rate)
+        elif doc.get("price_list_currency") == company_currency:
+            doc.plc_conversion_rate = 1.0
+
+        # Recalculate item base values
+        for item in doc.get("items") or []:
+            if item.get("rate") is not None:
+                item.base_rate = flt(item.rate) * new_rate
+            if item.get("amount") is not None:
+                item.base_amount = flt(item.amount) * new_rate
+            if item.get("net_rate") is not None:
+                item.base_net_rate = flt(item.net_rate) * new_rate
+            if item.get("net_amount") is not None:
+                item.base_net_amount = flt(item.net_amount) * new_rate
+
+        doc.calculate_taxes_and_totals()
 
 
 def _calculate_and_set_remaining_taxes(doc):
@@ -403,7 +479,7 @@ def validate(doc, method=None):
         if sales_orders:
             _validate_taxes_from_so(doc, sales_orders)
     check_warranty(doc)
-    update_serial_no_warranty(doc)
+    # update_serial_no_warranty(doc)
 
 
 def _validate_taxes_from_dn(doc, delivery_notes):
@@ -727,55 +803,63 @@ def remove_free_items(doc):
 
 @frappe.whitelist()
 def make_sales_invoice(source_name, target_doc=None, args=None):
-	"""Create Sales Invoice from Delivery Note while excluding Draft SIs from remaining qty.
+    """Create Sales Invoice from Delivery Note while excluding Draft SIs from remaining qty.
 
-	Wraps core method and adjusts each mapped item's qty to subtract any quantities
-	already present in Draft Sales Invoices for the same Delivery Note Item (`dn_detail`).
-	"""
-	from erpnext.stock.doctype.delivery_note.delivery_note import (
-		make_sales_invoice as core_make_sales_invoice,
-	)
+    Wraps core method and adjusts each mapped item's qty to subtract any quantities
+    already present in Draft Sales Invoices for the same Delivery Note Item (`dn_detail`).
+    """
+    from erpnext.stock.doctype.delivery_note.delivery_note import (
+        make_sales_invoice as core_make_sales_invoice,
+    )
+    frappe.log_error("hi make_sales_invoice caling")
 
-	# Create Sales Invoice using core logic first (which considers submitted SIs and returns)
-	si = core_make_sales_invoice(source_name=source_name, target_doc=target_doc, args=args)
+    # Create Sales Invoice using core logic first (which considers submitted SIs and returns)
+    si = core_make_sales_invoice(source_name=source_name, target_doc=target_doc, args=args)
 
-	# Recompute remaining per DN Item: DN.qty - SUM(SI.qty where dn_detail matches AND docstatus IN (0,1))
-	items_to_keep = []
-	for item in si.items or []:
-		dn_detail = getattr(item, "dn_detail", None)
-		if not dn_detail:
-			items_to_keep.append(item)
-			continue
+    # Recompute remaining per DN Item: DN.qty - SUM(SI.qty where dn_detail matches AND docstatus IN (0,1))
+    items_to_keep = []
+    for item in si.items or []:
+        dn_detail = getattr(item, "dn_detail", None)
+        if not dn_detail:
+            items_to_keep.append(item)
+            continue
 
-		# Source DN item qty
-		dn_item_qty = frappe.db.get_value("Delivery Note Item", dn_detail, "qty")
-		if dn_item_qty is None:
-			items_to_keep.append(item)
-			continue
+        # Source DN item qty
+        dn_item = frappe.db.get_value("Delivery Note Item", dn_detail, ["qty","custom_batch_no"],
+          as_dict=True,
+        
+        )
+        
+        if dn_item.qty is None:
+            items_to_keep.append(item)
+            continue
 
-		# Total already invoiced in Draft or Submitted (exclude Cancelled)
-		total_invoiced_qty = frappe.db.sql(
-			"""
-			SELECT COALESCE(SUM(sii.qty), 0)
-			FROM `tabSales Invoice Item` sii
-			INNER JOIN `tabSales Invoice` si ON sii.parent = si.name
-			WHERE sii.dn_detail = %s
-			  AND si.docstatus IN (0,1)
-			""",
-			(dn_detail,),
-		)[0][0]
+        # Total already invoiced in Draft or Submitted (exclude Cancelled)
+        total_invoiced_qty = frappe.db.sql(
+            """
+            SELECT COALESCE(SUM(sii.qty), 0)
+            FROM `tabSales Invoice Item` sii
+            INNER JOIN `tabSales Invoice` si ON sii.parent = si.name
+            WHERE sii.dn_detail = %s
+                AND si.docstatus IN (0,1)
+            """,
+            (dn_detail,),
+        )[0][0]
 
-		remaining_qty = max(frappe.utils.flt(dn_item_qty) - frappe.utils.flt(total_invoiced_qty), 0)
-		item.qty = remaining_qty
+        remaining_qty = max(frappe.utils.flt(dn_item.qty) - frappe.utils.flt(total_invoiced_qty), 0)
+        item.qty = remaining_qty
+        if dn_item.custom_batch_no:
+            item.batch_no_ref = dn_item.custom_batch_no
 
-		if remaining_qty and remaining_qty > 0:
-			items_to_keep.append(item)
 
-	# Replace items to drop zero-qty rows
-	if si.items is not None:
-		si.items = items_to_keep
+        if remaining_qty and remaining_qty > 0:
+            items_to_keep.append(item)
 
-	return si
+    # Replace items to drop zero-qty rows
+    if si.items is not None:
+        si.items = items_to_keep
+
+    return si
 
 
 
@@ -790,23 +874,164 @@ def check_warranty(doc):
                 item.warranty_period = so_wp
 
 
-def update_serial_no_warranty(doc):
-    for item in doc.items:
-        if not item.warranty_period or not item.serial_no:
+# ---------------------------------------------------------------------
+# STEP 0: Hook entry point — called by Frappe on Sales Invoice submit
+# ---------------------------------------------------------------------
+def on_submit_update_warranty(doc, method=None):
+    """
+    Registered against Sales Invoice on_submit.
+    Does ONLY one thing: enqueue background work AFTER commit.
+    Guaranteed not to affect the submit itself.
+    """
+    # apps/generate_item/generate_item/utils/sales_invoice.py
+    try:
+        frappe.enqueue(
+            method="generate_item.utils.sales_invoice.process_warranty_for_invoice",
+            queue="short",
+            timeout=300,
+            enqueue_after_commit=True,  # only fires once the submit is committed
+            sales_invoice=doc.name,
+        )
+    except Exception:
+        # Even a failure to enqueue must never affect the submit.
+        frappe.log_error(
+            title=f"Warranty Update: enqueue failed for {doc.name}",
+            message=frappe.get_traceback(),
+        )
+
+
+# ---------------------------------------------------------------------
+# Background job — runs in its own request/transaction, after commit
+# ---------------------------------------------------------------------
+def process_warranty_for_invoice(sales_invoice):
+    try:
+        si = frappe.get_doc("Sales Invoice", sales_invoice)
+    except Exception:
+        frappe.log_error(
+            title=f"Warranty Update: could not load {sales_invoice}",
+            message=frappe.get_traceback(),
+        )
+        return
+
+    for item in si.items:
+        batch = item.get("batch_no_ref")
+        if not batch:
             continue
 
-        serial_nos = [s.strip() for s in item.serial_no.split("\n") if s.strip()]
-        if not serial_nos:
-            continue
-
-        for serial_no in serial_nos:
-
-            frappe.db.set_value(
-                "Serial No",
-                serial_no,
-                {
-                    "warranty_period": item.warranty_period,
-                   
-                },
-                update_modified=False
+        try:
+            _process_batch(item, batch, sales_invoice)
+        except Exception:
+            frappe.log_error(
+                title=f"Warranty Update failed: {sales_invoice} / batch {batch}",
+                message=frappe.get_traceback(),
             )
+            continue  # move on to the next item no matter what
+
+
+def _process_batch(si_item, batch, sales_invoice):
+    # STEP 1: serial numbers for this batch, stock_entry set, expiry not set
+    serial_numbers = frappe.get_all(
+        "Serial Number",
+        filters={
+            "batch": batch,
+            "stock_entry": ["is", "set"],
+            "warranty_expiry_date": ["is", "not set"], 
+        },
+        pluck="name",
+    )
+    if not serial_numbers:
+        return
+
+    # STEP 2/3: warranty period from linked Sales Order Item -> expiry date
+    warranty_period = _get_warranty_period(si_item, batch)
+    if not warranty_period:
+        return
+
+    warranty_expiry_date = add_days(nowdate(), warranty_period)
+
+    # STEP 4/5: set expiry on each serial number, independently
+    for sn in serial_numbers:
+        try:
+            frappe.db.set_value(
+                "Serial Number",
+                sn,
+                "warranty_expiry_date", 
+                warranty_expiry_date,
+                update_modified=False,
+            )
+        except Exception:
+            frappe.log_error(
+                title=f"Warranty Update: Serial Number {sn} update failed ({sales_invoice})",
+                message=frappe.get_traceback(),
+            )
+            continue  # don't let one bad serial number stop the rest
+
+        # STEP 6: also update  serial no, if any
+        try:
+            _update_serial_no(sn, warranty_expiry_date)
+        except Exception:
+            frappe.log_error(
+                title=f"Warranty Update: Serial No sync failed for {sn} ({sales_invoice})",
+                message=frappe.get_traceback(),
+            )
+            continue
+
+
+def _get_warranty_period(si_item, batch):
+    """
+    Preferred: use so_detail (direct link to the exact Sales Order Item
+    row) — this is unambiguous, unlike matching on batch text.
+    Falls back to searching Sales Order Item by a batch field if so_detail
+    isn't available.
+    """
+    if si_item.get("so_detail"):
+        warranty_period = frappe.db.get_value(
+            "Sales Order Item", si_item.so_detail, "warranty_period"
+        )
+        if warranty_period:
+            return warranty_period
+
+    # Fallback — TODO: confirm this fieldname exists on Sales Order Item
+    return frappe.db.get_value(
+        "Sales Order Item", {"batch_no_ref": batch}, "warranty_period"
+    )
+
+
+def _update_serial_no(serial_no, warranty_expiry_date):
+    
+    match = frappe.db.exists(
+        "Serial No",
+        {"serial_no": serial_no}
+    )
+    if not match:
+        return  # not found — just continue, no error
+
+    frappe.db.set_value(
+        "Serial No",
+        match,
+        "warranty_expiry_date", 
+        warranty_expiry_date,
+        update_modified=False,
+    )
+
+
+# def update_serial_no_warranty(doc):
+#     for item in doc.items:
+#         if not item.warranty_period or not item.serial_no:
+#             continue
+#
+#         serial_nos = [s.strip() for s in item.serial_no.split("\n") if s.strip()]
+#         if not serial_nos:
+#             continue
+#
+#         for serial_no in serial_nos:
+#
+#             frappe.db.set_value(
+#                 "Serial No",
+#                 serial_no,
+#                 {
+#                     "warranty_period": item.warranty_period,
+#                     "warranty_expiry_date": frappe.utils.add_days(doc.posting_date, (item.warranty_period) - 1),
+#                 },
+#                 update_modified=False,
+#             )

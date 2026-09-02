@@ -36,7 +36,7 @@ def update_material_request_with_production_plan():
                     update_count += 1
         
         if update_count:
-            frappe.db.commit()
+
             frappe.log_error(
                 f"Material Request Update Complete: {update_count} items updated",
                 "Material Request Production Plan Update"

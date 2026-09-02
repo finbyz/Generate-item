@@ -15,10 +15,7 @@ class CustomerSupplierWorkflowSettings(Document):
 		self._ensure_enabled_custom_fields()
 
 	def _validate_unique_active_branch_rules(self):
-		"""Only one active rule per Branch is allowed for each workflow."""
-		self._validate_unique_active_branch_rule_rows(
-			self.customer_approval_rules, "Customer Approval Rules"
-		)
+		"""Only one active rule per Branch is allowed — applies to Supplier only."""
 		self._validate_unique_active_branch_rule_rows(
 			self.supplier_approval_rules, "Supplier Approval Rules"
 		)
@@ -59,10 +56,12 @@ class CustomerSupplierWorkflowSettings(Document):
 		Warn if approval is enabled but no rules have been configured.
 		Non-blocking — just a helpful alert, not a hard error.
 		"""
-		if cint(self.enable_customer_approval) and not self.customer_approval_rules:
+		if cint(self.enable_customer_approval) and not (
+			self.customer_who_create and self.customer_l1_approver and self.customer_final_approver
+		):
 			frappe.msgprint(
-				_("Customer Approval is enabled but no Customer Approval Rules are configured. "
-				  "Please add at least one branch rule."),
+				_("Customer Approval is enabled but approval roles are not fully configured. "
+				  "Please set Who Create, L1 Approver, and Final Approver roles."),
 				indicator="orange",
 				alert=True,
 			)
@@ -74,3 +73,4 @@ class CustomerSupplierWorkflowSettings(Document):
 				indicator="orange",
 				alert=True,
 			)
+

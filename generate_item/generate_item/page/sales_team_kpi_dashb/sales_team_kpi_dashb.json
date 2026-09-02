@@ -4,13 +4,17 @@
  "docstatus": 0,
  "doctype": "Page",
  "idx": 0,
- "modified": "2026-08-06 17:19:09.409033",
+ "modified": "2026-08-20 11:59:22.216063",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "sales-team-kpi-dashb",
  "owner": "Administrator",
  "page_name": "sales-team-kpi-dashb",
- "roles": [],
+ "roles": [
+  {
+   "role": "Tester"
+  }
+ ],
  "script": null,
  "standard": "Yes",
  "style": null,

@@ -32,6 +32,12 @@ function _apply_cs_approval_control(frm) {
 
 	if (frm.is_new()) return;
 
+	// Immediately set the indicator to prevent Frappe from showing "Disabled"
+	// while we wait for the backend approval control payload.
+	if (frm.doc.cs_approval_status) {
+		_set_cs_form_indicator(frm, frm.doc.cs_approval_status);
+	}
+
 	// Use onload data once; later refreshes must fetch fresh control state.
 	const onload = frm.doc.__onload && frm.doc.__onload.cs_approval_control;
 	if (onload && !frm.__cs_onload_control_rendered) {
