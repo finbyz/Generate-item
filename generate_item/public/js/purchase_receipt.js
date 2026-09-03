@@ -136,7 +136,7 @@ frappe.ui.form.on('Purchase Receipt', {
         }, __('Get Items From'));
 
         // =============================
-        frm.add_custom_button('Append from PO (Line Wise)', function() {
+        frm.add_custom_button('Append from PO (Line Wise)', function () {
 
             // Step 1: Select Purchase Order
             frappe.prompt([
@@ -158,7 +158,7 @@ frappe.ui.form.on('Purchase Receipt', {
                         return { filters: filters };
                     }
                 }
-            ], function(values) {
+            ], function (values) {
 
                 // Step 2: Fetch PO
                 frappe.call({
@@ -167,7 +167,7 @@ frappe.ui.form.on('Purchase Receipt', {
                         doctype: 'Purchase Order',
                         name: values.po
                     },
-                    callback: function(r) {
+                    callback: function (r) {
 
                         let po = r.message;
                         if (!po) return;
@@ -235,11 +235,11 @@ frappe.ui.form.on('Purchase Receipt', {
                                 let selected_lines = [];
 
                                 // Get selected checkboxes
-                                d.$wrapper.find('.po-line:checked').each(function() {
+                                d.$wrapper.find('.po-line:checked').each(function () {
                                     selected_lines.push($(this).val());
                                 });
 
-                                po.items.forEach(function(item) {
+                                po.items.forEach(function (item) {
 
                                     // Filter selected
                                     if (
@@ -278,7 +278,7 @@ frappe.ui.form.on('Purchase Receipt', {
                                         row.purchase_order = po.name;
                                         row.purchase_order_item = item.name;
                                         row.material_request = item.material_request;
-                                        
+
                                         // GST DETAILS
                                         row.cgst_rate = item.cgst_rate;
                                         row.igst_rate = item.igst_rate;
@@ -295,8 +295,8 @@ frappe.ui.form.on('Purchase Receipt', {
                                         row.warehouse = item.warehouse || frm.doc.set_warehouse;
 
                                         // Item Weight Details 
-                                        row.weight_per_unit = item.weight_per_unit 
-                                        row.weight_uom = item.weight_uom 
+                                        row.weight_per_unit = item.weight_per_unit
+                                        row.weight_uom = item.weight_uom
 
                                         // 🔹 Custom mappings
                                         row.custom_batch_no = item.custom_batch_no;
@@ -309,7 +309,7 @@ frappe.ui.form.on('Purchase Receipt', {
 
                                         row.project = item.project;
                                         // console.log(item.stock_qty);
-                                        row.qty_in_stock_uom = item.stock_qty ;
+                                        row.qty_in_stock_uom = item.stock_qty;
                                         row.expense_account = item.expense_account;
 
                                         row.custom_drg_and_pur_spec = item.custom_drg_and_pur_spec;
@@ -346,7 +346,7 @@ frappe.ui.form.on('Purchase Receipt', {
                         // =========================
                         // Select All checkbox
                         // =========================
-                        d.$wrapper.on('change', '#select_all', function() {
+                        d.$wrapper.on('change', '#select_all', function () {
                             let checked = $(this).prop('checked');
                             d.$wrapper.find('.po-line').prop('checked', checked);
                         });
@@ -357,8 +357,24 @@ frappe.ui.form.on('Purchase Receipt', {
             }, 'Select Purchase Order');
 
         });
-    // =============================================
+        // =============================================
     },
+
+    branch: function (frm) {
+        const branch_warehouse_map = {
+            "Sanand": "Sanand Rejection - SVIPL",
+            "Rabale": "Rabale Rejection - SVIPL",
+            "Nandikoor": "Nandikoor Rejection - SVIPL"
+        };
+
+        const warehouse = branch_warehouse_map[frm.doc.branch];
+
+        if (warehouse) {
+            frm.set_value("rejected_warehouse", warehouse);
+        } else {
+            frm.set_value("rejected_warehouse", "");
+        }
+    }
 });
 
 function update_stock_qty_from_po(frm) {
