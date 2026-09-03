@@ -694,7 +694,7 @@ def create_material_request_for_pending_items(docname):
         created_items = [
             f"{d.item_code} ({d.quantity})" for d in pending_rows if d.item_code
         ]
-        frappe.db.set_value("Production Plan", pp.name, "production_plan_updated", 0, update_modified=False)
+        # frappe.db.set_value("Production Plan", pp.name, "production_plan_updated", 0, update_modified=False)
 
 
 
