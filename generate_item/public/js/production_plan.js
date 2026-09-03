@@ -1,99 +1,98 @@
 let actual_qty_set_flags = {};
 
 
-function custom_transfer_materials(frm)
-{
-  
-            // let $btn = frm.page.body.find('button[data-fieldname="transfer_materials"]');
-            let $btn = frm.fields_dict['transfer_materials'].$input;
-            console.log("transfer_materials btn ref",$btn)
-            
-            if ($btn.length) {
-                console.log(" Button found via data-fieldname");
+function custom_transfer_materials(frm) {
 
-                $btn.off("click").on("click", function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    // console.log(" Custom transfer_materials triggered");
+    // let $btn = frm.page.body.find('button[data-fieldname="transfer_materials"]');
+    let $btn = frm.fields_dict['transfer_materials'].$input;
+    console.log("transfer_materials btn ref", $btn)
 
-                    if (!frm.doc.for_warehouse) {
-                        frm.trigger("toggle_for_warehouse");
-                        frappe.throw(__("Select the Warehouse"));
-                    }
+    if ($btn.length) {
+        console.log(" Button found via data-fieldname");
 
-                    frm.set_value("consider_minimum_order_qty", 0);
+        $btn.off("click").on("click", function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            // console.log(" Custom transfer_materials triggered");
 
-                    if (!frm.doc.ignore_existing_ordered_qty) {
-                        frm.events.get_items_for_material_requests(frm);
-                    } else {
-                        let warehouses_promise = Promise.resolve([]);
-
-                        if (frm.doc.branch) {
-                            warehouses_promise = frappe.db.get_list('Warehouse', {
-                                filters: {
-                                    branch: frm.doc.branch,
-                                    store_warehouse: 1,
-                                    disabled: 0,
-                                    is_group: 0
-                                },
-                                fields: ['name'],
-                                limit: 1
-                            });
-                        }
-
-                        warehouses_promise.then((store_warehouses) => {
-                            const title = __("Transfer Materials For Warehouse {0}", [frm.doc.for_warehouse]);
-
-                            let default_transfer_warehouses = [];
-                            if (store_warehouses?.length) {
-                                default_transfer_warehouses = [{ warehouse: store_warehouses[0].name }];
-                            }
-
-                            let dialog = new frappe.ui.Dialog({
-                                title: title,
-                                fields: [
-                                    {
-                                        label: __("Transfer From Warehouses"),
-                                        fieldtype: "Table MultiSelect",
-                                        fieldname: "warehouses",
-                                        options: "Production Plan Material Request Warehouse",
-                                        get_query: function () {
-                                            return {
-                                                filters: {
-                                                    company: frm.doc.company,
-                                                },
-                                            };
-                                        },
-                                    },
-                                    {
-                                        label: __("For Warehouse"),
-                                        fieldtype: "Link",
-                                        fieldname: "target_warehouse",
-                                        read_only: true,
-                                        default: frm.doc.for_warehouse,
-                                    },
-                                ],
-                            });
-
-                            dialog.show();
-
-                            if (default_transfer_warehouses.length) {
-                                dialog.set_value("warehouses", default_transfer_warehouses);
-                            }
-
-                            dialog.set_primary_action(__("Get Items"), () => {
-                                let values = dialog.get_values();
-                                frm.events.get_items_for_material_requests(frm, values?.warehouses);
-                                dialog.hide();
-                            });
-                        });
-                    }
-                });
-            } else {
-                console.warn(" Button with data-fieldname='transfer_materials' not found");
+            if (!frm.doc.for_warehouse) {
+                frm.trigger("toggle_for_warehouse");
+                frappe.throw(__("Select the Warehouse"));
             }
 
-       
+            frm.set_value("consider_minimum_order_qty", 0);
+
+            if (!frm.doc.ignore_existing_ordered_qty) {
+                frm.events.get_items_for_material_requests(frm);
+            } else {
+                let warehouses_promise = Promise.resolve([]);
+
+                if (frm.doc.branch) {
+                    warehouses_promise = frappe.db.get_list('Warehouse', {
+                        filters: {
+                            branch: frm.doc.branch,
+                            store_warehouse: 1,
+                            disabled: 0,
+                            is_group: 0
+                        },
+                        fields: ['name'],
+                        limit: 1
+                    });
+                }
+
+                warehouses_promise.then((store_warehouses) => {
+                    const title = __("Transfer Materials For Warehouse {0}", [frm.doc.for_warehouse]);
+
+                    let default_transfer_warehouses = [];
+                    if (store_warehouses?.length) {
+                        default_transfer_warehouses = [{ warehouse: store_warehouses[0].name }];
+                    }
+
+                    let dialog = new frappe.ui.Dialog({
+                        title: title,
+                        fields: [
+                            {
+                                label: __("Transfer From Warehouses"),
+                                fieldtype: "Table MultiSelect",
+                                fieldname: "warehouses",
+                                options: "Production Plan Material Request Warehouse",
+                                get_query: function () {
+                                    return {
+                                        filters: {
+                                            company: frm.doc.company,
+                                        },
+                                    };
+                                },
+                            },
+                            {
+                                label: __("For Warehouse"),
+                                fieldtype: "Link",
+                                fieldname: "target_warehouse",
+                                read_only: true,
+                                default: frm.doc.for_warehouse,
+                            },
+                        ],
+                    });
+
+                    dialog.show();
+
+                    if (default_transfer_warehouses.length) {
+                        dialog.set_value("warehouses", default_transfer_warehouses);
+                    }
+
+                    dialog.set_primary_action(__("Get Items"), () => {
+                        let values = dialog.get_values();
+                        frm.events.get_items_for_material_requests(frm, values?.warehouses);
+                        dialog.hide();
+                    });
+                });
+            }
+        });
+    } else {
+        console.warn(" Button with data-fieldname='transfer_materials' not found");
+    }
+
+
 }
 
 
@@ -238,6 +237,7 @@ function add_create_material_request_button(frm, group) {
             );
         },
     });
+    frm.remove_custom_button(__("Material Request"), "Create");
 }
 
 // ============================================================
@@ -252,7 +252,7 @@ function add_create_material_request_button(frm, group) {
 
 
 function render_bom_exploded_table(frm) {
-  
+
     const HTML_FIELDNAME = 'raw_materials';
 
     if (!frm.fields_dict[HTML_FIELDNAME]) {
@@ -295,13 +295,13 @@ function render_bom_exploded_table(frm) {
 
             // 4. Build required_qty per item_code, scaled by planned_qty,
             //    summed across all BOM rows that produce that raw material.
-            const required_map = {}; 
+            const required_map = {};
 
             bom_rows.forEach(row => {
                 const bom = bom_map[row.bom_no];
                 if (!bom) return;
 
-                const ratio = row.planned_qty ;
+                const ratio = row.planned_qty;
 
                 (bom.exploded_items || []).forEach(item => {
                     const required_qty = to_float(item.stock_qty) * ratio;
@@ -394,24 +394,24 @@ frappe.ui.form.on('Production Plan', {
             update_actual_qty_for_items(frm);
         }
         custom_transfer_materials(frm)
-    
+
 
     },
-    
-    
+
+
 
     refresh: function (frm) {
         render_bom_exploded_table(frm);
         const UPDATE_GROUP = __("Update");
-        if (frm.doc.docstatus === 1  ) {
-    
-        add_update_work_orders_button(frm, UPDATE_GROUP);
-        add_get_update_button(frm, UPDATE_GROUP);
-        add_create_material_request_button(frm, UPDATE_GROUP);
-    
+        if (frm.doc.docstatus === 1) {
+
+            add_update_work_orders_button(frm, UPDATE_GROUP);
+            add_get_update_button(frm, UPDATE_GROUP);
+            add_create_material_request_button(frm, UPDATE_GROUP);
+
         }
-        
-         custom_transfer_materials(frm)
+
+        custom_transfer_materials(frm)
 
 
         if (frm.doc.docstatus === 0) {
@@ -433,48 +433,48 @@ frappe.ui.form.on('Production Plan', {
         // Check if Work Order exists for the current Production Plan
         const button_label = 'Work Order / Subcontract PO';
 
-// Only show button on submitted Production Plan
-if (frm.doc.docstatus !== 1) {
-    try { frm.remove_custom_button(button_label, 'Create'); } catch(e) {}
-    return;
-}
+        // Only show button on submitted Production Plan
+        if (frm.doc.docstatus !== 1) {
+            try { frm.remove_custom_button(button_label, 'Create'); } catch (e) { }
+            return;
+        }
 
-// Count existing Work Orders vs total needed
-frappe.db.get_list('Work Order', {
-    filters: { 'production_plan': frm.doc.name },
-    fields: ['name']
-}).then(wo_results => {
-    const existing_wo_count = wo_results.length;
-    const po_items_count = (frm.doc.po_items || []).length;
-    const sub_items_count = (frm.doc.sub_assembly_items || []).length;
-    const total_needed = po_items_count + sub_items_count;
+        // Count existing Work Orders vs total needed
+        frappe.db.get_list('Work Order', {
+            filters: { 'production_plan': frm.doc.name },
+            fields: ['name']
+        }).then(wo_results => {
+            const existing_wo_count = wo_results.length;
+            const po_items_count = (frm.doc.po_items || []).length;
+            const sub_items_count = (frm.doc.sub_assembly_items || []).length;
+            const total_needed = po_items_count + sub_items_count;
 
-    // Remove button first to avoid duplicates
-    try { frm.remove_custom_button(button_label, 'Create'); } catch(e) {}
+            // Remove button first to avoid duplicates
+            try { frm.remove_custom_button(button_label, 'Create'); } catch (e) { }
 
-    // Show button if any work order is still missing
-    if (existing_wo_count < total_needed) {
-        frm.add_custom_button(__(button_label), function () {
-            frappe.call({
-                method: 'run_doc_method',
-                args: {
-                    dt: frm.doctype,
-                    dn: frm.doc.name,
-                    method: 'make_work_order'
-                },
-                callback: function(r) {
-                    frm.reload_doc();
-                }
-            });
-        }, __('Create'));
-    }
-}).catch(err => {
-    console.error('Error checking Work Order count:', err);
+            // Show button if any work order is still missing
+            if (existing_wo_count < total_needed) {
+                frm.add_custom_button(__(button_label), function () {
+                    frappe.call({
+                        method: 'run_doc_method',
+                        args: {
+                            dt: frm.doctype,
+                            dn: frm.doc.name,
+                            method: 'make_work_order'
+                        },
+                        callback: function (r) {
+                            frm.reload_doc();
+                        }
+                    });
+                }, __('Create'));
+            }
+        }).catch(err => {
+            console.error('Error checking Work Order count:', err);
 
         });
     },
 
-  
+
 
     setup: function (frm) {
         frm.set_query('custom_batch_wise_assembly', function () {
@@ -551,7 +551,7 @@ frappe.db.get_list('Work Order', {
             frm.set_value("sub_assembly_warehouse", "");
         }
 
-       
+
         if (frm.doc.sales_orders && frm.doc.sales_orders.length > 0) {
             frm.trigger("get_sales_orders");
         }
@@ -583,7 +583,7 @@ frappe.db.get_list('Work Order', {
         }
     },
 
-   
+
 
     // Remove recursive get_sales_orders handler; server-side override handles branch filtering
     custom_batch_wise_assembly: function (frm) {
