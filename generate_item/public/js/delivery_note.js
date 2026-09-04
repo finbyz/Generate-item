@@ -1153,15 +1153,25 @@ function show_items_selection_dialog(frm, sales_order) {
 // ---------------------------------------------------------------------------
 function build_items_table_html(items, sales_order) {
     const rows = items.map((item, idx) => {
-        const max_qty   = Math.min(item.pending_qty, item.available_batch_qty);
-        const no_stock  = max_qty <= 0;
-        const partial   = !no_stock && max_qty < item.pending_qty;
-        const row_style = no_stock ? 'background:#fff3f3;'
-                        : partial  ? 'background:#fffaf0;'
-                        : '';
+        const is_service = !item.is_stock_item;   // non-stock / service item
+        const max_qty    = is_service
+            ? item.pending_qty
+            : Math.min(item.pending_qty, item.available_batch_qty);
+        const no_stock   = !is_service && max_qty <= 0;
+        const partial    = !is_service && !no_stock && max_qty < item.pending_qty;
+        const row_style  = no_stock ? 'background:#fff3f3;'
+                         : partial  ? 'background:#fffaf0;'
+                         : '';
 
         const pending_color = item.pending_qty > 0 ? '#e67e22' : '#27ae60';
         const default_qty   = no_stock ? item.pending_qty : max_qty;
+
+        // Available column: badge for service items, number for stock items
+        const available_cell = is_service
+            ? `<span style="display:inline-block;padding:2px 8px;border-radius:12px;
+                   background:#d4edda;color:#155724;font-size:11px;font-weight:600;
+                   border:1px solid #c3e6cb;">Service</span>`
+            : `<span class="${no_stock ? 'text-danger' : ''}">${format_number(item.available_batch_qty)}</span>`;
 
         return `
 <tr data-idx="${idx}" style="${row_style}">
@@ -1176,7 +1186,7 @@ function build_items_table_html(items, sales_order) {
     <td style="text-align:right;">${format_number(item.ordered_qty)}</td>
     <td style="text-align:right;">${format_number(item.delivered_qty)}</td>
     <td style="text-align:right;color:${pending_color};">${format_number(item.pending_qty)}</td>
-    <td style="text-align:right;" class="${no_stock ? 'text-danger' : ''}">${format_number(item.available_batch_qty)}</td>
+    <td style="text-align:right;">${available_cell}</td>
     <td>
         <input type="number"
                class="form-control item-qty" data-idx="${idx}"
@@ -1228,7 +1238,7 @@ function build_items_table_html(items, sales_order) {
 <div style="margin-top:12px;padding:10px;background:#f9f9f9;border-radius:4px;">
     <small>
         <strong>${__('Note')}:</strong>
-        ${__('Red row = no stock. Yellow row = partial stock. Only rows with stock can be selected.')}
+        ${__('Red row = no stock. Yellow row = partial stock. Only rows with stock can be selected. Service items (green badge) can always be selected.')}
     </small>
 </div>`;
 }
@@ -1269,10 +1279,13 @@ function setup_item_selection_handlers(dialog, items) {
 
     // Qty input — validate and auto-tick the row checkbox
     $w.on(`change${ns} input${ns}`, '.item-qty', function () {
-        const idx     = parseInt($(this).data('idx'), 10);
-        const item    = items[idx];
-        const max_qty = Math.min(item.pending_qty, item.available_batch_qty);
-        let   val     = parseFloat($(this).val()) || 0;
+        const idx      = parseInt($(this).data('idx'), 10);
+        const item     = items[idx];
+        const is_service = !item.is_stock_item;
+        const max_qty  = is_service
+            ? item.pending_qty
+            : Math.min(item.pending_qty, item.available_batch_qty);
+        let   val      = parseFloat($(this).val()) || 0;
 
         if (val > max_qty) {
             val = max_qty;
@@ -1305,17 +1318,19 @@ function get_selected_items(dialog, items) {
     items.forEach((item, idx) => {
         if (!$w.find(`.select-item[data-idx="${idx}"]`).is(':checked')) return;
 
-        const max_qty = Math.min(item.pending_qty, item.available_batch_qty);
-        const qty     = parseFloat($w.find(`.item-qty[data-idx="${idx}"]`).val()) || 0;
+        const is_service = !item.is_stock_item;
+        const max_qty    = is_service
+            ? item.pending_qty
+            : Math.min(item.pending_qty, item.available_batch_qty);
+        const qty        = parseFloat($w.find(`.item-qty[data-idx="${idx}"]`).val()) || 0;
 
         if (qty <= 0) return;
 
         if (qty > max_qty) {
             frappe.msgprint({
                 title:     __('Invalid Quantity'),
-                message:   __(                                            __('Item {0}: qty {1} exceeds available {2}'),
-                              item.item_code, format_number(qty), format_number(max_qty)
-                           ),
+                message:   __('Item {0}: qty {1} exceeds available {2}',
+                              [item.item_code, format_number(qty), format_number(max_qty)]),
                 indicator: 'red',
             });
             return;
@@ -1382,8 +1397,8 @@ function add_items_to_delivery_note(frm, sales_order, selected_items) {
                 row.sgst_amount = (row.net_amount * row.sgst_rate) / 100;
             }
 
-            // Warehouse
-            row.warehouse = sel.warehouse || frm.doc.set_warehouse;
+            // Warehouse — service items don't need a warehouse
+            row.warehouse = sel.warehouse || (sel.is_stock_item ? frm.doc.set_warehouse : null);
 
             // Weight
             row.weight_per_unit = sel.weight_per_unit;

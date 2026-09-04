@@ -301,34 +301,47 @@ def get_dispatchable_sales_orders_list(customer=None, company=None, project=None
         if all_items_delivered:
             continue
 
-        all_items_in_stock = True
-        at_least_one_in_stock = False
-        
+        # Fetch is_stock_item for all items in this SO (bulk)
+        item_codes = list({i.item_code for i in items if i.item_code})
+        is_stock_map = {}
+        if item_codes:
+            is_stock_rows = frappe.db.sql(
+                f"SELECT name, is_stock_item FROM `tabItem` WHERE name IN ({', '.join(['%s'] * len(item_codes))})",
+                item_codes,
+                as_dict=True,
+            )
+            is_stock_map = {r.name: r.is_stock_item for r in is_stock_rows}
+
+        at_least_one_dispatchable = False
+
         for item in items:
-            
-            # item_warehouse = warehouse or item.warehouse
-            # if not item_warehouse:
-            #     all_items_in_stock = False
-            #     break
+            # Skip fully-delivered lines
+            if delivered_qty_map.get(item.name, 0) >= flt(item.qty):
+                continue
+
+            is_stock = is_stock_map.get(item.item_code, 1)
+
+            # Service / non-stock items are always dispatchable if pending qty > 0
+            if not is_stock:
+                at_least_one_dispatchable = True
+                break
+
             item_warehouse = so.set_warehouse or warehouse or item.warehouse
             if not item_warehouse:
                 continue
-
 
             batches = frappe.get_all(
                 "Batch",
                 filters={
                     "item": item.item_code,
-                    "reference_name": so.name,  
-                    "reference_doctype": "Sales Order", 
+                    "reference_name": so.name,
+                    "reference_doctype": "Sales Order",
                     "disabled": 0
                 },
                 pluck="name"
             )
-            # frappe.log_error( "Batches data----",batches)
 
             total_batch_qty = 0
-
             for batch_no in batches:
                 qty = get_batch_qty(
                     batch_no=batch_no,
@@ -336,19 +349,14 @@ def get_dispatchable_sales_orders_list(customer=None, company=None, project=None
                     item_code=item.item_code
                 )
                 total_batch_qty += flt(qty)
-            
-            
+
             if total_batch_qty > 0:
-                at_least_one_in_stock = True 
+                at_least_one_dispatchable = True
                 break
 
-        # if all_items_in_stock:
-        #     dispatchable_orders.append({"name": so.name})
-        if at_least_one_in_stock:
-            dispatchable_orders.append({
-                "name": so.name
-            })
-            
+        if at_least_one_dispatchable:
+            dispatchable_orders.append({"name": so.name})
+
     return dispatchable_orders
 import frappe
 from frappe import _
@@ -438,6 +446,18 @@ def get_dispatchable_so(customer=None,branch=None):
     for item in so_items:
         items_by_so.setdefault(item.parent, []).append(item)
 
+    # ── 6b. Bulk-fetch is_stock_item for all SO item_codes ──────────────────
+    all_item_codes = list({i.item_code for i in so_items if i.item_code})
+    is_stock_map = {}
+    if all_item_codes:
+        ph = _build_placeholders(all_item_codes)
+        is_stock_rows = frappe.db.sql(
+            f"SELECT name, is_stock_item FROM `tabItem` WHERE name IN ({ph})",
+            all_item_codes,
+            as_dict=True,
+        )
+        is_stock_map = {r.name: r.is_stock_item for r in is_stock_rows}
+
     dispatchable = []
     for so in eligible_sos:
         items = items_by_so.get(so.name, [])
@@ -447,10 +467,17 @@ def get_dispatchable_so(customer=None,branch=None):
         for item in items:
             # Calculate pending quantity
             pending = flt(item.qty) - flt(delivered_map.get(item.name, 0))
-            
+
             # Skip if fully delivered
             if pending <= 0:
                 continue
+
+            is_stock = is_stock_map.get(item.item_code, 1)
+
+            # Service / non-stock items are always dispatchable if pending qty > 0
+            if not is_stock:
+                dispatchable.append({"name": so.name})
+                break
 
             # Get warehouse (priority: SO set_warehouse > item warehouse)
             warehouse = so_wh_map.get(so.name) or item.warehouse
@@ -459,10 +486,10 @@ def get_dispatchable_so(customer=None,branch=None):
 
             # Check if stock is available
             available = batch_avail.get((item.item_code, warehouse), 0)
-            
+
             if available > 0:
                 dispatchable.append({"name": so.name})
-                break  # One stocked pending item is enough
+                break  # One stocked/service pending item is enough
 
     return dispatchable
 
@@ -551,6 +578,8 @@ def get_dispatchable_so_for_query(doctype, txt, searchfield, start, page_len, fi
 def get_so_items_for_selection(sales_order):
     """
     Fetch SO items with pending qty + available stock for the dialog.
+    Service (non-stock) items are always treated as available and are included
+    even when they have no batch/warehouse stock.
     """
     if not sales_order:
         frappe.throw(_("Sales Order is required"))
@@ -574,24 +603,42 @@ def get_so_items_for_selection(sales_order):
     )
     delivered_map = {r.so_detail: flt(r.delivered_qty) for r in delivered_rows}
 
-    # ── 2. Get item-warehouse pairs ──────────────────────────────────────────
+    # ── 2. Bulk-fetch is_stock_item for all item codes in this SO ────────────
+    all_item_codes = list({item.item_code for item in so.items if item.item_code})
+    is_stock_map = {}
+    if all_item_codes:
+        rows = frappe.db.sql(
+            f"""
+            SELECT name, is_stock_item
+            FROM `tabItem`
+            WHERE name IN ({', '.join(['%s'] * len(all_item_codes))})
+            """,
+            all_item_codes,
+            as_dict=True,
+        )
+        is_stock_map = {r.name: r.is_stock_item for r in rows}
+
+    # ── 3. Get item-warehouse pairs for STOCK items only ─────────────────────
     item_warehouse_pairs = set()
     for item in so.items:
-        if item.get("line_status") in ["Cancelled","Hold"]:
+        if item.get("line_status") in ["Cancelled", "Hold"]:
+            continue
+        if not is_stock_map.get(item.item_code, 1):  # skip non-stock items
             continue
         warehouse = so.set_warehouse or item.warehouse
         if warehouse and item.item_code:
             item_warehouse_pairs.add((item.item_code, warehouse))
 
-    # ── 3. Get available stock ───────────────────────────────────────────────
+    # ── 4. Get available stock ───────────────────────────────────────────────
     batch_avail = _get_stock_availability(item_warehouse_pairs)
 
-    # ── 4. Build result ──────────────────────────────────────────────────────
+    # ── 5. Build result ──────────────────────────────────────────────────────
     result = []
     for item in so.items:
         # Skip cancelled SO lines
-        if item.get("line_status") in ["Cancelled","Hold"]:
+        if item.get("line_status") in ["Cancelled", "Hold"]:
             continue
+
         ordered = flt(item.qty)
         delivered = flt(delivered_map.get(item.name, 0))
         pending = ordered - delivered
@@ -599,8 +646,14 @@ def get_so_items_for_selection(sales_order):
         if pending <= 0:
             continue
 
+        is_stock_item = is_stock_map.get(item.item_code, 1)
         warehouse = so.set_warehouse or item.warehouse
-        available_qty = max(0, flt(batch_avail.get((item.item_code, warehouse), 0))) if warehouse else 0
+
+        if is_stock_item:
+            available_qty = max(0, flt(batch_avail.get((item.item_code, warehouse), 0))) if warehouse else 0
+        else:
+            # Service / non-stock items don't require stock; treat pending qty as available
+            available_qty = pending
 
         result.append({
             # Identity
@@ -617,6 +670,8 @@ def get_so_items_for_selection(sales_order):
             "pending_qty": pending,
             "available_batch_qty": available_qty,
             "qty": pending,
+            # Service item flag (non-stock — no warehouse/batch needed)
+            "is_stock_item": is_stock_item,
             # UOM
             "uom": item.uom,
             "stock_uom": item.stock_uom,
@@ -636,7 +691,7 @@ def get_so_items_for_selection(sales_order):
             "discount_percentage": item.discount_percentage,
             "discount_amount": item.discount_amount,
             # Logistics
-            "warehouse": warehouse,
+            "warehouse": warehouse if is_stock_item else None,
             "against_sales_order": so.name,
             "so_detail": item.name,
             # GST
