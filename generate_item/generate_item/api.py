@@ -1,3 +1,4 @@
+
 import json
 from io import BytesIO
 
@@ -187,3 +188,4 @@ def export_query_report(form_params):
     frappe.local.response.content_type = (
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
