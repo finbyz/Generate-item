@@ -486,6 +486,9 @@ function sync_row_warranty_period(frm, cdt, cdn, force_from_parent) {
 
 frappe.ui.form.on('Sales Order', {
     refresh: function (frm) {
+
+        frm.add_custom_button(__('Proforma Invoice'),function() {frm.trigger('create_proforma_invoice')}, __('Create'));
+	
          // Defer so this runs after ERPNext core's refresh handler has added its buttons
         setTimeout(() => {
             frm.remove_custom_button("Update Items");
@@ -726,6 +729,13 @@ frappe.ui.form.on('Sales Order', {
     },
     onload: function (frm) {
         handle_item_generator_return(frm);
+    },
+
+    create_proforma_invoice: function(frm){
+        frappe.model.open_mapped_doc({
+            method: "generate_item.generate_item.doctype.proforma_invoice.proforma_invoice.create_proforma_invoice",
+            frm: frm
+        })
     },
     validate: function (frm) {
         const parent_branch = frm.doc.branch || '';
