@@ -9,7 +9,7 @@ from generate_item.utils.inspector_inches import (
 )
 
 
-class ProductAssembly(Document):
+class ProductTesting(Document):
 
     def before_save(self):
         employee = frappe.db.get_value(
@@ -27,10 +27,11 @@ class ProductAssembly(Document):
 @frappe.whitelist()
 def get_serial_register_items(sales_order=None, batch_number=None):
     """
-    Get Serial Number records from Serial Number DocType for Product Assembly.
+    Get Serial Number records from Serial Number DocType for Product Testing.
     """
     return _get_serial_register_items(
-        doctype="Product Assembly",
+        doctype="Product Testing",
         sales_order=sales_order,
         batch_number=batch_number,
     )
+

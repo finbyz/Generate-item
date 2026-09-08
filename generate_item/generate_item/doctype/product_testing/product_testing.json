@@ -3,7 +3,7 @@
  "allow_bulk_edit": 1,
  "allow_rename": 1,
  "autoname": "naming_series:naming_series",
- "creation": "2026-09-07 12:06:13.029183",
+ "creation": "2026-09-08 12:17:05.971997",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -28,10 +28,21 @@
    "fieldtype": "Link",
    "label": "Amended From",
    "no_copy": 1,
-   "options": "Product Assembly",
+   "options": "Product Testing",
    "print_hide": 1,
    "read_only": 1,
    "search_index": 1
+  },
+  {
+   "fieldname": "column_break_fnpa",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "naming_series",
+   "options": "PT-.####"
   },
   {
    "fieldname": "section_break_waep",
@@ -51,8 +62,7 @@
    "fieldname": "user",
    "fieldtype": "Link",
    "label": "User",
-   "options": "User",
-   "read_only": 1
+   "options": "Employee"
   },
   {
    "fieldname": "section_break_snfx",
@@ -62,28 +72,18 @@
    "fieldname": "item_serial_number",
    "fieldtype": "Table",
    "label": "Item Serial Number",
-   "options": "Assembly Item Serial No"
-  },
-  {
-   "fieldname": "column_break_fnpa",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "naming_series",
-   "fieldtype": "Select",
-   "hidden": 1,
-   "label": "naming_series",
-   "options": "PAT-.####"
+   "no_copy": 1,
+   "options": "Product Testing Item"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-08 12:47:29.769026",
+ "modified": "2026-09-08 13:46:29.327244",
  "modified_by": "Administrator",
  "module": "Generate Item",
- "name": "Product Assembly",
+ "name": "Product Testing",
  "naming_rule": "By \"Naming Series\" field",
  "owner": "Administrator",
  "permissions": [
