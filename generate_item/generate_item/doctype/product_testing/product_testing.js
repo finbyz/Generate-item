@@ -1,14 +1,14 @@
 // Copyright (c) 2026, Finbyz and contributors
 // For license information, please see license.txt
 
-frappe.ui.form.on("Product Assembly", {
+frappe.ui.form.on("Product Testing", {
     refresh(frm) {
         if (frm.doc.docstatus === 0) {
             frm.add_custom_button("Get Item from Serial Register", function () {
 
-                let dialog = new frappe.ui.Dialog({
-                    title: "Get Item from Serial Register",
-                    size: "extra-large",
+            let dialog = new frappe.ui.Dialog({
+                title: "Get Item from Serial Register",
+                size: "extra-large",
 
                 fields: [
                     // Search Section
@@ -161,6 +161,7 @@ frappe.ui.form.on("Product Assembly", {
                                     // Map child table fields to Item Generator's attribute labels
                                     frappe.model.set_value(cdt, cdn, "size", attr_map["Size"]);
                                     frappe.model.set_value(cdt, cdn, "class", attr_map["Rating"]);
+                                    frappe.model.set_value(cdt, cdn, "type",  attr_map["Valve Type"]);
                                     frappe.model.set_value(cdt, cdn, "end_connection", attr_map["Ends"]);
                                     frappe.model.set_value(cdt, cdn, "shell_moc", attr_map["Shell MOC"]);
                                     frappe.model.set_value(cdt, cdn, "wedge_plug_ball_disc_moc", attr_map["Ball MOC"]);
@@ -319,7 +320,7 @@ frappe.ui.form.on("Product Assembly", {
                 }
 
                 frappe.call({
-                    method: "generate_item.generate_item.doctype.product_assembly.product_assembly.get_serial_register_items",
+                    method: "generate_item.generate_item.doctype.product_testing.product_testing.get_serial_register_items",
                     args: {
                         sales_order: sales_order,
                         batch_number: batch_number

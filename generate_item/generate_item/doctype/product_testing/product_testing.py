@@ -5,7 +5,7 @@ import frappe
 from frappe.model.document import Document
 
 
-class ProductAssembly(Document):
+class ProductTesting(Document):
 
     def before_save(self):
         employee = frappe.db.get_value(
@@ -16,6 +16,7 @@ class ProductAssembly(Document):
 
         if employee:
             self.user = employee
+
 
 @frappe.whitelist()
 def get_serial_register_items(sales_order=None, batch_number=None):
@@ -31,7 +32,7 @@ def get_serial_register_items(sales_order=None, batch_number=None):
     - Neither selected:
         Return all serial numbers.
 
-    Serial numbers already used in a *submitted* Product Assembly are excluded,
+    Serial numbers already used in a *submitted* Product Testing are excluded,
     so the same serial can't be added twice.
     """
 
@@ -59,12 +60,13 @@ def get_serial_register_items(sales_order=None, batch_number=None):
         }
         filters["batch"] = ["in", list(batch_info_map.keys())]
 
-    # Exclude serial numbers already used in a submitted Product Assembly
+    # Exclude serial numbers already used in a submitted Product Testing with test_ok = Accpted/Accepted
     used_serials = frappe.get_all(
-        "Assembly Item Serial No",
+        "Product Testing Item",
         filters={
             "docstatus": 1,
-            "parenttype": "Product Assembly",
+            "parenttype": "Product Testing",
+			"test_ok":"Accepted"
         },
         pluck="serial_number",
     )

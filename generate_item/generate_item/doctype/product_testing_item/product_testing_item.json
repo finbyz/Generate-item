@@ -1,0 +1,210 @@
+{
+ "actions": [],
+ "allow_bulk_edit": 1,
+ "allow_rename": 1,
+ "creation": "2026-09-08 12:54:12.192061",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "date",
+  "batch_no",
+  "item_code",
+  "column_break_nuss",
+  "sales_order",
+  "serial_number",
+  "section_break_tvve",
+  "size",
+  "shell_moc",
+  "operation",
+  "facing",
+  "stem_moc",
+  "gland_packing__oring_moc",
+  "inch_factor",
+  "remark",
+  "column_break_yxjm",
+  "class",
+  "type",
+  "end_connection",
+  "wedge_plug_ball_disc_moc",
+  "seat_ringguide_moc",
+  "gasket",
+  "fasteners",
+  "inches",
+  "status",
+  "test_ok",
+  "leak_reason"
+ ],
+ "fields": [
+  {
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Date"
+  },
+  {
+   "fieldname": "batch_no",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Batch No.",
+   "options": "Batch"
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Item Code",
+   "options": "Item"
+  },
+  {
+   "fieldname": "column_break_nuss",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "sales_order",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Sales Order",
+   "options": "Sales Order"
+  },
+  {
+   "fieldname": "serial_number",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Valve Sr No",
+   "options": "Serial Number"
+  },
+  {
+   "fieldname": "section_break_tvve",
+   "fieldtype": "Section Break",
+   "label": "Item Details"
+  },
+  {
+   "fieldname": "size",
+   "fieldtype": "Data",
+   "label": "Size"
+  },
+  {
+   "fieldname": "shell_moc",
+   "fieldtype": "Data",
+   "label": "MOC"
+  },
+  {
+   "fieldname": "operation",
+   "fieldtype": "Data",
+   "label": "Operation"
+  },
+  {
+   "fieldname": "facing",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Facing"
+  },
+  {
+   "fieldname": "stem_moc",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Stem MOC"
+  },
+  {
+   "fieldname": "gland_packing__oring_moc",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Gland Packing + O'Ring Moc"
+  },
+  {
+   "fieldname": "inch_factor",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Inch Factor"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Remark"
+  },
+  {
+   "fieldname": "column_break_yxjm",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "class",
+   "fieldtype": "Data",
+   "label": "Class"
+  },
+  {
+   "fieldname": "end_connection",
+   "fieldtype": "Data",
+   "label": "End Connection"
+  },
+  {
+   "fieldname": "wedge_plug_ball_disc_moc",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Wedge /Plug /Ball /Disc Moc"
+  },
+  {
+   "fieldname": "seat_ringguide_moc",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Seat Ring(GUIDE) MOC"
+  },
+  {
+   "fieldname": "gasket",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "GASKET"
+  },
+  {
+   "fieldname": "fasteners",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Fasteners"
+  },
+  {
+   "fieldname": "inches",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Inches"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Status"
+  },
+  {
+   "fieldname": "leak_reason",
+   "fieldtype": "Select",
+   "label": "Leak Reason",
+   "options": "\nAir Seat Leak\nHydro Seat Leak\nBody Casting Leak\nSeatring Casting Leak\nBonnet Casting Leak\nWedge Casting Leak\nJoint Leak\nBack Seat Leak\nWelding Leak\nBore Casting Leak"
+  },
+  {
+   "fieldname": "type",
+   "fieldtype": "Data",
+   "label": "Type"
+  },
+  {
+   "fieldname": "test_ok",
+   "fieldtype": "Select",
+   "label": "Test OK",
+   "options": "\nNot Accepted\nAccepted"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-08 13:53:24.198375",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Product Testing Item",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
