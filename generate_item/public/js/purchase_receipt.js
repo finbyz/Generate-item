@@ -299,7 +299,7 @@ frappe.ui.form.on('Purchase Receipt', {
                                         row.weight_uom = item.weight_uom 
 
                                         // 🔹 Custom mappings
-                                        row.custom_batch_no = item.custom_batch_no;
+                                        // row.custom_batch_no = item.custom_batch_no;
                                         row.branch = item.branch;
 
                                         // PO qty reference
