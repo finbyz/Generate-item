@@ -70,7 +70,7 @@ frappe.ui.form.on("Product Testing", {
                                 fieldname: "serial_number",
                                 label: "Serial Number",
                                 fieldtype: "Link",
-                                options: "Serial No",
+                                options: "Serial Number",
                                 in_list_view: 1,
                                 read_only: 1
                             },
@@ -79,6 +79,13 @@ frappe.ui.form.on("Product Testing", {
                                 label: "Item Code",
                                 fieldtype: "Link",
                                 options: "Item",
+                                in_list_view: 1,
+                                read_only: 1
+                            },
+                            {
+                                fieldname: "item_description",
+                                label: "Item Description",
+                                fieldtype: "Data",
                                 in_list_view: 1,
                                 read_only: 1
                             },
@@ -172,6 +179,26 @@ frappe.ui.form.on("Product Testing", {
                                     frappe.model.set_value(cdt, cdn, "gland_packing__oring_moc", attr_map["Gland Packing + O'Ring MOC"]);
                                     frappe.model.set_value(cdt, cdn, "fasteners", attr_map["Fasteners"]);
                                     frappe.model.set_value(cdt, cdn, "operation", attr_map["Operator"]);
+
+                                    // Calculate Inspector Inches using Class and Size
+                                    let size = attr_map["Size"];
+                                    let rating = attr_map["Rating"];
+                                    if (size || rating) {
+                                        frappe.call({
+                                            method: "generate_item.utils.inspector_inches.get_inspector_inches",
+                                            args: {
+                                                size: size,
+                                                rating: rating
+                                            },
+                                            callback: function (r) {
+                                                if (r.message) {
+                                                    frappe.model.set_value(cdt, cdn, "inch_factor", r.message.inch_factor || "");
+                                                    frappe.model.set_value(cdt, cdn, "value", r.message.value || "");
+                                                    frappe.model.set_value(cdt, cdn, "inches", r.message.inches || "");
+                                                }
+                                            }
+                                        });
+                                    }
                                 })
                                 .catch(function (err) {
                                     console.error("Unable to fetch Item Generator:", row.item_code, err);
@@ -270,7 +297,12 @@ frappe.ui.form.on("Product Testing", {
             });
 
             // Bind Grid row checkbox click
-            dialog.fields_dict.items.grid.wrapper.on("click", ".grid-body .grid-row-check", function () {
+            dialog.fields_dict.items.grid.wrapper.on("change click", ".grid-body .grid-row-check", function () {
+                let docname = $(this).parents(".grid-row:first")?.attr("data-name");
+                let is_checked = $(this).prop("checked") ? 1 : 0;
+                if (docname && dialog.fields_dict.items.grid.grid_rows_by_docname && dialog.fields_dict.items.grid.grid_rows_by_docname[docname]) {
+                    dialog.fields_dict.items.grid.grid_rows_by_docname[docname].doc.__checked = is_checked;
+                }
                 setTimeout(sync_selection_summary, 50);
             });
 
@@ -362,3 +394,32 @@ frappe.ui.form.on("Product Testing", {
         frm.refresh_field("item_serial_number");
     }
 });
+
+frappe.ui.form.on("Product Testing Item", {
+    size(frm, cdt, cdn) {
+        update_inspector_inches(frm, cdt, cdn);
+    },
+    class(frm, cdt, cdn) {
+        update_inspector_inches(frm, cdt, cdn);
+    }
+});
+
+function update_inspector_inches(frm, cdt, cdn) {
+    let row = locals[cdt][cdn];
+    if (row.size || row.class) {
+        frappe.call({
+            method: "generate_item.utils.inspector_inches.get_inspector_inches",
+            args: {
+                size: row.size,
+                rating: row.class
+            },
+            callback: function (r) {
+                if (r.message) {
+                    frappe.model.set_value(cdt, cdn, "inch_factor", r.message.inch_factor || "");
+                    frappe.model.set_value(cdt, cdn, "value", r.message.value || "");
+                    frappe.model.set_value(cdt, cdn, "inches", r.message.inches || "");
+                }
+            }
+        });
+    }
+}
