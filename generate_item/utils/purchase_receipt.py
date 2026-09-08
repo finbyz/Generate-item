@@ -136,7 +136,7 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
                     "party_account_currency": "party_account_currency",
                     "supplier_warehouse": "supplier_warehouse",
                 },
-                "field_no_map": ["custom_batch_no"],
+            
                 "validation": {"docstatus": ["=", 1]},
             },
             "Purchase Order Item": {
@@ -151,7 +151,6 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
                     "sales_order_item": "sales_order_item",
                     "wip_composite_asset": "wip_composite_asset",
                 },
-                "field_no_map": ["custom_batch_no"],
                 "postprocess": update_item,
                 "condition": condition,
             },
@@ -164,13 +163,11 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
         set_missing_values,
     )
 
-    if hasattr(doc, "custom_batch_no"):
-        doc.custom_batch_no = None
 
     # ---- Draft-PR-aware remaining qty ----
     items_to_keep = []
     for item in doc.items or []:
-        item.custom_batch_no = None
+
         po_item_name = getattr(item, "purchase_order_item", None)
         if not po_item_name or getattr(item, "purchase_order", None) != source_name:
             items_to_keep.append(item)
@@ -179,7 +176,7 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
         po_item = frappe.db.get_value(
             "Purchase Order Item",
             po_item_name,
-            ["qty", "received_qty", "conversion_factor", "stock_qty"],
+            ["qty", "received_qty", "conversion_factor","custom_batch_no", "stock_qty"],
             as_dict=True,
         )
         if not po_item:
@@ -213,6 +210,9 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
         item.stock_qty = remaining_stock_qty
         if po_item.stock_qty:
             item.qty_in_stock_uom = po_item.stock_qty
+
+        # if po_item.custom_batch_no and not getattr(item, "batch_no", None):
+        #     item.batch_no = po_item.custom_batch_no
 
         # Keep the row if it has real remaining qty, OR it's a non-stock item
         # deliberately included at qty 0 because a Stock Item is still pending,
