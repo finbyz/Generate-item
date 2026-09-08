@@ -6,6 +6,12 @@ from frappe import _
 from frappe.model.mapper import get_mapped_doc
 
 
+def set_missing_values(source, target):
+    target.run_method("set_missing_values")
+    target.run_method("calculate_taxes_and_totals")
+    target.run_method("set_use_serial_batch_fields")
+
+
 @frappe.whitelist()
 def make_purchase_receipt(source_name, target_doc=None, args=None):
     """
@@ -25,12 +31,23 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
         include ALL non-stock items at qty 0, regardless of their own pending qty.
         Once every Stock Item is fully received, non-stock items are excluded.
       - Setting disabled: pure standard ERPNext behaviour, no override.
+      - Child Item Selection: if specific PO item lines are selected via args.filtered_children,
+        only those selected lines must be mapped.
     """
+    if args is None:
+        args = {}
+    if isinstance(args, str):
+        args = json.loads(args)
 
     include_service_items = frappe.db.get_single_value(
         "Buying Settings", "include_service_items_in_pending_purchase_receipt"
     )
     frappe.log_error("include_service_items_in_pending_purchase_receipt pr creaation is call")
+
+    has_unit_price_items = frappe.db.get_value("Purchase Order", source_name, "has_unit_price_items")
+
+    def is_unit_price_row(source):
+        return bool(has_unit_price_items and flt(source.qty) == 0)
 
     po_doc = frappe.get_doc("Purchase Order", source_name)
 
@@ -47,6 +64,14 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
         cf = flt(row.conversion_factor) or 1.0
         return (flt(row.qty) - flt(row.received_qty)) * cf
 
+    def select_item(d):
+        filtered_items = args.get("filtered_children", [])
+        if filtered_items:
+            return d.name in filtered_items
+        if frappe.flags.selected_children and "items" in frappe.flags.selected_children:
+            return d.name in frappe.flags.selected_children["items"]
+        return True
+
     # Is ANY Stock Item on this PO still pending, measured in stock UOM?
     any_stock_item_pending = False
     if include_service_items:
@@ -62,6 +87,15 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
 
     def condition(doc):
         # doc = Purchase Order Item row being evaluated for inclusion
+        if not select_item(doc):
+            return False
+
+        if doc.get("delivered_by_supplier"):
+            return False
+
+        if is_unit_price_row(doc):
+            return True
+
         if is_stock_item(doc.item_code):
             # Stock Items: always standard behaviour, never touched.
             return pending_qty_in_stock_uom(doc) > 0
@@ -79,12 +113,18 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
         return False
 
     def update_item(source, target, source_parent):
-        pending = pending_qty_in_stock_uom(source)
-        cf = flt(source.conversion_factor) or 1.0
-        target.qty = (pending / cf) if pending > 0 else 0
-        target.stock_qty = target.qty * cf
-        target.amount = target.qty * flt(source.rate)
-        target.base_amount = target.amount * flt(source_parent.conversion_rate)
+        if is_unit_price_row(source):
+            target.qty = flt(source.qty)
+            target.stock_qty = 0
+            target.amount = 0
+            target.base_amount = 0
+        else:
+            pending = pending_qty_in_stock_uom(source)
+            cf = flt(source.conversion_factor) or 1.0
+            target.qty = (pending / cf) if pending > 0 else 0
+            target.stock_qty = target.qty * cf
+            target.amount = target.qty * flt(source.rate)
+            target.base_amount = target.amount * flt(source_parent.conversion_rate)
 
     doc = get_mapped_doc(
         "Purchase Order",
@@ -96,6 +136,7 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
                     "party_account_currency": "party_account_currency",
                     "supplier_warehouse": "supplier_warehouse",
                 },
+                "field_no_map": ["custom_batch_no"],
                 "validation": {"docstatus": ["=", 1]},
             },
             "Purchase Order Item": {
@@ -106,7 +147,11 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
                     "bom": "bom",
                     "material_request": "material_request",
                     "material_request_item": "material_request_item",
+                    "sales_order": "sales_order",
+                    "sales_order_item": "sales_order_item",
+                    "wip_composite_asset": "wip_composite_asset",
                 },
+                "field_no_map": ["custom_batch_no"],
                 "postprocess": update_item,
                 "condition": condition,
             },
@@ -116,20 +161,25 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
             },
         },
         target_doc,
+        set_missing_values,
     )
 
-    # ---- Draft-PR-aware remaining qty + custom_batch_no carry-over ----
+    if hasattr(doc, "custom_batch_no"):
+        doc.custom_batch_no = None
+
+    # ---- Draft-PR-aware remaining qty ----
     items_to_keep = []
     for item in doc.items or []:
+        item.custom_batch_no = None
         po_item_name = getattr(item, "purchase_order_item", None)
-        if not po_item_name:
+        if not po_item_name or getattr(item, "purchase_order", None) != source_name:
             items_to_keep.append(item)
             continue
 
         po_item = frappe.db.get_value(
             "Purchase Order Item",
             po_item_name,
-            ["qty", "received_qty", "conversion_factor", "custom_batch_no", "stock_qty"],
+            ["qty", "received_qty", "conversion_factor", "stock_qty"],
             as_dict=True,
         )
         if not po_item:
@@ -149,8 +199,9 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
             INNER JOIN `tabPurchase Receipt` pr ON pri.parent = pr.name
             WHERE pr.docstatus = 0
               AND pri.purchase_order_item = %s
+              AND pr.name != %s
             """,
-            (po_item_name,),
+            (po_item_name, doc.name or ""),
         )[0][0]
 
         remaining_stock_qty = max(base_remaining_stock_qty - flt(draft_pr_stock_qty), 0)
@@ -163,16 +214,16 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
         if po_item.stock_qty:
             item.qty_in_stock_uom = po_item.stock_qty
 
-        if po_item.custom_batch_no and not getattr(item, "batch_no", None):
-            item.batch_no = po_item.custom_batch_no
-
         # Keep the row if it has real remaining qty, OR it's a non-stock item
-        # deliberately included at qty 0 because a Stock Item is still pending.
-        if (new_qty and new_qty > 0) or (po_item_name in service_ride_along):
+        # deliberately included at qty 0 because a Stock Item is still pending,
+        # OR it is a unit price item (qty 0).
+        if (new_qty and new_qty > 0) or (po_item_name in service_ride_along) or is_unit_price_row(po_item):
             items_to_keep.append(item)
 
     if doc.items is not None:
         doc.items = items_to_keep
+
+    set_missing_values(po_doc, doc)
 
     return doc
 
