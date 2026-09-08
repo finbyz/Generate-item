@@ -1,5 +1,6 @@
 {
  "actions": [],
+ "allow_bulk_edit": 1,
  "allow_rename": 1,
  "creation": "2025-07-10 15:38:50.620058",
  "doctype": "DocType",
@@ -10,6 +11,7 @@
   "code",
   "item_short_description",
   "parent_iitem",
+  "value",
   "disabled"
  ],
  "fields": [
@@ -44,13 +46,19 @@
    "fieldtype": "Check",
    "in_list_view": 1,
    "label": "Disabled"
+  },
+  {
+   "depends_on": "eval:doc.parent==\"FG-Size\" || doc.parent==\"FG-Rating\"",
+   "fieldname": "value",
+   "fieldtype": "Data",
+   "label": "Value"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2025-08-27 12:13:13.146929",
+ "modified": "2026-09-08 17:10:59.816537",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Custom Item Attribute Value",
