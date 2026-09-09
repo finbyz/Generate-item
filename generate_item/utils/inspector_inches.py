@@ -135,12 +135,14 @@ def get_item_description(item_code, default=""):
 
 
 @frappe.whitelist()
-def get_serial_register_items(doctype="Product Testing", sales_order=None, batch_number=None):
+def get_serial_register_items(doctype="Valve Testing", sales_order=None, batch_number=None, branch=None):
     """
     Get Serial Number records from Serial Number DocType with item description.
     Excludes serial numbers already used in submitted documents.
     """
     filters = {"docstatus": 1}
+    if branch:
+        filters["branch"] = branch
     batch_info_map = {}
 
     # Case 1: Batch is selected
@@ -165,22 +167,24 @@ def get_serial_register_items(doctype="Product Testing", sales_order=None, batch
         filters["batch"] = ["in", list(batch_info_map.keys())]
 
     # Exclude already used serials based on doctype
-    if doctype == "Product Testing":
+    if doctype in ["Valve Testing"]:
+        child_doctype = "Valve Testing Item"
         used_serials = frappe.get_all(
-            "Product Testing Item",
+            child_doctype,
             filters={
                 "docstatus": 1,
-                "parenttype": "Product Testing",
+                "parenttype": "Valve Testing",
                 "test_ok": "Accepted",
             },
             pluck="serial_number",
         )
     else:
+        child_doctype = "Assembly Item Serial No"
         used_serials = frappe.get_all(
-            "Assembly Item Serial No",
+            child_doctype,
             filters={
                 "docstatus": 1,
-                "parenttype": "Product Assembly",
+                "parenttype": "Valve Assembly",
             },
             pluck="serial_number",
         )

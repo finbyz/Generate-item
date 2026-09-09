@@ -5,5 +5,5 @@
 from frappe.model.document import Document
 
 
-class ProductTestingItem(Document):
+class ValveTestingItem(Document):
 	pass

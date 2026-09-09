@@ -1,7 +1,20 @@
 // Copyright (c) 2026, Finbyz and contributors
 // For license information, please see license.txt
 
-frappe.ui.form.on("Product Assembly", {
+frappe.ui.form.on("Valve Assembly", {
+    setup(frm) {
+        frm.set_df_property("naming_series", "options", [
+            "",
+            "VASS.fiscal.#####",
+            "VASR.fiscal.#####",
+            "VASN.fiscal.#####"
+        ]);
+    },
+    onload(frm) {
+        if (frm.is_new() && frm.doc.branch) {
+            frm.trigger("branch");
+        }
+    },
     refresh(frm) {
         if (frm.doc.docstatus === 0) {
             frm.add_custom_button("Get Item from Serial Register", function () {
@@ -307,10 +320,14 @@ frappe.ui.form.on("Product Assembly", {
 
                 // Filter Sales Order to show only submitted Sales Orders (docstatus = 1)
                 dialog.fields_dict.sales_order.get_query = function () {
+                    let filters = {
+                        docstatus: 1
+                    };
+                    if (frm.doc.branch) {
+                        filters.branch = frm.doc.branch;
+                    }
                     return {
-                        filters: {
-                            docstatus: 1
-                        }
+                        filters: filters
                     };
                 };
 
@@ -351,8 +368,9 @@ frappe.ui.form.on("Product Assembly", {
                     }
 
                     frappe.call({
-                        method: "generate_item.generate_item.doctype.product_assembly.product_assembly.get_serial_register_items",
+                        method: "generate_item.generate_item.doctype.valve_assembly.valve_assembly.get_serial_register_items",
                         args: {
+                            branch: frm.doc.branch || "",
                             sales_order: sales_order,
                             batch_number: batch_number
                         },
@@ -391,6 +409,22 @@ frappe.ui.form.on("Product Assembly", {
             row.date = frm.doc.posting_date;
         });
         frm.refresh_field("item_serial_number");
+    },
+    branch(frm) {
+        if (!frm.doc.branch) return;
+
+        let series_map = {
+            "Sanand": "VASS.fiscal.#####",
+            "Rabale": "VASR.fiscal.#####",
+            "Nandikoor": "VASN.fiscal.#####"
+        };
+
+        let selected_series = series_map[frm.doc.branch];
+
+        if (frm.is_new() && selected_series) {
+            frm.set_value("naming_series", selected_series);
+        }
+        frm.refresh_field("naming_series");
     }
 });
 

@@ -1,7 +1,20 @@
 // Copyright (c) 2026, Finbyz and contributors
 // For license information, please see license.txt
 
-frappe.ui.form.on("Product Testing", {
+frappe.ui.form.on("Valve Testing", {
+    setup(frm) {
+        frm.set_df_property("naming_series", "options", [
+            "",
+            "VTES.fiscal.#####",
+            "VTER.fiscal.#####",
+            "VTEN.fiscal.#####"
+        ]);
+    },
+    onload(frm) {
+        if (frm.is_new() && frm.doc.branch) {
+            frm.trigger("branch");
+        }
+    },
     refresh(frm) {
         if (frm.doc.docstatus === 0) {
             frm.add_custom_button("Get Item from Serial Register", function () {
@@ -308,10 +321,14 @@ frappe.ui.form.on("Product Testing", {
 
             // Filter Sales Order to show only submitted Sales Orders (docstatus = 1)
             dialog.fields_dict.sales_order.get_query = function () {
+                let filters = {
+                    docstatus: 1
+                };
+                if (frm.doc.branch) {
+                    filters.branch = frm.doc.branch;
+                }
                 return {
-                    filters: {
-                        docstatus: 1
-                    }
+                    filters: filters
                 };
             };
 
@@ -352,8 +369,9 @@ frappe.ui.form.on("Product Testing", {
                 }
 
                 frappe.call({
-                    method: "generate_item.generate_item.doctype.product_testing.product_testing.get_serial_register_items",
+                    method: "generate_item.generate_item.doctype.valve_testing.valve_testing.get_serial_register_items",
                     args: {
+                        branch: frm.doc.branch || "",
                         sales_order: sales_order,
                         batch_number: batch_number
                     },
@@ -392,10 +410,26 @@ frappe.ui.form.on("Product Testing", {
             row.date = frm.doc.posting_date;
         });
         frm.refresh_field("item_serial_number");
+    },
+    branch(frm) {
+        if (!frm.doc.branch) return;
+
+        let series_map = {
+            "Sanand": "VTES.fiscal.#####",
+            "Rabale": "VTER.fiscal.#####",
+            "Nandikoor": "VTEN.fiscal.#####"
+        };
+
+        let selected_series = series_map[frm.doc.branch];
+
+        if (frm.is_new() && selected_series) {
+            frm.set_value("naming_series", selected_series);
+        }
+        frm.refresh_field("naming_series");
     }
 });
 
-frappe.ui.form.on("Product Testing Item", {
+frappe.ui.form.on("Valve Testing Item", {
     size(frm, cdt, cdn) {
         update_inspector_inches(frm, cdt, cdn);
     },
