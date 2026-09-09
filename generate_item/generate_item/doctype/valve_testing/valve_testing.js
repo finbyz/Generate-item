@@ -1,7 +1,20 @@
 // Copyright (c) 2026, Finbyz and contributors
 // For license information, please see license.txt
 
-frappe.ui.form.on("Product Testing", {
+frappe.ui.form.on("Valve Testing", {
+    setup(frm) {
+        frm.set_df_property("naming_series", "options", [
+            "",
+            "VTES.fiscal.#####",
+            "VTER.fiscal.#####",
+            "VTEN.fiscal.#####"
+        ]);
+    },
+    onload(frm) {
+        if (frm.is_new() && frm.doc.branch) {
+            frm.trigger("branch");
+        }
+    },
     refresh(frm) {
         if (frm.doc.docstatus === 0) {
             frm.add_custom_button("Get Item from Serial Register", function () {
@@ -33,6 +46,21 @@ frappe.ui.form.on("Product Testing", {
                         label: "Batch Number",
                         fieldtype: "Link",
                         options: "Batch"
+                    },
+
+                    {
+                        fieldtype: "Column Break"
+                    },
+
+                    {
+                        fieldname: "serial_number",
+                        label: "Serial Number",
+                        fieldtype: "Link",
+                        options: "Serial Number"
+                    },
+
+                    {
+                        fieldtype: "Column Break"
                     },
 
                     {
@@ -308,10 +336,14 @@ frappe.ui.form.on("Product Testing", {
 
             // Filter Sales Order to show only submitted Sales Orders (docstatus = 1)
             dialog.fields_dict.sales_order.get_query = function () {
+                let filters = {
+                    docstatus: 1
+                };
+                if (frm.doc.branch) {
+                    filters.branch = frm.doc.branch;
+                }
                 return {
-                    filters: {
-                        docstatus: 1
-                    }
+                    filters: filters
                 };
             };
 
@@ -333,9 +365,32 @@ frappe.ui.form.on("Product Testing", {
                 return {};
             };
 
-            // When Sales Order changes, clear selected Batch
+            // Filter Serial Number based on branch, sales_order, and batch_number
+            dialog.fields_dict.serial_number.get_query = function () {
+                let batch_number = dialog.get_value("batch_number");
+                let filters = {
+                    docstatus: 1
+                };
+                if (frm.doc.branch) {
+                    filters.branch = frm.doc.branch;
+                }
+                if (batch_number) {
+                    filters.batch = batch_number;
+                }
+                return {
+                    filters: filters
+                };
+            };
+
+            // When Sales Order changes, clear selected Batch and Serial Number
             dialog.fields_dict.sales_order.$input.on("change", function () {
                 dialog.set_value("batch_number", "");
+                dialog.set_value("serial_number", "");
+            });
+
+            // When Batch Number changes, clear selected Serial Number
+            dialog.fields_dict.batch_number.$input.on("change", function () {
+                dialog.set_value("serial_number", "");
             });
 
             // Search button
@@ -343,19 +398,22 @@ frappe.ui.form.on("Product Testing", {
 
                 let sales_order = dialog.get_value("sales_order");
                 let batch_number = dialog.get_value("batch_number");
+                let serial_number = dialog.get_value("serial_number");
 
-                if (!sales_order && !batch_number) {
+                if (!sales_order && !batch_number && !serial_number) {
                     frappe.msgprint(
-                        "Please select Sales Order or Batch Number."
+                        "Please select Sales Order, Batch Number, or Serial Number."
                     );
                     return;
                 }
 
                 frappe.call({
-                    method: "generate_item.generate_item.doctype.product_testing.product_testing.get_serial_register_items",
+                    method: "generate_item.generate_item.doctype.valve_testing.valve_testing.get_serial_register_items",
                     args: {
-                        sales_order: sales_order,
-                        batch_number: batch_number
+                        branch: frm.doc.branch || "",
+                        sales_order: sales_order || "",
+                        batch_number: batch_number || "",
+                        serial_number: serial_number || ""
                     },
                     callback: function (r) {
                         if (!r.message || !r.message.length) {
@@ -382,6 +440,15 @@ frappe.ui.form.on("Product Testing", {
             });
 
             dialog.show();
+            if (dialog.fields_dict.search && dialog.fields_dict.search.$wrapper) {
+                dialog.fields_dict.search.$wrapper.css({
+                    "margin-top": "24px"
+                });
+                dialog.fields_dict.search.$wrapper.find("button")
+                    .removeClass("btn-default")
+                    .addClass("btn-primary")
+                    .html('<i class="fa fa-search mr-1"></i> ' + __("Search"));
+            }
             render_toolbar();
             sync_selection_summary();
         });
@@ -392,10 +459,26 @@ frappe.ui.form.on("Product Testing", {
             row.date = frm.doc.posting_date;
         });
         frm.refresh_field("item_serial_number");
+    },
+    branch(frm) {
+        if (!frm.doc.branch) return;
+
+        let series_map = {
+            "Sanand": "VTES.fiscal.#####",
+            "Rabale": "VTER.fiscal.#####",
+            "Nandikoor": "VTEN.fiscal.#####"
+        };
+
+        let selected_series = series_map[frm.doc.branch];
+
+        if (frm.is_new() && selected_series) {
+            frm.set_value("naming_series", selected_series);
+        }
+        frm.refresh_field("naming_series");
     }
 });
 
-frappe.ui.form.on("Product Testing Item", {
+frappe.ui.form.on("Valve Testing Item", {
     size(frm, cdt, cdn) {
         update_inspector_inches(frm, cdt, cdn);
     },

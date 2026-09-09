@@ -2,36 +2,39 @@
  "actions": [],
  "allow_bulk_edit": 1,
  "allow_rename": 1,
- "autoname": "naming_series:naming_series",
- "creation": "2026-09-07 12:06:13.029183",
+ "autoname": "naming_series:",
+ "creation": "2026-09-08 12:17:05.971997",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "section_break_zamk",
-  "amended_from",
-  "column_break_fnpa",
-  "naming_series",
-  "section_break_waep",
   "posting_date",
+  "branch",
   "column_break_vxay",
   "user",
+  "naming_series",
   "section_break_snfx",
-  "item_serial_number"
+  "item_serial_number",
+  "section_break_waep",
+  "amended_from"
  ],
  "fields": [
-  {
-   "fieldname": "section_break_zamk",
-   "fieldtype": "Section Break"
-  },
   {
    "fieldname": "amended_from",
    "fieldtype": "Link",
    "label": "Amended From",
    "no_copy": 1,
-   "options": "Product Assembly",
+   "options": "Valve Testing",
    "print_hide": 1,
    "read_only": 1,
    "search_index": 1
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Naming Series",
+   "no_copy": 1,
+   "options": "\nVTES.fiscal.#####\nVTER.fiscal.#####\nVTEN.fiscal.#####",
+   "read_only": 1
   },
   {
    "fieldname": "section_break_waep",
@@ -41,7 +44,8 @@
    "default": "Today",
    "fieldname": "posting_date",
    "fieldtype": "Date",
-   "label": "Posting Date"
+   "label": "Posting Date",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_vxay",
@@ -51,8 +55,7 @@
    "fieldname": "user",
    "fieldtype": "Link",
    "label": "User",
-   "options": "User",
-   "read_only": 1
+   "options": "Employee"
   },
   {
    "fieldname": "section_break_snfx",
@@ -62,28 +65,24 @@
    "fieldname": "item_serial_number",
    "fieldtype": "Table",
    "label": "Item Serial Number",
-   "options": "Assembly Item Serial No"
+   "no_copy": 1,
+   "options": "Valve Testing Item"
   },
   {
-   "fieldname": "column_break_fnpa",
-   "fieldtype": "Column Break"
-  },
-  {
-   "fieldname": "naming_series",
-   "fieldtype": "Select",
-   "hidden": 1,
-   "label": "naming_series",
-   "options": "PAT-.####"
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "Branch"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-08 12:47:29.769026",
+ "modified": "2026-09-09 12:06:52.915089",
  "modified_by": "Administrator",
  "module": "Generate Item",
- "name": "Product Assembly",
+ "name": "Valve Testing",
  "naming_rule": "By \"Naming Series\" field",
  "owner": "Administrator",
  "permissions": [

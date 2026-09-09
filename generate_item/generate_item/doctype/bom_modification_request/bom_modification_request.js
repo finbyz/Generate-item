@@ -29,7 +29,7 @@ frappe.ui.form.on("Bom Modification Request", {
             let filters = {
                 docstatus: 1,
                 is_active: 1,
-                is_default: 1,
+                // is_default: 1,
 
 
 
