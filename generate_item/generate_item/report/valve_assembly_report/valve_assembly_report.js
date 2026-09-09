@@ -45,7 +45,7 @@ function calculate_date_range(range_type) {
 	return null;
 }
 
-frappe.query_reports["Valve Testing Report"] = {
+frappe.query_reports["Valve Assembly Report"] = {
 	filters: [
 		{
 			fieldname: "date_range",
@@ -105,29 +105,16 @@ frappe.query_reports["Valve Testing Report"] = {
 			},
 		},
 		{
-			fieldname: "test_ok",
-			label: __("Test Result"),
-			fieldtype: "Select",
-			options: "Accepted\nNot Accepted\nBoth",
-			default: "Accepted",
-		},
-		{
 			fieldname: "branch",
 			label: __("Branch"),
 			fieldtype: "Link",
 			options: "Branch",
 		},
 		{
-			fieldname: "leak_reason",
-			label: __("Leak Reason"),
-			fieldtype: "Select",
-			options: "\nAir Seat Leak\nHydro Seat Leak\nBody Casting Leak\nSeatring Casting Leak\nBonnet Casting Leak\nWedge Casting Leak\nJoint Leak\nBack Seat Leak\nWelding Leak\nBore Casting Leak",
-		},
-		{
-			fieldname: "valve_testing",
-			label: __("Valve Testing"),
+			fieldname: "valve_assembly",
+			label: __("Valve Assembly"),
 			fieldtype: "Link",
-			options: "Valve Testing",
+			options: "Valve Assembly",
 		},
 		{
 			fieldname: "sales_order",
@@ -155,35 +142,14 @@ frappe.query_reports["Valve Testing Report"] = {
 		},
 		{
 			fieldname: "user",
-			label: __("Inspector"),
+			label: __("Assembler"),
 			fieldtype: "Link",
 			options: "Employee",
-		},
-		{
-			fieldname: "tested_by",
-			label: __("Tested By"),
-			fieldtype: "Data",
 		},
 	],
 
 	formatter: function (value, row, column, data, default_formatter) {
 		value = default_formatter(value, row, column, data);
-
-		if (column.fieldname === "test_ok" && data) {
-			if (data.test_ok === "Accepted") {
-				value = `<span style="background: rgba(16, 185, 129, 0.14); color: #059669; border: 1px solid rgba(16, 185, 129, 0.35); font-weight: 600; padding: 3px 10px; border-radius: 12px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;">✓ ${__("Accepted")}</span>`;
-			} else if (data.test_ok === "Not Accepted") {
-				value = `<span style="background: rgba(239, 68, 68, 0.14); color: #dc2626; border: 1px solid rgba(239, 68, 68, 0.35); font-weight: 600; padding: 3px 10px; border-radius: 12px; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;">✗ ${__("Not Accepted")}</span>`;
-			}
-		}
-
-		if (column.fieldname === "leak_reason" && data) {
-			if (data.test_ok === "Not Accepted" && data.leak_reason) {
-				value = `<span style="background: rgba(244, 63, 94, 0.12); color: #e11d48; border: 1px solid rgba(244, 63, 94, 0.3); padding: 2px 8px; border-radius: 6px; font-weight: 600; font-size: 11px; display: inline-flex; align-items: center; gap: 4px;">⚠️ ${data.leak_reason}</span>`;
-			} else if (data.test_ok === "Accepted") {
-				value = "";
-			}
-		}
 
 		if (column.fieldname === "serial_number" && data && data.serial_number) {
 			value = `<span style="font-family: var(--font-stack-monospace, monospace); font-weight: 600; color: #2563eb;">${value}</span>`;

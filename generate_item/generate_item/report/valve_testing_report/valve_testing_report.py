@@ -64,6 +64,12 @@ def get_columns() -> list[dict]:
 			"width": 140,
 		},
 		{
+			"label": _("Tested By"),
+			"fieldname": "tested_by",
+			"fieldtype": "Data",
+			"width": 120,
+		},
+		{
 			"label": _("Valve Sr No"),
 			"fieldname": "serial_number",
 			"fieldtype": "Link",
@@ -184,6 +190,7 @@ def get_data(filters: dict) -> list[dict]:
 			vt.branch AS branch,
 			vt.user AS user,
 			emp.employee_name AS user_name,
+			vti.tested_by AS tested_by,
 			vt.docstatus AS docstatus,
 			vti.serial_number AS serial_number,
 			vti.item_code AS item_code,
@@ -247,6 +254,10 @@ def build_conditions(filters: dict) -> tuple[str, dict]:
 	if filters.get("user"):
 		conditions.append("vt.user = %(user)s")
 		values["user"] = filters.get("user")
+
+	if filters.get("tested_by"):
+		conditions.append("vti.tested_by LIKE %(tested_by)s")
+		values["tested_by"] = f"%{filters.get('tested_by')}%"
 
 	if filters.get("sales_order"):
 		conditions.append("vti.sales_order = %(sales_order)s")

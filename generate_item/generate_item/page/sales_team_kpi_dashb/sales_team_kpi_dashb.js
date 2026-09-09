@@ -101,12 +101,13 @@ class OrderChangeDashboard {
 			title: __("Sales Team KPI Dashboard"),
 			single_column: true,
 		});
-		// default filters: Today, All branches
+		// default filters: This Quarter, All branches
+		const defaultDates = this.resolve_preset("This Quarter");
 		this.filters = {
 			branch:    "",
-			preset:    "Today",
-			from_date: frappe.datetime.get_today(),
-			to_date:   frappe.datetime.get_today(),
+			preset:    "This Quarter",
+			from_date: defaultDates.from_date,
+			to_date:   defaultDates.to_date,
 		};
 		this.inject_styles();
 		this.render_shell();
@@ -265,12 +266,12 @@ applyFiltersFromURL() {
 							<span class="ocd-field-label">${__("Period")}</span>
 							<div class="ocd-custom-select" data-role="date-preset">
 								<div class="ocd-custom-select-trigger">
-									<span class="ocd-custom-select-text">${__("Today")}</span>
+									<span class="ocd-custom-select-text">${__("This Quarter")}</span>
 									${ocd_icon("chevronDown", "ocd-custom-select-arrow")}
 								</div>
 								<div class="ocd-custom-select-options">
 									${OCD_DATE_PRESETS.map(p =>
-										`<div class="ocd-custom-option ${p === "Today" ? "selected" : ""}" data-value="${p}">${__(p)}</div>`
+										`<div class="ocd-custom-option ${p === "This Quarter" ? "selected" : ""}" data-value="${p}">${__(p)}</div>`
 									).join("")}
 								</div>
 							</div>
@@ -592,14 +593,14 @@ applyFiltersFromURL() {
 					const options = presetSelect.querySelectorAll('.ocd-custom-option');
 					const text = presetSelect.querySelector('.ocd-custom-select-text');
 					options.forEach(o => o.classList.remove('selected'));
-					const todayOption = presetSelect.querySelector('[data-value="Today"]');
-					if (todayOption) {
-						todayOption.classList.add('selected');
-						text.textContent = todayOption.textContent;
+					const defaultOption = presetSelect.querySelector('[data-value="This Quarter"]');
+					if (defaultOption) {
+						defaultOption.classList.add('selected');
+						text.textContent = defaultOption.textContent;
 					}
 				}
-				this.filters.preset = "Today";
-				const { from_date, to_date } = this.resolve_preset("Today");
+				this.filters.preset = "This Quarter";
+				const { from_date, to_date } = this.resolve_preset("This Quarter");
 				this.filters.from_date = from_date;
 				this.filters.to_date = to_date;
 				const fromInput = this.wrapper.querySelector("[data-role='from-date']");

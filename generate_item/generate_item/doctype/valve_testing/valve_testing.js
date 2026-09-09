@@ -49,6 +49,21 @@ frappe.ui.form.on("Valve Testing", {
                     },
 
                     {
+                        fieldtype: "Column Break"
+                    },
+
+                    {
+                        fieldname: "serial_number",
+                        label: "Serial Number",
+                        fieldtype: "Link",
+                        options: "Serial Number"
+                    },
+
+                    {
+                        fieldtype: "Column Break"
+                    },
+
+                    {
                         fieldname: "search",
                         label: "Search",
                         fieldtype: "Button"
@@ -350,9 +365,32 @@ frappe.ui.form.on("Valve Testing", {
                 return {};
             };
 
-            // When Sales Order changes, clear selected Batch
+            // Filter Serial Number based on branch, sales_order, and batch_number
+            dialog.fields_dict.serial_number.get_query = function () {
+                let batch_number = dialog.get_value("batch_number");
+                let filters = {
+                    docstatus: 1
+                };
+                if (frm.doc.branch) {
+                    filters.branch = frm.doc.branch;
+                }
+                if (batch_number) {
+                    filters.batch = batch_number;
+                }
+                return {
+                    filters: filters
+                };
+            };
+
+            // When Sales Order changes, clear selected Batch and Serial Number
             dialog.fields_dict.sales_order.$input.on("change", function () {
                 dialog.set_value("batch_number", "");
+                dialog.set_value("serial_number", "");
+            });
+
+            // When Batch Number changes, clear selected Serial Number
+            dialog.fields_dict.batch_number.$input.on("change", function () {
+                dialog.set_value("serial_number", "");
             });
 
             // Search button
@@ -360,10 +398,11 @@ frappe.ui.form.on("Valve Testing", {
 
                 let sales_order = dialog.get_value("sales_order");
                 let batch_number = dialog.get_value("batch_number");
+                let serial_number = dialog.get_value("serial_number");
 
-                if (!sales_order && !batch_number) {
+                if (!sales_order && !batch_number && !serial_number) {
                     frappe.msgprint(
-                        "Please select Sales Order or Batch Number."
+                        "Please select Sales Order, Batch Number, or Serial Number."
                     );
                     return;
                 }
@@ -372,8 +411,9 @@ frappe.ui.form.on("Valve Testing", {
                     method: "generate_item.generate_item.doctype.valve_testing.valve_testing.get_serial_register_items",
                     args: {
                         branch: frm.doc.branch || "",
-                        sales_order: sales_order,
-                        batch_number: batch_number
+                        sales_order: sales_order || "",
+                        batch_number: batch_number || "",
+                        serial_number: serial_number || ""
                     },
                     callback: function (r) {
                         if (!r.message || !r.message.length) {
@@ -400,6 +440,15 @@ frappe.ui.form.on("Valve Testing", {
             });
 
             dialog.show();
+            if (dialog.fields_dict.search && dialog.fields_dict.search.$wrapper) {
+                dialog.fields_dict.search.$wrapper.css({
+                    "margin-top": "24px"
+                });
+                dialog.fields_dict.search.$wrapper.find("button")
+                    .removeClass("btn-default")
+                    .addClass("btn-primary")
+                    .html('<i class="fa fa-search mr-1"></i> ' + __("Search"));
+            }
             render_toolbar();
             sync_selection_summary();
         });

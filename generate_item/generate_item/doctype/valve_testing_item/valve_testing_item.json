@@ -13,6 +13,7 @@
   "column_break_nuss",
   "sales_order",
   "serial_number",
+  "tested_by",
   "section_break_tvve",
   "size",
   "shell_moc",
@@ -197,13 +198,18 @@
    "fieldtype": "Data",
    "hidden": 1,
    "label": "Value"
+  },
+  {
+   "fieldname": "tested_by",
+   "fieldtype": "Data",
+   "label": "Tested By"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-09 11:09:45.401371",
+ "modified": "2026-09-09 17:04:35.900567",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Valve Testing Item",
