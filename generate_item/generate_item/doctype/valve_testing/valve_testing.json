@@ -32,7 +32,9 @@
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "label": "Naming Series",
-   "options": "\nVTES.fiscal.#####\nVTER.fiscal.#####\nVTEN.fiscal.#####"
+   "no_copy": 1,
+   "options": "\nVTES.fiscal.#####\nVTER.fiscal.#####\nVTEN.fiscal.#####",
+   "read_only": 1
   },
   {
    "fieldname": "section_break_waep",
@@ -77,7 +79,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-09 10:27:40.846635",
+ "modified": "2026-09-09 12:06:52.915089",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Valve Testing",
