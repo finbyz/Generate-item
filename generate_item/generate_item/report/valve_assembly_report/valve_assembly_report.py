@@ -51,14 +51,14 @@ def get_columns() -> list[dict]:
 			"width": 100,
 		},
 		{
-			"label": _("Assembler"),
+			"label": _("User"),
 			"fieldname": "user",
 			"fieldtype": "Link",
-			"options": "Employee",
-			"width": 110,
+			"options": "User",
+			"width": 120,
 		},
 		{
-			"label": _("Assembler Name"),
+			"label": _("User Name"),
 			"fieldname": "user_name",
 			"fieldtype": "Data",
 			"width": 140,
@@ -110,7 +110,7 @@ def get_columns() -> list[dict]:
 			"width": 90,
 		},
 		{
-			"label": _("Shell MOC"),
+			"label": _("MOC"),
 			"fieldname": "shell_moc",
 			"fieldtype": "Data",
 			"width": 100,
@@ -125,7 +125,7 @@ def get_columns() -> list[dict]:
 			"label": _("Facing"),
 			"fieldname": "facing",
 			"fieldtype": "Data",
-			"width": 90,
+			"width": 100,
 		},
 		{
 			"label": _("Stem MOC"),
@@ -137,7 +137,7 @@ def get_columns() -> list[dict]:
 			"label": _("Gland Packing + O'Ring MOC"),
 			"fieldname": "gland_packing__oring_moc",
 			"fieldtype": "Data",
-			"width": 150,
+			"width": 140,
 		},
 		{
 			"label": _("End Connection"),
@@ -146,13 +146,13 @@ def get_columns() -> list[dict]:
 			"width": 110,
 		},
 		{
-			"label": _("Wedge / Plug / Ball / Disc MOC"),
+			"label": _("Wedge/Plug/Ball/Disc MOC"),
 			"fieldname": "wedge_plug_ball_disc_moc",
 			"fieldtype": "Data",
-			"width": 150,
+			"width": 140,
 		},
 		{
-			"label": _("Seat Ring (GUIDE) MOC"),
+			"label": _("Seat Ring(Guide) MOC"),
 			"fieldname": "seat_ringguide_moc",
 			"fieldtype": "Data",
 			"width": 140,
@@ -207,7 +207,7 @@ def get_data(filters: dict) -> list[dict]:
 			aisn.date AS assembly_date,
 			va.branch AS branch,
 			va.user AS user,
-			COALESCE(emp.employee_name, va.user) AS user_name,
+			COALESCE(u.full_name, va.user) AS user_name,
 			va.docstatus AS docstatus,
 			aisn.serial_number AS serial_number,
 			aisn.item_code AS item_code,
@@ -233,8 +233,8 @@ def get_data(filters: dict) -> list[dict]:
 		FROM `tabValve Assembly` va
 		INNER JOIN `tabAssembly Item Serial No` aisn
 			ON aisn.parent = va.name AND aisn.parenttype = 'Valve Assembly'
-		LEFT JOIN `tabEmployee` emp
-			ON emp.name = va.user OR emp.user_id = va.user
+		LEFT JOIN `tabUser` u
+			ON u.name = va.user
 		LEFT JOIN `tabItem` item
 			ON item.name = aisn.item_code
 		WHERE va.docstatus = 1

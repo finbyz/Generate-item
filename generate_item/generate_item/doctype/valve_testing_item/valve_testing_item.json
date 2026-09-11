@@ -7,12 +7,12 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
-  "date",
+  "sales_order",
   "batch_no",
   "item_code",
   "column_break_nuss",
-  "sales_order",
   "serial_number",
+  "date",
   "tested_by",
   "section_break_tvve",
   "size",
@@ -42,22 +42,23 @@
    "fieldname": "date",
    "fieldtype": "Date",
    "in_list_view": 1,
-   "label": "Date",
-   "read_only": 1
+   "label": "Date"
   },
   {
    "fieldname": "batch_no",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Batch No.",
-   "options": "Batch"
+   "options": "Batch",
+   "read_only": 1
   },
   {
    "fieldname": "item_code",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Item Code",
-   "options": "Item"
+   "options": "Item",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_nuss",
@@ -68,14 +69,16 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Sales Order",
-   "options": "Sales Order"
+   "options": "Sales Order",
+   "read_only": 1
   },
   {
    "fieldname": "serial_number",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Valve Sr No",
-   "options": "Serial Number"
+   "options": "Serial Number",
+   "read_only": 1
   },
   {
    "fieldname": "section_break_tvve",
@@ -85,41 +88,48 @@
   {
    "fieldname": "size",
    "fieldtype": "Data",
-   "label": "Size"
+   "label": "Size",
+   "read_only": 1
   },
   {
    "fieldname": "shell_moc",
    "fieldtype": "Data",
-   "label": "MOC"
+   "label": "MOC",
+   "read_only": 1
   },
   {
    "fieldname": "operation",
    "fieldtype": "Data",
-   "label": "Operation"
+   "label": "Operation",
+   "read_only": 1
   },
   {
    "fieldname": "facing",
    "fieldtype": "Data",
    "hidden": 1,
-   "label": "Facing"
+   "label": "Facing",
+   "read_only": 1
   },
   {
    "fieldname": "stem_moc",
    "fieldtype": "Data",
    "hidden": 1,
-   "label": "Stem MOC"
+   "label": "Stem MOC",
+   "read_only": 1
   },
   {
    "fieldname": "gland_packing__oring_moc",
    "fieldtype": "Data",
    "hidden": 1,
-   "label": "Gland Packing + O'Ring Moc"
+   "label": "Gland Packing + O'Ring Moc",
+   "read_only": 1
   },
   {
    "fieldname": "inch_factor",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Inch Factor"
+   "label": "Inch Factor",
+   "read_only": 1
   },
   {
    "fieldname": "remark",
@@ -133,42 +143,49 @@
   {
    "fieldname": "class",
    "fieldtype": "Data",
-   "label": "Class"
+   "label": "Class",
+   "read_only": 1
   },
   {
    "fieldname": "end_connection",
    "fieldtype": "Data",
-   "label": "End Connection"
+   "label": "End Connection",
+   "read_only": 1
   },
   {
    "fieldname": "wedge_plug_ball_disc_moc",
    "fieldtype": "Data",
    "hidden": 1,
-   "label": "Wedge /Plug /Ball /Disc Moc"
+   "label": "Wedge /Plug /Ball /Disc Moc",
+   "read_only": 1
   },
   {
    "fieldname": "seat_ringguide_moc",
    "fieldtype": "Data",
    "hidden": 1,
-   "label": "Seat Ring(GUIDE) MOC"
+   "label": "Seat Ring(GUIDE) MOC",
+   "read_only": 1
   },
   {
    "fieldname": "gasket",
    "fieldtype": "Data",
    "hidden": 1,
-   "label": "GASKET"
+   "label": "GASKET",
+   "read_only": 1
   },
   {
    "fieldname": "fasteners",
    "fieldtype": "Data",
    "hidden": 1,
-   "label": "Fasteners"
+   "label": "Fasteners",
+   "read_only": 1
   },
   {
    "fieldname": "inches",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Inches"
+   "label": "Inches",
+   "read_only": 1
   },
   {
    "fieldname": "status",
@@ -187,7 +204,8 @@
   {
    "fieldname": "type",
    "fieldtype": "Data",
-   "label": "Type"
+   "label": "Type",
+   "read_only": 1
   },
   {
    "fieldname": "test_ok",
@@ -212,7 +230,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-10 18:21:44.758385",
+ "modified": "2026-09-11 12:27:53.321323",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Valve Testing Item",

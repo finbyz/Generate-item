@@ -7,6 +7,8 @@ from frappe.model.document import Document
 from generate_item.utils.inspector_inches import (
     calculate_doc_inspector_inches,
     get_serial_register_items as _get_serial_register_items,
+    validate_serial_for_testing_phase,
+    get_valve_testing_serial_query,
 )
 
 
@@ -35,58 +37,22 @@ class ValveTesting(Document):
     def validate_serial_numbers(self):
         for row in getattr(self, "item_serial_number", []):
             if getattr(row, "serial_number", None):
-                stock_entry = frappe.db.get_value("Serial Number", row.serial_number, "stock_entry")
-                if stock_entry:
+                is_valid, err_msg = validate_serial_for_testing_phase(
+                    row.serial_number, self.testing_phase
+                )
+                if not is_valid and err_msg:
                     frappe.throw(
-                        frappe._("Row #{0}: Serial Number {1} is already linked to Stock Entry {2} and cannot be used in Valve Testing.").format(
-                            row.idx, row.serial_number, stock_entry
-                        )
+                        frappe._("Row #{0}: {1}").format(row.idx, err_msg)
                     )
 
     def before_save(self):
-        user = frappe.session.user
-        employee = frappe.db.get_value(
-            "Employee",
-            {"user_id": user},
-            "name"
-        )
-
-        if not employee and user:
-            employee = frappe.db.get_value(
-                "Employee",
-                {"company_email": user},
-                "name"
-            ) or frappe.db.get_value(
-                "Employee",
-                {"personal_email": user},
-                "name"
-            )
-
-        if not employee and user:
-            user_info = frappe.db.get_value("User", user, ["first_name", "full_name", "username"], as_dict=True)
-            if user_info:
-                names_to_try = [user_info.get("first_name"), user_info.get("full_name"), user_info.get("username")]
-                names_to_try = [n for n in names_to_try if n]
-                if names_to_try:
-                    employee = frappe.db.get_value(
-                        "Employee",
-                        {"employee_name": ["in", names_to_try]},
-                        "name"
-                    ) or frappe.db.get_value(
-                        "Employee",
-                        {"first_name": ["in", names_to_try]},
-                        "name"
-                    )
-
-        if employee:
-            self.user = employee
-        elif not self.user and user:
-            self.user = user
+        if not self.user and frappe.session.user:
+            self.user = frappe.session.user
         calculate_doc_inspector_inches(self)
 
 
 @frappe.whitelist()
-def get_serial_register_items(sales_order=None, batch_number=None, serial_number=None, branch=None):
+def get_serial_register_items(sales_order=None, batch_number=None, serial_number=None, branch=None, testing_phase=None):
     """
     Get Serial Number records from Serial Number DocType for Valve Testing.
     """
@@ -96,6 +62,15 @@ def get_serial_register_items(sales_order=None, batch_number=None, serial_number
         batch_number=batch_number,
         serial_number=serial_number,
         branch=branch,
+        testing_phase=testing_phase,
     )
+
+
+@frappe.whitelist()
+def serial_number_query(doctype, txt, searchfield, start, page_len, filters):
+    """
+    Query handler for serial_number Link field.
+    """
+    return get_valve_testing_serial_query(doctype, txt, searchfield, start, page_len, filters)
 
 

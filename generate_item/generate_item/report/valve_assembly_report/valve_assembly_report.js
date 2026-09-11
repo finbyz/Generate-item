@@ -142,9 +142,9 @@ frappe.query_reports["Valve Assembly Report"] = {
 		},
 		{
 			fieldname: "user",
-			label: __("Assembler"),
+			label: __("User"),
 			fieldtype: "Link",
-			options: "Employee",
+			options: "User",
 		},
 	],
 

@@ -57,14 +57,14 @@ def get_columns() -> list[dict]:
 			"width": 110,
 		},
 		{
-			"label": _("Inspector"),
+			"label": _("User"),
 			"fieldname": "user",
 			"fieldtype": "Link",
-			"options": "Employee",
-			"width": 110,
+			"options": "User",
+			"width": 120,
 		},
 		{
-			"label": _("Inspector Name"),
+			"label": _("User Name"),
 			"fieldname": "user_name",
 			"fieldtype": "Data",
 			"width": 140,
@@ -197,7 +197,7 @@ def get_data(filters: dict) -> list[dict]:
 			vt.branch AS branch,
 			vt.testing_phase AS testing_phase,
 			vt.user AS user,
-			emp.employee_name AS user_name,
+			COALESCE(u.full_name, vt.user) AS user_name,
 			vti.tested_by AS tested_by,
 			vt.docstatus AS docstatus,
 			vti.serial_number AS serial_number,
@@ -220,8 +220,8 @@ def get_data(filters: dict) -> list[dict]:
 		FROM `tabValve Testing` vt
 		INNER JOIN `tabValve Testing Item` vti
 			ON vti.parent = vt.name AND vti.parenttype = 'Valve Testing'
-		LEFT JOIN `tabEmployee` emp
-			ON emp.name = vt.user
+		LEFT JOIN `tabUser` u
+			ON u.name = vt.user
 		LEFT JOIN `tabItem` item
 			ON item.name = vti.item_code
 		WHERE vt.docstatus = 1
