@@ -51,6 +51,12 @@ def get_columns() -> list[dict]:
 			"width": 100,
 		},
 		{
+			"label": _("Testing Phase"),
+			"fieldname": "testing_phase",
+			"fieldtype": "Data",
+			"width": 110,
+		},
+		{
 			"label": _("Inspector"),
 			"fieldname": "user",
 			"fieldtype": "Link",
@@ -66,7 +72,8 @@ def get_columns() -> list[dict]:
 		{
 			"label": _("Tested By"),
 			"fieldname": "tested_by",
-			"fieldtype": "Data",
+			"fieldtype": "Link",
+			"options": "User",
 			"width": 120,
 		},
 		{
@@ -188,6 +195,7 @@ def get_data(filters: dict) -> list[dict]:
 			vt.posting_date AS posting_date,
 			vti.date AS test_date,
 			vt.branch AS branch,
+			vt.testing_phase AS testing_phase,
 			vt.user AS user,
 			emp.employee_name AS user_name,
 			vti.tested_by AS tested_by,
@@ -247,6 +255,10 @@ def build_conditions(filters: dict) -> tuple[str, dict]:
 		conditions.append("vt.branch = %(branch)s")
 		values["branch"] = filters.get("branch")
 
+	if filters.get("testing_phase"):
+		conditions.append("vt.testing_phase = %(testing_phase)s")
+		values["testing_phase"] = filters.get("testing_phase")
+
 	if filters.get("valve_testing"):
 		conditions.append("vt.name = %(valve_testing)s")
 		values["valve_testing"] = filters.get("valve_testing")
@@ -256,8 +268,8 @@ def build_conditions(filters: dict) -> tuple[str, dict]:
 		values["user"] = filters.get("user")
 
 	if filters.get("tested_by"):
-		conditions.append("vti.tested_by LIKE %(tested_by)s")
-		values["tested_by"] = f"%{filters.get('tested_by')}%"
+		conditions.append("vti.tested_by = %(tested_by)s")
+		values["tested_by"] = filters.get("tested_by")
 
 	if filters.get("sales_order"):
 		conditions.append("vti.sales_order = %(sales_order)s")

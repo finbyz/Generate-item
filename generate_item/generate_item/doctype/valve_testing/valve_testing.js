@@ -9,6 +9,26 @@ frappe.ui.form.on("Valve Testing", {
             "VTER.fiscal.#####",
             "VTEN.fiscal.#####"
         ]);
+        frm.set_query("serial_number", "item_serial_number", function () {
+            let filters = {
+                docstatus: 1,
+                stock_entry: ["is", "not set"]
+            };
+            if (frm.doc.branch) {
+                filters.branch = frm.doc.branch;
+            }
+            return {
+                filters: filters
+            };
+        });
+        frm.set_query("tested_by", "item_serial_number", function () {
+            return {
+                filters: {
+                    enabled: 1,
+                    custom_is_operator: 1
+                }
+            };
+        });
     },
     onload(frm) {
         if (frm.is_new() && frm.doc.branch) {
@@ -18,6 +38,14 @@ frappe.ui.form.on("Valve Testing", {
     refresh(frm) {
         if (frm.doc.docstatus === 0) {
             frm.add_custom_button("Get Item from Serial Register", function () {
+                if (!frm.doc.testing_phase) {
+                    frappe.msgprint({
+                        title: __("Mandatory Field"),
+                        message: __("Please select Testing Phase before getting items from Serial Register."),
+                        indicator: "red"
+                    });
+                    return;
+                }
 
             let dialog = new frappe.ui.Dialog({
                 title: "Get Item from Serial Register",
@@ -365,11 +393,12 @@ frappe.ui.form.on("Valve Testing", {
                 return {};
             };
 
-            // Filter Serial Number based on branch, sales_order, and batch_number
+            // Filter Serial Number based on branch, sales_order, batch_number, and stock_entry not set
             dialog.fields_dict.serial_number.get_query = function () {
                 let batch_number = dialog.get_value("batch_number");
                 let filters = {
-                    docstatus: 1
+                    docstatus: 1,
+                    stock_entry: ["is", "not set"]
                 };
                 if (frm.doc.branch) {
                     filters.branch = frm.doc.branch;
