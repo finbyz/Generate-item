@@ -1,0 +1,19 @@
+{
+ "content": null,
+ "creation": "2026-09-10 16:50:46.924563",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-09-10 16:50:46.924563",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "purchase-user",
+ "owner": "Administrator",
+ "page_name": "purchase-user",
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Purchase User Dashboard"
+}
