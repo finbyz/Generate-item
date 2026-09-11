@@ -143,6 +143,10 @@ def get_serial_register_items(doctype="Valve Testing", sales_order=None, batch_n
     filters = {"docstatus": 1}
     if branch:
         filters["branch"] = branch
+
+    if doctype in ["Valve Testing"]:
+        filters["stock_entry"] = ["is", "not set"]
+
     batch_info_map = {}
 
     # Case 1: Serial Number is specified

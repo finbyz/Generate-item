@@ -14,6 +14,12 @@ class ValveTesting(Document):
 
     def validate(self):
         self.validate_back_dated_entries()
+        self.validate_testing_phase()
+        self.validate_serial_numbers()
+
+    def validate_testing_phase(self):
+        if not self.testing_phase:
+            frappe.throw(frappe._("Testing Phase is mandatory."))
 
     def validate_back_dated_entries(self):
         today_date = getdate(nowdate())
@@ -25,6 +31,17 @@ class ValveTesting(Document):
                 frappe.throw(
                     frappe._("Row #{0}: Date cannot be a back date.").format(row.idx)
                 )
+
+    def validate_serial_numbers(self):
+        for row in getattr(self, "item_serial_number", []):
+            if getattr(row, "serial_number", None):
+                stock_entry = frappe.db.get_value("Serial Number", row.serial_number, "stock_entry")
+                if stock_entry:
+                    frappe.throw(
+                        frappe._("Row #{0}: Serial Number {1} is already linked to Stock Entry {2} and cannot be used in Valve Testing.").format(
+                            row.idx, row.serial_number, stock_entry
+                        )
+                    )
 
     def before_save(self):
         user = frappe.session.user

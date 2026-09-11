@@ -455,7 +455,7 @@
   "doctype_or_field": "DocField",
   "field_name": "accounting_dimensions_section",
   "is_system_generated": 0,
-  "modified": "2025-09-24 15:23:41.685078",
+  "modified": "2026-09-10 11:10:53.565725",
   "module": "Generate Item",
   "name": "Sales Order-accounting_dimensions_section-hidden",
   "property": "hidden",

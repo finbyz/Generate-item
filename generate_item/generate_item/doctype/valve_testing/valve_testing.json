@@ -9,6 +9,7 @@
  "field_order": [
   "posting_date",
   "branch",
+  "testing_phase",
   "column_break_vxay",
   "user",
   "naming_series",
@@ -73,13 +74,19 @@
    "fieldtype": "Link",
    "label": "Branch",
    "options": "Branch"
+  },
+  {
+   "fieldname": "testing_phase",
+   "fieldtype": "Select",
+   "label": "Testing Phase",
+   "options": "\nPre Testing\nFinal Testing\nTPI Testing"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-09 12:06:52.915089",
+ "modified": "2026-09-10 18:19:53.961529",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Valve Testing",

@@ -177,9 +177,11 @@
    "label": "Status"
   },
   {
+   "depends_on": "eval:doc.test_ok==\"Not Accepted\"",
    "fieldname": "leak_reason",
    "fieldtype": "Select",
    "label": "Leak Reason",
+   "mandatory_depends_on": "eval:doc.test_ok==\"Not Accepted\"",
    "options": "\nAir Seat Leak\nHydro Seat Leak\nBody Casting Leak\nSeatring Casting Leak\nBonnet Casting Leak\nWedge Casting Leak\nJoint Leak\nBack Seat Leak\nWelding Leak\nBore Casting Leak"
   },
   {
@@ -201,15 +203,16 @@
   },
   {
    "fieldname": "tested_by",
-   "fieldtype": "Data",
-   "label": "Tested By"
+   "fieldtype": "Link",
+   "label": "Tested By",
+   "options": "User"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-09 17:04:35.900567",
+ "modified": "2026-09-10 18:21:44.758385",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Valve Testing Item",

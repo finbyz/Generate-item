@@ -112,6 +112,12 @@ frappe.query_reports["Valve Testing Report"] = {
 			default: "Accepted",
 		},
 		{
+			fieldname: "testing_phase",
+			label: __("Testing Phase"),
+			fieldtype: "Select",
+			options: "\nPre Testing\nFinal Testing\nTPI Testing",
+		},
+		{
 			fieldname: "branch",
 			label: __("Branch"),
 			fieldtype: "Link",
@@ -162,7 +168,16 @@ frappe.query_reports["Valve Testing Report"] = {
 		{
 			fieldname: "tested_by",
 			label: __("Tested By"),
-			fieldtype: "Data",
+			fieldtype: "Link",
+			options: "User",
+			get_query: function () {
+				return {
+					filters: {
+						enabled: 1,
+						custom_is_operator: 1,
+					},
+				};
+			},
 		},
 	],
 
