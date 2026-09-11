@@ -134,11 +134,201 @@ def get_item_description(item_code, default=""):
     return default
 
 
+def get_all_serials_testing_history(serial_numbers=None):
+    """
+    Returns a dict {serial_number: history_dict} for the given serial numbers (or all tested serials if None).
+    """
+    conditions = "WHERE vt.docstatus = 1 AND vti.serial_number IS NOT NULL AND vti.serial_number != ''"
+    values = []
+    if serial_numbers is not None:
+        if not serial_numbers:
+            return {}
+        conditions += " AND vti.serial_number IN ({})".format(", ".join(["%s"] * len(serial_numbers)))
+        values.extend(serial_numbers)
+
+    rows = frappe.db.sql(f"""
+        SELECT
+            vti.serial_number,
+            vt.testing_phase,
+            vti.test_ok
+        FROM `tabValve Testing Item` vti
+        INNER JOIN `tabValve Testing` vt ON vt.name = vti.parent AND vti.parenttype = 'Valve Testing'
+        {conditions}
+    """, values, as_dict=True)
+
+    history_map = {}
+    for r in rows:
+        sn = r.serial_number
+        if sn not in history_map:
+            history_map[sn] = {
+                "has_pre_testing": False,
+                "pre_accepted": False,
+                "has_final_testing": False,
+                "final_accepted": False,
+                "has_tpi_testing": False,
+                "tpi_accepted": False,
+                "total_tests": 0,
+            }
+        hist = history_map[sn]
+        hist["total_tests"] += 1
+        if r.testing_phase == "Pre Testing":
+            hist["has_pre_testing"] = True
+            if r.test_ok == "Accepted":
+                hist["pre_accepted"] = True
+        elif r.testing_phase == "Final Testing":
+            hist["has_final_testing"] = True
+            if r.test_ok == "Accepted":
+                hist["final_accepted"] = True
+        elif r.testing_phase == "TPI Testing":
+            hist["has_tpi_testing"] = True
+            if r.test_ok == "Accepted":
+                hist["tpi_accepted"] = True
+
+    return history_map
+
+
+def is_serial_eligible_for_phase(history, testing_phase):
+    """
+    Check if a serial number's testing history makes it eligible for the given testing_phase:
+    1. Pre-Testing: Allowed if not previously accepted in Pre-Testing.
+    2. Final Testing: Allowed for all serials regardless of Pre-Testing, unless already accepted in Final Testing.
+    3. TPI Testing: Allowed only for serials accepted in Final Testing (and not already accepted in TPI Testing).
+    """
+    if not testing_phase:
+        return True
+
+    if testing_phase == "Pre Testing":
+        if history and history.get("pre_accepted"):
+            return False
+        return True
+
+    elif testing_phase == "Final Testing":
+        if history and history.get("final_accepted"):
+            return False
+        return True
+
+    elif testing_phase == "TPI Testing":
+        if not history or not history.get("final_accepted"):
+            return False
+        if history.get("tpi_accepted"):
+            return False
+        return True
+
+    return True
+
+
+def validate_serial_for_testing_phase(serial_number, testing_phase):
+    """
+    Validates if a serial number can be used in the given testing_phase.
+    Returns (is_valid: bool, error_message: str | None).
+    """
+    if not testing_phase or not serial_number:
+        return True, None
+
+    # Check stock entry link
+    stock_entry = frappe.db.get_value("Serial Number", serial_number, "stock_entry")
+    if stock_entry:
+        return False, frappe._("Serial Number {0} is already linked to Stock Entry {1} and cannot be used in Valve Testing.").format(
+            serial_number, stock_entry
+        )
+
+    history_map = get_all_serials_testing_history([serial_number])
+    history = history_map.get(serial_number)
+
+    if testing_phase == "Pre Testing":
+        if history and history.get("pre_accepted"):
+            return False, frappe._("Serial Number {0} was already Accepted in Pre Testing earlier and cannot be tested in Pre Testing again.").format(
+                serial_number
+            )
+
+    elif testing_phase == "Final Testing":
+        if history and history.get("final_accepted"):
+            return False, frappe._("Serial Number {0} was already Accepted in Final Testing earlier and cannot be tested in Final Testing again.").format(
+                serial_number
+            )
+
+    elif testing_phase == "TPI Testing":
+        if not history or not history.get("final_accepted"):
+            return False, frappe._("Serial Number {0} has not been Accepted in Final Testing. Only Serial Numbers that have passed Final Testing are eligible for TPI Testing.").format(
+                serial_number
+            )
+        if history.get("tpi_accepted"):
+            return False, frappe._("Serial Number {0} was already Accepted in TPI Testing earlier.").format(
+                serial_number
+            )
+
+    return True, None
+
+
 @frappe.whitelist()
-def get_serial_register_items(doctype="Valve Testing", sales_order=None, batch_number=None, serial_number=None, branch=None):
+def get_valve_testing_serial_query(doctype, txt, searchfield, start, page_len, filters):
+    """
+    Custom query for serial_number Link field in Valve Testing child table and dialog.
+    Filters by branch, sales_order, batch, stock_entry is not set, and testing_phase eligibility.
+    """
+    filters = filters or {}
+    branch = filters.get("branch")
+    testing_phase = filters.get("testing_phase")
+    batch = filters.get("batch")
+    sales_order = filters.get("sales_order")
+
+    conditions = ["docstatus = 1", "(stock_entry IS NULL OR stock_entry = '')"]
+    values = {}
+
+    if branch:
+        conditions.append("branch = %(branch)s")
+        values["branch"] = branch
+
+    if batch:
+        conditions.append("batch = %(batch)s")
+        values["batch"] = batch
+    elif sales_order:
+        batch_names = frappe.get_all("Batch", filters={"reference_name": sales_order}, pluck="name")
+        if not batch_names:
+            return []
+        batch_placeholders = ", ".join([f"%(so_batch_{i})s" for i in range(len(batch_names))])
+        conditions.append(f"batch IN ({batch_placeholders})")
+        for i, b in enumerate(batch_names):
+            values[f"so_batch_{i}"] = b
+
+    if txt:
+        conditions.append("(name LIKE %(txt)s OR batch LIKE %(txt)s)")
+        values["txt"] = f"%{txt}%"
+
+    cond_str = " AND ".join(conditions)
+
+    candidates = frappe.db.sql(f"""
+        SELECT name, batch
+        FROM `tabSerial Number`
+        WHERE {cond_str}
+        ORDER BY creation DESC
+    """, values, as_dict=True)
+
+    if not candidates:
+        return []
+
+    if testing_phase:
+        candidate_names = [c.name for c in candidates]
+        history_map = get_all_serials_testing_history(candidate_names)
+        eligible = []
+        for c in candidates:
+            hist = history_map.get(c.name)
+            if is_serial_eligible_for_phase(hist, testing_phase):
+                eligible.append(c)
+        candidates = eligible
+
+    start = int(start or 0)
+    page_len = int(page_len or 20)
+    paged = candidates[start : start + page_len]
+
+    return [[c.name, c.batch or ""] for c in paged]
+
+
+@frappe.whitelist()
+def get_serial_register_items(doctype="Valve Testing", sales_order=None, batch_number=None, serial_number=None, branch=None, testing_phase=None):
     """
     Get Serial Number records from Serial Number DocType with item description.
-    Excludes serial numbers already used in submitted documents.
+    Excludes serial numbers already used or ineligible based on testing phase.
     """
     filters = {"docstatus": 1}
     if branch:
@@ -189,19 +379,8 @@ def get_serial_register_items(doctype="Valve Testing", sales_order=None, batch_n
         }
         filters["batch"] = ["in", list(batch_info_map.keys())]
 
-    # Exclude already used serials based on doctype
-    if doctype in ["Valve Testing"]:
-        child_doctype = "Valve Testing Item"
-        used_serials = frappe.get_all(
-            child_doctype,
-            filters={
-                "docstatus": 1,
-                "parenttype": "Valve Testing",
-                "test_ok": "Accepted",
-            },
-            pluck="serial_number",
-        )
-    else:
+    # Exclude already used serials for Valve Assembly
+    if doctype not in ["Valve Testing"]:
         child_doctype = "Assembly Item Serial No"
         used_serials = frappe.get_all(
             child_doctype,
@@ -211,13 +390,12 @@ def get_serial_register_items(doctype="Valve Testing", sales_order=None, batch_n
             },
             pluck="serial_number",
         )
-
-    if used_serials:
-        if serial_number:
-            if serial_number in used_serials:
-                return []
-        else:
-            filters["name"] = ["not in", list(set(used_serials))]
+        if used_serials:
+            if serial_number:
+                if serial_number in used_serials:
+                    return []
+            else:
+                filters["name"] = ["not in", list(set(used_serials))]
 
     # Get Serial Number records
     serial_numbers = frappe.get_all(
@@ -229,6 +407,18 @@ def get_serial_register_items(doctype="Valve Testing", sales_order=None, batch_n
         ],
         order_by="creation asc",
     )
+
+    # For Valve Testing, filter by testing_phase eligibility
+    if doctype in ["Valve Testing"] and serial_numbers:
+        candidate_names = [s.serial_number for s in serial_numbers]
+        history_map = get_all_serials_testing_history(candidate_names)
+        serial_numbers = [
+            s for s in serial_numbers
+            if is_serial_eligible_for_phase(history_map.get(s.serial_number), testing_phase)
+        ]
+
+    if not serial_numbers:
+        return []
 
     # Attach item_code and sales_order from Batch
     if not batch_info_map:

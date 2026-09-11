@@ -161,9 +161,9 @@ frappe.query_reports["Valve Testing Report"] = {
 		},
 		{
 			fieldname: "user",
-			label: __("Inspector"),
+			label: __("User"),
 			fieldtype: "Link",
-			options: "Employee",
+			options: "User",
 		},
 		{
 			fieldname: "tested_by",

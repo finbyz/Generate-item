@@ -10,15 +10,12 @@ frappe.ui.form.on("Valve Testing", {
             "VTEN.fiscal.#####"
         ]);
         frm.set_query("serial_number", "item_serial_number", function () {
-            let filters = {
-                docstatus: 1,
-                stock_entry: ["is", "not set"]
-            };
-            if (frm.doc.branch) {
-                filters.branch = frm.doc.branch;
-            }
             return {
-                filters: filters
+                query: "generate_item.generate_item.doctype.valve_testing.valve_testing.serial_number_query",
+                filters: {
+                    branch: frm.doc.branch || "",
+                    testing_phase: frm.doc.testing_phase || ""
+                }
             };
         });
         frm.set_query("tested_by", "item_serial_number", function () {
@@ -26,6 +23,13 @@ frappe.ui.form.on("Valve Testing", {
                 filters: {
                     enabled: 1,
                     custom_is_operator: 1
+                }
+            };
+        });
+        frm.set_query("user", function () {
+            return {
+                filters: {
+                    enabled: 1
                 }
             };
         });
@@ -375,39 +379,34 @@ frappe.ui.form.on("Valve Testing", {
                 };
             };
 
-            // Filter Batch Number based on Sales Order
+            // Filter Batch Number based on Sales Order and Branch
             dialog.fields_dict.batch_number.get_query = function () {
                 let sales_order = dialog.get_value("sales_order");
+                let filters = {};
 
-                // If Sales Order is selected
                 if (sales_order) {
-                    return {
-                        filters: {
-                            reference_name: sales_order
-                        }
-                    };
+                    filters.reference_name = sales_order;
                 }
-
-                // If no Sales Order is selected
-                // show all batches
-                return {};
-            };
-
-            // Filter Serial Number based on branch, sales_order, batch_number, and stock_entry not set
-            dialog.fields_dict.serial_number.get_query = function () {
-                let batch_number = dialog.get_value("batch_number");
-                let filters = {
-                    docstatus: 1,
-                    stock_entry: ["is", "not set"]
-                };
                 if (frm.doc.branch) {
                     filters.branch = frm.doc.branch;
                 }
-                if (batch_number) {
-                    filters.batch = batch_number;
-                }
                 return {
                     filters: filters
+                };
+            };
+
+            // Filter Serial Number based on branch, sales_order, batch_number, and testing_phase eligibility
+            dialog.fields_dict.serial_number.get_query = function () {
+                let sales_order = dialog.get_value("sales_order");
+                let batch_number = dialog.get_value("batch_number");
+                return {
+                    query: "generate_item.generate_item.doctype.valve_testing.valve_testing.serial_number_query",
+                    filters: {
+                        branch: frm.doc.branch || "",
+                        testing_phase: frm.doc.testing_phase || "",
+                        sales_order: sales_order || "",
+                        batch: batch_number || ""
+                    }
                 };
             };
 
@@ -442,7 +441,8 @@ frappe.ui.form.on("Valve Testing", {
                         branch: frm.doc.branch || "",
                         sales_order: sales_order || "",
                         batch_number: batch_number || "",
-                        serial_number: serial_number || ""
+                        serial_number: serial_number || "",
+                        testing_phase: frm.doc.testing_phase || ""
                     },
                     callback: function (r) {
                         if (!r.message || !r.message.length) {
@@ -504,6 +504,14 @@ frappe.ui.form.on("Valve Testing", {
             frm.set_value("naming_series", selected_series);
         }
         frm.refresh_field("naming_series");
+    },
+    testing_phase(frm) {
+        if (frm.doc.item_serial_number && frm.doc.item_serial_number.length) {
+            frappe.show_alert({
+                message: __("Testing Phase changed to {0}. Please ensure existing items are valid.", [frm.doc.testing_phase]),
+                indicator: "orange"
+            });
+        }
     }
 });
 

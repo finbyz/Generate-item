@@ -36,8 +36,7 @@
    "default": "Today",
    "fieldname": "posting_date",
    "fieldtype": "Date",
-   "label": "Posting Date",
-   "read_only": 1
+   "label": "Posting Date"
   },
   {
    "fieldname": "column_break_vxay",
@@ -47,7 +46,7 @@
    "fieldname": "user",
    "fieldtype": "Link",
    "label": "User",
-   "options": "Employee",
+   "options": "User",
    "read_only": 1
   },
   {
@@ -79,7 +78,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-09 17:40:05.855518",
+ "modified": "2026-09-11 11:59:50.246624",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Valve Assembly",
