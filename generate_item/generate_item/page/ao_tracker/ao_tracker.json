@@ -1,0 +1,19 @@
+{
+ "content": null,
+ "creation": "2026-09-09 17:55:19.697968",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-09-11 17:24:29.891380",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "ao-tracker",
+ "owner": "Administrator",
+ "page_name": "ao-tracker",
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Sales Order Tracker"
+}

@@ -82,6 +82,7 @@ doctype_js = {"Item" : "public/js/item.js",
               "Work Order" : "public/js/work_order.js",
               "Customer" : "public/js/customer_supplier_workflow.js",
               "Supplier" : "public/js/customer_supplier_workflow.js",
+              "Employee":"public/js/employee.js"
               }
 
 doctype_list_js = {
@@ -314,14 +315,20 @@ doc_events = {
     },
     
     "Batch": {
-    "after_insert": "generate_item.generate_item.doctype.valve_spare_serial.valve_spare_serial.after_insert_batch",
-    # "before_validate": "generate_item.utils.serial_no.update_warranty_expiry_date",
-    "before_save": [
-        "generate_item.utils.batch.before_save",
-        # "generate_item.utils.serial_no.update_warranty_period",
-    ],
-   
-},
+        "after_insert": "generate_item.generate_item.doctype.valve_spare_serial.valve_spare_serial.after_insert_batch",
+        # "before_validate": "generate_item.utils.serial_no.update_warranty_expiry_date",
+        "before_save": [
+            "generate_item.utils.batch.before_save",
+            # "generate_item.utils.serial_no.update_warranty_period",
+        ],
+    },
+    "User Permission": {
+        "on_update": "generate_item.generate_item.page.purchase_user.purchase_user.clear_user_hierarchy_cache",
+        "on_trash": "generate_item.generate_item.page.purchase_user.purchase_user.clear_user_hierarchy_cache",
+    },
+    "User": {
+        "on_update": "generate_item.generate_item.page.purchase_user.purchase_user.clear_user_hierarchy_cache",
+    },
 }
 # 	"*": {
 # 		"on_update": "method",
