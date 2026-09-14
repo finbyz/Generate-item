@@ -2,7 +2,7 @@
 // For license information, please see license.txt
 
 frappe.query_reports["Work Order Shortage Report"] = {
-	"filters": [
+    "filters": [
         {
             "label": __("Company"),
             "fieldname": "company",
@@ -57,7 +57,7 @@ frappe.query_reports["Work Order Shortage Report"] = {
             "label": __("Production Item"),
             "fieldtype": "Link",
             "options": "Item",
-            "get_query": function() {
+            "get_query": function () {
                 return {
                     filters: {
                         "is_stock_item": 1
@@ -76,7 +76,7 @@ frappe.query_reports["Work Order Shortage Report"] = {
             "label": __("Batch No"),
             "fieldtype": "Link",
             "options": "Batch",
-            "get_query": function() {
+            "get_query": function () {
                 return {
                     filters: {
                         "disabled": 0
@@ -97,14 +97,14 @@ frappe.query_reports["Work Order Shortage Report"] = {
             "fieldtype": "Link",
             "options": "Branch",
             "default": " ",
-            "reqd":1,
-            "placeholder":"Branch"
+            "reqd": 1,
+            "placeholder": "Branch"
         }
     ],
-    
-    "formatter": function(value, row, column, data, default_formatter) {
+
+    "formatter": function (value, row, column, data, default_formatter) {
         value = default_formatter(value, row, column, data);
-        
+
         // Color code status
         if (column.fieldname == "status") {
             if (value && value.includes("Completed")) {
@@ -115,29 +115,33 @@ frappe.query_reports["Work Order Shortage Report"] = {
                 value = `<span style="color: red; font-weight: bold;">${value}</span>`;
             }
         }
+<<<<<<< HEAD
         
+=======
+
+>>>>>>> develop
         // Color code balance to issue quantity
         if ((column.fieldname == "balance_to_issue_qty" || column.fieldname == "shortage_qty") && data && (data.balance_to_issue_qty > 0 || data.shortage_qty > 0)) {
             value = `<span style="color: red; font-weight: bold;">${value}</span>`;
         }
-        
+
         // Highlight age
         if (column.fieldname == "age" && data && data.age > 30) {
             value = `<span style="color: red; font-weight: bold;">${value}</span>`;
         } else if (column.fieldname == "age" && data && data.age > 15) {
             value = `<span style="color: orange; font-weight: bold;">${value}</span>`;
         }
-        
+
         return value;
     },
-    
-    "onload": function(report) {
+
+    "onload": function (report) {
         // Add custom buttons
-        report.page.add_inner_button(__("Export to Excel"), function() {
-            frappe.query_report.export_report("Excel");
-        });
-        
-        report.page.add_inner_button(__("Print"), function() {
+        // report.page.add_inner_button(__("Export to Excel"), function() {
+        //     frappe.query_report.export_report("Excel");
+        // });
+
+        report.page.add_inner_button(__("Print"), function () {
             frappe.query_report.print_report();
         });
     }

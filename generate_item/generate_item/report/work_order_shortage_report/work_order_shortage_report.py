@@ -3,7 +3,7 @@
 
 import frappe
 from frappe import _
-from frappe.utils import flt, getdate, date_diff, nowdate
+from frappe.utils import flt, getdate, date_diff, nowdate, formatdate
 
 
 def execute(filters=None):
@@ -176,7 +176,7 @@ def get_columns():
         {
             "fieldname": "po_date",
             "label": _("PO Date"),
-            "fieldtype": "Data",
+            "fieldtype": "Date",
             "width": 130
         },
         {
@@ -287,6 +287,9 @@ def get_conditions(filters):
 
     if filters.get("status"):
         conditions.append("AND (wo.status = %(status)s OR pp.status = %(status)s)")
+    else:
+        conditions.append("AND wo.status NOT IN ('Stopped', 'Closed', 'Completed')")
+        conditions.append("AND pp.status NOT IN ('Cancelled', 'Closed', 'Completed')")
 
     if filters.get("production_item"):
         conditions.append("AND wo.production_item = %(production_item)s")
@@ -458,7 +461,7 @@ def get_purchase_order_data(batch_numbers, all_mr_item_names, item_codes, mr_ite
         item_code = row.item_code
         batch_no = row.custom_batch_no
         mr_item = row.material_request_item
-        po_date = str(row.transaction_date) if row.transaction_date else ""
+        po_date = formatdate(row.transaction_date, "dd-MM-yyyy") if row.transaction_date else ""
         po_line_no = str(row.po_line_no) if row.po_line_no is not None else ""
         supplier = row.supplier_name or ""
         qty = flt(row.stock_qty)
@@ -661,7 +664,8 @@ def build_final_data(base_data, mr_data_map, po_data_map, pr_data_map, stock_map
             row["po_date"] = ", ".join(po_info.get("po_dates", []))
             row["po_line_no"] = ", ".join(po_info.get("po_line_nos", []))
             row["supplier_name"] = ", ".join(po_info.get("suppliers", []))
-            row["required_by"] = po_info.get("required_by")
+            required_by = po_info.get("required_by")
+            row["required_by"] = formatdate(required_by, "dd-MM-yyyy") if required_by else ""
         else:
             row["po_qty"] = 0.0
             row["po_no"] = ""
