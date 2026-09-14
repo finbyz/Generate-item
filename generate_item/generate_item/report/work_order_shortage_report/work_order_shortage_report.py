@@ -176,7 +176,7 @@ def get_columns():
         {
             "fieldname": "po_date",
             "label": _("PO Date"),
-            "fieldtype": "Data",
+            "fieldtype": "Date",
             "width": 130
         },
         {
