@@ -20,10 +20,11 @@ frappe.ui.form.on("Valve Testing", {
         });
         frm.set_query("tested_by", "item_serial_number", function () {
             return {
+                query: "generate_item.generate_item.doctype.general_employee.general_employee.general_employee_by_department_query",
                 filters: {
-                    enabled: 1,
-                    custom_is_operator: 1
-                }
+                    department: "Testing",
+                    branch: frm.doc.branch || "",
+                },
             };
         });
         frm.set_query("user", function () {

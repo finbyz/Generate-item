@@ -53,14 +53,14 @@
   },
   {
    "fieldname": "reference_doctype",
-   "fieldtype": "Link",
+   "fieldtype": "Data",
    "label": "Reference Doctype",
    "options": "DocType",
    "read_only": 1
   },
   {
    "fieldname": "reference_document_name",
-   "fieldtype": "Dynamic Link",
+   "fieldtype": "Data",
    "label": "Reference Document Name",
    "options": "reference_doctype",
    "read_only": 1
@@ -138,7 +138,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-07-06 16:35:26.898010",
+ "modified": "2026-09-18 14:58:52.332290",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Modification Task",

@@ -51,6 +51,7 @@ class OrderModificationRequest(Document):
         self.validate_sales_order()
         self.validate_qty_and_rev_qty()
         self.validate_free_item_self_association()
+        self.validate_free_items_component_of()
     
   
 
@@ -193,6 +194,34 @@ class OrderModificationRequest(Document):
 
         if errors:
             frappe.throw("<br>".join(errors), title=_("Invalid Free Item Association"))
+
+    def validate_free_items_component_of(self):
+        if self.type != "Sales Order" or not self.sales_order or not self.sales_order_item:
+            return
+
+        order_type = frappe.db.get_value("Sales Order", self.sales_order, "order_type")
+        skip_validation_for = ["Free Issue Domestic","Free Issue Export"]
+
+        if order_type in skip_validation_for:
+            return
+
+        for row in self.sales_order_item:
+            is_free_row = bool(row.is_free_item or getattr(row, "rev_is_free_item", 0))
+            if is_free_row:
+                rev_status = (getattr(row, "rev_line_status", "") or "").strip()
+                if rev_status == "Cancelled":
+                    continue
+
+                component_of = (
+                    getattr(row, "rev_component_of", None)
+                    or getattr(row, "component_of", None)
+                    or ""
+                ).strip()
+
+                if not component_of:
+                    frappe.throw(
+                        _("Component Of is mandatory for Free Items unless Order Type is Free Issue Domestic or Free Issue Exports.")
+                    )
 
     def validate_free_item_association_not_removed(self):
         """

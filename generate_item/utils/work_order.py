@@ -586,8 +586,20 @@ def get_current_qty(item_code, source_warehouse, target_warehouse):
     )[0][0]
 
     return total or 0
- 
- 
+
+
+def get_item_bin_location(item_code, branch):
+    """Fetch location from Item Location for item and branch."""
+    if not item_code or not branch:
+        return ""
+
+    return frappe.db.get_value(
+        "Item Location",
+        {"item": item_code, "branch": branch},
+        "location"
+    ) or ""
+
+
 @frappe.whitelist()
 def export_work_orders(work_orders):
     if isinstance(work_orders, str):
@@ -673,7 +685,9 @@ def export_work_orders(work_orders):
                 item.source_warehouse,
                 wo.fg_warehouse
             )
- 
+            item_branch = branch or getattr(item, "branch", "") or ""
+            bin_location = get_item_bin_location(item.item_code, item_branch)
+
             row = [
                 wo.name,
                 branch,
@@ -688,7 +702,7 @@ def export_work_orders(work_orders):
                 item.available_qty_at_wip_warehouse or 0,
                 item.stock_uom or "",
                 item.source_warehouse or "",
-                "",
+                bin_location,
                 wo.fg_warehouse or "",
                 item.custom_drawing_no or "",
                 item.custom_drawing_rev_no or "",

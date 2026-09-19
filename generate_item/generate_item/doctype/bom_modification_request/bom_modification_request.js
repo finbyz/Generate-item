@@ -3,17 +3,17 @@
 
 frappe.ui.form.on("Bom Modification Request", {
     refresh(frm) {
-  frm.fields_dict.items.grid.get_field("rev_bom_no").get_query = function(doc, cdt, cdn) {
+        frm.fields_dict.items.grid.get_field("rev_bom_no").get_query = function(doc, cdt, cdn) {
             let row = locals[cdt][cdn];
 
             let filters = {
-                docstatus: 1,
-                is_default: 1,
+                docstatus: ["in", [0, 1]],
                 is_active: 1,
-                item: row.rev_item,
-
-
             };
+            let item_code = row.rev_item ;
+            if (item_code) {
+                filters["item"] = item_code;
+            }
             if (frm.doc.branch) {
                 filters["branch"] = frm.doc.branch;
             }

@@ -223,14 +223,14 @@
    "fieldname": "tested_by",
    "fieldtype": "Link",
    "label": "Tested By",
-   "options": "User"
+   "options": "General Employee"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-11 12:27:53.321323",
+ "modified": "2026-09-18 17:48:13.951149",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Valve Testing Item",

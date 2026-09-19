@@ -73,7 +73,7 @@ def get_columns() -> list[dict]:
 			"label": _("Tested By"),
 			"fieldname": "tested_by",
 			"fieldtype": "Link",
-			"options": "User",
+			"options": "General Employee",
 			"width": 120,
 		},
 		{

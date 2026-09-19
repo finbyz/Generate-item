@@ -84,72 +84,8 @@ frappe.ui.form.on("Order Modification Request", {
       onload: function (frm) {
         handle_ig_return(frm);
     },
-     
-//  validate: async function (frm) {
-//     console.log("validate trigger")
-//     if (frm.doc.type !== "Sales Order") return;
 
-//     const missing = await get_missing_revise_component_items(frm);
-//     console.log("missing value ---", missing)
-
-//     if (missing.length) {
-//         const detail = missing
-//             .map(d => `${__('Row')} ${d.idx} → ${d.item}`)
-//             .join("<br>");
-
-//         frappe.msgprint({
-//             title: __('Missing Revise Components'),
-//             message: __(
-//                 "Some 'Revise Component Of' items are not present in the Sales Order:<br><br>{0}<br><br>Cannot Approve the OMR for the Sales Order because the item associated with a Free Item that is being removed and will no longer be available in the Sales Order. Please update the Free Item association before proceeding.",
-//                 [detail]
-//             ),
-//             indicator: "red"
-//         });
-//           await new Promise(resolve => setTimeout(resolve, 2000));
-
-//         // frappe.validated = false;
-//     }
-// },
-
-// validate: async function (frm) {
-//     if (frm.doc.type !== "Sales Order") return;
-
-//      const missing = await get_missing_revise_component_items(frm);
-//     const self_assoc_issues = await get_free_item_self_association_issues(frm); // now awaited
-
-
-//     if (missing.length) {
-//         const detail = missing
-//             .map(d => `${__('Row')} ${d.idx} → ${d.item}`)
-//             .join("<br>");
-
-//         frappe.msgprint({
-//             title: __('Missing Revise Components'),
-//             message: __(
-//                 "Some 'Revise Component Of' items are not present in the Sales Order:<br><br>{0}",
-//                 [detail]
-//             ),
-//             indicator: "red"
-//         });
-//         // still non-blocking, as in your original code
-//     }
-
-//     if (self_assoc_issues.length) {
-//         const detail = self_assoc_issues
-//             .map(d => `${__('Row')} ${d.idx} → ${d.reason}`)
-//             .join("<br>");
-
-//         frappe.msgprint({
-//             title: __('Invalid Free Item Association'),
-//             message: __("Revise Component Of is invalid for the following row(s):<br><br>{0}", [detail]),
-//             indicator: "red"
-//         });
-//           await new Promise(resolve => setTimeout(resolve, 2000));
-
-//         // frappe.validated = false;   // this one actually blocks save, as requested
-//     }
-// },   
-
+  
 type: function (frm) {
         toggle_drg_section(frm);
         make_fields_mandatory_based_on_type(frm);

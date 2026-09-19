@@ -10,7 +10,6 @@
   "posting_date",
   "branch",
   "column_break_vxay",
-  "user",
   "naming_series",
   "section_break_snfx",
   "item_serial_number",
@@ -43,13 +42,6 @@
    "fieldtype": "Column Break"
   },
   {
-   "fieldname": "user",
-   "fieldtype": "Link",
-   "label": "User",
-   "options": "User",
-   "read_only": 1
-  },
-  {
    "fieldname": "section_break_snfx",
    "fieldtype": "Section Break"
   },
@@ -78,7 +70,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-11 11:59:50.246624",
+ "modified": "2026-09-18 18:37:19.791434",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Valve Assembly",

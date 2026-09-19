@@ -218,8 +218,18 @@ def get_sales_order_conditions(filters, values):
 
     # Sales Order status
     if filters.get("status"):
-        conditions += " AND so.status = %(status)s"
-        values["status"] = filters.get("status")
+        status_val = filters.get("status")
+        if isinstance(status_val, str):
+            status_val = [s.strip() for s in status_val.split(",") if s.strip()]
+        if isinstance(status_val, (list, tuple)):
+            conditions += " AND so.status IN %(status)s"
+            values["status"] = tuple(status_val)
+        else:
+            conditions += " AND so.status = %(status)s"
+            values["status"] = (status_val,)
+    else:
+        conditions += " AND so.status NOT IN ('Closed', 'Completed')"
+        conditions += " AND so.docstatus IN (0, 1)"
 
     # Transaction date
     if filters.get("transaction_date"):
@@ -303,6 +313,7 @@ def get_data(filters):
         WHERE 1 = 1
 
             AND sn.docstatus != 2
+            AND (soi.line_status IS NULL OR soi.line_status = '' OR soi.line_status NOT IN ('Cancelled', 'Delivered'))
 
             {conditions}
 

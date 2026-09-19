@@ -461,7 +461,7 @@ frappe.ui.form.on("Delivery Note", {
     //     check_insufficient_items(frm);
     // },
     refresh(frm) {
-        
+
         apply_permissions(frm);
         validate_and_set_batch_from_sales_order(frm)
         if (frm.doc.docstatus === 0) {
@@ -547,10 +547,10 @@ frappe.ui.form.on("Delivery Note", {
                 __("Get Items From")
             );
 
-              frm.add_custom_button('Append from Dispatchable SO', function() {
-                  show_dispatchable_so_dialog(frm);
+            frm.add_custom_button('Append from Dispatchable SO', function () {
+                show_dispatchable_so_dialog(frm);
 
-              })
+            })
         }
     },
 
@@ -560,8 +560,39 @@ frappe.ui.form.on("Delivery Note", {
             validate_and_set_batch_from_sales_order(frm);
             fetch_and_update_taxes(frm);
         }
+        if (frm.doc.docstatus === 0) {
+            check_insufficient_items(frm);
+        }
     },
 
+    items_remove(frm) {
+        if (frm.doc.docstatus === 0) {
+            check_insufficient_items(frm);
+        }
+    }
+});
+
+frappe.ui.form.on("Delivery Note Item", {
+    qty(frm) {
+        if (frm.doc.docstatus === 0) {
+            check_insufficient_items(frm);
+        }
+    },
+    custom_batch_no(frm) {
+        if (frm.doc.docstatus === 0) {
+            check_insufficient_items(frm);
+        }
+    },
+    batch_no(frm) {
+        if (frm.doc.docstatus === 0) {
+            check_insufficient_items(frm);
+        }
+    },
+    warehouse(frm) {
+        if (frm.doc.docstatus === 0) {
+            check_insufficient_items(frm);
+        }
+    }
 });
 function handle_dispatchable_so(frm) {
     if (!frm.doc.customer) {
@@ -840,24 +871,50 @@ function apply_permissions(frm) {
 
 function check_insufficient_items(frm) {
     frm.remove_custom_button('Remove Insufficient Items');
-    // Do NOT auto-trigger non-stock removal here.
-    // Keep this function limited to showing/hiding the "Remove Insufficient Items" button.
 
-    if (!frm.doc.items || frm.doc.items.length === 0) {
+    if (!frm.doc.items || frm.doc.items.length === 0 || frm.doc.docstatus !== 0) {
         return;
     }
 
+    const item_rows = frm.doc.items.filter(item => item.item_code);
+    if (item_rows.length === 0) return;
 
-    const has_insufficient_items = frm.doc.items.some(item => {
-        return item.actual_qty < item.qty;
+    frappe.call({
+        method: "generate_item.utils.delivery_note.get_stock_items_and_batch_qty",
+        args: {
+            items: item_rows.map(item => ({
+                name: item.name,
+                item_code: item.item_code,
+                warehouse: item.warehouse,
+                batch_no: item.batch_no || null,
+                custom_batch_no: item.custom_batch_no || null,
+                qty: flt(item.qty)
+            })),
+            posting_date: frm.doc.posting_date,
+            posting_time: frm.doc.posting_time
+        },
+        freeze: false,
+        callback: function (r) {
+            if (!r.message || r.exc) return;
+            const items_data = r.message.items_data || {};
+
+            const has_insufficient = frm.doc.items.some(item => {
+                const stock_info = items_data[item.name];
+                if (!stock_info || !stock_info.is_stock_item) {
+                    return false; // Non-stock items are never insufficient
+                }
+                const available_qty = flt(stock_info.available_qty);
+                const req_qty = flt(item.qty);
+                return available_qty < req_qty;
+            });
+
+            if (has_insufficient) {
+                frm.add_custom_button(__('Remove Insufficient Items'), function () {
+                    remove_insufficient_items(frm);
+                }).addClass('btn-danger');
+            }
+        }
     });
-
-    if (has_insufficient_items) {
-        frm.add_custom_button(__('Remove Insufficient Items'), function () {
-            remove_insufficient_items(frm);
-            // remove_non_stock_items_and_adjust_qty(frm);
-        }).addClass('btn-danger');
-    }
 }
 
 function remove_insufficient_items(frm) {
@@ -866,183 +923,203 @@ function remove_insufficient_items(frm) {
     const item_rows = frm.doc.items.filter(item => item.item_code);
     if (item_rows.length === 0) return;
 
-    const checks = item_rows.map(item => {
-        return frappe.call({
-            method: 'erpnext.stock.doctype.batch.batch.get_batch_qty',
-            args: {
-                batch_no: item.custom_batch_no || null,
-                warehouse: item.warehouse,
-                item_code: item.item_code
-            }
-        }).then(r => {
-            const raw = r.message;
-            console.log("all batches ------", raw);
-
-            // Normalize: could be null, a number, an object, or an array
-            let batches = [];
-            if (Array.isArray(raw)) {
-                batches = raw;
-            } else if (raw !== null && raw !== undefined) {
-                // If it's a plain number (qty directly returned)
-                if (typeof raw === 'number') {
-                    batches = [{ qty: raw }];
-                } else if (typeof raw === 'object') {
-                    batches = [raw]; // wrap single object in array
-                }
-            }
-
-            const total_qty = batches.reduce((sum, b) => sum + (flt(b.qty) || 0), 0);
-            const no_batch = batches.length === 0 || total_qty <= 0;
-
-            const should_remove = flt(item.actual_qty) < flt(item.qty) || no_batch;
-
-            return { item, should_remove };
-        });
-    });
-
-    Promise.all(checks).then(results => {
-        let removed_items = [];
-        let valid_items = [];
-
-        results.forEach(({ item, should_remove }) => {
-            if (should_remove) {
-                removed_items.push({
-                    item_code: item.item_code,
-                    item_name: item.item_name,
-                    qty: item.qty,
-                    actual_qty: item.actual_qty,
-                    shortage: item.qty - item.actual_qty,
-                    warehouse: item.warehouse
-                });
-            } else {
-                valid_items.push(item);
-            }
-        });
-
-        if (removed_items.length > 0) {
-            show_removal_confirmation(frm, removed_items, valid_items);
-        }
-    }).catch(err => {
-        console.error('Batch fetch error:', err);
-    });
-}
-
-function show_removal_confirmation(frm, removed_items, valid_items) {
-    let msg = `<p>${__('The following items have insufficient stock and will be removed:')}</p><ul>`;
-    removed_items.forEach(item => {
-        msg += `<li>${item.item_name} (${item.item_code}) - Qty: ${item.qty}, Actual: ${item.actual_qty}, Shortage: ${item.shortage} ${frm.doc.currency || ''}</li>`;
-    });
-    msg += `</ul><p>${__('Do you want to continue?')}</p>`;
-
-    frappe.confirm(msg, function () {
-        frm.doc.items = valid_items;
-        frm.refresh_field('items');
-        frm.dirty();
-        check_insufficient_items(frm);
-        frappe.msgprint(__('Insufficient items removed successfully.'));
-    });
-}
-
-function remove_non_stock_items_and_adjust_qty(frm) {
-    if (!frm.doc.items || frm.doc.items.length === 0) {
-        return {
-            removed_items: [],
-            updated_items: []
-        };
-    }
-
     frappe.call({
         method: "generate_item.utils.delivery_note.get_stock_items_and_batch_qty",
         args: {
-            items: frm.doc.items.map(item => ({
+            items: item_rows.map(item => ({
+                name: item.name,
                 item_code: item.item_code,
                 warehouse: item.warehouse,
-                batch_no: item.batch_no || item.custom_batch_no || null,
-                qty: item.qty,
-                name: item.name
+                batch_no: item.batch_no || null,
+                custom_batch_no: item.custom_batch_no || null,
+                qty: flt(item.qty)
             })),
             posting_date: frm.doc.posting_date,
             posting_time: frm.doc.posting_time
         },
-        freeze: false,
+        freeze: true,
+        freeze_message: __('Checking batch and stock availability...'),
         callback: function (r) {
-            if (!r.message || r.exc) return;
-
-            const result = r.message;
-
-            let removed_items = [];
-            let updated_items = [];
-            let items_to_keep = [];
-
-            frm.doc.items.forEach(item => {
-                const item_result = result.items_data[item.name];
-
-                if (!item_result) {
-                    items_to_keep.push(item);
-                    return;
-                }
-
-                //  Remove non-stock items
-                if (!item_result.is_stock_item) {
-                    removed_items.push({
-                        item_code: item.item_code,
-                        qty: item.qty,
-                        reason: "Non-stock item"
-                    });
-                    return;
-                }
-
-                let adjusted_qty = item.qty;
-
-                if (item_result.available_qty !== null &&
-                    item_result.available_qty < item.qty) {
-                    adjusted_qty = item_result.available_qty;
-                }
-
-                if (adjusted_qty <= 0) {
-                    removed_items.push({
-                        item_code: item.item_code,
-                        qty: item.qty,
-                        reason: "No stock available"
-                    });
-                    return;
-                }
-
-                if (adjusted_qty !== item.qty) {
-                    frappe.model.set_value(
-                        item.doctype,
-                        item.name,
-                        "qty",
-                        adjusted_qty
-                    );
-
-                    updated_items.push({
-                        item_code: item.item_code,
-                        old_qty: item.qty,
-                        new_qty: adjusted_qty
-                    });
-                }
-
-                items_to_keep.push(item);
-            });
-
-            // Apply final item list
-            frm.doc.items = items_to_keep;
-            frm.refresh_field("items");
-
-            if (updated_items.length > 0) {
-                frm.trigger("calculate_taxes_and_totals");
+            if (!r.message || r.exc) {
+                frappe.msgprint(__('Unable to verify stock availability. Please try again.'));
+                return;
             }
 
-            frm.dirty();
+            const items_data = r.message.items_data || {};
 
+            let zero_stock_items = [];
+            let partial_stock_items = [];
+            let valid_items = [];
 
-            frm._stock_cleanup_result = {
-                removed_items,
-                updated_items
-            };
+            frm.doc.items.forEach(item => {
+                const stock_info = items_data[item.name];
+
+                // Non-stock / Service items are completely preserved
+                if (!stock_info || !stock_info.is_stock_item) {
+                    valid_items.push(item);
+                    return;
+                }
+
+                const available_qty = flt(stock_info.available_qty);
+                const req_qty = flt(item.qty);
+                const batch_no = stock_info.batch_no || item.batch_no || item.custom_batch_no || '-';
+
+                if (available_qty <= 0) {
+                    // Zero stock: marked for removal
+                    zero_stock_items.push({
+                        docname: item.name,
+                        idx: item.idx,
+                        item_code: item.item_code,
+                        item_name: item.item_name || item.item_code,
+                        batch_no: batch_no,
+                        req_qty: req_qty,
+                        available_qty: 0,
+                        warehouse: item.warehouse || '-'
+                    });
+                } else if (available_qty < req_qty) {
+                    // Partial stock: do NOT remove, adjust qty to available batch stock
+                    partial_stock_items.push({
+                        docname: item.name,
+                        idx: item.idx,
+                        item_code: item.item_code,
+                        item_name: item.item_name || item.item_code,
+                        batch_no: batch_no,
+                        req_qty: req_qty,
+                        available_qty: available_qty,
+                        warehouse: item.warehouse || '-'
+                    });
+                    valid_items.push(item);
+                } else {
+                    // Full stock available
+                    valid_items.push(item);
+                }
+            });
+
+            if (zero_stock_items.length === 0 && partial_stock_items.length === 0) {
+                frappe.msgprint(__('All stock items have sufficient quantities available.'));
+                check_insufficient_items(frm);
+                return;
+            }
+
+            show_stock_adjustment_dialog(frm, zero_stock_items, partial_stock_items, valid_items);
         }
     });
+}
+
+function show_stock_adjustment_dialog(frm, zero_stock_items, partial_stock_items, valid_items) {
+    let table_rows = '';
+
+    // Zero stock rows (to be removed)
+    zero_stock_items.forEach(item => {
+        table_rows += `
+            <tr style="background:#fff3f3;">
+                <td style="text-align:center;"><b>${item.idx}</b></td>
+                <td>${frappe.utils.escape_html(item.item_code)}</td>
+                <td>${frappe.utils.escape_html(item.batch_no)}</td>
+                <td style="text-align:right;">${format_number(item.req_qty)}</td>
+                <td style="text-align:right;color:#e74c3c;font-weight:bold;">${format_number(item.available_qty)}</td>
+                <td><span class="indicator-pill red">${__('Remove (0 Stock)')}</span></td>
+            </tr>`;
+    });
+
+    // Partial stock rows (qty adjusted, not removed)
+    partial_stock_items.forEach(item => {
+        table_rows += `
+            <tr style="background:#fffaf0;">
+                <td style="text-align:center;"><b>${item.idx}</b></td>
+                <td>${frappe.utils.escape_html(item.item_code)}</td>
+                <td>${frappe.utils.escape_html(item.batch_no)}</td>
+                <td style="text-align:right;">${format_number(item.req_qty)}</td>
+                <td style="text-align:right;color:#e67e22;font-weight:bold;">${format_number(item.available_qty)}</td>
+                <td><span class="indicator-pill orange">${__('Adjust Qty to ') + format_number(item.available_qty)}</span></td>
+            </tr>`;
+    });
+
+    let html = `
+        <div style="margin-bottom:10px;">
+            <p>${__('Review the following stock availability against batch/warehouse:')}</p>
+        </div>
+        <div style="max-height:350px;overflow-y:auto;border:1px solid #d1d8dd;border-radius:4px;">
+            <table class="table table-bordered" style="margin-bottom:0;font-size:12px;">
+                <thead style="background:#f5f5f5;position:sticky;top:0;">
+                    <tr>
+                        <th style="width:50px;text-align:center;">${__('Line')}</th>
+                        <th>${__('Item Code')}</th>
+                        <th>${__('Batch No')}</th>
+                        <th style="text-align:right;width:80px;">${__('Req Qty')}</th>
+                        <th style="text-align:right;width:90px;">${__('Avail Qty')}</th>
+                        <th style="width:140px;">${__('Action')}</th>
+                    </tr>
+                </thead>
+                <tbody>${table_rows}</tbody>
+            </table>
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:#666;">
+            <p style="margin-bottom:2px;">• <b>${__('Zero Stock Items')}</b> ${__('will be removed from the table.')}</p>
+            <p style="margin-bottom:2px;">• <b>${__('Partial Stock Items')}</b> ${__('will NOT be removed; their quantity will be adjusted to available batch stock.')}</p>
+            <p style="margin-bottom:0;">• <b>${__('Non-Stock / Service Items')}</b> ${__('are preserved untouched.')}</p>
+        </div>
+    `;
+
+    const d = new frappe.ui.Dialog({
+        title: __('Insufficient Stock Action Confirmation'),
+        size: 'large',
+        fields: [
+            {
+                fieldtype: 'HTML',
+                fieldname: 'stock_info_html',
+                options: html
+            }
+        ],
+        primary_action_label: __('Apply Changes'),
+        primary_action: function () {
+            d.hide();
+
+            // 1. Adjust quantity on partial stock items
+            partial_stock_items.forEach(p => {
+                const row = frm.doc.items.find(i => i.name === p.docname);
+                if (row) {
+                    frappe.model.set_value(row.doctype, row.name, 'qty', p.available_qty);
+                }
+            });
+
+            // 2. Filter out zero stock items
+            const zero_stock_names = new Set(zero_stock_items.map(z => z.docname));
+            frm.doc.items = frm.doc.items.filter(item => !zero_stock_names.has(item.name));
+
+            // 3. Re-index remaining rows sequentially
+            frm.doc.items.forEach((item, i) => { item.idx = i + 1; });
+
+            // 4. Refresh items grid and recalculate totals
+            frm.refresh_field('items');
+            frm.trigger('calculate_taxes_and_totals');
+            frm.dirty();
+
+            // 5. Update insufficient items button state
+            check_insufficient_items(frm);
+
+            // 6. Build and display detailed line and batch-wise notification
+            let notification_lines = [];
+            if (partial_stock_items.length > 0) {
+                partial_stock_items.forEach(p => {
+                    notification_lines.push(`• Line ${p.idx} [Batch: ${p.batch_no}] ${p.item_code}: Qty adjusted from ${format_number(p.req_qty)} to ${format_number(p.available_qty)}`);
+                });
+            }
+            if (zero_stock_items.length > 0) {
+                zero_stock_items.forEach(z => {
+                    notification_lines.push(`• Line ${z.idx} [Batch: ${z.batch_no}] ${z.item_code}: Removed (0 available)`);
+                });
+            }
+
+            frappe.msgprint({
+                title: __('Stock Adjustments Completed'),
+                indicator: 'green',
+                message: `<p>${__('Delivery Note items have been updated:')}</p><div style="font-family:monospace;font-size:12px;max-height:200px;overflow-y:auto;background:#f8f9fa;padding:8px;border-radius:4px;">${notification_lines.join('<br>')}</div>`
+            });
+        }
+    });
+
+    d.show();
 }
 
 
@@ -1054,20 +1131,20 @@ function show_dispatchable_so_dialog(frm) {
         title: __('Append from Dispatchable Sales Order'),
         fields: [
             {
-                label:       __('Sales Order'),
-                fieldname:   'sales_order',
-                fieldtype:   'Link',
-                options:     'Sales Order',
-                reqd:        1,
+                label: __('Sales Order'),
+                fieldname: 'sales_order',
+                fieldtype: 'Link',
+                options: 'Sales Order',
+                reqd: 1,
                 description: __('Only dispatchable Sales Orders are shown'),
                 get_query() {
                     return {
-                        query:   'generate_item.utils.delivery_note.get_dispatchable_so_for_query',
+                        query: 'generate_item.utils.delivery_note.get_dispatchable_so_for_query',
                         filters: {
                             customer: frm.doc.customer,
-                            branch:frm.doc.branch
+                            branch: frm.doc.branch
                         }
-                       
+
                     };
                 },
             },
@@ -1094,8 +1171,8 @@ function show_items_selection_dialog(frm, sales_order) {
     // frappe.freeze(__('Fetching items from Sales Order…'));
 
     frappe.call({
-        method:  'generate_item.utils.delivery_note.get_so_items_for_selection',
-        args:    { sales_order },
+        method: 'generate_item.utils.delivery_note.get_so_items_for_selection',
+        args: { sales_order },
         // always() { frappe.unfreeze(); },
         callback(r) {
             const items = r.message;
@@ -1103,8 +1180,8 @@ function show_items_selection_dialog(frm, sales_order) {
 
             if (!items || !items.length) {
                 frappe.msgprint({
-                    title:     __('No Pending Items'),
-                    message:   __('This Sales Order has no items with pending delivery or available stock.'),
+                    title: __('No Pending Items'),
+                    message: __('This Sales Order has no items with pending delivery or available stock.'),
                     indicator: 'orange',
                 });
                 return;
@@ -1112,12 +1189,12 @@ function show_items_selection_dialog(frm, sales_order) {
 
             const items_dialog = new frappe.ui.Dialog({
                 title: __('Select Items from Sales Order') + ': ' + sales_order,
-                size:  'extra-large',
+                size: 'extra-large',
                 fields: [
                     {
                         fieldtype: 'HTML',
                         fieldname: 'items_table',
-                        label:     __('Sales Order Items'),
+                        label: __('Sales Order Items'),
                     },
                 ],
                 primary_action_label: __('Add Selected Items'),
@@ -1140,8 +1217,8 @@ function show_items_selection_dialog(frm, sales_order) {
         },
         error() {
             frappe.msgprint({
-                title:     __('Error'),
-                message:   __('Failed to fetch items. Please try again.'),
+                title: __('Error'),
+                message: __('Failed to fetch items. Please try again.'),
                 indicator: 'red',
             });
         },
@@ -1154,17 +1231,17 @@ function show_items_selection_dialog(frm, sales_order) {
 function build_items_table_html(items, sales_order) {
     const rows = items.map((item, idx) => {
         const is_service = !item.is_stock_item;   // non-stock / service item
-        const max_qty    = is_service
+        const max_qty = is_service
             ? item.pending_qty
             : Math.min(item.pending_qty, item.available_batch_qty);
-        const no_stock   = !is_service && max_qty <= 0;
-        const partial    = !is_service && !no_stock && max_qty < item.pending_qty;
-        const row_style  = no_stock ? 'background:#fff3f3;'
-                         : partial  ? 'background:#fffaf0;'
-                         : '';
+        const no_stock = !is_service && max_qty <= 0;
+        const partial = !is_service && !no_stock && max_qty < item.pending_qty;
+        const row_style = no_stock ? 'background:#fff3f3;'
+            : partial ? 'background:#fffaf0;'
+                : '';
 
         const pending_color = item.pending_qty > 0 ? '#e67e22' : '#27ae60';
-        const default_qty   = no_stock ? item.pending_qty : max_qty;
+        const default_qty = no_stock ? item.pending_qty : max_qty;
 
         // Available column: badge for service items, number for stock items
         const available_cell = is_service
@@ -1272,26 +1349,26 @@ function setup_item_selection_handlers(dialog, items) {
 
     // Individual checkbox — keep header in sync
     $w.on(`change${ns}`, '.select-item', function () {
-        const total   = $w.find('.select-item:not(:disabled)').length;
+        const total = $w.find('.select-item:not(:disabled)').length;
         const checked = $w.find('.select-item:not(:disabled):checked').length;
         $w.find('#dn_select_all_hdr').prop('checked', total > 0 && total === checked);
     });
 
     // Qty input — validate and auto-tick the row checkbox
     $w.on(`change${ns} input${ns}`, '.item-qty', function () {
-        const idx      = parseInt($(this).data('idx'), 10);
-        const item     = items[idx];
+        const idx = parseInt($(this).data('idx'), 10);
+        const item = items[idx];
         const is_service = !item.is_stock_item;
-        const max_qty  = is_service
+        const max_qty = is_service
             ? item.pending_qty
             : Math.min(item.pending_qty, item.available_batch_qty);
-        let   val      = parseFloat($(this).val()) || 0;
+        let val = parseFloat($(this).val()) || 0;
 
         if (val > max_qty) {
             val = max_qty;
             $(this).val(format_number(max_qty));
             frappe.show_alert({
-                message:   __('Quantity capped at available: ') + format_number(max_qty),
+                message: __('Quantity capped at available: ') + format_number(max_qty),
                 indicator: 'orange',
             });
         } else if (val < 0) {
@@ -1301,7 +1378,7 @@ function setup_item_selection_handlers(dialog, items) {
 
         if (max_qty > 0) {
             $w.find(`.select-item[data-idx="${idx}"]`).prop('checked', val > 0);
-            const total   = $w.find('.select-item:not(:disabled)').length;
+            const total = $w.find('.select-item:not(:disabled)').length;
             const checked = $w.find('.select-item:not(:disabled):checked').length;
             $w.find('#dn_select_all_hdr').prop('checked', total > 0 && total === checked);
         }
@@ -1313,24 +1390,24 @@ function setup_item_selection_handlers(dialog, items) {
 // ---------------------------------------------------------------------------
 function get_selected_items(dialog, items) {
     const selected = [];
-    const $w       = dialog.$wrapper;
+    const $w = dialog.$wrapper;
 
     items.forEach((item, idx) => {
         if (!$w.find(`.select-item[data-idx="${idx}"]`).is(':checked')) return;
 
         const is_service = !item.is_stock_item;
-        const max_qty    = is_service
+        const max_qty = is_service
             ? item.pending_qty
             : Math.min(item.pending_qty, item.available_batch_qty);
-        const qty        = parseFloat($w.find(`.item-qty[data-idx="${idx}"]`).val()) || 0;
+        const qty = parseFloat($w.find(`.item-qty[data-idx="${idx}"]`).val()) || 0;
 
         if (qty <= 0) return;
 
         if (qty > max_qty) {
             frappe.msgprint({
-                title:     __('Invalid Quantity'),
-                message:   __('Item {0}: qty {1} exceeds available {2}',
-                              [item.item_code, format_number(qty), format_number(max_qty)]),
+                title: __('Invalid Quantity'),
+                message: __('Item {0}: qty {1} exceeds available {2}',
+                    [item.item_code, format_number(qty), format_number(max_qty)]),
                 indicator: 'red',
             });
             return;
@@ -1352,7 +1429,7 @@ function add_items_to_delivery_note(frm, sales_order, selected_items) {
             .map(r => r.so_detail)
     );
 
-    let added   = 0;
+    let added = 0;
     let skipped = 0;
     const errors = [];
 
@@ -1363,25 +1440,25 @@ function add_items_to_delivery_note(frm, sales_order, selected_items) {
             const row = frm.add_child('items');
 
             // Core fields
-            row.item_code         = sel.item_code;
-            row.item_name         = sel.item_name;
-            row.description       = sel.description;
-            row.gst_hsn_code      = sel.gst_hsn_code;
-            row.qty               = sel.qty;
-            row.uom               = sel.uom;
-            row.stock_uom         = sel.stock_uom;
+            row.item_code = sel.item_code;
+            row.item_name = sel.item_name;
+            row.description = sel.description;
+            row.gst_hsn_code = sel.gst_hsn_code;
+            row.qty = sel.qty;
+            row.uom = sel.uom;
+            row.stock_uom = sel.stock_uom;
             row.conversion_factor = sel.conversion_factor;
-            row.rate              = sel.rate;
-            row.amount            = sel.qty * sel.rate;
-            row.net_rate          = sel.net_rate;
-            row.net_amount        = sel.qty * sel.net_rate;
-            row.base_net_rate     = sel.base_net_rate;
-            row.base_net_amount   = sel.base_net_amount;
-            row.taxable_value     = sel.taxable_value;
+            row.rate = sel.rate;
+            row.amount = sel.qty * sel.rate;
+            row.net_rate = sel.net_rate;
+            row.net_amount = sel.qty * sel.net_rate;
+            row.base_net_rate = sel.base_net_rate;
+            row.base_net_amount = sel.base_net_amount;
+            row.taxable_value = sel.taxable_value;
 
             // Links
             row.against_sales_order = sales_order;
-            row.so_detail           = sel.name;
+            row.so_detail = sel.name;
 
             // GST rates
             row.igst_rate = sel.igst_rate || 0;
@@ -1402,7 +1479,7 @@ function add_items_to_delivery_note(frm, sales_order, selected_items) {
 
             // Weight
             row.weight_per_unit = sel.weight_per_unit;
-            row.weight_uom      = sel.weight_uom;
+            row.weight_uom = sel.weight_uom;
 
             // Optional custom fields
             const optionals = [
@@ -1425,7 +1502,7 @@ function add_items_to_delivery_note(frm, sales_order, selected_items) {
     frm.doc.items.forEach((item, i) => item.idx = i + 1);
     frm.refresh_field('items');
 
-  
+
 
     if (added) frm.trigger('calculate_taxes_and_totals');
 }

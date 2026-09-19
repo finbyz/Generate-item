@@ -42,7 +42,8 @@ frappe.query_reports["Serial Number Register"] = {
             fieldname: "customer",
             label: "Customer",
             fieldtype: "Link",
-            options: "Customer"
+            options: "Customer",
+            on_change: () => frappe.query_report.refresh()
         },
         {
             fieldname: "branch",
@@ -50,6 +51,21 @@ frappe.query_reports["Serial Number Register"] = {
             fieldtype: "Link",
             options: "Branch",
             mandatory: 1,
+            on_change: () => frappe.query_report.refresh()
+        },
+        {
+            fieldname: "status",
+            label: __("Order Status"),
+            fieldtype: "MultiSelectList",
+            options: [
+                "To Deliver and Bill",
+                "To Deliver",
+                "To Bill",
+                "Closed",
+                "Cancelled",
+                "Completed"
+            ],
+            on_change: () => frappe.query_report.refresh()
         },
         {
             fieldname: "batch",

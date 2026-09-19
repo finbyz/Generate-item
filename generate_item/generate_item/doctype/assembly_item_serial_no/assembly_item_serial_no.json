@@ -13,6 +13,7 @@
   "column_break_nuss",
   "serial_number",
   "date",
+  "assembled_by",
   "section_break_tvve",
   "size",
   "shell_moc",
@@ -186,13 +187,19 @@
    "fieldtype": "Data",
    "hidden": 1,
    "label": "Value"
+  },
+  {
+   "fieldname": "assembled_by",
+   "fieldtype": "Link",
+   "label": "Assembled by",
+   "options": "General Employee"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-11 12:34:31.314514",
+ "modified": "2026-09-18 17:48:44.822948",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Assembly Item Serial No",

@@ -419,9 +419,8 @@ def validate_free_items_component(doc, method=None):
 
             if not item.component_of:
                 frappe.throw(
-                    _("Row {0}: Free item <b>{1}</b> must be linked to a valued item.")
-                    .format(item.idx, item.item_code)
-            )
+                    _("Component Of is mandatory for Free Items unless Order Type is Free Issue Domestic or Free Issue Exports.")
+                )
 
             parent_item = item_map.get(item.component_of)
 

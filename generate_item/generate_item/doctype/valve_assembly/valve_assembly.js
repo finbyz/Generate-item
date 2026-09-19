@@ -9,6 +9,17 @@ frappe.ui.form.on("Valve Assembly", {
             "VASR.fiscal.#####",
             "VASN.fiscal.#####"
         ]);
+
+        // assembled_by links to General Employee — filter by enabled=1 + branch (case-insensitive) + department=Assembly
+        frm.set_query("assembled_by", "item_serial_number", function () {
+            return {
+                query: "generate_item.generate_item.doctype.general_employee.general_employee.general_employee_by_department_query",
+                filters: {
+                    department: "Assembly",
+                    branch: frm.doc.branch || "",
+                },
+            };
+        });
     },
     onload(frm) {
         if (frm.is_new() && frm.doc.branch) {

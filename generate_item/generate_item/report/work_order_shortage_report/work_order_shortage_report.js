@@ -115,11 +115,7 @@ frappe.query_reports["Work Order Shortage Report"] = {
                 value = `<span style="color: red; font-weight: bold;">${value}</span>`;
             }
         }
-<<<<<<< HEAD
-        
-=======
 
->>>>>>> develop
         // Color code balance to issue quantity
         if ((column.fieldname == "balance_to_issue_qty" || column.fieldname == "shortage_qty") && data && (data.balance_to_issue_qty > 0 || data.shortage_qty > 0)) {
             value = `<span style="color: red; font-weight: bold;">${value}</span>`;

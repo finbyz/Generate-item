@@ -27,8 +27,8 @@ class ValveAssembly(Document):
                 )
 
     def before_save(self):
-        if not self.user and frappe.session.user:
-            self.user = frappe.session.user
+        # if not self.user and frappe.session.user:
+        #     self.user = frappe.session.user
         calculate_doc_inspector_inches(self)
 
 

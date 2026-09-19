@@ -748,6 +748,21 @@ frappe.ui.form.on('Sales Order', {
         });
 
         frm.refresh_field('items');
+
+        const exempt_order_types = ["Free Issue Domestic", "Free Issue Export"];
+        if (!exempt_order_types.includes(frm.doc.order_type)) {
+            for (let row of rows) {
+                if (row.is_free_item && !row.component_of) {
+                    frappe.msgprint({
+                        title: __('Validation Error'),
+                        message: __('Component Of is mandatory for Free Items unless Order Type is Free Issue Domestic or Free Issue Exports.'),
+                        indicator: 'red'
+                    });
+                    frappe.validated = false;
+                    return false;
+                }
+            }
+        }
     },
     branch: function (frm) {
         const branch_value = frm.doc.branch || '';

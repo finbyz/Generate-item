@@ -188,6 +188,7 @@
    "fieldname": "rev_component_of",
    "fieldtype": "Link",
    "label": "Rev Component Of",
+   "mandatory_depends_on": "eval:doc.rev_is_free_item",
    "options": "Item"
   },
   {
@@ -237,7 +238,7 @@
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-08-26 10:10:11.670952",
+ "modified": "2026-09-18 16:35:16.017985",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Sales Order Item For OMR",

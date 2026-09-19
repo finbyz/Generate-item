@@ -59,6 +59,7 @@ class CustomBOM(OriginalBOM):
         """Validate child BOM similar to core but optionally allow Draft status.
 
         - Ensures BOM exists, is active, and belongs to the same item tree
+        - Enforces that child BOM belongs to the same branch as parent BOM
         - When require_submitted is True (on submit), enforce docstatus == 1
         - When require_submitted is False (on save), allow docstatus in (0, 1)
         """
@@ -95,6 +96,28 @@ class CustomBOM(OriginalBOM):
 
             if not rm_item_exists:
                 frappe.throw(f"BOM {bom_no} does not belong to Item {item_code}")
+
+    @frappe.whitelist()
+    def get_bom_material_detail(self, args=None):
+        """Override get_bom_material_detail to filter out child BOMs from other branches."""
+        if not args:
+            args = frappe.form_dict.get("args")
+
+        if isinstance(args, str):
+            import json
+            args = json.loads(args)
+
+        parent_branch = getattr(self, "branch", None) or (args.get("branch") if isinstance(args, dict) else None)
+
+        res = super().get_bom_material_detail(args)
+
+        if res and res.get("bom_no") and parent_branch:
+            child_branch = frappe.db.get_value("BOM", res["bom_no"], "branch")
+            if child_branch and child_branch != parent_branch:
+                res["bom_no"] = ""
+                res["is_phantom_item"] = 0
+
+        return res
 
     def get_child_exploded_items(self, bom_no, stock_qty,operation=None):
         """Add all items from Flat BOM of child BOM.

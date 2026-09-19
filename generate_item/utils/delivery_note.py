@@ -1427,7 +1427,9 @@ def get_stock_items_and_batch_qty(items, posting_date=None, posting_time=None):
     for item in items:
         item_code = item.get('item_code')
         warehouse = item.get('warehouse')
-        batch_no = item.get('batch_no')
+        actual_batch = item.get('batch_no')
+        custom_batch = item.get('custom_batch_no')
+        batch_no_used = actual_batch or custom_batch
         item_name = item.get('name')  # DN item name (can be temporary name for new rows)
         
         if not item_code:
@@ -1439,36 +1441,50 @@ def get_stock_items_and_batch_qty(items, posting_date=None, posting_time=None):
         
         is_stock_item = item_stock_map.get(item_code, 0)
         available_qty = None
-        batch_no_used = None
         
         # Only check stock for stock items with warehouse
         if is_stock_item and warehouse:
-            batch_no_used = batch_no
-            
             try:
-                if batch_no:
-                    # Get batch-wise stock quantity
-                    available_qty = get_batch_qty(
-                        batch_no=batch_no,
+                # 1. First check actual stock batch_no if present
+                if actual_batch:
+                    b_qty = get_batch_qty(
+                        batch_no=actual_batch,
                         warehouse=warehouse,
                         item_code=item_code,
                         posting_date=posting_date,
                         posting_time=posting_time
                     )
-                    # get_batch_qty returns a float when batch_no and warehouse are provided
-                    if available_qty is None:
-                        available_qty = 0
-                    available_qty = flt(available_qty)
-                else:
-                    # Get general stock quantity from Bin
-                    available_qty = flt(frappe.db.get_value(
+                    if b_qty is not None:
+                        available_qty = flt(b_qty)
+                        batch_no_used = actual_batch
+                
+                # 2. If available_qty is None or 0, check custom_batch if present and different
+                if (available_qty is None or available_qty <= 0) and custom_batch and custom_batch != actual_batch:
+                    b_qty = get_batch_qty(
+                        batch_no=custom_batch,
+                        warehouse=warehouse,
+                        item_code=item_code,
+                        posting_date=posting_date,
+                        posting_time=posting_time
+                    )
+                    if b_qty is not None and flt(b_qty) > 0:
+                        available_qty = flt(b_qty)
+                        batch_no_used = custom_batch
+                
+                # 3. If still no batch stock found, fallback to warehouse Bin actual_qty
+                if available_qty is None or available_qty <= 0:
+                    bin_qty = flt(frappe.db.get_value(
                         "Bin",
                         {"item_code": item_code, "warehouse": warehouse},
                         "actual_qty"
                     ) or 0)
+                    if bin_qty > 0 and (available_qty is None or available_qty <= 0):
+                        available_qty = bin_qty
+                    elif available_qty is None:
+                        available_qty = 0
             except Exception as e:
                 frappe.log_error(
-                    f"Error getting stock for item {item_code}, batch {batch_no}, warehouse {warehouse}: {str(e)}",
+                    f"Error getting stock for item {item_code}, batch {batch_no_used}, warehouse {warehouse}: {str(e)}",
                     "get_stock_items_and_batch_qty"
                 )
                 available_qty = 0
