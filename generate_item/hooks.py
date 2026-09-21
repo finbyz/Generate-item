@@ -82,7 +82,9 @@ doctype_js = {"Item" : "public/js/item.js",
               "Work Order" : "public/js/work_order.js",
               "Customer" : "public/js/customer_supplier_workflow.js",
               "Supplier" : "public/js/customer_supplier_workflow.js",
-              "Employee":"public/js/employee.js"
+              "Employee":"public/js/employee.js",
+              "User": "public/js/user.js"
+    
               }
 
 doctype_list_js = {

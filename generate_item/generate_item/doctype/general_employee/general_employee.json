@@ -2,7 +2,7 @@
  "actions": [],
  "allow_bulk_edit": 1,
  "allow_rename": 1,
- "autoname": "field:employee_name",
+ "autoname": "autoname",
  "creation": "2026-09-18 17:23:56.328182",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -42,7 +42,7 @@
    "fieldtype": "Data",
    "in_standard_filter": 1,
    "label": "Employee Name",
-   "unique": 1
+   "read_only_depends_on": "eval:doc.is_group == 1"
   },
   {
    "fieldname": "department",
@@ -68,11 +68,11 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-18 19:10:07.391056",
+ "modified": "2026-09-21 17:43:23.945730",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "General Employee",
- "naming_rule": "By fieldname",
+ "naming_rule": "By script",
  "owner": "Administrator",
  "permissions": [
   {

@@ -10,12 +10,12 @@ frappe.ui.form.on("Valve Assembly", {
             "VASN.fiscal.#####"
         ]);
 
-        // assembled_by links to General Employee — filter by enabled=1 + branch (case-insensitive) + department=Assembly
+        // assembled_by links to General Employee — filter by enabled=1 + branch (case-insensitive) + department=Valve assembly
         frm.set_query("assembled_by", "item_serial_number", function () {
             return {
                 query: "generate_item.generate_item.doctype.general_employee.general_employee.general_employee_by_department_query",
                 filters: {
-                    department: "Assembly",
+                    department: "Valve assembly",
                     branch: frm.doc.branch || "",
                 },
             };

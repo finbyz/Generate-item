@@ -7,7 +7,24 @@ from frappe.model.document import Document
 
 
 class GeneralEmployee(Document):
-	pass
+	def autoname(self):
+		if self.is_group:
+			dep = (self.department or "").strip()
+			branch = (self.branch or "").strip()
+			if dep and branch:
+				self.name = f"{dep}-{branch}"
+			elif dep:
+				self.name = dep
+			elif branch:
+				self.name = branch
+			else:
+				self.name = (self.employee_name or "").strip()
+		else:
+			self.name = (self.employee_name or "").strip()
+
+	def validate(self):
+		if self.is_group and self.department:
+			self.employee_name = self.department
 
 
 @frappe.whitelist()
@@ -22,7 +39,7 @@ def general_employee_group_query(doctype, txt, searchfield, start, page_len, fil
 	filters = parse_json(filters) if isinstance(filters, str) else (filters or {})
 	branch = filters.get("branch", "")
 
-	conditions = ["ge.is_group = 1", "ge.name LIKE %(txt)s"]
+	conditions = ["ge.is_group = 1", "(ge.name LIKE %(txt)s OR ge.employee_name LIKE %(txt)s)"]
 	values = {"txt": f"%{txt}%", "start": int(start or 0), "page_len": int(page_len or 20)}
 
 	if branch:
@@ -54,7 +71,7 @@ def general_employee_by_department_query(doctype, txt, searchfield, start, page_
 	"""
 	filters = parse_json(filters) if isinstance(filters, str) else (filters or {})
 	branch = filters.get("branch", "")
-	department = filters.get("department", "")
+	department = (filters.get("department") or "").strip()
 
 	conditions = [
 		"ge.enabled = 1",
@@ -69,11 +86,11 @@ def general_employee_by_department_query(doctype, txt, searchfield, start, page_
 	child_conditions = ["gei.parent = ge.name"]
 
 	if department:
-		child_conditions.append("LOWER(gei.department) = LOWER(%(department)s)")
+		child_conditions.append("LOWER(TRIM(gei.department)) = LOWER(TRIM(%(department)s))")
 		values["department"] = department
 
 	if branch:
-		child_conditions.append("LOWER(gei.branch) = LOWER(%(branch)s)")
+		child_conditions.append("LOWER(TRIM(gei.branch)) = LOWER(TRIM(%(branch)s))")
 		values["branch"] = branch
 
 	child_where = " AND ".join(child_conditions)
@@ -91,4 +108,5 @@ def general_employee_by_department_query(doctype, txt, searchfield, start, page_
 		""",
 		values,
 	)
+
 
