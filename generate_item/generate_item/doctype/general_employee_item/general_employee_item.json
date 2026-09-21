@@ -24,7 +24,8 @@
    "fieldname": "department",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Department"
+   "label": "Department",
+   "read_only": 1
   },
   {
    "fieldname": "column_break_math",
@@ -35,14 +36,15 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Branch",
-   "options": "Branch"
+   "options": "Branch",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-09-18 18:32:41.359398",
+ "modified": "2026-09-21 17:42:25.117914",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "General Employee Item",

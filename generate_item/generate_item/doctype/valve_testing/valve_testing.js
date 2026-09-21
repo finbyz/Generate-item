@@ -22,7 +22,7 @@ frappe.ui.form.on("Valve Testing", {
             return {
                 query: "generate_item.generate_item.doctype.general_employee.general_employee.general_employee_by_department_query",
                 filters: {
-                    department: "Testing",
+                    department: "Valve testing",
                     branch: frm.doc.branch || "",
                 },
             };

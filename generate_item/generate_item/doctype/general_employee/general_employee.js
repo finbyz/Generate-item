@@ -19,10 +19,16 @@ frappe.ui.form.on("General Employee", {
 
 	refresh(frm) {
 		toggle_group_fields(frm);
+		sync_group_employee_name(frm);
 	},
 
 	is_group(frm) {
 		toggle_group_fields(frm);
+		sync_group_employee_name(frm);
+	},
+
+	department(frm) {
+		sync_group_employee_name(frm);
 	},
 
 	branch(frm) {
@@ -56,3 +62,13 @@ function toggle_group_fields(frm) {
 	frm.toggle_display("section_break_zdfh", !is_group);
 	frm.toggle_display("general_employee_item", !is_group);
 }
+
+function sync_group_employee_name(frm) {
+	if (frm.doc.is_group) {
+		const department = (frm.doc.department || "").trim();
+		if (frm.doc.employee_name !== department) {
+			frm.set_value("employee_name", department);
+		}
+	}
+}
+

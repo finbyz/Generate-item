@@ -185,6 +185,14 @@
 frappe.ui.form.on('Stock Entry', {
   setup: function (frm) {
 		frm.ignore_doctypes_on_cancel_all = ["Serial Number","Serial and Batch Bundle"];
+		frm.set_query("issue_to", function () {
+			return {
+				filters: {
+					enabled: 1,
+					is_group: 0
+				}
+			};
+		});
   },
     onload: function(frm) {
         // Case 1: Work Order is already set

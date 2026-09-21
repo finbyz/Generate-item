@@ -7,7 +7,7 @@
   "doctype_or_field": "DocType",
   "field_name": null,
   "is_system_generated": 0,
-  "modified": "2026-09-18 15:12:53.398019",
+  "modified": "2026-09-21 18:04:43.058619",
   "module": "Generate Item",
   "name": "Sales Taxes and Charges-main-field_order",
   "property": "field_order",
@@ -174,22 +174,6 @@
   "property_type": "Data",
   "row_name": null,
   "value": "[\"barcode\", \"has_item_scanned\", \"section_break_2\", \"s_warehouse\", \"col_break1\", \"t_warehouse\", \"sec_break1\", \"item_code\", \"item_name\", \"custom_batch_no\", \"col_break2\", \"is_finished_item\", \"is_scrap_item\", \"quality_inspection\", \"subcontracted_item\", \"section_break_8\", \"description\", \"gst_hsn_code\", \"column_break_10\", \"item_group\", \"image\", \"image_view\", \"quantity_section\", \"uom\", \"qty\", \"sample_quantity\", \"retain_sample\", \"column_break_20\", \"stock_uom\", \"transfer_qty\", \"conversion_factor\", \"rates_section\", \"basic_rate\", \"additional_cost\", \"valuation_rate\", \"allow_zero_valuation_rate\", \"col_break3\", \"set_basic_rate_manually\", \"basic_amount\", \"amount\", \"taxable_value\", \"gst_details_section\", \"igst_rate\", \"cgst_rate\", \"sgst_rate\", \"cess_rate\", \"cess_non_advol_rate\", \"cb_gst_details\", \"igst_amount\", \"cgst_amount\", \"sgst_amount\", \"cess_amount\", \"cess_non_advol_amount\", \"item_tax_template\", \"gst_treatment\", \"serial_no_batch\", \"add_serial_batch_bundle\", \"use_serial_batch_fields\", \"fetch_serial_number\", \"col_break4\", \"serial_and_batch_bundle\", \"section_break_rdtg\", \"serial_no\", \"column_break_prps\", \"batch_no\", \"section_break_qipsj\", \"custom_drawing_no\", \"custom_pattern_drawing_no\", \"custom_purchase_specification_no\", \"column_break_pa828\", \"custom_drawing_rev_no\", \"custom_pattern_drawing_rev_no\", \"custom_purchase_specification_rev_no\", \"accounting\", \"expense_account\", \"accounting_dimensions_section\", \"cost_center\", \"project\", \"dimension_col_break\", \"branch\", \"inventory_dimension_col_break\", \"more_info\", \"actual_qty\", \"transferred_qty\", \"bom_no\", \"allow_alternative_item\", \"col_break6\", \"material_request\", \"material_request_item\", \"original_item\", \"reference_section\", \"against_stock_entry\", \"ste_detail\", \"po_detail\", \"sco_rm_detail\", \"putaway_rule\", \"column_break_51\", \"reference_purchase_receipt\", \"job_card_item\", \"inventory_dimension\"]"
- },
- {
-  "default_value": null,
-  "doc_type": "Stock Entry",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocType",
-  "field_name": null,
-  "is_system_generated": 0,
-  "modified": "2026-05-08 12:14:10.996886",
-  "module": "Generate Item",
-  "name": "Stock Entry-main-field_order",
-  "property": "field_order",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "[\"workflow_state\", \"stock_entry_details_tab\", \"naming_series\", \"stock_entry_type\", \"outgoing_stock_entry\", \"purpose\", \"add_to_transit\", \"work_order\", \"purchase_order\", \"subcontracting_order\", \"po_number\", \"delivery_note_no\", \"sales_invoice_no\", \"pick_list\", \"purchase_receipt_no\", \"asset_repair\", \"ewaybill\", \"col2\", \"company\", \"branch\", \"posting_date\", \"posting_time\", \"custom_batch_no\", \"production_plan\", \"column_break_eaoa\", \"set_posting_time\", \"inspection_required\", \"apply_putaway_rule\", \"bom_info_section\", \"from_bom\", \"use_multi_level_bom\", \"bom_no\", \"cb1\", \"fg_completed_qty\", \"get_items\", \"section_break_7qsm\", \"process_loss_percentage\", \"column_break_e92r\", \"process_loss_qty\", \"section_break_jwgn\", \"from_warehouse\", \"source_warehouse_address\", \"source_address_display\", \"cb0\", \"to_warehouse\", \"target_warehouse_address\", \"target_address_display\", \"sb0\", \"scan_barcode\", \"last_scanned_warehouse\", \"items_section\", \"items\", \"get_stock_and_rate\", \"section_break_taxes\", \"tax_category\", \"taxes_and_charges\", \"taxes\", \"section_break_total\", \"total_taxes\", \"cb_grand_total\", \"base_grand_total\", \"section_break_19\", \"total_outgoing_value\", \"column_break_22\", \"total_incoming_value\", \"value_difference\", \"section_break_ref_doc\", \"fetch_original_doc_ref\", \"doc_references\", \"additional_costs_section\", \"additional_costs\", \"total_additional_costs\", \"supplier_info_tab\", \"contact_section\", \"supplier\", \"supplier_name\", \"supplier_address\", \"address_display\", \"tab_break_ewaybill\", \"section_break_addresses_contact\", \"bill_from_address\", \"bill_from_address_display\", \"bill_from_gstin\", \"bill_from_gst_category\", \"cb_billing_address\", \"bill_to_address\", \"bill_to_address_display\", \"bill_to_gstin\", \"bill_to_gst_category\", \"place_of_supply\", \"section_break_shipping_address\", \"ship_from_address\", \"ship_from_address_display\", \"cb_shipping_address\", \"ship_to_address\", \"ship_to_address_display\", \"transporter_info\", \"transporter\", \"gst_transporter_id\", \"lr_no\", \"vehicle_no\", \"distance\", \"transporter_col_break\", \"transporter_name\", \"mode_of_transport\", \"lr_date\", \"gst_vehicle_type\", \"accounting_dimensions_section\", \"project\", \"other_info_tab\", \"printing_settings\", \"select_print_heading\", \"print_settings_col_break\", \"letter_head\", \"more_info\", \"is_opening\", \"remarks\", \"col5\", \"per_transferred\", \"total_amount\", \"job_card\", \"amended_from\", \"credit_note\", \"is_return\", \"fiscal\", \"company_series\", \"fiscal_year\", \"tab_connections\", \"workflow_progress\", \"custom_html\", \"state_change\"]"
  },
  {
   "default_value": null,
