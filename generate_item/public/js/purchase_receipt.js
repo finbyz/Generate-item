@@ -1,4 +1,17 @@
 frappe.ui.form.on('Purchase Receipt Item', {
+    purchase_order_item: function (frm, cdt, cdn) {
+        let row = locals[cdt][cdn];
+        if (row.purchase_order_item) {
+            frappe.db.get_value('Purchase Order Item', row.purchase_order_item, ['rate', 'qty', 'idx'], (r) => {
+                if (r) {
+                    if (!row.po_rate) frappe.model.set_value(cdt, cdn, 'po_rate', r.rate);
+                    if (!row.rate) frappe.model.set_value(cdt, cdn, 'rate', r.rate);
+                    if (!row.po_qty) frappe.model.set_value(cdt, cdn, 'po_qty', r.qty);
+                    if (!row.po_line_no) frappe.model.set_value(cdt, cdn, 'po_line_no', r.idx);
+                }
+            });
+        }
+    },
     custom_add_heat: function (frm, cdt, cdn) {
         let row = locals[cdt][cdn];
 
@@ -67,7 +80,7 @@ frappe.ui.form.on('Purchase Receipt', {
         if (frm.is_new() && frm.doc.docstatus === 0) {
             if (frm.doc.items) {
                 frm.doc.items.forEach(item => {
-                    if (!item.po_qty && !item.po_line_no && item.purchase_order) {
+                    if ((!item.po_qty || !item.po_line_no || !item.po_rate || !item.rate) && item.purchase_order) {
                         frappe.call({
                             method: "generate_item.utils.purchase_receipt.get_po_items",
                             args: {
@@ -76,12 +89,12 @@ frappe.ui.form.on('Purchase Receipt', {
                             callback: function (r) {
                                 if (r.message) {
                                     let po_doc = r.message;
-                                    console.log(po_doc)
-
                                     for (let po_item of po_doc.items) {
                                         if (po_item.item_code === item.item_code && item.purchase_order_item == po_item.name) {
-                                            frappe.model.set_value(item.doctype, item.name, 'po_line_no', po_item.idx);
-                                            frappe.model.set_value(item.doctype, item.name, 'po_qty', po_item.qty);
+                                            if (!item.po_line_no) frappe.model.set_value(item.doctype, item.name, 'po_line_no', po_item.idx);
+                                            if (!item.po_qty) frappe.model.set_value(item.doctype, item.name, 'po_qty', po_item.qty);
+                                            if (!item.po_rate) frappe.model.set_value(item.doctype, item.name, 'po_rate', po_item.rate);
+                                            if (!item.rate && po_item.rate) frappe.model.set_value(item.doctype, item.name, 'rate', po_item.rate);
                                             break;
                                         }
                                     }
@@ -267,6 +280,8 @@ frappe.ui.form.on('Purchase Receipt', {
                                         row.qty = item.qty;
                                         row.uom = item.uom;
                                         row.rate = item.rate;
+                                        row.amount = (row.qty || 0) * (row.rate || 0);
+                                        row.base_amount = row.amount * (frm.doc.conversion_rate || 1);
 
                                         row.net_rate = item.net_rate;
                                         row.net_amount = item.net_amount;
