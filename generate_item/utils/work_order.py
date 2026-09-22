@@ -417,14 +417,33 @@ def _update_single_work_order(wo):
         wo.db_set("item_name", bom.item_name, update_modified=False)
         wo.db_set("description", bom.description, update_modified=False)
 
+    # Sync WO qty from the linked Production Plan Item or Sub Assembly Item
+    target_qty = flt(wo.qty)
+    if wo.production_plan:
+        if wo.production_plan_item:
+            pp_planned_qty = frappe.db.get_value(
+                "Production Plan Item", wo.production_plan_item, "planned_qty"
+            )
+            if pp_planned_qty:
+                target_qty = flt(pp_planned_qty)
+        elif wo.production_plan_sub_assembly_item:
+            pp_sub_qty = frappe.db.get_value(
+                "Production Plan Sub Assembly Item", wo.production_plan_sub_assembly_item, "qty"
+            )
+            if pp_sub_qty:
+                target_qty = flt(pp_sub_qty)
+
+    if target_qty != flt(wo.qty):
+        wo.qty = target_qty
+        wo.db_set("qty", target_qty, update_modified=False)
+
     _sync_required_items_from_bom(wo, bom)
     wo.reload()
     # stop_unstop(wo.name,"Stopped")
     # stop_unstop(wo.name,"Resumed")
     wo.update_status()
     wo.update_planned_qty()
-
-
+    wo.update_ordered_qty()
 
     wo.db_set("modification_status", "No", update_modified=False)
 
