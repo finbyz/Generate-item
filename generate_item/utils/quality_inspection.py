@@ -18,31 +18,18 @@ def on_submit(doc, method):
     if not doc.reference_name or not doc.child_row_reference:
         return
 
-    pr = frappe.get_doc("Purchase Receipt", doc.reference_name)
+    branch = frappe.db.get_value("Purchase Receipt", doc.reference_name, "branch")
+    rejected_warehouse = None
+    if branch == "Nandikoor":
+        rejected_warehouse = "Nandikoor Stores - SVIPL"
+    elif branch == "Sanand":
+        rejected_warehouse = "Sanand Stores - SVIPL"
+    elif branch == "Rabale":
+        rejected_warehouse = "Rabale Stores - SVIPL"
 
-    # Set rejected warehouse based on branch
-    if pr.branch == "Nandikoor":
-        pr.rejected_warehouse = "Nandikoor Stores - SVIPL"
-    elif pr.branch == "Sanand":
-        pr.rejected_warehouse = "Sanand Stores - SVIPL"
-    elif pr.branch == "Rabale":
-        pr.rejected_warehouse = "Rabale Stores - SVIPL"
+    if rejected_warehouse:
+        frappe.db.set_value("Purchase Receipt", doc.reference_name, "rejected_warehouse", rejected_warehouse)
 
-    # rejected_qty = doc.rejected_qty or 0
-    # rejected_qty_stock = doc.rejected_qty_in_stock_uom or 0
-
-    # for item in pr.items:
-    #     if item.name == doc.child_row_reference:
-
-    #         # Transaction UOM update
-    #         item.qty = (item.qty or 0) - rejected_qty
-    #         item.rejected_qty = rejected_qty
-
-    # Stock UOM update
-
-    # item.rejected_stock_qty = rejected_qty_stock
-
-    pr.save()
     update_accepted_qty(doc)
 
 def set_inspected_by(doc):

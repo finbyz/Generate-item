@@ -102,7 +102,7 @@ class CustomBuyingController(BuyingController):
                         )
 
 RATE_FIELDS = [
-    "rate", "po_rate"
+    "rate", "po_rate", "amount", "base_rate", "base_amount", "net_rate", "net_amount", "base_net_rate", "base_net_amount", "taxable_value"
 ]
 
 class CustomPurchaseReceipt(CustomBuyingController, PurchaseReceipt):
@@ -127,6 +127,13 @@ class CustomPurchaseReceipt(CustomBuyingController, PurchaseReceipt):
             if not item.flags.get("ignore_permlevel_for_fields"):
                 item.flags.ignore_permlevel_for_fields = []
             item.flags.ignore_permlevel_for_fields.extend(RATE_FIELDS)
+            if item.purchase_order_item and (not item.po_rate or not item.rate):
+                po_rate = frappe.db.get_value("Purchase Order Item", item.purchase_order_item, "rate")
+                if po_rate:
+                    if not item.po_rate:
+                        item.po_rate = po_rate
+                    if not item.rate:
+                        item.rate = po_rate
 
     def validate(self):
         # frappe.log_error("custom called-- CustomPurchaseReceipt validate")

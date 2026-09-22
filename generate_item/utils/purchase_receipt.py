@@ -113,6 +113,10 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
         return False
 
     def update_item(source, target, source_parent):
+        target.rate = flt(source.rate)
+        target.po_rate = flt(source.rate)
+        target.po_qty = flt(source.qty)
+        target.po_line_no = source.idx
         if is_unit_price_row(source):
             target.qty = flt(source.qty)
             target.stock_qty = 0
@@ -150,6 +154,7 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
                     "sales_order": "sales_order",
                     "sales_order_item": "sales_order_item",
                     "wip_composite_asset": "wip_composite_asset",
+                    "rate": "po_rate",
                 },
                 "postprocess": update_item,
                 "condition": condition,
@@ -176,12 +181,21 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
         po_item = frappe.db.get_value(
             "Purchase Order Item",
             po_item_name,
-            ["qty", "received_qty", "conversion_factor","custom_batch_no", "stock_qty"],
+            ["qty", "received_qty", "conversion_factor","custom_batch_no", "stock_qty", "rate", "idx"],
             as_dict=True,
         )
         if not po_item:
             items_to_keep.append(item)
             continue
+
+        if not getattr(item, "po_rate", None):
+            item.po_rate = po_item.rate
+        if not getattr(item, "rate", None) and po_item.rate:
+            item.rate = po_item.rate
+        if not getattr(item, "po_qty", None):
+            item.po_qty = po_item.qty
+        if not getattr(item, "po_line_no", None):
+            item.po_line_no = po_item.idx
 
         po_qty = flt(po_item.qty)
         received_qty = flt(po_item.received_qty)
@@ -229,14 +243,44 @@ def make_purchase_receipt(source_name, target_doc=None, args=None):
 
 
 def before_save(doc, method):
+    po_items_map = {}
     for item in doc.items:
-        if not item.po_qty:
-            # Fetch PO qty and line number
-            po_doc = frappe.get_doc("Purchase Order", item.purchase_order)
-            for po_item in po_doc.items:
-                if po_item.item_code == item.item_code and item.purchase_order_item == po_item.name :
+        if item.purchase_order_item:
+            po_item = frappe.db.get_value(
+                "Purchase Order Item",
+                item.purchase_order_item,
+                ["qty", "idx", "rate", "parent"],
+                as_dict=True,
+            )
+            if po_item:
+                if not item.po_qty:
                     item.po_qty = po_item.qty
+                if not item.po_line_no:
                     item.po_line_no = po_item.idx
+                if not item.po_rate:
+                    item.po_rate = po_item.rate
+                if not item.rate and po_item.rate:
+                    item.rate = po_item.rate
+                    if item.qty:
+                        item.amount = flt(item.qty) * flt(item.rate)
+                        item.base_amount = flt(item.amount) * (flt(doc.conversion_rate) or 1.0)
+        elif item.purchase_order and (not item.po_qty or not item.po_line_no or not item.po_rate or not item.rate):
+            if item.purchase_order not in po_items_map:
+                po_doc = frappe.get_doc("Purchase Order", item.purchase_order)
+                po_items_map[item.purchase_order] = po_doc.items
+            for po_item in po_items_map[item.purchase_order]:
+                if po_item.item_code == item.item_code:
+                    if not item.po_qty:
+                        item.po_qty = po_item.qty
+                    if not item.po_line_no:
+                        item.po_line_no = po_item.idx
+                    if not item.po_rate:
+                        item.po_rate = po_item.rate
+                    if not item.rate and po_item.rate:
+                        item.rate = po_item.rate
+                        if item.qty:
+                            item.amount = flt(item.qty) * flt(item.rate)
+                            item.base_amount = flt(item.amount) * (flt(doc.conversion_rate) or 1.0)
                     break
 
         # Get branch from item row
