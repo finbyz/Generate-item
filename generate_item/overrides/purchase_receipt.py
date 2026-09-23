@@ -168,19 +168,22 @@ class CustomPurchaseReceipt(CustomBuyingController, PurchaseReceipt):
         if self.is_new():
             update_stock_uom_qty(self)
     
-    def validate_qty_is_not_zero(self):
-        for item in self.items:
-            if not flt(item.qty):
-                is_stock_item = frappe.db.get_value("Item", item.item_code, "is_stock_item")
-                if is_stock_item:
-                    # keep original behavior for stock items
-                    frappe.throw(
-                        msg=_("Row #{0}: Quantity for Item {1} cannot be zero.").format(
-                            item.idx, frappe.bold(item.item_code)
-                        ),
-                        title=_("Invalid Quantity"),
-                        exc=InvalidQtyError,
-                    )
+    # def validate_qty_is_not_zero(self):
+    #     for item in self.items:
+    #         if self.doctype == "Purchase Receipt" and item.rejected_qty:
+    #             continue
+            
+    #         if not flt(item.qty):
+    #             is_stock_item = frappe.db.get_value("Item", item.item_code, "is_stock_item")
+    #             if is_stock_item:
+    #                 # keep original behavior for stock items
+    #                 frappe.throw(
+    #                     msg=_("Row #{0}: Quantity for Item {1} cannot be zero.").format(
+    #                         item.idx, frappe.bold(item.item_code)
+    #                     ),
+    #                     title=_("Invalid Quantity"),
+    #                     exc=InvalidQtyError,
+    #                 )
             # else: non-stock item (Maintain Stock = 0) — silently allow qty = 0
         # update_accepted_qty(self)
 

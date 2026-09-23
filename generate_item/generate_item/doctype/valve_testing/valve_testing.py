@@ -10,6 +10,7 @@ from generate_item.utils.inspector_inches import (
     validate_serial_for_testing_phase,
     get_valve_testing_serial_query,
 )
+from generate_item.utils.naming_series import revert_series_on_trash
 
 
 class ValveTesting(Document):
@@ -49,6 +50,9 @@ class ValveTesting(Document):
         # if not self.user and frappe.session.user:
         #     self.user = frappe.session.user
         calculate_doc_inspector_inches(self)
+
+    def on_trash(self):
+        revert_series_on_trash(self)
 
 
 @frappe.whitelist()
