@@ -8,6 +8,7 @@ from generate_item.utils.inspector_inches import (
     calculate_doc_inspector_inches,
     get_serial_register_items as _get_serial_register_items,
 )
+from generate_item.utils.naming_series import revert_series_on_trash
 
 
 class ValveAssembly(Document):
@@ -30,6 +31,9 @@ class ValveAssembly(Document):
         # if not self.user and frappe.session.user:
         #     self.user = frappe.session.user
         calculate_doc_inspector_inches(self)
+
+    def on_trash(self):
+        revert_series_on_trash(self)
 
 
 @frappe.whitelist()

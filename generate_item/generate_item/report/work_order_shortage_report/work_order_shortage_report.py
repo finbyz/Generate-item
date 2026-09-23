@@ -521,10 +521,9 @@ def get_purchase_order_data(batch_numbers, all_mr_item_names, item_codes, mr_ite
 def get_purchase_receipt_data(all_po_item_names, all_po_names, batch_numbers, item_codes, po_item_to_batch, po_to_batch):
     """
     Fetch Purchase Receipt Items batch-wise.
-    Uses stock_qty for PR quantities.
     Splits into:
-    - Submitted receipts (docstatus = 1) -> received_qty
-    - Draft receipts (docstatus = 0) -> receipt_draft_qty
+    - Submitted receipts (docstatus = 1) -> received_qty (uses received_stock_qty)
+    - Draft receipts (docstatus = 0) -> receipt_draft_qty (uses stock_qty)
     """
     pr_map = {}
 
@@ -549,7 +548,8 @@ def get_purchase_receipt_data(all_po_item_names, all_po_names, batch_numbers, it
             pri.item_code,
             pri.purchase_order,
             pri.purchase_order_item,
-            COALESCE(pri.stock_qty, pri.qty, 0) AS stock_qty,
+            COALESCE(pri.received_stock_qty, 0) AS received_stock_qty,
+            COALESCE(pri.stock_qty,  0) AS stock_qty,
             pr.docstatus
         FROM `tabPurchase Receipt Item` pri
         JOIN `tabPurchase Receipt` pr ON pr.name = pri.parent
@@ -567,7 +567,6 @@ def get_purchase_receipt_data(all_po_item_names, all_po_names, batch_numbers, it
 
         poi_name = row.purchase_order_item
         po_name = row.purchase_order
-        qty = flt(row.stock_qty)
         docstatus = row.docstatus
 
         target_key = po_item_to_batch.get(poi_name) or po_to_batch.get(po_name)
@@ -581,9 +580,9 @@ def get_purchase_receipt_data(all_po_item_names, all_po_names, batch_numbers, it
             }
 
         if docstatus == 1:
-            pr_map[target_key]["received_qty"] += qty
+            pr_map[target_key]["received_qty"] += flt(row.stock_qty)
         elif docstatus == 0:
-            pr_map[target_key]["receipt_draft_qty"] += qty
+            pr_map[target_key]["receipt_draft_qty"] += flt(row.stock_qty)
 
     return pr_map
 
