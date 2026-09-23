@@ -413,6 +413,7 @@ def make_qc(doctype, docname, items):
                 "item_serial_no": item.get("serial_no").split("\n")[0] if item.get("serial_no") else None,
                 "batch_no": item.get("batch_no"),
                 "child_row_reference": item.get("child_row_reference"),
+                "po_line_no": item.get("po_line_no"),
             }
         )
         quality_inspection.save()
@@ -500,6 +501,7 @@ def make_quality_inspections(doctype, docname, items):
                 "custom_pattern_drawing_rev_no",
                 "custom_purchase_specification_no",
                 "custom_purchase_specification_rev_no",
+                "po_line_no",
         ],
                 as_dict=True
             )
@@ -533,6 +535,7 @@ def make_quality_inspections(doctype, docname, items):
                 "custom_pattern_drawing_rev_no": row.custom_pattern_drawing_rev_no,
                 "custom_purchase_specification_no": row.custom_purchase_specification_no,
                 "custom_purchase_specification_rev_no": row.custom_purchase_specification_rev_no,
+                "po_line_no": row.po_line_no,
             }
             
             
