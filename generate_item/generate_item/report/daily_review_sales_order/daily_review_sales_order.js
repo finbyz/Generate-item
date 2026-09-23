@@ -177,8 +177,9 @@ frappe.query_reports["Daily Review Sales Order"] = {
             $editor = $(`
                 <select class="inline-editor" style="
                     position:absolute; top:0; left:0; width:100%; height:100%;
-                    z-index:100; font-size:12px; border:2px solid var(--primary);
-                    background:var(--card-bg); color:var(--text-color); padding:2px;
+                    z-index:100; font-size:12px; border:2px solid var(--primary, var(--blue-500, #3b82f6));
+                    background:var(--control-bg, var(--card-bg, #ffffff)); color:var(--text-color, #1f272e); padding:2px;
+                    border-radius:3px; outline:none;
                 ">${opts}</select>
             `);
 
@@ -195,8 +196,9 @@ frappe.query_reports["Daily Review Sales Order"] = {
             $editor = $(`
                 <input type="date" class="inline-editor" value="${cur_value || ""}" style="
                     position:absolute; top:0; left:0; width:100%; height:100%;
-                    z-index:100; font-size:12px; border:2px solid var(--primary);
-                    background:var(--card-bg); color:var(--text-color); padding:2px;
+                    z-index:100; font-size:12px; border:2px solid var(--primary, var(--blue-500, #3b82f6));
+                    background:var(--control-bg, var(--card-bg, #ffffff)); color:var(--text-color, #1f272e); color-scheme:light dark; padding:2px;
+                    border-radius:3px; outline:none;
                 "/>
             `);
 
@@ -229,8 +231,9 @@ frappe.query_reports["Daily Review Sales Order"] = {
             $editor = $(`
                 <input type="text" class="inline-editor" value="${frappe.utils.escape_html(cur_value)}" style="
                     position:absolute; top:0; left:0; width:100%; height:100%;
-                    z-index:100; font-size:12px; border:2px solid var(--primary);
-                    background:var(--card-bg); color:var(--text-color); padding:2px;
+                    z-index:100; font-size:12px; border:2px solid var(--primary, var(--blue-500, #3b82f6));
+                    background:var(--control-bg, var(--card-bg, #ffffff)); color:var(--text-color, #1f272e); padding:2px;
+                    border-radius:3px; outline:none;
                 "/>
             `);
 
@@ -269,8 +272,9 @@ frappe.query_reports["Daily Review Sales Order"] = {
         const inner_html = pending
             ? `<span style="
                     display:block;
-                    background:var(--yellow-50,#fef9c3);
-                    border-left:3px solid var(--yellow-400,#facc15);
+                    background:var(--alert-bg-warning, var(--bg-yellow, #fef9c3));
+                    color:var(--alert-text-warning, var(--text-on-yellow, #854d0e));
+                    border-left:3px solid var(--yellow-500, #facc15);
                     padding:2px 6px;
                     border-radius:2px;
                     cursor:cell;
@@ -535,12 +539,12 @@ _open_bulk_update_dialog() {
             hidden:    1,
             options: `
                 <div style="
-                    background : var(--blue-50,#eff6ff);
-                    border-left: 3px solid var(--blue-400,#60a5fa);
+                    background : var(--alert-bg-info, var(--bg-blue, #eff6ff));
+                    border-left: 3px solid var(--blue-500, #60a5fa);
                     border-radius: 3px;
                     padding    : 6px 10px;
                     font-size  : 12px;
-                    color      : var(--text-color);
+                    color      : var(--alert-text-info, var(--text-color));
                     margin-bottom: 8px;
                 ">
                     <i class="fa fa-info-circle mr-1"></i>
@@ -906,8 +910,9 @@ async _execute_bulk_update(values, dialog) {
                 );
                 return `<span style="
                     display:block;
-                    background:var(--yellow-50,#fef9c3);
-                    border-left:3px solid var(--yellow-400,#facc15);
+                    background:var(--alert-bg-warning, var(--bg-yellow, #fef9c3));
+                    color:var(--alert-text-warning, var(--text-on-yellow, #854d0e));
+                    border-left:3px solid var(--yellow-500, #facc15);
                     padding:2px 6px; border-radius:2px; cursor:cell;
                 " title="${__('Unsaved — click Save Changes to apply')}">
                     ${display || `<span style="color:var(--text-muted);">User Select</span>`}
@@ -921,7 +926,8 @@ async _execute_bulk_update(values, dialog) {
             } else if (value !== "" && !isNaN(value)) {
                 const d      = parseInt(value, 10);
                 const colour = d > 14 ? "red" : d > 7 ? "orange" : "green";
-                return `<span style="color:var(--${colour}-600); font-weight:bold;">${value} Days</span>`;
+                const alert_type = d > 14 ? "danger" : d > 7 ? "warning" : "success";
+                return `<span style="color:var(--alert-text-${alert_type}, var(--${colour}-500, var(--text-color))); font-weight:bold;">${value} Days</span>`;
             }
         }
 

@@ -675,7 +675,7 @@ def _get_mr_trends(
     is_single_day = (start_d == end_d)
     vis_start_d = frappe.utils.add_days(end_d, -29) if is_single_day else start_d
 
-    where_clauses = ["mr.docstatus = 1"]
+    where_clauses = ["mr.docstatus = 1", "mr.material_request_type = 'Purchase'"]
     params: list[Any] = []
 
     where_clauses.append("mr.transaction_date BETWEEN %s AND %s")
@@ -792,7 +792,7 @@ def _get_po_pending_card(
 ) -> dict[str, Any]:
     """Card 1: Mr Pending
     Shows Material Request data with filter:
-    docstatus = 1, status in ('Submitted', 'Partially Ordered', 'Pending'), owner in users (Created By)
+    docstatus = 1, material_request_type = 'Purchase', status in ('Submitted', 'Partially Ordered', 'Pending'), owner in users (Created By)
     """
     doctype = "Material Request"
     if not _doctype_exists(doctype) or not frappe.has_permission(doctype, "read"):
@@ -800,6 +800,7 @@ def _get_po_pending_card(
 
     filters: dict[str, Any] = {
         "docstatus": 1,
+        "material_request_type": "Purchase",
         "status": ["in", ["Submitted", "Partially Ordered", "Pending"]],
     }
     if users:
@@ -908,7 +909,7 @@ def _get_mr_completed_card(
 ) -> dict[str, Any]:
     """Card 2: MR Completed
     Shows Material Request data with filter:
-    docstatus = 1, status in ('Partially Received', 'Ordered', 'Issued', 'Transferred', 'Received'), owner in users (Created By)
+    docstatus = 1, material_request_type = 'Purchase', status in ('Partially Received', 'Ordered', 'Issued', 'Transferred', 'Received'), owner in users (Created By)
     """
     doctype = "Material Request"
     if not _doctype_exists(doctype) or not frappe.has_permission(doctype, "read"):
@@ -916,6 +917,7 @@ def _get_mr_completed_card(
 
     filters: dict[str, Any] = {
         "docstatus": 1,
+        "material_request_type": "Purchase",
         "status": ["in", ["Partially Received", "Ordered", "Issued", "Transferred", "Received"]],
     }
     if users:
@@ -1142,7 +1144,7 @@ def _get_pi_pending_card(
 ) -> dict[str, Any]:
     """Card 4: PI Pending
     Shows Purchase Receipt data with filter:
-    docstatus = 1, status in ('Partly Billed', 'To Bill', 'Partially Billed'), owner in users (Created By)
+    docstatus = 1, is_return = 0, status in ('Partly Billed', 'To Bill', 'Partially Billed'), owner in users (Created By)
     """
     doctype = "Purchase Receipt"
     if not _doctype_exists(doctype) or not frappe.has_permission(doctype, "read"):
@@ -1150,6 +1152,7 @@ def _get_pi_pending_card(
 
     filters: dict[str, Any] = {
         "docstatus": 1,
+        "is_return": 0,
         "status": ["in", ["Partly Billed", "To Bill", "Partially Billed"]],
     }
     if users:

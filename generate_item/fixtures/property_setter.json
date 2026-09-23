@@ -7,7 +7,7 @@
   "doctype_or_field": "DocType",
   "field_name": null,
   "is_system_generated": 0,
-  "modified": "2026-09-21 18:04:43.058619",
+  "modified": "2026-09-22 19:12:20.999257",
   "module": "Generate Item",
   "name": "Sales Taxes and Charges-main-field_order",
   "property": "field_order",
@@ -142,22 +142,6 @@
   "property_type": "Data",
   "row_name": null,
   "value": "[\"heat_no\", \"tc_no\", \"rt_no\", \"used\", \"column_break_nthb\", \"qty\", \"url\", \"open_url\"]"
- },
- {
-  "default_value": null,
-  "doc_type": "Quality Inspection",
-  "docstatus": 0,
-  "doctype": "Property Setter",
-  "doctype_or_field": "DocType",
-  "field_name": null,
-  "is_system_generated": 0,
-  "modified": "2026-05-08 12:14:52.058710",
-  "module": "Generate Item",
-  "name": "Quality Inspection-main-field_order",
-  "property": "field_order",
-  "property_type": "Data",
-  "row_name": null,
-  "value": "[\"branch\", \"naming_series\", \"company\", \"report_date\", \"status\", \"child_row_reference\", \"column_break_4\", \"inspection_type\", \"batch_no_ref\", \"reference_type\", \"reference_name\", \"section_break_7\", \"item_code\", \"item_serial_no\", \"uom\", \"batch_no\", \"sample_size\", \"rejected_qty\", \"received_qty\", \"column_break1\", \"item_name\", \"ref_itm\", \"description\", \"stock_uom\", \"sample_size_in_stock_uom\", \"rejected_qty_in_stock_uom\", \"received_qty_in_stock_uom\", \"bom_no\", \"section_break_jmwkq\", \"custom_drawing_no\", \"custom_pattern_drawing_no\", \"custom_purchase_specification_no\", \"column_break_3ef6g\", \"custom_drawing_rev_no\", \"custom_pattern_drawing_rev_no\", \"custom_purchase_specification_rev_no\", \"section_break_nyc6m\", \"generate_heat_no\", \"start_value\", \"generate_heat_number\", \"mtc_received\", \"mtc_status\", \"pmi_status\", \"column_break_mxfoz\", \"series_value\", \"end_value\", \"ncr_no\", \"mtc_remark\", \"section_break_gridl\", \"heat_no\", \"specification_details\", \"quality_inspection_template\", \"manual_inspection\", \"readings\", \"section_break_14\", \"inspected_by\", \"verified_by\", \"column_break_17\", \"remarks\", \"amended_from\", \"print_settings_section\", \"letter_head\"]"
  },
  {
   "default_value": null,
@@ -2014,5 +1998,37 @@
   "property_type": "Check",
   "row_name": null,
   "value": "1"
+ },
+ {
+  "default_value": null,
+  "doc_type": "Stock Entry",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocType",
+  "field_name": null,
+  "is_system_generated": 0,
+  "modified": "2026-09-23 13:40:25.181881",
+  "module": "Generate Item",
+  "name": "Stock Entry-main-field_order",
+  "property": "field_order",
+  "property_type": "Data",
+  "row_name": null,
+  "value": "[\"workflow_state\", \"stock_entry_details_tab\", \"naming_series\", \"stock_entry_type\", \"outgoing_stock_entry\", \"source_stock_entry\", \"purpose\", \"add_to_transit\", \"work_order\", \"purchase_order\", \"subcontracting_inward_order\", \"is_additional_transfer_entry\", \"subcontracting_order\", \"po_number\", \"delivery_note_no\", \"sales_invoice_no\", \"pick_list\", \"column_break_qpvo\", \"purchase_receipt_no\", \"asset_repair\", \"ewaybill\", \"col2\", \"company\", \"branch\", \"posting_date\", \"posting_time\", \"issue_to\", \"reference_section\", \"custom_batch_no\", \"set_posting_time\", \"inspection_required\", \"column_break_jabv\", \"apply_putaway_rule\", \"bom_info_section\", \"from_bom\", \"use_multi_level_bom\", \"bom_no\", \"cb1\", \"fg_completed_qty\", \"get_items\", \"section_break_7qsm\", \"process_loss_percentage\", \"column_break_e92r\", \"process_loss_qty\", \"section_break_jwgn\", \"from_warehouse\", \"source_warehouse_address\", \"source_address_display\", \"cb0\", \"to_warehouse\", \"target_warehouse_address\", \"target_address_display\", \"sb0\", \"scan_barcode\", \"last_scanned_warehouse\", \"items_section\", \"items\", \"get_stock_and_rate\", \"section_break_taxes\", \"tax_category\", \"taxes_and_charges\", \"taxes\", \"section_break_total\", \"total_taxes\", \"cb_grand_total\", \"base_grand_total\", \"section_break_19\", \"total_outgoing_value\", \"column_break_22\", \"total_incoming_value\", \"value_difference\", \"section_break_ref_doc\", \"fetch_original_doc_ref\", \"doc_references\", \"additional_costs_section\", \"additional_costs\", \"total_additional_costs\", \"supplier_info_tab\", \"contact_section\", \"supplier\", \"supplier_name\", \"supplier_address\", \"address_display\", \"tab_break_ewaybill\", \"section_break_addresses_contact\", \"bill_from_address\", \"bill_from_address_display\", \"bill_from_gstin\", \"bill_from_gst_category\", \"cb_billing_address\", \"bill_to_address\", \"bill_to_address_display\", \"bill_to_gstin\", \"bill_to_gst_category\", \"place_of_supply\", \"section_break_shipping_address\", \"ship_from_address\", \"ship_from_address_display\", \"cb_shipping_address\", \"ship_to_address\", \"ship_to_address_display\", \"transporter_info\", \"transporter\", \"gst_transporter_id\", \"lr_no\", \"vehicle_no\", \"distance\", \"transporter_col_break\", \"transporter_name\", \"mode_of_transport\", \"lr_date\", \"gst_vehicle_type\", \"accounting_dimensions_section\", \"project\", \"column_break_wgvc\", \"cost_center\", \"other_info_tab\", \"printing_settings\", \"select_print_heading\", \"print_settings_col_break\", \"letter_head\", \"reference_details_section\", \"more_info\", \"is_opening\", \"remarks\", \"col5\", \"per_transferred\", \"total_amount\", \"job_card\", \"amended_from\", \"credit_note\", \"is_return\", \"fiscal\", \"company_series\", \"fiscal_year\", \"tab_connections\", \"workflow_progress\", \"custom_html\", \"state_change\"]"
+ },
+ {
+  "default_value": null,
+  "doc_type": "Quality Inspection",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocType",
+  "field_name": null,
+  "is_system_generated": 0,
+  "modified": "2026-09-23 13:40:12.125212",
+  "module": "Generate Item",
+  "name": "Quality Inspection-main-field_order",
+  "property": "field_order",
+  "property_type": "Data",
+  "row_name": null,
+  "value": "[\"branch\", \"naming_series\", \"company\", \"report_date\", \"status\", \"child_row_reference\", \"column_break_4\", \"inspection_type\", \"batch_no_ref\", \"reference_type\", \"reference_name\", \"section_break_7\", \"item_code\", \"ref_item\", \"item_serial_no\", \"uom\", \"batch_no\", \"sample_size\", \"rejected_qty\", \"received_qty\", \"po_line_no\", \"column_break1\", \"item_name\", \"ref_itm\", \"description\", \"stock_uom\", \"sample_size_in_stock_uom\", \"rejected_qty_in_stock_uom\", \"received_qty_in_stock_uom\", \"bom_no\", \"section_break_jmwkq\", \"custom_drawing_no\", \"custom_pattern_drawing_no\", \"custom_purchase_specification_no\", \"column_break_3ef6g\", \"custom_drawing_rev_no\", \"custom_pattern_drawing_rev_no\", \"custom_purchase_specification_rev_no\", \"section_break_nyc6m\", \"generate_heat_no\", \"start_value\", \"generate_heat_number\", \"mtc_received\", \"mtc_status\", \"pmi_status\", \"column_break_mxfoz\", \"series_value\", \"end_value\", \"ncr_no\", \"mtc_remark\", \"section_break_gridl\", \"heat_no\", \"specification_details\", \"quality_inspection_template\", \"manual_inspection\", \"readings\", \"section_break_14\", \"inspected_by\", \"verified_by\", \"column_break_17\", \"remarks\", \"amended_from\", \"print_settings_section\", \"letter_head\"]"
  }
 ]

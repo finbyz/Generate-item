@@ -537,7 +537,13 @@ class PurchaseUserDashboard {
 				e.stopPropagation();
 				const cardId = openListBtn.dataset.openList;
 				const doctype = openListBtn.dataset.doctype;
-				this.open_list_view(cardId, doctype);
+				let docNames = null;
+				if (openListBtn.dataset.docNames) {
+					try {
+						docNames = JSON.parse(openListBtn.dataset.docNames);
+					} catch (err) {}
+				}
+				this.open_list_view(cardId, doctype, docNames);
 				return;
 			}
 
@@ -2050,27 +2056,32 @@ class PurchaseUserDashboard {
 			});
 
 			const defaultStage = stage === "all" ? "po_pending" : stage;
+			const targetDoctype = filteredDocs[0]?.doctype || (defaultStage.startsWith("po") || defaultStage.startsWith("mr") ? "Material Request" : "Purchase Order");
+			const docNames = filteredDocs.map((d) => d.ao).filter(Boolean);
+			const docNamesAttr = frappe.utils.escape_html(JSON.stringify(docNames));
 
 			body.innerHTML = `
 				<div class="pud-modal-header">
 					<div class="pud-modal-title">${meta.label} · ${filteredDocs.length} ${__("Documents")}</div>
 					<div class="pud-modal-actions">
-						<button type="button" class="pud-btn pud-modal-list-btn" data-open-list="${defaultStage}">
+						<button type="button" class="pud-btn pud-modal-list-btn" data-open-list="${defaultStage}" data-doctype="${targetDoctype}" data-doc-names="${docNamesAttr}">
 							${pud_icon("externalLink")} <span>${__("Open in List View")}</span>
 						</button>
 						<button type="button" class="pud-modal-close" data-close-modal>${pud_icon("x")}</button>
 					</div>
 				</div>
 				<div class="pud-modal-scrollable">
-					${filteredDocs.map((d) => `
-						<div class="pud-modal-row-header" style="cursor:default;">
-							<a class="pud-modal-row-docid" onclick="frappe.set_route('Form', '${d.doctype || 'Material Request'}', '${frappe.utils.escape_html(d.ao)}')">${frappe.utils.escape_html(d.ao)}</a>
+					${filteredDocs.map((d) => {
+						const rowDoctype = d.doctype || targetDoctype;
+						return `
+						<div class="pud-modal-row-header" style="cursor:pointer;" onclick="frappe.set_route('Form', '${rowDoctype}', '${frappe.utils.escape_html(d.ao)}')">
+							<a class="pud-modal-row-docid" onclick="event.stopPropagation();frappe.set_route('Form', '${rowDoctype}', '${frappe.utils.escape_html(d.ao)}')">${frappe.utils.escape_html(d.ao)}</a>
 							<span class="pud-modal-row-hint">${frappe.utils.escape_html(d.item || "")}</span>
 							<span class="pud-tag pud-tag-slate">${frappe.utils.escape_html(d.branch || "")}</span>
 							<span class="pud-modal-row-date">${pud_fmt_date(d.date)}</span>
 							<span class="pud-tag pud-tag-amber">${(d.doc_items && d.doc_items.length) || 1} ${__("Items")}</span>
 						</div>
-					`).join("") || `<div class="pud-empty-state"><div class="pud-empty-text">${__("No matching records")}</div></div>`}
+					`;}).join("") || `<div class="pud-empty-state"><div class="pud-empty-text">${__("No matching records")}</div></div>`}
 				</div>
 			`;
 		} else {
@@ -2088,12 +2099,15 @@ class PurchaseUserDashboard {
 			});
 
 			const defaultStage = stage === "all" ? "po_pending" : stage;
+			const targetDoctype = filteredItems[0]?.doctype || (defaultStage.startsWith("po") || defaultStage.startsWith("mr") ? "Material Request" : "Purchase Order");
+			const itemDocNames = [...new Set(filteredItems.flatMap((it) => (it.docs || []).map((d) => d.name)).filter(Boolean))];
+			const docNamesAttr = frappe.utils.escape_html(JSON.stringify(itemDocNames));
 
 			body.innerHTML = `
 				<div class="pud-modal-header">
 					<div class="pud-modal-title">${meta.label} · ${filteredItems.length} ${__("Items")}</div>
 					<div class="pud-modal-actions">
-						<button type="button" class="pud-btn pud-modal-list-btn" data-open-list="${defaultStage}">
+						<button type="button" class="pud-btn pud-modal-list-btn" data-open-list="${defaultStage}" data-doctype="${targetDoctype}" data-doc-names="${docNamesAttr}">
 							${pud_icon("externalLink")} <span>${__("Open in List View")}</span>
 						</button>
 						<button type="button" class="pud-modal-close" data-close-modal>${pud_icon("x")}</button>
@@ -2101,8 +2115,8 @@ class PurchaseUserDashboard {
 				</div>
 				<div class="pud-modal-scrollable">
 					${filteredItems.map((it) => `
-						<div class="pud-modal-row-header" style="cursor:default;">
-							<a class="pud-modal-row-docid" onclick="frappe.set_route('Form', 'Item', '${frappe.utils.escape_html(it.item_code)}')">${frappe.utils.escape_html(it.item_code)}</a>
+						<div class="pud-modal-row-header" style="cursor:pointer;" onclick="frappe.set_route('Form', 'Item', '${frappe.utils.escape_html(it.item_code)}')">
+							<a class="pud-modal-row-docid" onclick="event.stopPropagation();frappe.set_route('Form', 'Item', '${frappe.utils.escape_html(it.item_code)}')">${frappe.utils.escape_html(it.item_code)}</a>
 							<span class="pud-modal-row-hint">${frappe.utils.escape_html(it.item_name)}</span>
 							<span class="pud-tag pud-tag-slate">${frappe.utils.escape_html(it.branch || "")}</span>
 							<span class="pud-tag pud-tag-amber">${it.qty} ${frappe.utils.escape_html(it.uom || "")}</span>
@@ -2115,46 +2129,63 @@ class PurchaseUserDashboard {
 		modal.style.display = "flex";
 	}
 
-	open_list_view(cardId, customDoctype = null) {
+	open_list_view(cardId, customDoctype = null, docNames = null) {
 		const filters = {};
 		let doctype = customDoctype || "Material Request";
 
 		if (cardId === "po_pending") {
 			doctype = "Material Request";
 			filters.docstatus = 1;
+			filters.material_request_type = "Purchase";
 			filters.status = ["in", ["Submitted", "Partially Ordered", "Pending"]];
 		} else if (cardId === "mr_completed") {
 			doctype = "Material Request";
 			filters.docstatus = 1;
+			filters.material_request_type = "Purchase";
 			filters.status = ["in", ["Partially Received", "Ordered", "Issued", "Transferred", "Received"]];
 		} else if (cardId === "pr_pending") {
 			doctype = "Purchase Order";
 			filters.docstatus = 1;
 			filters.status = ["in", ["To Receive and Bill", "To Receive"]];
 		} else if (cardId === "pi_pending") {
-			doctype = "Purchase Order";
+			doctype = "Purchase Receipt";
 			filters.docstatus = 1;
-			filters.status = ["in", ["To Bill", "To Receive and Bill"]];
+			filters.is_return = 0;
+			filters.status = ["in", ["Partly Billed", "To Bill", "Partially Billed"]];
 		} else if (cardId === "pi_completed") {
-			doctype = "Purchase Order";
+			doctype = "Purchase Invoice";
 			filters.docstatus = 1;
-			filters.status = "Completed";
+			filters.is_return = 0;
 		}
 
-		if (this.filters.from_date && this.filters.to_date) {
-			filters.transaction_date = ["between", [this.filters.from_date, this.filters.to_date]];
-		} else if (this.filters.from_date) {
-			filters.transaction_date = [">=", this.filters.from_date];
-		} else if (this.filters.to_date) {
-			filters.transaction_date = ["<=", this.filters.to_date];
+		if (customDoctype) {
+			doctype = customDoctype;
 		}
 
-		if (this.filters.branch) {
-			filters.branch = this.filters.branch;
-		}
+		const dateField = (doctype === "Purchase Receipt" || doctype === "Purchase Invoice") ? "posting_date" : "transaction_date";
 
-		if (this.filters.users && this.filters.users.length) {
-			filters.owner = ["in", this.filters.users];
+		if (docNames && Array.isArray(docNames) && docNames.length > 0) {
+			if (docNames.length === 1) {
+				filters.name = docNames[0];
+			} else {
+				filters.name = ["in", docNames];
+			}
+		} else {
+			if (this.filters.from_date && this.filters.to_date) {
+				filters[dateField] = ["between", [this.filters.from_date, this.filters.to_date]];
+			} else if (this.filters.from_date) {
+				filters[dateField] = [">=", this.filters.from_date];
+			} else if (this.filters.to_date) {
+				filters[dateField] = ["<=", this.filters.to_date];
+			}
+
+			if (this.filters.branch) {
+				filters.branch = this.filters.branch;
+			}
+
+			if (this.filters.users && this.filters.users.length) {
+				filters.owner = ["in", this.filters.users];
+			}
 		}
 
 		frappe.route_options = filters;

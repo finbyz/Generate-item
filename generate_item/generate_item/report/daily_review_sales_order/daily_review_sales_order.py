@@ -31,15 +31,15 @@ def execute(filters=None):
 def _render_dashboard_html(dashboard):
 
     def th(val):
-        return f'<th style="text-align:center;padding:6px 14px;border:1px solid #d1d5db;background:#dbeafe;color:#1e3a5f;font-weight:500;">{val}</th>'
+        return f'<th style="text-align:center;padding:6px 14px;border:1px solid var(--border-color, #d1d5db);background:var(--alert-bg-info, var(--bg-blue, #dbeafe));color:var(--alert-text-info, var(--text-color, #1e3a5f));font-weight:600;">{val}</th>'
 
     def td(val, total=False):
-        bg = "background:#eff6ff;color:#1e3a5f;font-weight:500;" if total else ""
-        return f'<td style="text-align:right;padding:6px 14px;border:1px solid #d1d5db;{bg}">{val}</td>'
+        bg = "background:var(--alert-bg-info, var(--bg-blue, #eff6ff));color:var(--alert-text-info, var(--text-color, #1e3a5f));font-weight:600;" if total else "background:var(--card-bg, #ffffff);color:var(--text-color, inherit);"
+        return f'<td style="text-align:right;padding:6px 14px;border:1px solid var(--border-color, #d1d5db);{bg}">{val}</td>'
 
     def td_label(val, total=False):
-        bg = "background:#eff6ff;color:#1e3a5f;font-weight:500;" if total else ""
-        return f'<td style="text-align:left;padding:6px 14px;border:1px solid #d1d5db;{bg}">{val}</td>'
+        bg = "background:var(--alert-bg-info, var(--bg-blue, #eff6ff));color:var(--alert-text-info, var(--text-color, #1e3a5f));font-weight:600;" if total else "background:var(--card-bg, #ffffff);color:var(--text-color, inherit);"
+        return f'<td style="text-align:left;padding:6px 14px;border:1px solid var(--border-color, #d1d5db);{bg}">{val}</td>'
 
     def build_table(title, buckets, grand_total):
         # Hide columns with 0 count — mirrors Excel pivot
@@ -55,8 +55,8 @@ def _render_dashboard_html(dashboard):
 
         return f"""
         <div style="margin-bottom:24px;">
-          <div style="font-size:12px;color:#6b7280;margin-bottom:6px;font-weight:500;">{title}</div>
-          <table style="border-collapse:collapse;font-size:13px;">
+          <div style="font-size:12px;color:var(--text-muted, #6b7280);margin-bottom:6px;font-weight:500;">{title}</div>
+          <table style="border-collapse:collapse;font-size:13px;border:1px solid var(--border-color, #d1d5db);background:var(--card-bg, #ffffff);color:var(--text-color, inherit);">
             <thead><tr>{header_row}</tr></thead>
             <tbody>
               <tr>{data_row}</tr>
