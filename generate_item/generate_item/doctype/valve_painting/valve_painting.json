@@ -3,13 +3,14 @@
  "allow_bulk_edit": 1,
  "allow_rename": 1,
  "autoname": "naming_series:",
- "creation": "2026-09-07 12:06:13.029183",
+ "creation": "2026-09-24 14:54:47.787111",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
   "posting_date",
   "allow_back_date",
   "branch",
+  "type",
   "column_break_vxay",
   "naming_series",
   "section_break_snfx",
@@ -18,20 +19,6 @@
   "amended_from"
  ],
  "fields": [
-  {
-   "fieldname": "amended_from",
-   "fieldtype": "Link",
-   "label": "Amended From",
-   "no_copy": 1,
-   "options": "Valve Assembly",
-   "print_hide": 1,
-   "read_only": 1,
-   "search_index": 1
-  },
-  {
-   "fieldname": "section_break_waep",
-   "fieldtype": "Section Break"
-  },
   {
    "default": "Today",
    "fieldname": "posting_date",
@@ -46,8 +33,24 @@
    "label": "Allow Back Date"
   },
   {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Branch",
+   "options": "Branch",
+   "reqd": 1
+  },
+  {
    "fieldname": "column_break_vxay",
    "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Naming Series",
+   "no_copy": 1,
+   "options": "\nVPAS.fiscal.#####\nVPAR.fiscal.#####\nVPAN.fiscal.#####",
+   "read_only": 1
   },
   {
    "fieldname": "section_break_snfx",
@@ -57,23 +60,28 @@
    "fieldname": "item_serial_number",
    "fieldtype": "Table",
    "label": "Item Serial Number",
-   "options": "Assembly Item Serial No"
-  },
-  {
-   "fieldname": "naming_series",
-   "fieldtype": "Select",
-   "label": "Naming Series",
    "no_copy": 1,
-   "options": "\nVASS.fiscal.#####\nVASR.fiscal.#####\nVASN.fiscal.#####",
-   "read_only": 1
+   "options": "Valve Painting Item"
   },
   {
-   "fieldname": "branch",
+   "fieldname": "section_break_waep",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "amended_from",
    "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Branch",
-   "options": "Branch",
-   "reqd": 1
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Valve Painting",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  },
+  {
+   "fieldname": "type",
+   "fieldtype": "Select",
+   "label": "Type",
+   "options": "\nReceived\nFinished"
   }
  ],
  "grid_page_length": 50,
@@ -83,7 +91,7 @@
  "modified": "2026-09-24 17:30:00.000000",
  "modified_by": "Administrator",
  "module": "Generate Item",
- "name": "Valve Assembly",
+ "name": "Valve Painting",
  "naming_rule": "By \"Naming Series\" field",
  "owner": "Administrator",
  "permissions": [

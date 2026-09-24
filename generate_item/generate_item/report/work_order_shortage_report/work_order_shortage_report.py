@@ -176,7 +176,7 @@ def get_columns():
         {
             "fieldname": "po_date",
             "label": _("PO Date"),
-            "fieldtype": "Date",
+            "fieldtype": "Data",
             "width": 130
         },
         {
@@ -218,7 +218,7 @@ def get_columns():
         {
             "fieldname": "required_by",
             "label": _("Required By"),
-            "fieldtype": "Date",
+            "fieldtype": "Data",
             "width": 140
         }
     ]
@@ -466,7 +466,7 @@ def get_purchase_order_data(batch_numbers, all_mr_item_names, item_codes, mr_ite
         supplier = row.supplier_name or ""
         qty = flt(row.stock_qty)
         rec_qty = flt(row.po_received_qty)
-        required_by = row.required_by
+        required_by_date = formatdate(row.required_by, "dd-MM-yyyy") if row.required_by else ""
 
         all_po_item_names.add(poi_name)
         if po_no:
@@ -495,7 +495,7 @@ def get_purchase_order_data(batch_numbers, all_mr_item_names, item_codes, mr_ite
                     "po_line_nos": [],
                     "suppliers": [],
                     "po_item_names": set(),
-                    "required_by": None
+                    "required_by_dates": []
                 }
 
             entry = po_map[key]
@@ -511,9 +511,8 @@ def get_purchase_order_data(batch_numbers, all_mr_item_names, item_codes, mr_ite
                 entry["po_line_nos"].append(po_line_no)
             if supplier and supplier not in entry["suppliers"]:
                 entry["suppliers"].append(supplier)
-            if required_by:
-                if not entry["required_by"] or required_by < entry["required_by"]:
-                    entry["required_by"] = required_by
+            if required_by_date and required_by_date not in entry["required_by_dates"]:
+                entry["required_by_dates"].append(required_by_date)
 
     return po_map, all_po_item_names, po_item_to_batch, all_po_names, po_to_batch
 
@@ -663,15 +662,14 @@ def build_final_data(base_data, mr_data_map, po_data_map, pr_data_map, stock_map
             row["po_date"] = ", ".join(po_info.get("po_dates", []))
             row["po_line_no"] = ", ".join(po_info.get("po_line_nos", []))
             row["supplier_name"] = ", ".join(po_info.get("suppliers", []))
-            required_by = po_info.get("required_by")
-            row["required_by"] = formatdate(required_by, "dd-MM-yyyy") if required_by else ""
+            row["required_by"] = ", ".join(po_info.get("required_by_dates", []))
         else:
             row["po_qty"] = 0.0
             row["po_no"] = ""
             row["po_date"] = ""
             row["po_line_no"] = ""
             row["supplier_name"] = ""
-            row["required_by"] = None
+            row["required_by"] = ""
 
         # Batch-wise Purchase Receipt lookup
         pr_info = None

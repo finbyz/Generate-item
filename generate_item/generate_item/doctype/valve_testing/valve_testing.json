@@ -8,6 +8,7 @@
  "engine": "InnoDB",
  "field_order": [
   "posting_date",
+  "allow_back_date",
   "branch",
   "testing_phase",
   "column_break_vxay",
@@ -44,7 +45,14 @@
    "default": "Today",
    "fieldname": "posting_date",
    "fieldtype": "Date",
-   "label": "Posting Date"
+   "label": "Posting Date",
+   "read_only_depends_on": "eval:!doc.allow_back_date"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_back_date",
+   "fieldtype": "Check",
+   "label": "Allow Back Date"
   },
   {
    "fieldname": "column_break_vxay",
@@ -64,8 +72,10 @@
   {
    "fieldname": "branch",
    "fieldtype": "Link",
+   "in_list_view": 1,
    "label": "Branch",
-   "options": "Branch"
+   "options": "Branch",
+   "reqd": 1
   },
   {
    "fieldname": "testing_phase",
@@ -78,7 +88,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-18 18:37:30.027803",
+ "modified": "2026-09-24 17:30:00.000000",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Valve Testing",

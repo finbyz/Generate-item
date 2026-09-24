@@ -36,11 +36,13 @@ frappe.ui.form.on("Valve Testing", {
         });
     },
     onload(frm) {
+        frm.set_df_property("posting_date", "read_only", frm.doc.allow_back_date ? 0 : 1);
         if (frm.is_new() && frm.doc.branch) {
             frm.trigger("branch");
         }
     },
     refresh(frm) {
+        frm.set_df_property("posting_date", "read_only", frm.doc.allow_back_date ? 0 : 1);
         if (frm.doc.docstatus === 0) {
             frm.add_custom_button("Get Item from Serial Register", function () {
                 if (!frm.doc.testing_phase) {
@@ -125,7 +127,8 @@ frappe.ui.form.on("Valve Testing", {
                                 fieldtype: "Link",
                                 options: "Batch",
                                 in_list_view: 1,
-                                read_only: 1
+                                read_only: 1,
+                                columns: 2
                             },
                             {
                                 fieldname: "serial_number",
@@ -133,7 +136,8 @@ frappe.ui.form.on("Valve Testing", {
                                 fieldtype: "Link",
                                 options: "Serial Number",
                                 in_list_view: 1,
-                                read_only: 1
+                                read_only: 1,
+                                columns: 2
                             },
                             {
                                 fieldname: "item_code",
@@ -141,14 +145,16 @@ frappe.ui.form.on("Valve Testing", {
                                 fieldtype: "Link",
                                 options: "Item",
                                 in_list_view: 1,
-                                read_only: 1
+                                read_only: 1,
+                                columns: 2
                             },
                             {
                                 fieldname: "item_description",
                                 label: "Item Description",
                                 fieldtype: "Data",
                                 in_list_view: 1,
-                                read_only: 1
+                                read_only: 1,
+                                columns: 4
                             },
                             {
                                 fieldname: "sales_order",
@@ -156,7 +162,8 @@ frappe.ui.form.on("Valve Testing", {
                                 fieldtype: "Link",
                                 options: "Sales Order",
                                 in_list_view: 1,
-                                read_only: 1
+                                read_only: 1,
+                                columns: 2
                             }
                         ]
                     }
@@ -200,6 +207,7 @@ frappe.ui.form.on("Valve Testing", {
                         child.batch_no = row.batch;
                         child.serial_number = row.serial_number;
                         child.sales_order = row.sales_order;
+                        child.description = row.item_description || "";
 
                         if (frm.doc.posting_date) {
                             child.date = frm.doc.posting_date;
@@ -484,6 +492,12 @@ frappe.ui.form.on("Valve Testing", {
         });
         }
     },
+    allow_back_date(frm) {
+        frm.set_df_property("posting_date", "read_only", frm.doc.allow_back_date ? 0 : 1);
+        if (!frm.doc.allow_back_date) {
+            frm.set_value("posting_date", frappe.datetime.get_today());
+        }
+    },
     posting_date(frm) {
         (frm.doc.item_serial_number || []).forEach(function (row) {
             row.date = frm.doc.posting_date;
@@ -512,6 +526,63 @@ frappe.ui.form.on("Valve Testing", {
                 message: __("Testing Phase changed to {0}. Please ensure existing items are valid.", [frm.doc.testing_phase]),
                 indicator: "orange"
             });
+        }
+    },
+    validate(frm) {
+        // Mandatory header field checks
+        let errors = [];
+
+        if (!frm.doc.posting_date) {
+            errors.push(__("Posting Date"));
+        }
+        if (!frm.doc.branch) {
+            errors.push(__("Branch"));
+        }
+        if (!frm.doc.testing_phase) {
+            errors.push(__("Testing Phase"));
+        }
+
+        if (errors.length) {
+            frappe.msgprint({
+                title: __("Mandatory Fields"),
+                message: __("The following mandatory fields cannot be blank: <br><br><b>{0}</b>", [errors.join("<br>")]),
+                indicator: "red"
+            });
+            frappe.validated = false;
+            return;
+        }
+
+        // Posting date validations
+        if (frm.doc.posting_date) {
+            let today = frappe.datetime.get_today();
+            if (frm.doc.posting_date > today) {
+                frappe.msgprint({
+                    title: __("Invalid Date"),
+                    message: __("<b>Posting Date</b> cannot be a future date."),
+                    indicator: "red"
+                });
+                frappe.validated = false;
+                return;
+            }
+            if (frm.doc.posting_date < today && !frm.doc.allow_back_date) {
+                frappe.msgprint({
+                    title: __("Back-Dating Not Allowed"),
+                    message: __("<b>Posting Date</b> cannot be set to a past date unless <b>Allow Back Date</b> is enabled."),
+                    indicator: "red"
+                });
+                frappe.validated = false;
+                return;
+            }
+        }
+
+        // Child table must have at least one row
+        if (!frm.doc.item_serial_number || frm.doc.item_serial_number.length === 0) {
+            frappe.msgprint({
+                title: __("Missing Items"),
+                message: __("Please add at least one item in the <b>Item Serial Number</b> table before saving."),
+                indicator: "red"
+            });
+            frappe.validated = false;
         }
     }
 });
