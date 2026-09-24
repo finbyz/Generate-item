@@ -370,6 +370,9 @@ scheduler_events = {
     "cron": {
         "0 */4 * * *": [
             "generate_item.utils.currency_exchange.sync_exchange_rates"
+        ],
+         "*/5 * * * *": [
+            "generate_item.utils.repot_email_schedule.process_scheduled_reports"
         ]
     }
 

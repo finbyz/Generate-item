@@ -1,23 +1,48 @@
 // Copyright (c) 2026, Finbyz and contributors
 // For license information, please see license.txt
 
-frappe.ui.form.on("Valve Assembly", {
+frappe.ui.form.on("Valve Painting", {
     setup(frm) {
         frm.set_df_property("naming_series", "options", [
             "",
-            "VASS.fiscal.#####",
-            "VASR.fiscal.#####",
-            "VASN.fiscal.#####"
+            "VPAS.fiscal.#####",
+            "VPAR.fiscal.#####",
+            "VPAN.fiscal.#####"
         ]);
 
-        // assembled_by links to General Employee — filter by enabled=1 + branch (case-insensitive) + department=Valve assembly
-        frm.set_query("assembled_by", "item_serial_number", function () {
+        frm.set_query("serial_number", "item_serial_number", function () {
+            if (frm.doc.type === "Finished") {
+                return {
+                    query: "generate_item.generate_item.doctype.valve_painting.valve_painting.received_serial_number_query",
+                    filters: {
+                        branch: frm.doc.branch || "",
+                        current_doc: frm.doc.name || ""
+                    }
+                };
+            }
+            return {
+                filters: {
+                    docstatus: 1,
+                    branch: frm.doc.branch || ""
+                }
+            };
+        });
+
+        frm.set_query("tested_by", "item_serial_number", function () {
             return {
                 query: "generate_item.generate_item.doctype.general_employee.general_employee.general_employee_by_department_query",
                 filters: {
-                    department: "Valve assembly",
+                    department: "Valve painting",
                     branch: frm.doc.branch || "",
                 },
+            };
+        });
+
+        frm.set_query("user", function () {
+            return {
+                filters: {
+                    enabled: 1
+                }
             };
         });
     },
@@ -161,7 +186,7 @@ frappe.ui.form.on("Valve Assembly", {
                         // Existing serial numbers in child table to prevent duplicates
                         let existing_serials = new Set(
                             (frm.doc.item_serial_number || [])
-                                .map(function (d) { return d.serial_number; })
+                                .map(function (d) { return (d.serial_number || "").trim(); })
                                 .filter(Boolean)
                         );
 
@@ -169,18 +194,18 @@ frappe.ui.form.on("Valve Assembly", {
                         let duplicate_count = 0;
 
                         selected_rows.forEach(function (row) {
-                            if (row.serial_number && existing_serials.has(row.serial_number)) {
+                            let sn = (row.serial_number || "").trim();
+                            if (sn && existing_serials.has(sn)) {
                                 duplicate_count++;
                                 return;
                             }
 
-                            if (row.serial_number) {
-                                existing_serials.add(row.serial_number);
+                            if (sn) {
+                                existing_serials.add(sn);
                             }
 
                             let child = frm.add_child("item_serial_number");
 
-                            // Existing values
                             child.item_code = row.item_code;
                             child.batch_no = row.batch;
                             child.serial_number = row.serial_number;
@@ -199,7 +224,6 @@ frappe.ui.form.on("Valve Assembly", {
                                     .then(function (item_generator) {
                                         if (!item_generator) return;
 
-                                        // Build label -> value map from the generic attribute fields
                                         let attr_map = {};
                                         for (let i = 1; i <= 28; i++) {
                                             let label = item_generator["attribute_" + i];
@@ -212,16 +236,15 @@ frappe.ui.form.on("Valve Assembly", {
                                         const cdt = child.doctype;
                                         const cdn = child.name;
 
-                                        // Map child table fields to Item Generator's attribute labels
                                         frappe.model.set_value(cdt, cdn, "size", attr_map["Size"]);
                                         frappe.model.set_value(cdt, cdn, "class", attr_map["Rating"]);
+                                        frappe.model.set_value(cdt, cdn, "type",  attr_map["Valve Type"]);
                                         frappe.model.set_value(cdt, cdn, "end_connection", attr_map["Ends"]);
                                         frappe.model.set_value(cdt, cdn, "shell_moc", attr_map["Shell MOC"]);
                                         frappe.model.set_value(cdt, cdn, "wedge_plug_ball_disc_moc", attr_map["Ball MOC"]);
                                         frappe.model.set_value(cdt, cdn, "facing", attr_map["Ball Facing"]);
                                         frappe.model.set_value(cdt, cdn, "seat_ringguide_moc", attr_map["Seat Ring(Guide) MOC"]);
                                         frappe.model.set_value(cdt, cdn, "stem_moc", attr_map["Stem MOC"]);
-                                        frappe.model.set_value(cdt, cdn, "gasket", attr_map["Gasket"]);
                                         frappe.model.set_value(cdt, cdn, "gland_packing__oring_moc", attr_map["Gland Packing + O'Ring MOC"]);
                                         frappe.model.set_value(cdt, cdn, "fasteners", attr_map["Fasteners"]);
                                         frappe.model.set_value(cdt, cdn, "operation", attr_map["Operator"]);
@@ -233,8 +256,8 @@ frappe.ui.form.on("Valve Assembly", {
                                             frappe.call({
                                                 method: "generate_item.utils.inspector_inches.get_inspector_inches",
                                                 args: {
-                                                    size: size,
-                                                    rating: rating
+                                                   size: size,
+                                                   rating: rating
                                                 },
                                                 callback: function (r) {
                                                     if (r.message) {
@@ -319,7 +342,7 @@ frappe.ui.form.on("Valve Assembly", {
                     sync_selection_summary();
                 }
 
-                // Sync selection count badge and grid header checkbox based on current row selections
+                // Sync selection count badge and grid header checkbox
                 function sync_selection_summary() {
                     let data = dialog.fields_dict.items.df.data || [];
                     let total = data.length;
@@ -352,68 +375,85 @@ frappe.ui.form.on("Valve Assembly", {
                     setTimeout(sync_selection_summary, 50);
                 });
 
-                // Filter Sales Order to show only submitted Sales Orders (docstatus = 1)
+                // Filter Sales Order
                 dialog.fields_dict.sales_order.get_query = function () {
-                    let filters = {
-                        docstatus: 1
-                    };
-                    if (frm.doc.branch) {
-                        filters.branch = frm.doc.branch;
-                    }
-                    return {
-                        filters: filters
-                    };
-                };
-
-                // Filter Batch Number based on Sales Order
-                dialog.fields_dict.batch_number.get_query = function () {
-                    let sales_order = dialog.get_value("sales_order");
-
-                    // If Sales Order is selected
-                    if (sales_order) {
+                    if (frm.doc.type === "Finished") {
                         return {
+                            query: "generate_item.generate_item.doctype.valve_painting.valve_painting.received_sales_order_query",
                             filters: {
-                                reference_name: sales_order
+                                branch: frm.doc.branch || "",
+                                current_doc: frm.doc.name || ""
                             }
                         };
                     }
-
-                    // If no Sales Order is selected
-                    // show all batches
-                    return {};
+                    let filters = { docstatus: 1 };
+                    if (frm.doc.branch) {
+                        filters.branch = frm.doc.branch;
+                    }
+                    return { filters: filters };
                 };
 
-                // Filter Serial Number based on branch, sales_order, and batch_number
+                // Filter Batch Number based on Sales Order and Branch
+                dialog.fields_dict.batch_number.get_query = function () {
+                    let sales_order = dialog.get_value("sales_order");
+                    if (frm.doc.type === "Finished") {
+                        return {
+                            query: "generate_item.generate_item.doctype.valve_painting.valve_painting.received_batch_query",
+                            filters: {
+                                branch: frm.doc.branch || "",
+                                sales_order: sales_order || "",
+                                current_doc: frm.doc.name || ""
+                            }
+                        };
+                    }
+                    let filters = {};
+                    if (sales_order) {
+                        filters.reference_name = sales_order;
+                    }
+                    if (frm.doc.branch) {
+                        filters.branch = frm.doc.branch;
+                    }
+                    return { filters: filters };
+                };
+
+                // Filter Serial Number based on branch, batch_number, sales_order
                 dialog.fields_dict.serial_number.get_query = function () {
                     let batch_number = dialog.get_value("batch_number");
-                    let filters = {
-                        docstatus: 1
-                    };
+                    let sales_order = dialog.get_value("sales_order");
+                    if (frm.doc.type === "Finished") {
+                        return {
+                            query: "generate_item.generate_item.doctype.valve_painting.valve_painting.received_serial_number_query",
+                            filters: {
+                                branch: frm.doc.branch || "",
+                                sales_order: sales_order || "",
+                                batch_number: batch_number || "",
+                                current_doc: frm.doc.name || ""
+                            }
+                        };
+                    }
+                    let filters = { docstatus: 1 };
                     if (frm.doc.branch) {
                         filters.branch = frm.doc.branch;
                     }
                     if (batch_number) {
                         filters.batch = batch_number;
                     }
-                    return {
-                        filters: filters
-                    };
+                    return { filters: filters };
                 };
 
-                // When Sales Order changes, clear selected Batch and Serial Number
+                // When Sales Order changes, clear Batch and Serial Number
                 dialog.fields_dict.sales_order.$input.on("change", function () {
                     dialog.set_value("batch_number", "");
                     dialog.set_value("serial_number", "");
                 });
 
-                // When Batch Number changes, clear selected Serial Number
+                // When Batch Number changes, clear Serial Number
                 dialog.fields_dict.batch_number.$input.on("change", function () {
                     dialog.set_value("serial_number", "");
                 });
 
                 // Search button
                 dialog.fields_dict.search.$input.on("click", function () {
-
                     let sales_order = dialog.get_value("sales_order");
                     let batch_number = dialog.get_value("batch_number");
                     let serial_number = dialog.get_value("serial_number");
@@ -425,13 +465,18 @@ frappe.ui.form.on("Valve Assembly", {
                         return;
                     }
 
+                    let method_to_call = frm.doc.type === "Finished"
+                        ? "generate_item.generate_item.doctype.valve_painting.valve_painting.get_received_painting_items"
+                        : "generate_item.generate_item.doctype.valve_painting.valve_painting.get_serial_register_items";
+
                     frappe.call({
-                        method: "generate_item.generate_item.doctype.valve_assembly.valve_assembly.get_serial_register_items",
+                        method: method_to_call,
                         args: {
                             branch: frm.doc.branch || "",
                             sales_order: sales_order || "",
                             batch_number: batch_number || "",
-                            serial_number: serial_number || ""
+                            serial_number: serial_number || "",
+                            current_doc: frm.doc.name || ""
                         },
                         callback: function (r) {
                             if (!r.message || !r.message.length) {
@@ -488,9 +533,9 @@ frappe.ui.form.on("Valve Assembly", {
         if (!frm.doc.branch) return;
 
         let series_map = {
-            "Sanand": "VASS.fiscal.#####",
-            "Rabale": "VASR.fiscal.#####",
-            "Nandikoor": "VASN.fiscal.#####"
+            "Sanand": "VPAS.fiscal.#####",
+            "Rabale": "VPAR.fiscal.#####",
+            "Nandikoor": "VPAN.fiscal.#####"
         };
 
         let selected_series = series_map[frm.doc.branch];
@@ -509,6 +554,9 @@ frappe.ui.form.on("Valve Assembly", {
         }
         if (!frm.doc.branch) {
             errors.push(__("Branch"));
+        }
+        if (!frm.doc.type) {
+            errors.push(__("Type"));
         }
 
         if (errors.length) {
@@ -552,11 +600,36 @@ frappe.ui.form.on("Valve Assembly", {
                 indicator: "red"
             });
             frappe.validated = false;
+            return;
+        }
+
+        // Check for client-side duplicate serial numbers
+        let serials = (frm.doc.item_serial_number || [])
+            .map(function (d) { return (d.serial_number || "").trim(); })
+            .filter(Boolean);
+
+        let seen = new Set();
+        let dupes = new Set();
+        serials.forEach(function (sn) {
+            if (seen.has(sn)) {
+                dupes.add(sn);
+            } else {
+                seen.add(sn);
+            }
+        });
+
+        if (dupes.size > 0) {
+            frappe.msgprint({
+                title: __("Duplicate Serial Numbers"),
+                message: __("Duplicate Serial Numbers found in the table: <br><br><b>{0}</b>", [Array.from(dupes).join("<br>")]),
+                indicator: "red"
+            });
+            frappe.validated = false;
         }
     }
 });
 
-frappe.ui.form.on("Assembly Item Serial No", {
+frappe.ui.form.on("Valve Painting Item", {
     size(frm, cdt, cdn) {
         update_inspector_inches(frm, cdt, cdn);
     },
