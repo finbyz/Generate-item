@@ -106,25 +106,18 @@ def get_recursive_subordinate_users(session_user: str) -> list[str]:
 
 
 def _get_user_allowed_set(session_user: str | None = None) -> set[str]:
-    """Return the complete set of user IDs that the session user is allowed to view."""
+    """Return all active users."""
     session_user = session_user or frappe.session.user
     if not session_user or session_user == "Guest":
         return set()
 
-    # Only Administrator has unrestricted global scope
-    if session_user == "Administrator":
-        all_users = frappe.db.get_all(
-            "User",
-            filters={"enabled": 1},
-            fields=["name"],
-            limit_page_length=0,
-        )
-        return {u.get("name") for u in all_users if u.get("name")}
-
-    subordinates = get_recursive_subordinate_users(session_user)
-    allowed = set(subordinates)
-    allowed.add(session_user)
-    return allowed
+    all_users = frappe.db.get_all(
+        "User",
+        filters={"enabled": 1},
+        fields=["name"],
+        limit_page_length=0,
+    )
+    return {u.get("name") for u in all_users if u.get("name")}
 
 
 def get_user_branch_permissions(session_user: str | None = None) -> dict[str, Any]:
