@@ -75,8 +75,35 @@ function add_heat_number_to_ref(frm, cdt, cdn, custom_heat_no) {
     frm.dirty();
 }
 
+// =============================================
+// Set Naming Series based on Branch
+// =============================================
+function set_pr_naming_series(frm) {
+    if (!frm.is_new()) return;
+
+    const branch_series_map = {
+        "Sanand": "OPRS.fiscal.####",
+        "Rabale": "OPRR.fiscal.####",
+        "Nandikoor": "OPRN.fiscal.####"
+    };
+
+    const branch = frm.doc.branch;
+    if (branch && branch_series_map[branch]) {
+        const series = branch_series_map[branch];
+        if (frm.doc.naming_series !== series) {
+            frm.set_value('naming_series', series);
+            frm.refresh_field('naming_series');
+        }
+    }
+}
+
 frappe.ui.form.on('Purchase Receipt', {
     onload: function (frm) {
+        // Set naming series for new documents
+        if (frm.is_new()) {
+            set_pr_naming_series(frm);
+        }
+
         if (frm.is_new() && frm.doc.docstatus === 0) {
             if (frm.doc.items) {
                 frm.doc.items.forEach(item => {
@@ -376,6 +403,10 @@ frappe.ui.form.on('Purchase Receipt', {
     },
 
     branch: function (frm) {
+        // Set naming series based on branch
+        set_pr_naming_series(frm);
+
+        // Set rejected warehouse based on branch
         const branch_warehouse_map = {
             "Sanand": "Sanand Rejection - SVIPL",
             "Rabale": "Rabale Rejection - SVIPL",

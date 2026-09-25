@@ -775,6 +775,199 @@ def _get_mr_trends(
     }
 
 
+def _build_sql_where(
+    alias: str,
+    date_field: str,
+    from_date: str | None,
+    to_date: str | None,
+    users: list[str] | None,
+    branch_filter: Any,
+    extra_clauses: list[str] | None = None,
+) -> tuple[str, list[Any]]:
+    """Construct SQL WHERE clause and parameters for dashboard KPI parent documents."""
+    clauses = [f"{alias}.docstatus = 1"]
+    params: list[Any] = []
+
+    if extra_clauses:
+        clauses.extend(extra_clauses)
+
+    if from_date and to_date:
+        clauses.append(f"{alias}.{date_field} BETWEEN %s AND %s")
+        params.extend([from_date, to_date])
+    elif from_date:
+        clauses.append(f"{alias}.{date_field} >= %s")
+        params.append(from_date)
+    elif to_date:
+        clauses.append(f"{alias}.{date_field} <= %s")
+        params.append(to_date)
+
+    if users:
+        clauses.append(f"{alias}.owner IN %s")
+        params.append(tuple(users))
+
+    if branch_filter:
+        if isinstance(branch_filter, (list, tuple)) and len(branch_filter) == 2 and branch_filter[0] == "in":
+            clauses.append(f"{alias}.branch IN %s")
+            params.append(tuple(branch_filter[1]))
+        elif isinstance(branch_filter, str):
+            clauses.append(f"{alias}.branch = %s")
+            params.append(branch_filter)
+
+    return " AND ".join(clauses), params
+
+
+def _get_card_intensity(
+    doctype: str,
+    child_doctype: str,
+    where_sql: str,
+    params: list[Any],
+    prev_where_sql: str | None = None,
+    prev_params: list[Any] | None = None,
+    alias: str = "p",
+    child_alias: str = "c",
+) -> dict[str, Any]:
+    """Calculate exact Document Intensity buckets and branch counts for current & previous period."""
+    buckets = {
+        "1": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}},
+        "2": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}},
+        "3": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}},
+        "3+": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}},
+    }
+
+    if not _doctype_exists(doctype) or not _doctype_exists(child_doctype):
+        return {"total_documents": 0, "buckets": buckets}
+
+    query = f"""
+        SELECT
+            {alias}.name,
+            COALESCE({alias}.branch, '') AS branch,
+            COUNT({child_alias}.name) AS item_count
+        FROM `tab{doctype}` {alias}
+        LEFT JOIN `tab{child_doctype}` {child_alias}
+            ON {child_alias}.parent = {alias}.name AND {child_alias}.parenttype = '{doctype}'
+        WHERE {where_sql}
+        GROUP BY {alias}.name, {alias}.branch
+    """
+    try:
+        rows = frappe.db.sql(query, params, as_dict=True)
+    except Exception:
+        rows = []
+
+    total_docs = len(rows)
+
+    for r in rows:
+        icnt = cint(r.get("item_count"))
+        b = (r.get("branch") or "").strip()
+        key = "1" if icnt <= 1 else ("2" if icnt == 2 else ("3" if icnt == 3 else "3+"))
+        buckets[key]["count"] += 1
+        for known_b in ("Sanand", "Nandikoor", "Rabale"):
+            if known_b.lower() == b.lower():
+                buckets[key]["branches"][known_b] += 1
+                break
+
+    if prev_where_sql and prev_params is not None:
+        p_query = f"""
+            SELECT
+                {alias}.name,
+                COUNT({child_alias}.name) AS item_count
+            FROM `tab{doctype}` {alias}
+            LEFT JOIN `tab{child_doctype}` {child_alias}
+                ON {child_alias}.parent = {alias}.name AND {child_alias}.parenttype = '{doctype}'
+            WHERE {prev_where_sql}
+            GROUP BY {alias}.name
+        """
+        try:
+            p_rows = frappe.db.sql(p_query, prev_params, as_dict=True)
+        except Exception:
+            p_rows = []
+
+        for pr in p_rows:
+            icnt = cint(pr.get("item_count"))
+            key = "1" if icnt <= 1 else ("2" if icnt == 2 else ("3" if icnt == 3 else "3+"))
+            buckets[key]["previous_count"] += 1
+
+    return {
+        "total_documents": total_docs,
+        "buckets": buckets,
+    }
+
+
+def _get_card_item_intensity(
+    doctype: str,
+    child_doctype: str,
+    where_sql: str,
+    params: list[Any],
+    extra_item_condition: str = "",
+    prev_where_sql: str | None = None,
+    prev_params: list[Any] | None = None,
+    alias: str = "p",
+    child_alias: str = "c",
+) -> dict[str, Any]:
+    """Calculate exact Item Intensity buckets and branch counts across all database line items."""
+    buckets = {
+        "1": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}},
+        "2": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}},
+        "3": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}},
+        "3+": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}},
+    }
+
+    if not _doctype_exists(doctype) or not _doctype_exists(child_doctype):
+        return {"buckets": buckets}
+
+    item_cond_sql = f" AND ({extra_item_condition})" if extra_item_condition else ""
+
+    query = f"""
+        SELECT
+            {child_alias}.item_code,
+            COALESCE({alias}.branch, '') AS branch,
+            COUNT(DISTINCT {alias}.name) AS doc_count
+        FROM `tab{child_doctype}` {child_alias}
+        INNER JOIN `tab{doctype}` {alias}
+            ON {alias}.name = {child_alias}.parent AND {child_alias}.parenttype = '{doctype}'
+        WHERE {where_sql} {item_cond_sql}
+        GROUP BY {child_alias}.item_code, {alias}.branch
+    """
+    try:
+        rows = frappe.db.sql(query, params, as_dict=True)
+    except Exception:
+        rows = []
+
+    for r in rows:
+        dcnt = cint(r.get("doc_count"))
+        b = (r.get("branch") or "").strip()
+        key = "1" if dcnt <= 1 else ("2" if dcnt == 2 else ("3" if dcnt == 3 else "3+"))
+        buckets[key]["count"] += 1
+        for known_b in ("Sanand", "Nandikoor", "Rabale"):
+            if known_b.lower() == b.lower():
+                buckets[key]["branches"][known_b] += 1
+                break
+
+    if prev_where_sql and prev_params is not None:
+        p_query = f"""
+            SELECT
+                {child_alias}.item_code,
+                COUNT(DISTINCT {alias}.name) AS doc_count
+            FROM `tab{child_doctype}` {child_alias}
+            INNER JOIN `tab{doctype}` {alias}
+                ON {alias}.name = {child_alias}.parent AND {child_alias}.parenttype = '{doctype}'
+            WHERE {prev_where_sql} {item_cond_sql}
+            GROUP BY {child_alias}.item_code
+        """
+        try:
+            p_rows = frappe.db.sql(p_query, prev_params, as_dict=True)
+        except Exception:
+            p_rows = []
+
+        for pr in p_rows:
+            dcnt = cint(pr.get("doc_count"))
+            key = "1" if dcnt <= 1 else ("2" if dcnt == 2 else ("3" if dcnt == 3 else "3+"))
+            buckets[key]["previous_count"] += 1
+
+    return {
+        "buckets": buckets,
+    }
+
+
 def _get_po_pending_card(
     branch: Any,
     users: list[str],
@@ -783,61 +976,86 @@ def _get_po_pending_card(
     prev_from_date: str | None = None,
     prev_to_date: str | None = None,
 ) -> dict[str, Any]:
-    """Card 1: Mr Pending
-    Shows Material Request data with filter:
-    docstatus = 1, material_request_type = 'Purchase', status in ('Submitted', 'Partially Ordered', 'Pending'), owner in users (Created By)
+    """Card 1: MR Pending
+    Document count: Submitted Purchase Material Requests with status in ('Submitted', 'Partially Ordered', 'Pending')
+    Line Item count: Child line items with pending remaining quantity (qty - ordered_qty > 0)
     """
     doctype = "Material Request"
+    empty_res = {
+        "id": "po_pending", "title": _("MR Pending"), "doctype": doctype,
+        "count": 0, "previous_count": 0, "delta": _calculate_delta(0, 0),
+        "line_item_count": 0, "previous_line_item_count": 0, "line_item_delta": _calculate_delta(0, 0),
+        "line_items_label": _("Line Items Pending"),
+        "item_count": 0, "previous_item_count": 0, "item_delta": _calculate_delta(0, 0),
+        "total_item_qty": 0.0, "total_item_amount": 0.0, "color": "clr-cyan",
+        "icon": "octicon octicon-file-text", "items": [],
+        "document_intensity": {"total_documents": 0, "buckets": {"1": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "2": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3+": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}}},
+        "item_intensity": {"buckets": {"1": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "2": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3+": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}}},
+    }
     if not _doctype_exists(doctype) or not frappe.has_permission(doctype, "read"):
-        return {"id": "po_pending", "title": _("MR Pending"), "doctype": doctype, "count": 0, "previous_count": 0, "delta": _calculate_delta(0, 0), "items": []}
+        return empty_res
 
+    extra_clauses = ["mr.material_request_type = 'Purchase'", "mr.status IN ('Submitted', 'Partially Ordered', 'Pending')"]
+    where_sql, params = _build_sql_where("mr", "transaction_date", from_date, to_date, users, branch, extra_clauses)
+
+    doc_count_res = frappe.db.sql(f"SELECT COUNT(DISTINCT mr.name) AS cnt FROM `tabMaterial Request` mr WHERE {where_sql}", params, as_dict=True)
+    doc_count = cint(doc_count_res[0].get("cnt")) if doc_count_res else 0
+
+    item_sql = f"""
+        SELECT
+            COUNT(mri.name) AS line_item_cnt,
+            COALESCE(SUM(mri.qty - COALESCE(mri.ordered_qty, 0)), 0) AS total_qty,
+            COALESCE(SUM((mri.qty - COALESCE(mri.ordered_qty, 0)) * COALESCE(mri.rate, 0)), 0) AS total_amount
+        FROM `tabMaterial Request Item` mri
+        INNER JOIN `tabMaterial Request` mr ON mr.name = mri.parent AND mri.parenttype = 'Material Request'
+        WHERE {where_sql} AND (mri.qty - COALESCE(mri.ordered_qty, 0)) > 0
+    """
+    item_res = frappe.db.sql(item_sql, params, as_dict=True)
+    line_item_count = cint(item_res[0].get("line_item_cnt")) if item_res else 0
+    total_item_qty = flt(item_res[0].get("total_qty")) if item_res else 0.0
+    total_item_amount = flt(item_res[0].get("total_amount")) if item_res else 0.0
+
+    # Previous period
+    prev_doc_count = None
+    prev_line_item_count = None
+    p_where_sql, p_params = None, None
+    if prev_from_date or prev_to_date:
+        p_where_sql, p_params = _build_sql_where("mr", "transaction_date", prev_from_date, prev_to_date, users, branch, extra_clauses)
+        p_doc_res = frappe.db.sql(f"SELECT COUNT(DISTINCT mr.name) AS cnt FROM `tabMaterial Request` mr WHERE {p_where_sql}", p_params, as_dict=True)
+        prev_doc_count = cint(p_doc_res[0].get("cnt")) if p_doc_res else 0
+
+        p_item_res = frappe.db.sql(f"""
+            SELECT COUNT(mri.name) AS line_item_cnt
+            FROM `tabMaterial Request Item` mri
+            INNER JOIN `tabMaterial Request` mr ON mr.name = mri.parent AND mri.parenttype = 'Material Request'
+            WHERE {p_where_sql} AND (mri.qty - COALESCE(mri.ordered_qty, 0)) > 0
+        """, p_params, as_dict=True)
+        prev_line_item_count = cint(p_item_res[0].get("line_item_cnt")) if p_item_res else 0
+
+    delta = _calculate_delta(doc_count, prev_doc_count)
+    line_item_delta = _calculate_delta(line_item_count, prev_line_item_count)
+    doc_intensity = _get_card_intensity("Material Request", "Material Request Item", where_sql, params, p_where_sql, p_params, "mr", "mri")
+    item_intensity = _get_card_item_intensity("Material Request", "Material Request Item", where_sql, params, "(mri.qty - COALESCE(mri.ordered_qty, 0)) > 0", p_where_sql, p_params, "mr", "mri")
+
+    # Modal inspection records (up to 200 recent)
     filters: dict[str, Any] = {
         "docstatus": 1,
         "material_request_type": "Purchase",
         "status": ["in", ["Submitted", "Partially Ordered", "Pending"]],
     }
-    if users:
-        filters["owner"] = ["in", users]
-    if branch:
-        filters["branch"] = branch
-    if from_date and to_date:
-        filters["transaction_date"] = ["between", [from_date, to_date]]
-    elif from_date:
-        filters["transaction_date"] = [">=", from_date]
-    elif to_date:
-        filters["transaction_date"] = ["<=", to_date]
+    if users: filters["owner"] = ["in", users]
+    if branch: filters["branch"] = branch
+    if from_date and to_date: filters["transaction_date"] = ["between", [from_date, to_date]]
+    elif from_date: filters["transaction_date"] = [">=", from_date]
+    elif to_date: filters["transaction_date"] = ["<=", to_date]
 
     mr_meta = frappe.get_meta(doctype)
     fields = ["name", "transaction_date", "material_request_type", "status", "owner"]
-    if mr_meta.has_field("schedule_date"):
-        fields.append("schedule_date")
-    if mr_meta.has_field("branch"):
-        fields.append("branch")
-    if mr_meta.has_field("project"):
-        fields.append("project")
+    if mr_meta.has_field("schedule_date"): fields.append("schedule_date")
+    if mr_meta.has_field("branch"): fields.append("branch")
+    if mr_meta.has_field("project"): fields.append("project")
 
-    records = frappe.get_all(
-        doctype,
-        filters=filters,
-        fields=fields,
-        order_by="transaction_date desc, modified desc",
-        limit_page_length=100,
-    )
-    total_count = frappe.db.count(doctype, filters=filters)
-
-    # Previous period count
-    prev_filters = dict(filters)
-    if prev_from_date and prev_to_date:
-        prev_filters["transaction_date"] = ["between", [prev_from_date, prev_to_date]]
-    elif prev_from_date:
-        prev_filters["transaction_date"] = [">=", prev_from_date]
-    elif prev_to_date:
-        prev_filters["transaction_date"] = ["<=", prev_to_date]
-    else:
-        prev_filters.pop("transaction_date", None)
-    prev_count = frappe.db.count(doctype, filters=prev_filters) if (prev_from_date or prev_to_date) else None
-    delta = _calculate_delta(total_count, prev_count)
-
+    records = frappe.get_all(doctype, filters=filters, fields=fields, order_by="transaction_date desc, modified desc", limit_page_length=200)
     card_items = [
         {
             "ao": r.get("name"),
@@ -853,42 +1071,31 @@ def _get_po_pending_card(
         }
         for r in records
     ]
-
-    doc_names = [r["ao"] for r in card_items]
-    items_map = _fetch_child_items_for_docs(doctype, doc_names)
+    items_map = _fetch_child_items_for_docs(doctype, [r["ao"] for r in card_items])
     for it in card_items:
         it["doc_items"] = items_map.get(it["ao"], [])
-
-    distinct_items: set[str] = set()
-    total_item_qty: float = 0.0
-    total_item_amount: float = 0.0
-    for r in card_items:
-        for di in r.get("doc_items") or []:
-            icode = di.get("item_code")
-            if icode:
-                distinct_items.add(icode)
-            total_item_qty += flt(di.get("qty"))
-            total_item_amount += flt(di.get("amount"))
-
-    item_count = len(distinct_items)
-    prev_item_count = _count_distinct_items_for_prev(doctype, prev_filters) if (prev_from_date or prev_to_date) else None
-    item_delta = _calculate_delta(item_count, prev_item_count)
 
     return {
         "id": "po_pending",
         "title": _("MR Pending"),
         "doctype": doctype,
-        "count": total_count,
-        "previous_count": prev_count,
+        "count": doc_count,
+        "previous_count": prev_doc_count,
         "delta": delta,
-        "item_count": item_count,
-        "previous_item_count": prev_item_count,
-        "item_delta": item_delta,
+        "line_item_count": line_item_count,
+        "previous_line_item_count": prev_line_item_count,
+        "line_item_delta": line_item_delta,
+        "line_items_label": _("Line Items Pending"),
+        "item_count": line_item_count,
+        "previous_item_count": prev_line_item_count,
+        "item_delta": line_item_delta,
         "total_item_qty": round(total_item_qty, 2),
         "total_item_amount": round(total_item_amount, 2),
         "color": "clr-cyan",
         "icon": "octicon octicon-file-text",
         "items": card_items,
+        "document_intensity": doc_intensity,
+        "item_intensity": item_intensity,
     }
 
 
@@ -901,60 +1108,85 @@ def _get_mr_completed_card(
     prev_to_date: str | None = None,
 ) -> dict[str, Any]:
     """Card 2: MR Completed
-    Shows Material Request data with filter:
-    docstatus = 1, material_request_type = 'Purchase', status in ('Partially Received', 'Ordered', 'Issued', 'Transferred', 'Received'), owner in users (Created By)
+    Document count: Submitted Purchase Material Requests with status in ('Partially Received', 'Ordered', 'Issued', 'Transferred', 'Received')
+    Line Item count: Completed line items in these Material Requests
     """
     doctype = "Material Request"
+    empty_res = {
+        "id": "mr_completed", "title": _("MR Completed"), "doctype": doctype,
+        "count": 0, "previous_count": 0, "delta": _calculate_delta(0, 0),
+        "line_item_count": 0, "previous_line_item_count": 0, "line_item_delta": _calculate_delta(0, 0),
+        "line_items_label": _("Line Items Completed"),
+        "item_count": 0, "previous_item_count": 0, "item_delta": _calculate_delta(0, 0),
+        "total_item_qty": 0.0, "total_item_amount": 0.0, "color": "clr-amber",
+        "icon": "octicon octicon-check", "items": [],
+        "document_intensity": {"total_documents": 0, "buckets": {"1": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "2": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3+": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}}},
+        "item_intensity": {"buckets": {"1": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "2": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3+": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}}},
+    }
     if not _doctype_exists(doctype) or not frappe.has_permission(doctype, "read"):
-        return {"id": "mr_completed", "title": _("MR Completed"), "doctype": doctype, "count": 0, "previous_count": 0, "delta": _calculate_delta(0, 0), "items": []}
+        return empty_res
 
+    extra_clauses = ["mr.material_request_type = 'Purchase'", "mr.status IN ('Partially Received', 'Ordered', 'Issued', 'Transferred', 'Received')"]
+    where_sql, params = _build_sql_where("mr", "transaction_date", from_date, to_date, users, branch, extra_clauses)
+
+    doc_count_res = frappe.db.sql(f"SELECT COUNT(DISTINCT mr.name) AS cnt FROM `tabMaterial Request` mr WHERE {where_sql}", params, as_dict=True)
+    doc_count = cint(doc_count_res[0].get("cnt")) if doc_count_res else 0
+
+    item_sql = f"""
+        SELECT
+            COUNT(mri.name) AS line_item_cnt,
+            COALESCE(SUM(mri.qty), 0) AS total_qty,
+            COALESCE(SUM(mri.amount), 0) AS total_amount
+        FROM `tabMaterial Request Item` mri
+        INNER JOIN `tabMaterial Request` mr ON mr.name = mri.parent AND mri.parenttype = 'Material Request'
+        WHERE {where_sql} AND (COALESCE(mri.ordered_qty, 0) >= mri.qty OR mr.status IN ('Ordered', 'Received', 'Issued', 'Transferred'))
+    """
+    item_res = frappe.db.sql(item_sql, params, as_dict=True)
+    line_item_count = cint(item_res[0].get("line_item_cnt")) if item_res else 0
+    total_item_qty = flt(item_res[0].get("total_qty")) if item_res else 0.0
+    total_item_amount = flt(item_res[0].get("total_amount")) if item_res else 0.0
+
+    # Previous period
+    prev_doc_count = None
+    prev_line_item_count = None
+    p_where_sql, p_params = None, None
+    if prev_from_date or prev_to_date:
+        p_where_sql, p_params = _build_sql_where("mr", "transaction_date", prev_from_date, prev_to_date, users, branch, extra_clauses)
+        p_doc_res = frappe.db.sql(f"SELECT COUNT(DISTINCT mr.name) AS cnt FROM `tabMaterial Request` mr WHERE {p_where_sql}", p_params, as_dict=True)
+        prev_doc_count = cint(p_doc_res[0].get("cnt")) if p_doc_res else 0
+
+        p_item_res = frappe.db.sql(f"""
+            SELECT COUNT(mri.name) AS line_item_cnt
+            FROM `tabMaterial Request Item` mri
+            INNER JOIN `tabMaterial Request` mr ON mr.name = mri.parent AND mri.parenttype = 'Material Request'
+            WHERE {p_where_sql} AND (COALESCE(mri.ordered_qty, 0) >= mri.qty OR mr.status IN ('Ordered', 'Received', 'Issued', 'Transferred'))
+        """, p_params, as_dict=True)
+        prev_line_item_count = cint(p_item_res[0].get("line_item_cnt")) if p_item_res else 0
+
+    delta = _calculate_delta(doc_count, prev_doc_count)
+    line_item_delta = _calculate_delta(line_item_count, prev_line_item_count)
+    doc_intensity = _get_card_intensity("Material Request", "Material Request Item", where_sql, params, p_where_sql, p_params, "mr", "mri")
+    item_intensity = _get_card_item_intensity("Material Request", "Material Request Item", where_sql, params, "(COALESCE(mri.ordered_qty, 0) >= mri.qty OR mr.status IN ('Ordered', 'Received', 'Issued', 'Transferred'))", p_where_sql, p_params, "mr", "mri")
+
+    # Modal inspection records (up to 200 recent)
     filters: dict[str, Any] = {
         "docstatus": 1,
         "material_request_type": "Purchase",
         "status": ["in", ["Partially Received", "Ordered", "Issued", "Transferred", "Received"]],
     }
-    if users:
-        filters["owner"] = ["in", users]
-    if branch:
-        filters["branch"] = branch
-    if from_date and to_date:
-        filters["transaction_date"] = ["between", [from_date, to_date]]
-    elif from_date:
-        filters["transaction_date"] = [">=", from_date]
-    elif to_date:
-        filters["transaction_date"] = ["<=", to_date]
+    if users: filters["owner"] = ["in", users]
+    if branch: filters["branch"] = branch
+    if from_date and to_date: filters["transaction_date"] = ["between", [from_date, to_date]]
+    elif from_date: filters["transaction_date"] = [">=", from_date]
+    elif to_date: filters["transaction_date"] = ["<=", to_date]
 
     mr_meta = frappe.get_meta(doctype)
     fields = ["name", "transaction_date", "material_request_type", "status", "owner"]
-    if mr_meta.has_field("schedule_date"):
-        fields.append("schedule_date")
-    if mr_meta.has_field("branch"):
-        fields.append("branch")
-    if mr_meta.has_field("project"):
-        fields.append("project")
+    if mr_meta.has_field("schedule_date"): fields.append("schedule_date")
+    if mr_meta.has_field("branch"): fields.append("branch")
+    if mr_meta.has_field("project"): fields.append("project")
 
-    records = frappe.get_all(
-        doctype,
-        filters=filters,
-        fields=fields,
-        order_by="transaction_date desc, modified desc",
-        limit_page_length=100,
-    )
-    total_count = frappe.db.count(doctype, filters=filters)
-
-    # Previous period count
-    prev_filters = dict(filters)
-    if prev_from_date and prev_to_date:
-        prev_filters["transaction_date"] = ["between", [prev_from_date, prev_to_date]]
-    elif prev_from_date:
-        prev_filters["transaction_date"] = [">=", prev_from_date]
-    elif prev_to_date:
-        prev_filters["transaction_date"] = ["<=", prev_to_date]
-    else:
-        prev_filters.pop("transaction_date", None)
-    prev_count = frappe.db.count(doctype, filters=prev_filters) if (prev_from_date or prev_to_date) else None
-    delta = _calculate_delta(total_count, prev_count)
-
+    records = frappe.get_all(doctype, filters=filters, fields=fields, order_by="transaction_date desc, modified desc", limit_page_length=200)
     card_items = [
         {
             "ao": r.get("name"),
@@ -970,42 +1202,31 @@ def _get_mr_completed_card(
         }
         for r in records
     ]
-
-    doc_names = [r["ao"] for r in card_items]
-    items_map = _fetch_child_items_for_docs(doctype, doc_names)
+    items_map = _fetch_child_items_for_docs(doctype, [r["ao"] for r in card_items])
     for it in card_items:
         it["doc_items"] = items_map.get(it["ao"], [])
-
-    distinct_items: set[str] = set()
-    total_item_qty: float = 0.0
-    total_item_amount: float = 0.0
-    for r in card_items:
-        for di in r.get("doc_items") or []:
-            icode = di.get("item_code")
-            if icode:
-                distinct_items.add(icode)
-            total_item_qty += flt(di.get("qty"))
-            total_item_amount += flt(di.get("amount"))
-
-    item_count = len(distinct_items)
-    prev_item_count = _count_distinct_items_for_prev(doctype, prev_filters) if (prev_from_date or prev_to_date) else None
-    item_delta = _calculate_delta(item_count, prev_item_count)
 
     return {
         "id": "mr_completed",
         "title": _("MR Completed"),
         "doctype": doctype,
-        "count": total_count,
-        "previous_count": prev_count,
+        "count": doc_count,
+        "previous_count": prev_doc_count,
         "delta": delta,
-        "item_count": item_count,
-        "previous_item_count": prev_item_count,
-        "item_delta": item_delta,
+        "line_item_count": line_item_count,
+        "previous_line_item_count": prev_line_item_count,
+        "line_item_delta": line_item_delta,
+        "line_items_label": _("Line Items Completed"),
+        "item_count": line_item_count,
+        "previous_item_count": prev_line_item_count,
+        "item_delta": line_item_delta,
         "total_item_qty": round(total_item_qty, 2),
         "total_item_amount": round(total_item_amount, 2),
         "color": "clr-amber",
         "icon": "octicon octicon-check",
         "items": card_items,
+        "document_intensity": doc_intensity,
+        "item_intensity": item_intensity,
     }
 
 
@@ -1018,59 +1239,84 @@ def _get_pr_pending_card(
     prev_to_date: str | None = None,
 ) -> dict[str, Any]:
     """Card 3: PR Pending
-    Shows Purchase Order data with filter:
-    docstatus = 1, status in ('To Receive and Bill', 'To Receive'), owner in users (Created By)
+    Document count: Submitted Purchase Orders with status in ('To Receive and Bill', 'To Receive')
+    Line Item count: Child line items pending receipt (qty - received_qty > 0)
     """
     doctype = "Purchase Order"
+    empty_res = {
+        "id": "pr_pending", "title": _("PR Pending"), "doctype": doctype,
+        "count": 0, "previous_count": 0, "delta": _calculate_delta(0, 0),
+        "line_item_count": 0, "previous_line_item_count": 0, "line_item_delta": _calculate_delta(0, 0),
+        "line_items_label": _("Line Items Pending"),
+        "item_count": 0, "previous_item_count": 0, "item_delta": _calculate_delta(0, 0),
+        "total_item_qty": 0.0, "total_item_amount": 0.0, "color": "clr-indigo",
+        "icon": "octicon octicon-git-branch", "items": [],
+        "document_intensity": {"total_documents": 0, "buckets": {"1": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "2": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3+": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}}},
+        "item_intensity": {"buckets": {"1": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "2": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3+": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}}},
+    }
     if not _doctype_exists(doctype) or not frappe.has_permission(doctype, "read"):
-        return {"id": "pr_pending", "title": _("PR Pending"), "doctype": doctype, "count": 0, "previous_count": 0, "delta": _calculate_delta(0, 0), "items": []}
+        return empty_res
 
+    extra_clauses = ["po.status IN ('To Receive and Bill', 'To Receive')"]
+    where_sql, params = _build_sql_where("po", "transaction_date", from_date, to_date, users, branch, extra_clauses)
+
+    doc_count_res = frappe.db.sql(f"SELECT COUNT(DISTINCT po.name) AS cnt FROM `tabPurchase Order` po WHERE {where_sql}", params, as_dict=True)
+    doc_count = cint(doc_count_res[0].get("cnt")) if doc_count_res else 0
+
+    item_sql = f"""
+        SELECT
+            COUNT(poi.name) AS line_item_cnt,
+            COALESCE(SUM(poi.qty - COALESCE(poi.received_qty, 0)), 0) AS total_qty,
+            COALESCE(SUM((poi.qty - COALESCE(poi.received_qty, 0)) * COALESCE(poi.rate, 0)), 0) AS total_amount
+        FROM `tabPurchase Order Item` poi
+        INNER JOIN `tabPurchase Order` po ON po.name = poi.parent AND poi.parenttype = 'Purchase Order'
+        WHERE {where_sql} AND (poi.qty - COALESCE(poi.received_qty, 0)) > 0
+    """
+    item_res = frappe.db.sql(item_sql, params, as_dict=True)
+    line_item_count = cint(item_res[0].get("line_item_cnt")) if item_res else 0
+    total_item_qty = flt(item_res[0].get("total_qty")) if item_res else 0.0
+    total_item_amount = flt(item_res[0].get("total_amount")) if item_res else 0.0
+
+    # Previous period
+    prev_doc_count = None
+    prev_line_item_count = None
+    p_where_sql, p_params = None, None
+    if prev_from_date or prev_to_date:
+        p_where_sql, p_params = _build_sql_where("po", "transaction_date", prev_from_date, prev_to_date, users, branch, extra_clauses)
+        p_doc_res = frappe.db.sql(f"SELECT COUNT(DISTINCT po.name) AS cnt FROM `tabPurchase Order` po WHERE {p_where_sql}", p_params, as_dict=True)
+        prev_doc_count = cint(p_doc_res[0].get("cnt")) if p_doc_res else 0
+
+        p_item_res = frappe.db.sql(f"""
+            SELECT COUNT(poi.name) AS line_item_cnt
+            FROM `tabPurchase Order Item` poi
+            INNER JOIN `tabPurchase Order` po ON po.name = poi.parent AND poi.parenttype = 'Purchase Order'
+            WHERE {p_where_sql} AND (poi.qty - COALESCE(poi.received_qty, 0)) > 0
+        """, p_params, as_dict=True)
+        prev_line_item_count = cint(p_item_res[0].get("line_item_cnt")) if p_item_res else 0
+
+    delta = _calculate_delta(doc_count, prev_doc_count)
+    line_item_delta = _calculate_delta(line_item_count, prev_line_item_count)
+    doc_intensity = _get_card_intensity("Purchase Order", "Purchase Order Item", where_sql, params, p_where_sql, p_params, "po", "poi")
+    item_intensity = _get_card_item_intensity("Purchase Order", "Purchase Order Item", where_sql, params, "(poi.qty - COALESCE(poi.received_qty, 0)) > 0", p_where_sql, p_params, "po", "poi")
+
+    # Modal inspection records (up to 200 recent)
     filters: dict[str, Any] = {
         "docstatus": 1,
         "status": ["in", ["To Receive and Bill", "To Receive"]],
     }
-    if users:
-        filters["owner"] = ["in", users]
-    if branch:
-        filters["branch"] = branch
-    if from_date and to_date:
-        filters["transaction_date"] = ["between", [from_date, to_date]]
-    elif from_date:
-        filters["transaction_date"] = [">=", from_date]
-    elif to_date:
-        filters["transaction_date"] = ["<=", to_date]
+    if users: filters["owner"] = ["in", users]
+    if branch: filters["branch"] = branch
+    if from_date and to_date: filters["transaction_date"] = ["between", [from_date, to_date]]
+    elif from_date: filters["transaction_date"] = [">=", from_date]
+    elif to_date: filters["transaction_date"] = ["<=", to_date]
 
     po_meta = frappe.get_meta(doctype)
     fields = ["name", "transaction_date", "supplier", "supplier_name", "grand_total", "currency", "status", "owner"]
-    if po_meta.has_field("schedule_date"):
-        fields.append("schedule_date")
-    if po_meta.has_field("branch"):
-        fields.append("branch")
-    if po_meta.has_field("project"):
-        fields.append("project")
+    if po_meta.has_field("schedule_date"): fields.append("schedule_date")
+    if po_meta.has_field("branch"): fields.append("branch")
+    if po_meta.has_field("project"): fields.append("project")
 
-    records = frappe.get_all(
-        doctype,
-        filters=filters,
-        fields=fields,
-        order_by="transaction_date desc, modified desc",
-        limit_page_length=100,
-    )
-    total_count = frappe.db.count(doctype, filters=filters)
-
-    # Previous period count
-    prev_filters = dict(filters)
-    if prev_from_date and prev_to_date:
-        prev_filters["transaction_date"] = ["between", [prev_from_date, prev_to_date]]
-    elif prev_from_date:
-        prev_filters["transaction_date"] = [">=", prev_from_date]
-    elif prev_to_date:
-        prev_filters["transaction_date"] = ["<=", prev_to_date]
-    else:
-        prev_filters.pop("transaction_date", None)
-    prev_count = frappe.db.count(doctype, filters=prev_filters) if (prev_from_date or prev_to_date) else None
-    delta = _calculate_delta(total_count, prev_count)
-
+    records = frappe.get_all(doctype, filters=filters, fields=fields, order_by="transaction_date desc, modified desc", limit_page_length=200)
     card_items = [
         {
             "ao": r.get("name"),
@@ -1088,42 +1334,31 @@ def _get_pr_pending_card(
         }
         for r in records
     ]
-
-    doc_names = [r["ao"] for r in card_items]
-    items_map = _fetch_child_items_for_docs(doctype, doc_names)
+    items_map = _fetch_child_items_for_docs(doctype, [r["ao"] for r in card_items])
     for it in card_items:
         it["doc_items"] = items_map.get(it["ao"], [])
-
-    distinct_items: set[str] = set()
-    total_item_qty: float = 0.0
-    total_item_amount: float = 0.0
-    for r in card_items:
-        for di in r.get("doc_items") or []:
-            icode = di.get("item_code")
-            if icode:
-                distinct_items.add(icode)
-            total_item_qty += flt(di.get("qty"))
-            total_item_amount += flt(di.get("amount"))
-
-    item_count = len(distinct_items)
-    prev_item_count = _count_distinct_items_for_prev(doctype, prev_filters) if (prev_from_date or prev_to_date) else None
-    item_delta = _calculate_delta(item_count, prev_item_count)
 
     return {
         "id": "pr_pending",
         "title": _("PR Pending"),
         "doctype": doctype,
-        "count": total_count,
-        "previous_count": prev_count,
+        "count": doc_count,
+        "previous_count": prev_doc_count,
         "delta": delta,
-        "item_count": item_count,
-        "previous_item_count": prev_item_count,
-        "item_delta": item_delta,
+        "line_item_count": line_item_count,
+        "previous_line_item_count": prev_line_item_count,
+        "line_item_delta": line_item_delta,
+        "line_items_label": _("Line Items Pending"),
+        "item_count": line_item_count,
+        "previous_item_count": prev_line_item_count,
+        "item_delta": line_item_delta,
         "total_item_qty": round(total_item_qty, 2),
         "total_item_amount": round(total_item_amount, 2),
         "color": "clr-indigo",
         "icon": "octicon octicon-git-branch",
         "items": card_items,
+        "document_intensity": doc_intensity,
+        "item_intensity": item_intensity,
     }
 
 
@@ -1136,58 +1371,84 @@ def _get_pi_pending_card(
     prev_to_date: str | None = None,
 ) -> dict[str, Any]:
     """Card 4: PI Pending
-    Shows Purchase Receipt data with filter:
-    docstatus = 1, is_return = 0, status in ('Partly Billed', 'To Bill', 'Partially Billed'), owner in users (Created By)
+    Document count: Submitted Purchase Receipts (is_return=0) with status in ('Partly Billed', 'To Bill', 'Partially Billed')
+    Line Item count: Child line items pending billing (amount - billed_amt > 0)
     """
     doctype = "Purchase Receipt"
+    empty_res = {
+        "id": "pi_pending", "title": _("PI Pending"), "doctype": doctype,
+        "count": 0, "previous_count": 0, "delta": _calculate_delta(0, 0),
+        "line_item_count": 0, "previous_line_item_count": 0, "line_item_delta": _calculate_delta(0, 0),
+        "line_items_label": _("Line Items Pending"),
+        "item_count": 0, "previous_item_count": 0, "item_delta": _calculate_delta(0, 0),
+        "total_item_qty": 0.0, "total_item_amount": 0.0, "color": "clr-rose",
+        "icon": "octicon octicon-clock", "items": [],
+        "document_intensity": {"total_documents": 0, "buckets": {"1": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "2": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3+": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}}},
+        "item_intensity": {"buckets": {"1": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "2": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3+": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}}},
+    }
     if not _doctype_exists(doctype) or not frappe.has_permission(doctype, "read"):
-        return {"id": "pi_pending", "title": _("PI Pending"), "doctype": doctype, "count": 0, "previous_count": 0, "delta": _calculate_delta(0, 0), "items": []}
+        return empty_res
 
+    extra_clauses = ["pr.is_return = 0", "pr.status IN ('Partly Billed', 'To Bill', 'Partially Billed')"]
+    where_sql, params = _build_sql_where("pr", "posting_date", from_date, to_date, users, branch, extra_clauses)
+
+    doc_count_res = frappe.db.sql(f"SELECT COUNT(DISTINCT pr.name) AS cnt FROM `tabPurchase Receipt` pr WHERE {where_sql}", params, as_dict=True)
+    doc_count = cint(doc_count_res[0].get("cnt")) if doc_count_res else 0
+
+    item_sql = f"""
+        SELECT
+            COUNT(pri.name) AS line_item_cnt,
+            COALESCE(SUM(CASE WHEN pri.rate > 0 THEN (pri.amount - COALESCE(pri.billed_amt, 0)) / pri.rate ELSE (pri.qty - COALESCE(pri.received_qty, 0)) END), 0) AS total_qty,
+            COALESCE(SUM(pri.amount - COALESCE(pri.billed_amt, 0)), 0) AS total_amount
+        FROM `tabPurchase Receipt Item` pri
+        INNER JOIN `tabPurchase Receipt` pr ON pr.name = pri.parent AND pri.parenttype = 'Purchase Receipt'
+        WHERE {where_sql} AND (pri.amount - COALESCE(pri.billed_amt, 0)) > 0
+    """
+    item_res = frappe.db.sql(item_sql, params, as_dict=True)
+    line_item_count = cint(item_res[0].get("line_item_cnt")) if item_res else 0
+    total_item_qty = flt(item_res[0].get("total_qty")) if item_res else 0.0
+    total_item_amount = flt(item_res[0].get("total_amount")) if item_res else 0.0
+
+    # Previous period
+    prev_doc_count = None
+    prev_line_item_count = None
+    p_where_sql, p_params = None, None
+    if prev_from_date or prev_to_date:
+        p_where_sql, p_params = _build_sql_where("pr", "posting_date", prev_from_date, prev_to_date, users, branch, extra_clauses)
+        p_doc_res = frappe.db.sql(f"SELECT COUNT(DISTINCT pr.name) AS cnt FROM `tabPurchase Receipt` pr WHERE {p_where_sql}", p_params, as_dict=True)
+        prev_doc_count = cint(p_doc_res[0].get("cnt")) if p_doc_res else 0
+
+        p_item_res = frappe.db.sql(f"""
+            SELECT COUNT(pri.name) AS line_item_cnt
+            FROM `tabPurchase Receipt Item` pri
+            INNER JOIN `tabPurchase Receipt` pr ON pr.name = pri.parent AND pri.parenttype = 'Purchase Receipt'
+            WHERE {p_where_sql} AND (pri.amount - COALESCE(pri.billed_amt, 0)) > 0
+        """, p_params, as_dict=True)
+        prev_line_item_count = cint(p_item_res[0].get("line_item_cnt")) if p_item_res else 0
+
+    delta = _calculate_delta(doc_count, prev_doc_count)
+    line_item_delta = _calculate_delta(line_item_count, prev_line_item_count)
+    doc_intensity = _get_card_intensity("Purchase Receipt", "Purchase Receipt Item", where_sql, params, p_where_sql, p_params, "pr", "pri")
+    item_intensity = _get_card_item_intensity("Purchase Receipt", "Purchase Receipt Item", where_sql, params, "(pri.amount - COALESCE(pri.billed_amt, 0)) > 0", p_where_sql, p_params, "pr", "pri")
+
+    # Modal inspection records (up to 200 recent)
     filters: dict[str, Any] = {
         "docstatus": 1,
         "is_return": 0,
         "status": ["in", ["Partly Billed", "To Bill", "Partially Billed"]],
     }
-    if users:
-        filters["owner"] = ["in", users]
-    if branch:
-        filters["branch"] = branch
-    if from_date and to_date:
-        filters["posting_date"] = ["between", [from_date, to_date]]
-    elif from_date:
-        filters["posting_date"] = [">=", from_date]
-    elif to_date:
-        filters["posting_date"] = ["<=", to_date]
+    if users: filters["owner"] = ["in", users]
+    if branch: filters["branch"] = branch
+    if from_date and to_date: filters["posting_date"] = ["between", [from_date, to_date]]
+    elif from_date: filters["posting_date"] = [">=", from_date]
+    elif to_date: filters["posting_date"] = ["<=", to_date]
 
     pr_meta = frappe.get_meta(doctype)
     fields = ["name", "posting_date", "supplier", "supplier_name", "grand_total", "currency", "status", "owner"]
-    if pr_meta.has_field("branch"):
-        fields.append("branch")
-    if pr_meta.has_field("project"):
-        fields.append("project")
+    if pr_meta.has_field("branch"): fields.append("branch")
+    if pr_meta.has_field("project"): fields.append("project")
 
-    records = frappe.get_all(
-        doctype,
-        filters=filters,
-        fields=fields,
-        order_by="posting_date desc, modified desc",
-        limit_page_length=100,
-    )
-    total_count = frappe.db.count(doctype, filters=filters)
-
-    # Previous period count
-    prev_filters = dict(filters)
-    if prev_from_date and prev_to_date:
-        prev_filters["posting_date"] = ["between", [prev_from_date, prev_to_date]]
-    elif prev_from_date:
-        prev_filters["posting_date"] = [">=", prev_from_date]
-    elif prev_to_date:
-        prev_filters["posting_date"] = ["<=", prev_to_date]
-    else:
-        prev_filters.pop("posting_date", None)
-    prev_count = frappe.db.count(doctype, filters=prev_filters) if (prev_from_date or prev_to_date) else None
-    delta = _calculate_delta(total_count, prev_count)
-
+    records = frappe.get_all(doctype, filters=filters, fields=fields, order_by="posting_date desc, modified desc", limit_page_length=200)
     card_items = [
         {
             "ao": r.get("name"),
@@ -1204,42 +1465,31 @@ def _get_pi_pending_card(
         }
         for r in records
     ]
-
-    doc_names = [r["ao"] for r in card_items]
-    items_map = _fetch_child_items_for_docs(doctype, doc_names)
+    items_map = _fetch_child_items_for_docs(doctype, [r["ao"] for r in card_items])
     for it in card_items:
         it["doc_items"] = items_map.get(it["ao"], [])
-
-    distinct_items: set[str] = set()
-    total_item_qty: float = 0.0
-    total_item_amount: float = 0.0
-    for r in card_items:
-        for di in r.get("doc_items") or []:
-            icode = di.get("item_code")
-            if icode:
-                distinct_items.add(icode)
-            total_item_qty += flt(di.get("qty"))
-            total_item_amount += flt(di.get("amount"))
-
-    item_count = len(distinct_items)
-    prev_item_count = _count_distinct_items_for_prev(doctype, prev_filters) if (prev_from_date or prev_to_date) else None
-    item_delta = _calculate_delta(item_count, prev_item_count)
 
     return {
         "id": "pi_pending",
         "title": _("PI Pending"),
         "doctype": doctype,
-        "count": total_count,
-        "previous_count": prev_count,
+        "count": doc_count,
+        "previous_count": prev_doc_count,
         "delta": delta,
-        "item_count": item_count,
-        "previous_item_count": prev_item_count,
-        "item_delta": item_delta,
+        "line_item_count": line_item_count,
+        "previous_line_item_count": prev_line_item_count,
+        "line_item_delta": line_item_delta,
+        "line_items_label": _("Line Items Pending"),
+        "item_count": line_item_count,
+        "previous_item_count": prev_line_item_count,
+        "item_delta": line_item_delta,
         "total_item_qty": round(total_item_qty, 2),
         "total_item_amount": round(total_item_amount, 2),
         "color": "clr-rose",
         "icon": "octicon octicon-clock",
         "items": card_items,
+        "document_intensity": doc_intensity,
+        "item_intensity": item_intensity,
     }
 
 
@@ -1252,68 +1502,86 @@ def _get_pi_completed_card(
     prev_to_date: str | None = None,
 ) -> dict[str, Any]:
     """Card 5: Total PI Completed
-    Shows Purchase Invoice data with filter:
-    docstatus = 1, is_return = 0, owner in users (Created By)
+    Document count: Submitted Purchase Invoices (docstatus=1, is_return=0)
+    Line Item count: Child line items in these Purchase Invoices
     """
     doctype = "Purchase Invoice"
+    empty_res = {
+        "id": "pi_completed", "title": _("Total PI Completed"), "doctype": doctype,
+        "count": 0, "previous_count": 0, "delta": _calculate_delta(0, 0),
+        "line_item_count": 0, "previous_line_item_count": 0, "line_item_delta": _calculate_delta(0, 0),
+        "line_items_label": _("Line Items Completed"),
+        "item_count": 0, "previous_item_count": 0, "item_delta": _calculate_delta(0, 0),
+        "total_item_qty": 0.0, "total_item_amount": 0.0, "color": "clr-emerald",
+        "icon": "octicon octicon-checklist", "items": [],
+        "document_intensity": {"total_documents": 0, "buckets": {"1": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "2": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3+": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}}},
+        "item_intensity": {"buckets": {"1": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "2": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}, "3+": {"count": 0, "previous_count": 0, "branches": {"Sanand": 0, "Nandikoor": 0, "Rabale": 0}}}},
+    }
     if not _doctype_exists(doctype) or not frappe.has_permission(doctype, "read"):
-        return {"id": "pi_completed", "title": _("Total PI Completed"), "doctype": doctype, "count": 0, "previous_count": 0, "delta": _calculate_delta(0, 0), "items": []}
+        return empty_res
 
+    extra_clauses = ["pi.is_return = 0"]
+    where_sql, params = _build_sql_where("pi", "posting_date", from_date, to_date, users, branch, extra_clauses)
+
+    doc_count_res = frappe.db.sql(f"SELECT COUNT(DISTINCT pi.name) AS cnt FROM `tabPurchase Invoice` pi WHERE {where_sql}", params, as_dict=True)
+    doc_count = cint(doc_count_res[0].get("cnt")) if doc_count_res else 0
+
+    item_sql = f"""
+        SELECT
+            COUNT(pii.name) AS line_item_cnt,
+            COALESCE(SUM(pii.qty), 0) AS total_qty,
+            COALESCE(SUM(pii.amount), 0) AS total_amount
+        FROM `tabPurchase Invoice Item` pii
+        INNER JOIN `tabPurchase Invoice` pi ON pi.name = pii.parent AND pii.parenttype = 'Purchase Invoice'
+        WHERE {where_sql}
+    """
+    item_res = frappe.db.sql(item_sql, params, as_dict=True)
+    line_item_count = cint(item_res[0].get("line_item_cnt")) if item_res else 0
+    total_item_qty = flt(item_res[0].get("total_qty")) if item_res else 0.0
+    total_item_amount = flt(item_res[0].get("total_amount")) if item_res else 0.0
+
+    # Previous period
+    prev_doc_count = None
+    prev_line_item_count = None
+    p_where_sql, p_params = None, None
+    if prev_from_date or prev_to_date:
+        p_where_sql, p_params = _build_sql_where("pi", "posting_date", prev_from_date, prev_to_date, users, branch, extra_clauses)
+        p_doc_res = frappe.db.sql(f"SELECT COUNT(DISTINCT pi.name) AS cnt FROM `tabPurchase Invoice` pi WHERE {p_where_sql}", p_params, as_dict=True)
+        prev_doc_count = cint(p_doc_res[0].get("cnt")) if p_doc_res else 0
+
+        p_item_res = frappe.db.sql(f"""
+            SELECT COUNT(pii.name) AS line_item_cnt
+            FROM `tabPurchase Invoice Item` pii
+            INNER JOIN `tabPurchase Invoice` pi ON pi.name = pii.parent AND pii.parenttype = 'Purchase Invoice'
+            WHERE {p_where_sql}
+        """, p_params, as_dict=True)
+        prev_line_item_count = cint(p_item_res[0].get("line_item_cnt")) if p_item_res else 0
+
+    delta = _calculate_delta(doc_count, prev_doc_count)
+    line_item_delta = _calculate_delta(line_item_count, prev_line_item_count)
+    doc_intensity = _get_card_intensity("Purchase Invoice", "Purchase Invoice Item", where_sql, params, p_where_sql, p_params, "pi", "pii")
+    item_intensity = _get_card_item_intensity("Purchase Invoice", "Purchase Invoice Item", where_sql, params, "", p_where_sql, p_params, "pi", "pii")
+
+    # Modal inspection records (up to 200 recent)
     filters: dict[str, Any] = {
         "docstatus": 1,
         "is_return": 0,
     }
-    if users:
-        filters["owner"] = ["in", users]
-    if branch:
-        filters["branch"] = branch
-    if from_date and to_date:
-        filters["posting_date"] = ["between", [from_date, to_date]]
-    elif from_date:
-        filters["posting_date"] = [">=", from_date]
-    elif to_date:
-        filters["posting_date"] = ["<=", to_date]
+    if users: filters["owner"] = ["in", users]
+    if branch: filters["branch"] = branch
+    if from_date and to_date: filters["posting_date"] = ["between", [from_date, to_date]]
+    elif from_date: filters["posting_date"] = [">=", from_date]
+    elif to_date: filters["posting_date"] = ["<=", to_date]
 
     pi_meta = frappe.get_meta(doctype)
     fields = [
-        "name",
-        "posting_date",
-        "due_date",
-        "supplier",
-        "supplier_name",
-        "grand_total",
-        "outstanding_amount",
-        "currency",
-        "status",
-        "owner",
+        "name", "posting_date", "due_date", "supplier", "supplier_name",
+        "grand_total", "outstanding_amount", "currency", "status", "owner",
     ]
-    if pi_meta.has_field("branch"):
-        fields.append("branch")
-    if pi_meta.has_field("project"):
-        fields.append("project")
+    if pi_meta.has_field("branch"): fields.append("branch")
+    if pi_meta.has_field("project"): fields.append("project")
 
-    records = frappe.get_all(
-        doctype,
-        filters=filters,
-        fields=fields,
-        order_by="posting_date desc, modified desc",
-        limit_page_length=100,
-    )
-    total_count = frappe.db.count(doctype, filters=filters)
-
-    # Previous period count
-    prev_filters = dict(filters)
-    if prev_from_date and prev_to_date:
-        prev_filters["posting_date"] = ["between", [prev_from_date, prev_to_date]]
-    elif prev_from_date:
-        prev_filters["posting_date"] = [">=", prev_from_date]
-    elif prev_to_date:
-        prev_filters["posting_date"] = ["<=", prev_to_date]
-    else:
-        prev_filters.pop("posting_date", None)
-    prev_count = frappe.db.count(doctype, filters=prev_filters) if (prev_from_date or prev_to_date) else None
-    delta = _calculate_delta(total_count, prev_count)
-
+    records = frappe.get_all(doctype, filters=filters, fields=fields, order_by="posting_date desc, modified desc", limit_page_length=200)
     card_items = [
         {
             "ao": r.get("name"),
@@ -1332,40 +1600,29 @@ def _get_pi_completed_card(
         }
         for r in records
     ]
-
-    doc_names = [r["ao"] for r in card_items]
-    items_map = _fetch_child_items_for_docs(doctype, doc_names)
+    items_map = _fetch_child_items_for_docs(doctype, [r["ao"] for r in card_items])
     for it in card_items:
         it["doc_items"] = items_map.get(it["ao"], [])
-
-    distinct_items: set[str] = set()
-    total_item_qty: float = 0.0
-    total_item_amount: float = 0.0
-    for r in card_items:
-        for di in r.get("doc_items") or []:
-            icode = di.get("item_code")
-            if icode:
-                distinct_items.add(icode)
-            total_item_qty += flt(di.get("qty"))
-            total_item_amount += flt(di.get("amount"))
-
-    item_count = len(distinct_items)
-    prev_item_count = _count_distinct_items_for_prev(doctype, prev_filters) if (prev_from_date or prev_to_date) else None
-    item_delta = _calculate_delta(item_count, prev_item_count)
 
     return {
         "id": "pi_completed",
         "title": _("Total PI Completed"),
         "doctype": doctype,
-        "count": total_count,
-        "previous_count": prev_count,
+        "count": doc_count,
+        "previous_count": prev_doc_count,
         "delta": delta,
-        "item_count": item_count,
-        "previous_item_count": prev_item_count,
-        "item_delta": item_delta,
+        "line_item_count": line_item_count,
+        "previous_line_item_count": prev_line_item_count,
+        "line_item_delta": line_item_delta,
+        "line_items_label": _("Line Items Completed"),
+        "item_count": line_item_count,
+        "previous_item_count": prev_line_item_count,
+        "item_delta": line_item_delta,
         "total_item_qty": round(total_item_qty, 2),
         "total_item_amount": round(total_item_amount, 2),
         "color": "clr-emerald",
         "icon": "octicon octicon-checklist",
         "items": card_items,
+        "document_intensity": doc_intensity,
+        "item_intensity": item_intensity,
     }

@@ -17,6 +17,7 @@
   "mds_date",
   "itpqap",
   "itpqap_rev",
+  "itpqap_status",
   "itpqap_receive_date",
   "after_gad_change_bom_update_or_not",
   "pattern_status",
@@ -153,7 +154,7 @@
    "fieldname": "gad_rev",
    "fieldtype": "Select",
    "label": "GAD Rev.",
-   "options": "\n00\n01\n02\n03\n04\n05\n06\nNO",
+   "options": "\n00\n01\n02\n03\n04\n05\n06\nA\nB\nC\nD\nE\nNO",
    "read_only": 1
   },
   {
@@ -176,7 +177,7 @@
    "fieldname": "itpqap",
    "fieldtype": "Select",
    "label": "ITP/QAP",
-   "options": "\nYES\nNO",
+   "options": "\nYES\nNO\nNA",
    "read_only": 1
   },
   {
@@ -184,7 +185,15 @@
    "fieldname": "itpqap_rev",
    "fieldtype": "Select",
    "label": "ITP/QAP Rev.",
-   "options": "\n00\n01\n02\n03\n04\n05\n06",
+   "options": "\n00\n01\n02\n03\n04\n05\n06\nA\nB\nC\nD\nE",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "itpqap_status",
+   "fieldtype": "Select",
+   "label": "ITP/QAP Status",
+   "options": "\nSSV STD GAD\nNO\nNA\nApproved\nSubmitted\nInprocess",
    "read_only": 1
   },
   {
@@ -228,9 +237,10 @@
   {
    "allow_on_submit": 1,
    "fieldname": "engg_bom_created_by",
-   "fieldtype": "Data",
+   "fieldtype": "Link",
    "label": "Engg. BOM Created By.",
-   "read_only": 1
+   "read_only": 1,
+   "options": "User"
   },
   {
    "allow_on_submit": 1,
@@ -244,7 +254,7 @@
    "fieldname": "bom_released_in_which_gad_revision",
    "fieldtype": "Select",
    "label": "Bom Released In Which GAD Revision",
-   "options": "\n00\n01\n02\n03\n04\n05\n06",
+   "options": "\n00\n01\n02\n03\n04\n05\n06\nA\nB\nC\nD\nE",
    "read_only": 1
   },
   {

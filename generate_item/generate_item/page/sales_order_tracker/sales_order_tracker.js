@@ -6,10 +6,11 @@
 // Tab 2 drills into a Sales Order's overview KPIs, BOM raw material consumption,
 // and linked document catalog.
 //
-// Drop at: apps/generate_item/generate_item/generate_item/page/ao_tracker/ao_tracker.js
+// Drop at: apps/generate_item/generate_item/generate_item/page/sales_order_tracker/sales_order_tracker.js
 // ---------------------------------------------------------------------------
 
-frappe.pages['ao-tracker'].on_page_load = function (wrapper) {
+frappe.pages['sales-order-tracker'] = frappe.pages['sales-order-tracker'] || {};
+frappe.pages['sales-order-tracker'].on_page_load = function (wrapper) {
 	var page = frappe.ui.make_app_page({
 		parent: wrapper,
 		title: 'Sales Order Tracker',
@@ -17,20 +18,25 @@ frappe.pages['ao-tracker'].on_page_load = function (wrapper) {
 	});
 
 	page.set_title(__('Sales Order Tracker'));
-	new AOTracker(page, wrapper);
+	new SalesOrderTracker(page, wrapper);
 };
 
-class AOTracker {
+// Fallback compatibility alias for old route if accessed
+if (frappe.pages['ao-tracker']) {
+	frappe.pages['ao-tracker'].on_page_load = frappe.pages['sales-order-tracker'].on_page_load;
+}
+
+class SalesOrderTracker {
 	constructor(page, wrapper) {
 		this.page = page;
 		this.wrapper = wrapper;
 		if (this.page && this.page.set_title) this.page.set_title(__('Sales Order Tracker'));
 		document.title = __('Sales Order Tracker');
 		this.method = {
-			list: 'generate_item.generate_item.page.ao_tracker.ao_tracker.get_ao_list',
-			detail: 'generate_item.generate_item.page.ao_tracker.ao_tracker.get_ao_detail',
-			doc_summary: 'generate_item.generate_item.page.ao_tracker.ao_tracker.get_doc_summary',
-			doc_list: 'generate_item.generate_item.page.ao_tracker.ao_tracker.get_doc_list'
+			list: 'generate_item.generate_item.page.sales_order_tracker.sales_order_tracker.get_sales_order_list',
+			detail: 'generate_item.generate_item.page.sales_order_tracker.sales_order_tracker.get_sales_order_detail',
+			doc_summary: 'generate_item.generate_item.page.sales_order_tracker.sales_order_tracker.get_doc_summary',
+			doc_list: 'generate_item.generate_item.page.sales_order_tracker.sales_order_tracker.get_doc_list'
 		};
 
 		this.state = {
@@ -39,6 +45,7 @@ class AOTracker {
 			batchItems: [],
 			viewMode: 'batch', // 'batch' or 'so'
 			currentSo: null,
+			currentBatch: null,
 			activeTab: 1,
 			selected: new Set(),
 			expandedSos: new Set(),
@@ -48,7 +55,8 @@ class AOTracker {
 			pageSize: 50,
 			totalPages: 1,
 			totalSos: 0,
-			totalBatches: 0
+			totalBatches: 0,
+			canViewDetail: false
 		};
 
 		this.period_options = [
@@ -62,17 +70,18 @@ class AOTracker {
 		];
 
 		this.doc_type_colors = {
-			quote: '#F59E0B', so: '#2563EB', mr: '#7C3AED', po: '#0284C7',
-			sco: '#0D9488', scr: '#D97706', pr: '#E11D48', sr: '#65A30D',
-			pi: '#EA580C', dn: '#059669', si: '#C026D3', pe_in: '#16A34A',
-			pe_out: '#DB2777', je: '#475569'
+			quote: '#F59E0B', so: '#2563EB', bom: '#8B5CF6', pp: '#EC4899',
+			mr: '#7C3AED', po: '#0284C7', sco: '#0D9488', scr: '#D97706',
+			pr: '#E11D48', sr: '#65A30D', pi: '#EA580C', dn: '#059669',
+			si: '#C026D3', pe_in: '#16A34A', pe_out: '#DB2777', je: '#475569'
 		};
 
+		// 8 Document Columns (Each combined with status where applicable)
 		this.doc_columns = [
-			{ key: 'mr', label: 'MR', full_label: 'Material Requests', color: '#7C3AED' },
-			{ key: 'po', label: 'PO', full_label: 'Purchase Orders', color: '#0284C7' },
-			{ key: 'sco', label: 'Subcontracting Order', full_label: 'Subcontracting Orders', color: '#0D9488' },
-			{ key: 'scr', label: 'Subcontracting Receipt', full_label: 'Subcontracting Receipts', color: '#D97706' },
+			{ key: 'bom', label: 'BOM', full_label: 'BOMs', color: '#8B5CF6' },
+			{ key: 'pp', label: 'Production Plan', full_label: 'Production Plans', color: '#EC4899' },
+			{ key: 'mr', label: 'Material Request', full_label: 'Material Requests', color: '#7C3AED' },
+			{ key: 'po', label: 'Purchase Order', full_label: 'Purchase Orders', color: '#0284C7' },
 			{ key: 'pr', label: 'Purchase Receipt', full_label: 'Purchase Receipts', color: '#E11D48' },
 			{ key: 'pi', label: 'Purchase Invoice', full_label: 'Purchase Invoices', color: '#EA580C' },
 			{ key: 'dn', label: 'Delivery Note', full_label: 'Delivery Notes', color: '#059669' },
@@ -122,6 +131,32 @@ class AOTracker {
 		this.company_control.refresh();
 		const default_company = frappe.defaults.get_default('company') || frappe.sys_defaults?.company;
 		if (default_company) this.company_control.set_value(default_company);
+
+		this.status_control = frappe.ui.form.make_control({
+			parent: this.$wrap.find('.aot-f-status-wrap').get(0),
+			df: {
+				fieldtype: 'Select',
+				options: [
+					{ value: '', label: __('Open Orders (Default)') },
+					{ value: 'On Hold', label: __('On Hold') },
+					{ value: 'To Deliver and Bill', label: __('To Deliver and Bill') },
+					{ value: 'To Bill', label: __('To Bill') },
+					{ value: 'To Deliver', label: __('To Deliver') },
+					{ value: 'Completed', label: __('Completed') },
+					{ value: 'Closed', label: __('Closed') },
+				],
+				fieldname: 'so_status',
+				placeholder: __('Sales Order Status'),
+				onchange: () => {
+					if (!this._initializing) {
+						this.state.page = 1;
+						this.load_list();
+					}
+				}
+			},
+			render_input: true
+		});
+		this.status_control.refresh();
 
 		this.so_control = frappe.ui.form.make_control({
 			parent: this.$wrap.find('.aot-f-so-wrap').get(0),
@@ -313,12 +348,12 @@ class AOTracker {
 		return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="16" rx="2.2"/><path d="M8 3v4M16 3v4M3.5 10h17"/></svg>`;
 	}
 
-	chevron_icon() {
-		return `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
+	status_icon() {
+		return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>`;
 	}
 
-	project_icon() {
-		return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/></svg>`;
+	chevron_icon() {
+		return `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>`;
 	}
 
 	sales_order_icon() {
@@ -331,10 +366,6 @@ class AOTracker {
 
 	branch_icon() {
 		return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"></line><circle cx="18" cy="6" r="3"></circle><circle cx="6" cy="18" r="3"></circle><path d="M18 9a9 9 0 0 1-9 9"></path></svg>`;
-	}
-
-	item_icon() {
-		return `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>`;
 	}
 
 	batch_icon() {
@@ -356,7 +387,7 @@ class AOTracker {
 			<div class="aot-topbar-actions">
 				<div class="aot-toggle" role="tablist">
 					<button class="aot-toggle-btn active" data-goto="1">${__('Status Overview')}</button>
-					<button class="aot-toggle-btn" data-goto="2">${__('Detailed View')}</button>
+					<button class="aot-toggle-btn aot-detail-tab-btn" data-goto="2">${__('Detailed View')}</button>
 				</div>
 				<button class="aot-icon-btn aot-refresh-btn" title="${__('Refresh')}">${this.refresh_icon()}</button>
 			</div>
@@ -395,6 +426,10 @@ class AOTracker {
 
 				<div class="aot-filter-row aot-filter-row-secondary">
 					<div class="aot-filter-group">
+						<div class="aot-pill-field aot-field-status">
+							<span class="aot-pill-icon">${this.status_icon()}</span>
+							<div class="aot-f-status-wrap aot-pill-input"></div>
+						</div>
 						<div class="aot-pill-field aot-field-so">
 							<span class="aot-pill-icon">${this.sales_order_icon()}</span>
 							<div class="aot-f-so-wrap aot-pill-input"></div>
@@ -417,7 +452,7 @@ class AOTracker {
 
 			<div class="aot-section-head">
 				<div class="aot-section-title-wrap">
-					<div class="aot-section-title">${__('Tracker Dashboard')}</div>
+					<div class="aot-section-title">${__('Sales Order Tracker Dashboard')}</div>
 					<div class="aot-result-count"></div>
 				</div>
 				<div class="aot-table-actions">
@@ -629,6 +664,7 @@ class AOTracker {
 			this.apply_period('monthly', { silent: true });
 			const default_company = frappe.defaults.get_default('company') || frappe.sys_defaults?.company || '';
 			if (this.company_control) this.company_control.set_value(default_company);
+			if (this.status_control) this.status_control.set_value('');
 			if (this.so_control) this.so_control.set_value('');
 			if (this.customer_control) this.customer_control.set_value('');
 			if (this.branch_control) {
@@ -660,11 +696,19 @@ class AOTracker {
 		this.$wrap.on('click', '.aot-back-link', () => this.go_tab(1));
 		this.$wrap.on('click', '.aot-toggle-btn', (e) => {
 			const n = Number($(e.currentTarget).data('goto'));
-			if (n === 2 && !this.state.currentSo) {
-				frappe.show_alert({ message: __('Open a Sales Order from the list first.'), indicator: 'orange' });
-				return;
-			}
 			if (n === 2) {
+				if (!this.state.canViewDetail) {
+					frappe.msgprint({
+						title: __('Access Restricted'),
+						message: __('You do not have permission to view the detailed view.'),
+						indicator: 'orange'
+					});
+					return;
+				}
+				if (!this.state.currentSo) {
+					frappe.show_alert({ message: __('Open a Sales Order from the list first.'), indicator: 'orange' });
+					return;
+				}
 				this.open_detail(this.state.currentSo, this.state.currentBatch);
 			} else {
 				this.go_tab(1);
@@ -681,18 +725,43 @@ class AOTracker {
 			}
 		});
 
-		// Navigation into detail view by clicking Sales Order or the arrow button
-		this.$wrap.on('click', '.aot-so-link, .aot-view-btn', (e) => {
+		// Single Document Popup on Sales Order Link
+		this.$wrap.on('click', '.aot-so-link', (e) => {
+			e.stopPropagation();
+			e.preventDefault();
+			const so = $(e.currentTarget).data('sales-order') || $(e.currentTarget).data('name');
+			const batch = $(e.currentTarget).data('batch') || (this.batch_control ? this.batch_control.get_value() : '') || null;
+			if (so) {
+				this.open_doc_modal('Sales Order', so, batch);
+			}
+		});
+
+		// Detailed view drilldown via Action Arrow Button
+		this.$wrap.on('click', '.aot-view-btn', (e) => {
+			e.stopPropagation();
+			if (!this.state.canViewDetail) {
+				frappe.msgprint({
+					title: __('Access Restricted'),
+					message: __('You do not have permission to access the detailed view. Please contact your administrator.'),
+					indicator: 'orange'
+				});
+				return;
+			}
 			const so = $(e.currentTarget).data('sales-order') || $(e.currentTarget).data('name');
 			const batch = $(e.currentTarget).data('batch') || (this.batch_control ? this.batch_control.get_value() : '') || null;
 			if (so) this.open_detail(so, batch);
 		});
 
+		// Single Document Popup on any linked document reference
 		this.$wrap.on('click', '.aot-doc-link', (e) => {
 			e.stopPropagation();
+			e.preventDefault();
 			const doctype = $(e.currentTarget).data('doctype');
 			const name = $(e.currentTarget).data('name');
-			if (doctype && name) frappe.set_route('Form', doctype, name);
+			const batch = $(e.currentTarget).data('batch') || (this.batch_control ? this.batch_control.get_value() : '') || this.state.currentBatch || null;
+			if (doctype && name) {
+				this.open_doc_modal(doctype, name, batch);
+			}
 		});
 
 		this.$wrap.on('click', '.aot-doc-multi, .aot-doc-card-multi', (e) => {
@@ -722,13 +791,6 @@ class AOTracker {
 		this.$wrap.on('click', '.aot-modal-open', () => {
 			const doctype = this.$wrap.find('.aot-modal').data('doctype');
 			const name = this.$wrap.find('.aot-modal').data('name');
-			if (doctype && name) frappe.set_route('Form', doctype, name);
-		});
-		this.$wrap.on('click', '.aot-modal-item-ref, .aot-doc-link', (e) => {
-			e.stopPropagation();
-			e.preventDefault();
-			const doctype = $(e.currentTarget).data('doctype');
-			const name = $(e.currentTarget).data('name');
 			if (doctype && name) frappe.set_route('Form', doctype, name);
 		});
 
@@ -767,7 +829,7 @@ class AOTracker {
 			$child.toggleClass('expanded', !isExp);
 		});
 
-		// Clicking row toggles expansion unless clicking interactive links/controls
+		// Clicking row toggles expansion in SO Wise mode
 		this.$wrap.on('click', '.aot-so-row', (e) => {
 			if ($(e.target).closest('a, button, input, .aot-doc-multi, .aot-doc-link, .aot-view-btn, .aot-row-check').length) {
 				return;
@@ -797,6 +859,18 @@ class AOTracker {
 		});
 	}
 
+	update_detail_view_access() {
+		const $detailTab = this.$wrap.find('.aot-detail-tab-btn');
+		const $viewBtns = this.$wrap.find('.aot-view-btn');
+		if (this.state.canViewDetail) {
+			$detailTab.removeAttr('disabled').removeClass('disabled').attr('title', __('Detailed View'));
+			$viewBtns.removeAttr('disabled').removeClass('disabled').attr('title', __('Detailed View'));
+		} else {
+			$detailTab.attr('title', __('Detailed View restricted by Selling Settings role'));
+			$viewBtns.attr('title', __('Detailed View restricted by Selling Settings role'));
+		}
+	}
+
 	go_tab(n) {
 		this.state.activeTab = n;
 		this.$wrap.find('.aot-view').removeClass('active');
@@ -810,6 +884,7 @@ class AOTracker {
 			from_date: this.$wrap.find('.aot-f-from').val(),
 			to_date: this.$wrap.find('.aot-f-to').val(),
 			company: this.company_control ? this.company_control.get_value() : '',
+			so_status: this.status_control ? this.status_control.get_value() : '',
 			sales_order: this.so_control ? this.so_control.get_value() : '',
 			customer: this.customer_control ? this.customer_control.get_value() : '',
 			branch: this.branch_control ? this.branch_control.get_value() : '',
@@ -835,6 +910,7 @@ class AOTracker {
 					this.state.totalPages = 1;
 					this.state.totalSos = msg.length;
 					this.state.totalBatches = this.state.batchItems.length;
+					this.state.canViewDetail = false;
 				} else {
 					this.state.salesOrders = msg.sales_orders || [];
 					this.state.batchItems = msg.batch_items || [];
@@ -842,10 +918,12 @@ class AOTracker {
 					this.state.totalSos = msg.total_sos || 0;
 					this.state.totalBatches = msg.total_batches || 0;
 					this.state.page = msg.page || 1;
+					this.state.canViewDetail = Boolean(msg.can_view_detail);
 				}
 				this.state.list = this.state.viewMode === 'batch' ? this.state.batchItems : this.state.salesOrders;
 				this.render_list();
 				this.render_pagination();
+				this.update_detail_view_access();
 			}
 		});
 	}
@@ -935,7 +1013,7 @@ class AOTracker {
 
 		const $tbody = this.$wrap.find('.aot-tbody').empty();
 		this.$wrap.find('.aot-select-all').prop('checked', false);
-		const colspan = (isBatch ? 11 : 12) + (this.doc_columns.length * 2);
+		const colspan = (isBatch ? 11 : 12) + this.doc_columns.length + 1; // docs + recent doc
 
 		if (!list.length) {
 			const emptyMsg = isBatch ? __('No Batch / Item records match these filters.') : __('No Sales Orders match these filters.');
@@ -970,10 +1048,9 @@ class AOTracker {
 					<th class="aot-num aot-amount-col" style="text-align:right; min-width:115px;">${__('Amount')}</th>
 					<th class="aot-date-col" style="min-width:110px;">${__('Delivery Date')}</th>
 					<th class="aot-branch-col" style="min-width:90px;">${__('Branch')}</th>
-					<th class="aot-pending-col" style="min-width:160px;">${__('Pending At')}</th>
+					<th class="aot-grp-start aot-recent-col" style="min-width:150px;">${__('Recent Document')}</th>
 					${this.doc_columns.map(c => `
-						<th class="aot-grp-start" style="border-top:3px solid ${c.color};">${__(c.label)}</th>
-						<th>${__(c.label)} ${__('Status')}</th>
+						<th class="aot-grp-start aot-doc-header" style="border-top:3px solid ${c.color}; min-width:145px;">${__(c.label)}</th>
 					`).join('')}
 					<th class="aot-grp-start aot-priority-col">${__('Priority')}</th>
 					<th style="width:40px;"></th>
@@ -992,10 +1069,9 @@ class AOTracker {
 					<th class="aot-num aot-amount-col" style="text-align:right; min-width:120px;">${__('Grand Total')}</th>
 					<th class="aot-date-col" style="min-width:110px;">${__('Delivery Date')}</th>
 					<th class="aot-branch-col" style="min-width:90px;">${__('Branch')}</th>
-					<th class="aot-pending-col" style="min-width:160px;">${__('Pending At')}</th>
+					<th class="aot-grp-start aot-recent-col" style="min-width:150px;">${__('Recent Document')}</th>
 					${this.doc_columns.map(c => `
-						<th class="aot-grp-start" style="border-top:3px solid ${c.color};">${__(c.label)}</th>
-						<th>${__(c.label)} ${__('Status')}</th>
+						<th class="aot-grp-start aot-doc-header" style="border-top:3px solid ${c.color}; min-width:145px;">${__(c.label)}</th>
 					`).join('')}
 					<th class="aot-grp-start aot-priority-col">${__('Priority')}</th>
 					<th style="width:40px;"></th>
@@ -1005,16 +1081,16 @@ class AOTracker {
 	}
 
 	render_batch_row(it, colspan) {
-		const docPair = (col) => {
+		const docCell = (col) => {
 			const d = (it.docs || {})[col.key];
 			if (!d) {
-				return `<td class="aot-grp-start"></td><td></td>`;
+				return `<td class="aot-grp-start aot-doc-cell"><span class="aot-muted">—</span></td>`;
 			}
 
 			if (d.count && d.count > 1) {
 				const plural = col.full_label || (col.label + 's');
 				return `
-					<td class="aot-grp-start" colspan="2">
+					<td class="aot-grp-start aot-doc-cell">
 						<span class="aot-doc-multi"
 							style="color:${col.color};border-color:${col.color};"
 							data-sales-order="${frappe.utils.escape_html(it.sales_order || '')}"
@@ -1033,10 +1109,12 @@ class AOTracker {
 
 			const [bg, ink] = this.tone(d.status);
 			return `
-				<td class="aot-grp-start">
-					<span class="aot-doc-link" style="color:${col.color};" data-doctype="${frappe.utils.escape_html(d.doctype || '')}" data-name="${frappe.utils.escape_html(d.name)}">${frappe.utils.escape_html(d.name)}</span>
+				<td class="aot-grp-start aot-doc-cell">
+					<div class="aot-combined-cell">
+						<a href="javascript:void(0)" class="aot-doc-link" style="color:${col.color};" data-doctype="${frappe.utils.escape_html(d.doctype || '')}" data-name="${frappe.utils.escape_html(d.name)}" data-batch="${frappe.utils.escape_html(it.batch_no || '')}">${frappe.utils.escape_html(d.name)}</a>
+						${d.status ? `<span class="aot-mini-pill" style="background:${bg};color:${ink};">${frappe.utils.escape_html(d.status || '')}</span>` : ''}
+					</div>
 				</td>
-				<td><span class="aot-mini-pill" style="background:${bg};color:${ink};">${frappe.utils.escape_html(d.status || '')}</span></td>
 			`;
 		};
 
@@ -1044,6 +1122,8 @@ class AOTracker {
 		const rowKey = it.batch_no || it.so_item_name || it.sales_order;
 		const checked = this.state.selected.has(rowKey) ? 'checked' : '';
 		const showItemSubtitle = it.item_name && it.item_code && it.item_name.trim().toLowerCase() !== it.item_code.trim().toLowerCase();
+		const recentDocStage = it.pending_at || it.recent_doc || 'Completed';
+		const isCompleted = recentDocStage.toLowerCase() === 'completed';
 
 		return `
 		<tr class="aot-batch-row" data-batch="${frappe.utils.escape_html(it.batch_no || '')}" data-so="${frappe.utils.escape_html(it.sales_order || '')}">
@@ -1056,7 +1136,7 @@ class AOTracker {
 				${showItemSubtitle ? `<div class="aot-item-name">${frappe.utils.escape_html(it.item_name)}</div>` : ''}
 			</td>
 			<td class="aot-so-col">
-				<a class="aot-so-link" data-sales-order="${frappe.utils.escape_html(it.sales_order || '')}" data-batch="${frappe.utils.escape_html(it.batch_no || '')}">${frappe.utils.escape_html(it.sales_order || '')}</a>
+				<a href="javascript:void(0)" class="aot-so-link" data-sales-order="${frappe.utils.escape_html(it.sales_order || '')}" data-batch="${frappe.utils.escape_html(it.batch_no || '')}">${frappe.utils.escape_html(it.sales_order || '')}</a>
 			</td>
 			<td class="aot-customer-cell" title="${frappe.utils.escape_html(it.customer_name || it.customer || '')}">
 				${it.customer ? `<span class="aot-doc-link aot-customer-link" data-doctype="Customer" data-name="${frappe.utils.escape_html(it.customer)}">${frappe.utils.escape_html(it.customer_name || it.customer)}</span>` : '<span class="aot-muted">—</span>'}
@@ -1067,8 +1147,10 @@ class AOTracker {
 			<td class="aot-num-cell">${it.amount != null ? format_currency(it.amount) : '<span class="aot-muted">—</span>'}</td>
 			<td class="aot-date-cell">${it.delivery_date ? frappe.datetime.str_to_user(it.delivery_date) : '<span class="aot-muted">—</span>'}</td>
 			<td class="aot-branch-cell">${it.branch ? `<span class="aot-branch-badge">${frappe.utils.escape_html(it.branch)}</span>` : '<span class="aot-muted">—</span>'}</td>
-			<td class="aot-pending-cell">${it.pending_at ? `<span class="aot-pending-chip" title="${frappe.utils.escape_html(it.pending_at)}">${frappe.utils.escape_html(this.format_pending_at(it.pending_at))}</span>` : ''}</td>
-			${this.doc_columns.map(col => docPair(col)).join('')}
+			<td class="aot-grp-start aot-recent-cell">
+				<span class="aot-recent-chip ${isCompleted ? 'aot-recent-completed' : ''}" title="${frappe.utils.escape_html(recentDocStage)}">${frappe.utils.escape_html(this.format_pending_at(recentDocStage))}</span>
+			</td>
+			${this.doc_columns.map(col => docCell(col)).join('')}
 			<td class="aot-grp-start aot-priority-col">${it.priority ? `<span class="aot-pri-badge ${priorityClass}">${frappe.utils.escape_html(it.priority)}</span>` : ''}</td>
 			<td><button class="aot-view-btn" data-sales-order="${frappe.utils.escape_html(it.sales_order || '')}" data-batch="${frappe.utils.escape_html(it.batch_no || '')}" title="${__('Detailed view')}">${frappe.utils.icon('right', 'sm')}</button></td>
 		</tr>
@@ -1076,16 +1158,16 @@ class AOTracker {
 	}
 
 	render_list_row(ao, colspan) {
-		const docPair = (col) => {
-			const d = ao.docs[col.key];
+		const docCell = (col) => {
+			const d = ao.docs ? ao.docs[col.key] : null;
 			if (!d) {
-				return `<td class="aot-grp-start"></td><td></td>`;
+				return `<td class="aot-grp-start aot-doc-cell"><span class="aot-muted">—</span></td>`;
 			}
 
 			if (d.count && d.count > 1) {
 				const plural = col.full_label || (col.label + 's');
 				return `
-					<td class="aot-grp-start" colspan="2">
+					<td class="aot-grp-start aot-doc-cell">
 						<span class="aot-doc-multi"
 							style="color:${col.color};border-color:${col.color};"
 							data-sales-order="${frappe.utils.escape_html(ao.sales_order || '')}"
@@ -1101,10 +1183,12 @@ class AOTracker {
 
 			const [bg, ink] = this.tone(d.status);
 			return `
-				<td class="aot-grp-start">
-					<span class="aot-doc-link" style="color:${col.color};" data-doctype="${frappe.utils.escape_html(d.doctype || '')}" data-name="${frappe.utils.escape_html(d.name)}">${frappe.utils.escape_html(d.name)}</span>
+				<td class="aot-grp-start aot-doc-cell">
+					<div class="aot-combined-cell">
+						<a href="javascript:void(0)" class="aot-doc-link" style="color:${col.color};" data-doctype="${frappe.utils.escape_html(d.doctype || '')}" data-name="${frappe.utils.escape_html(d.name)}">${frappe.utils.escape_html(d.name)}</a>
+						${d.status ? `<span class="aot-mini-pill" style="background:${bg};color:${ink};">${frappe.utils.escape_html(d.status || '')}</span>` : ''}
+					</div>
 				</td>
-				<td><span class="aot-mini-pill" style="background:${bg};color:${ink};">${frappe.utils.escape_html(d.status || '')}</span></td>
 			`;
 		};
 
@@ -1113,6 +1197,8 @@ class AOTracker {
 		const isExpanded = this.state.expandedSos.has(ao.sales_order);
 		const items = ao.items || [];
 		const itemsCount = ao.items_count || items.length;
+		const recentDocStage = ao.pending_at || ao.recent_doc || 'Completed';
+		const isCompleted = recentDocStage.toLowerCase() === 'completed';
 
 		const parentRowHtml = `
 		<tr class="aot-so-row ${isExpanded ? 'expanded' : ''}" data-so="${frappe.utils.escape_html(ao.sales_order || '')}">
@@ -1123,7 +1209,7 @@ class AOTracker {
 			</td>
 			<td><input type="checkbox" class="aot-row-check" data-sales-order="${frappe.utils.escape_html(ao.sales_order || '')}" ${checked}></td>
 			<td class="aot-so-col">
-				<a class="aot-so-link" data-sales-order="${frappe.utils.escape_html(ao.sales_order || '')}">${frappe.utils.escape_html(ao.sales_order || '')}</a>
+				<a href="javascript:void(0)" class="aot-so-link" data-sales-order="${frappe.utils.escape_html(ao.sales_order || '')}">${frappe.utils.escape_html(ao.sales_order || '')}</a>
 			</td>
 			<td class="aot-customer-cell" title="${frappe.utils.escape_html(ao.customer_name || ao.customer || '')}">
 				${ao.customer ? `<span class="aot-doc-link aot-customer-link" data-doctype="Customer" data-name="${frappe.utils.escape_html(ao.customer)}">${frappe.utils.escape_html(ao.customer_name || ao.customer)}</span>` : '<span class="aot-muted">—</span>'}
@@ -1139,8 +1225,10 @@ class AOTracker {
 			<td class="aot-num-cell">${ao.grand_total != null ? format_currency(ao.grand_total) : '<span class="aot-muted">—</span>'}</td>
 			<td class="aot-date-cell">${ao.delivery_date ? frappe.datetime.str_to_user(ao.delivery_date) : '<span class="aot-muted">—</span>'}</td>
 			<td class="aot-branch-cell">${ao.branch ? `<span class="aot-branch-badge">${frappe.utils.escape_html(ao.branch)}</span>` : '<span class="aot-muted">—</span>'}</td>
-			<td class="aot-pending-cell">${ao.pending_at ? `<span class="aot-pending-chip" title="${frappe.utils.escape_html(ao.pending_at)}">${frappe.utils.escape_html(this.format_pending_at(ao.pending_at))}</span>` : ''}</td>
-			${this.doc_columns.map(col => docPair(col)).join('')}
+			<td class="aot-grp-start aot-recent-cell">
+				<span class="aot-recent-chip ${isCompleted ? 'aot-recent-completed' : ''}" title="${frappe.utils.escape_html(recentDocStage)}">${frappe.utils.escape_html(this.format_pending_at(recentDocStage))}</span>
+			</td>
+			${this.doc_columns.map(col => docCell(col)).join('')}
 			<td class="aot-grp-start aot-priority-col">${ao.priority ? `<span class="aot-pri-badge ${priorityClass}">${frappe.utils.escape_html(ao.priority)}</span>` : ''}</td>
 			<td><button class="aot-view-btn" data-sales-order="${frappe.utils.escape_html(ao.sales_order || '')}" title="${__('Detailed view')}">${frappe.utils.icon('right', 'sm')}</button></td>
 		</tr>
@@ -1174,7 +1262,7 @@ class AOTracker {
 									<th style="text-align:right; width:95px;">${__('Amount')}</th>
 									<th style="width:95px;">${__('Delivery Date')}</th>
 									<th class="aot-nested-docs-col" style="min-width:280px;">${__('Document Trail')}</th>
-									<th style="min-width:120px;">${__('Stage')}</th>
+									<th style="min-width:130px;">${__('Recent Document')}</th>
 								</tr>
 							</thead>
 							<tbody>
@@ -1205,12 +1293,16 @@ class AOTracker {
 												style="color:${col.color};"
 												data-doctype="${frappe.utils.escape_html(d.doctype || '')}"
 												data-name="${frappe.utils.escape_html(d.name)}"
+												data-batch="${frappe.utils.escape_html(it.batch_no || '')}"
 												title="${col.label}: ${frappe.utils.escape_html(d.name)} (${d.status || ''})">
 												${col.label}: ${frappe.utils.escape_html(d.name)}
 												<span class="aot-nested-mini-pill" style="background:${bg};color:${ink};">${frappe.utils.escape_html(d.status || '')}</span>
 											</span>
 										`;
 									}).filter(Boolean).join(' ');
+
+									const itRecent = it.pending_at || it.recent_doc || 'Completed';
+									const itCompleted = itRecent.toLowerCase() === 'completed';
 
 									return `
 									<tr>
@@ -1233,7 +1325,7 @@ class AOTracker {
 											<div class="aot-nested-docs-wrap">${docTrailPills || '<span class="aot-muted">—</span>'}</div>
 										</td>
 										<td>
-											${it.pending_at ? `<span class="aot-pending-chip" style="font-size:11px;padding:2px 8px;" title="${frappe.utils.escape_html(it.pending_at)}">${frappe.utils.escape_html(this.format_pending_at(it.pending_at))}</span>` : ''}
+											<span class="aot-recent-chip ${itCompleted ? 'aot-recent-completed' : ''}" style="font-size:11px;padding:2px 8px;" title="${frappe.utils.escape_html(itRecent)}">${frappe.utils.escape_html(this.format_pending_at(itRecent))}</span>
 										</td>
 									</tr>
 									`;
@@ -1514,7 +1606,7 @@ class AOTracker {
 				const $m = this.$wrap.find('.aot-modal').data('doctype', d.doctype).data('name', d.name);
 				const eyebrowText = d.batch_no ? `${d.doctype} \u00b7 Batch: ${d.batch_no}` : d.doctype;
 				$m.find('.aot-modal-eyebrow').text(eyebrowText);
-				$m.find('.aot-modal-title').html(`<span>${frappe.utils.escape_html(d.name)}</span> <button class="btn btn-xs btn-default aot-doc-link" data-doctype="${frappe.utils.escape_html(d.doctype)}" data-name="${frappe.utils.escape_html(d.name)}" title="${__('Open Form')}"><i class="fa fa-external-link"></i> ${__('Open')}</button>`);
+				$m.find('.aot-modal-title').html(`<span>${frappe.utils.escape_html(d.name)}</span> <button class="btn btn-xs btn-default aot-modal-pop-link" data-doctype="${frappe.utils.escape_html(d.doctype)}" data-name="${frappe.utils.escape_html(d.name)}" title="${__('Open Form')}"><i class="fa fa-external-link"></i> ${__('Open')}</button>`);
 
 				const [bg, ink] = this.tone(d.status);
 				const statusPill = d.status ? `<span class="aot-mini-pill" style="background:${bg};color:${ink};">${frappe.utils.escape_html(d.status)}</span>` : '';
@@ -1570,8 +1662,8 @@ class AOTracker {
 								<div class="aot-modal-item-top">
 									<div class="aot-modal-item-left">
 										<span class="aot-modal-item-idx">#${idx + 1}</span>
-										<a href="javascript:void(0)" class="aot-modal-item-code aot-doc-link" data-doctype="Item" data-name="${frappe.utils.escape_html(it.item_code)}" title="${__('Click to open Item master')}">
-											${frappe.utils.escape_html(it.item_code)} <i class="fa fa-external-link" style="font-size:10px;margin-left:3px;opacity:0.7;"></i>
+										<a href="javascript:void(0)" class="aot-modal-item-code aot-doc-link" data-doctype="Item" data-name="${frappe.utils.escape_html(it.item_code)}" title="${__('Click to preview Item')}">
+											${frappe.utils.escape_html(it.item_code)}
 										</a>
 										<span class="aot-modal-item-title">${frappe.utils.escape_html(it.item_name || it.item_code)}</span>
 									</div>
@@ -1605,6 +1697,8 @@ class AOTracker {
 		const keyDoctypeMap = {
 			quote: 'Quotation',
 			so: 'Sales Order',
+			bom: 'BOM',
+			pp: 'Production Plan',
 			mr: 'Material Request',
 			po: 'Purchase Order',
 			sco: 'Subcontracting Order',
@@ -1764,8 +1858,13 @@ class AOTracker {
 		.ao-tracker-wrap .aot-pill-input .control-input{
 			width:100% !important; height:100% !important; position:relative !important;
 		}
-		.ao-tracker-wrap .aot-pill-input .link-field{
+		.ao-tracker-wrap .aot-pill-input .link-field,
+		.ao-tracker-wrap .aot-pill-input select{
 			width:100% !important; height:100% !important; position:relative !important;
+		}
+		.ao-tracker-wrap .aot-pill-input select{
+			border:none !important; background:transparent !important; font-size:12.5px !important; font-weight:600 !important;
+			color:var(--aot-ink) !important; outline:none !important; cursor:pointer !important; padding:0 4px !important;
 		}
 		.ao-tracker-wrap .aot-pill-input .awesomplete{
 			width:100% !important; height:100% !important; display:block !important; position:relative !important;
@@ -1822,39 +1921,23 @@ class AOTracker {
 			background:var(--aot-accent-soft, #eff6ff) !important;
 			color:var(--aot-accent, #2563eb) !important;
 		}
-		.ao-tracker-wrap .aot-pill-input .awesomplete > ul > li p{
-			margin:0 !important;
-			font-size:11px !important;
-			color:var(--aot-ink-faint, #94a3b8) !important;
-			font-weight:normal !important;
-		}
-		.ao-tracker-wrap[data-theme="dark"] .aot-pill-input .awesomplete > ul{
-			background:#1e293b !important;
-			border-color:#334155 !important;
-			box-shadow:0 10px 25px rgba(0,0,0,0.4) !important;
-		}
-		.ao-tracker-wrap[data-theme="dark"] .aot-pill-input .awesomplete > ul > li{
-			color:#f1f5f9 !important;
-		}
-		.ao-tracker-wrap[data-theme="dark"] .aot-pill-input .awesomplete > ul > li:hover,
-		.ao-tracker-wrap[data-theme="dark"] .aot-pill-input .awesomplete > ul > li[aria-selected="true"]{
-			background:#334155 !important;
-			color:#60a5fa !important;
-		}
 		.ao-tracker-wrap .aot-field-company{
-			min-width:240px; max-width:320px;
+			min-width:200px; max-width:280px;
+		}
+		.ao-tracker-wrap .aot-field-status{
+			min-width:180px; max-width:220px;
 		}
 		.ao-tracker-wrap .aot-field-so{
-			min-width:200px; flex:1;
+			min-width:180px; flex:1;
 		}
 		.ao-tracker-wrap .aot-field-customer{
-			min-width:220px; flex:1.2;
+			min-width:200px; flex:1.2;
 		}
 		.ao-tracker-wrap .aot-field-branch{
-			min-width:180px; flex:0.8;
+			min-width:160px; flex:0.8;
 		}
 		.ao-tracker-wrap .aot-field-batch{
-			min-width:200px; flex:1;
+			min-width:180px; flex:1;
 		}
 
 		.ao-tracker-wrap .aot-view-mode-toggle{
@@ -1952,7 +2035,7 @@ class AOTracker {
 			box-shadow:var(--aot-shadow); overflow:auto; max-height:calc(100vh - 230px); position:relative;
 		}
 		.ao-tracker-wrap table.aot-status-table{
-			width:100%; border-collapse:separate; border-spacing:0; font-size:13px; min-width:2400px;
+			width:100%; border-collapse:separate; border-spacing:0; font-size:13px; min-width:2000px;
 		}
 		.ao-tracker-wrap .aot-status-table thead th{
 			text-align:left; font-size:10.5px; font-weight:700; color:var(--aot-ink-soft); text-transform:uppercase;
@@ -1962,12 +2045,33 @@ class AOTracker {
 		.ao-tracker-wrap[data-theme="dark"] .aot-status-table thead th{ background:#181D2A; }
 		.ao-tracker-wrap .aot-so-col{ min-width:160px; }
 		.ao-tracker-wrap .aot-items-col{ width:90px; text-align:center; }
-		.ao-tracker-wrap .aot-status-table tbody td{padding:12px; border-bottom:1px solid var(--aot-line-soft); vertical-align:middle;}
+		.ao-tracker-wrap .aot-status-table tbody td{padding:10px 12px; border-bottom:1px solid var(--aot-line-soft); vertical-align:middle;}
 		.ao-tracker-wrap .aot-so-row{cursor:pointer; transition:background .15s;}
 		.ao-tracker-wrap .aot-so-row:nth-child(4n-3){background:#FBFCFE;}
 		.ao-tracker-wrap .aot-so-row:hover{background:var(--aot-accent-soft);}
 		.ao-tracker-wrap .aot-so-row.expanded{background:#EFF6FF !important; border-left:3px solid var(--aot-accent);}
 		.ao-tracker-wrap[data-theme="dark"] .aot-so-row.expanded{background:#131E33 !important; border-left:3px solid var(--aot-accent);}
+
+		/* Combined Cell Styling */
+		.ao-tracker-wrap .aot-combined-cell{
+			display:flex; flex-direction:column; gap:4px; align-items:flex-start; min-width:130px;
+		}
+		.ao-tracker-wrap .aot-combined-cell .aot-doc-link{
+			font-weight:700; font-size:12.5px; word-break:break-all; text-decoration:none;
+		}
+		.ao-tracker-wrap .aot-combined-cell .aot-doc-link:hover{
+			text-decoration:underline;
+		}
+
+		/* Recent Document Chip */
+		.ao-tracker-wrap .aot-recent-chip{
+			display:inline-flex; align-items:center; padding:4px 10px; border-radius:999px;
+			font-size:11.5px; font-weight:700; background:var(--aot-amber-bg); color:var(--aot-amber-ink);
+			white-space:nowrap; max-width:180px; overflow:hidden; text-overflow:ellipsis;
+		}
+		.ao-tracker-wrap .aot-recent-completed{
+			background:var(--aot-green-bg); color:var(--aot-green-ink);
+		}
 
 		/* Sticky columns for Batch-wise mode (Checkbox + Batch No) */
 		.ao-tracker-wrap .aot-status-table.aot-table-batch thead th:nth-child(1){
@@ -2122,8 +2226,8 @@ class AOTracker {
 		.ao-tracker-wrap .aot-branch-badge{display:inline-flex; align-items:center; padding:3px 9px; border-radius:999px; font-size:11px; font-weight:700; background:#EEF2FF; color:#4338CA; border:1px solid #C7D2FE;}
 		.ao-tracker-wrap .aot-line-cell{font-size:12px; text-align:center;}
 		.ao-tracker-wrap .aot-line-badge{display:inline-flex; align-items:center; justify-content:center; min-width:26px; padding:2px 6px; border-radius:6px; font-size:11px; font-weight:700; background:var(--aot-panel); border:1px solid var(--aot-line); color:var(--aot-ink-soft);}
-		.ao-tracker-wrap .aot-item-cell{min-width:260px; max-width:320px; line-height:1.4; word-break:break-all; overflow-wrap:anywhere;}
-		.ao-tracker-wrap .aot-item-code{font-weight:700; color:var(--aot-ink); font-size:12px; word-break:break-all; overflow-wrap:anywhere; display:inline-block; max-width:100%;}
+		.ao-tracker-wrap .aot-item-cell{min-width:240px; max-width:300px; line-height:1.4; word-break:break-all; overflow-wrap:anywhere;}
+		.ao-tracker-wrap .aot-item-code{font-weight:700; color:var(--aot-ink); font-size:12px; word-break:break-all; overflow-wrap:anywhere; display:inline-block; max-width:100%; cursor:pointer;}
 		.ao-tracker-wrap .aot-item-name{font-size:11px; color:var(--aot-ink-faint); word-break:break-word; overflow-wrap:anywhere; margin-top:2px;}
 		.ao-tracker-wrap .aot-batch-cell{min-width:120px; max-width:160px; word-break:break-all; overflow-wrap:anywhere; font-size:12px;}
 		.ao-tracker-wrap .aot-batch-badge{display:inline-flex; align-items:center; padding:2px 7px; border-radius:4px; font-size:11px; font-weight:600; background:var(--aot-gray-bg); color:var(--aot-gray-ink); border:1px solid var(--aot-line); word-break:break-all;}
@@ -2132,19 +2236,17 @@ class AOTracker {
 		.ao-tracker-wrap .aot-date-cell{font-size:12px; white-space:nowrap; color:var(--aot-ink-soft); min-width:105px;}
 		.ao-tracker-wrap .aot-muted{color:var(--aot-ink-faint); font-weight:400;}
 		.ao-tracker-wrap .aot-customer-cell{font-weight:500; color:var(--aot-ink-soft); max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
-		.ao-tracker-wrap .aot-pending-cell{color:var(--aot-ink-soft); font-size:12.5px; max-width:200px;}
-		.ao-tracker-wrap .aot-pending-chip{display:inline-block; max-width:190px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle; background:var(--aot-amber-bg); color:var(--aot-amber-ink); padding:4px 10px; border-radius:999px; font-size:11.5px; font-weight:700;}
 		.ao-tracker-wrap .aot-doc-link{font-weight:700; font-size:12px; cursor:pointer;}
 		.ao-tracker-wrap .aot-doc-link:hover{text-decoration:underline;}
 		.ao-tracker-wrap .aot-doc-multi{
 			display:inline-flex; align-items:center; gap:5px; font-weight:700; font-size:12px;
-			padding:5px 11px; border:1.5px solid; border-radius:999px; cursor:pointer;
+			padding:4px 10px; border:1.5px solid; border-radius:999px; cursor:pointer;
 			background:var(--aot-panel); transition:filter .15s ease, transform .15s ease;
 		}
 		.ao-tracker-wrap .aot-doc-multi:hover{ filter:brightness(0.95); transform:translateY(-1px); }
-		.ao-tracker-wrap .aot-mini-pill{display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; font-size:11.5px; font-weight:700; white-space:nowrap;}
+		.ao-tracker-wrap .aot-mini-pill{display:inline-flex; align-items:center; gap:5px; padding:3px 8px; border-radius:999px; font-size:11px; font-weight:700; white-space:nowrap;}
 		.ao-tracker-wrap .aot-pri-closed{background:var(--aot-gray-bg); color:var(--aot-gray-ink);}
-		.ao-tracker-wrap .aot-priority-col{ min-width:110px; }
+		.ao-tracker-wrap .aot-priority-col{ min-width:100px; }
 		.ao-tracker-wrap .aot-pri-badge{display:inline-flex; align-items:center; padding:4px 12px; border-radius:999px; font-size:11.5px; font-weight:800; text-transform:uppercase; white-space:nowrap;}
 		.ao-tracker-wrap .aot-pri-low{background:var(--aot-green-bg); color:var(--aot-green-ink);}
 		.ao-tracker-wrap .aot-pri-medium{background:var(--aot-amber-bg); color:var(--aot-amber-ink);}
@@ -2316,3 +2418,5 @@ class AOTracker {
 		`;
 	}
 }
+
+var AOTracker = SalesOrderTracker;
