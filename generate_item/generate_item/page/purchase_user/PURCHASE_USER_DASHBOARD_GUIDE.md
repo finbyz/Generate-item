@@ -32,7 +32,7 @@ The **Purchase User Dashboard** provides real-time operational visibility and ex
 | Control | Description | Functional Behavior |
 | :--- | :--- | :--- |
 | **Branch Filter** | Multi-branch dropdown | Filters all metrics, charts, tables, and leaderboards by the selected operating branch or plant. |
-| **User / Owner Filter** | User search dropdown | Filters dashboard metrics by the creator (`owner`) of the procurement documents. |
+| **Created By / User Filter** | User dropdown | Filters dashboard metrics by the creator (`owner`) with options for `All Allowed Users` and the current logged-in Session User. |
 | **Date Preset Selector** | Quick range dropdown | Select from predefined periods: `Today`, `This Week`, `This Month`, `This Quarter`, `This Year`, `Last Month`, or `Custom`. Automatically calculates comparative previous period ranges for delta calculations. |
 | **Date Range Inputs** | From Date & To Date | Custom start and end date pickers (active when `Custom` preset is selected). |
 | **Today Shortcut** | Quick button | One-click shortcut to set the active filter to today's date. |
