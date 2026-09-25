@@ -976,6 +976,10 @@ class PurchaseUserDashboard {
 			const color = stageColors[c.id] || "var(--pud-accent-steel)";
 			const icon = stageIcons[c.id] || "fileText";
 			const deltaHtml = this.render_kpi_delta(c.count, c.previous_count);
+			const lineItemLabel = c.line_items_label || ((c.id === "mr_completed" || c.id === "pi_completed")
+				? __("Line Items Completed")
+				: __("Line Items Pending"));
+			const lineItemCount = Number(c.line_item_count !== undefined ? c.line_item_count : (c.item_count || 0)).toLocaleString();
 
 			return `
 				<div class="pud-kpi-card pud-clickable-card" data-card-id="${c.id}" tabindex="0" role="button" style="--kpi-accent:${color}">
@@ -988,9 +992,16 @@ class PurchaseUserDashboard {
 							${pud_icon("externalLink")} <span>${__("List")}</span>
 						</button>
 					</div>
-					<div class="pud-kpi-value" style="color:${color}">${c.count}</div>
+					<div class="pud-kpi-main">
+						<div class="pud-kpi-value" style="color:${color}">${Number(c.count || 0).toLocaleString()}</div>
+						<div class="pud-kpi-doc-badge">${__("Documents")}</div>
+					</div>
+					<div class="pud-kpi-line-item-row">
+						<span class="pud-kpi-line-item-label">${frappe.utils.escape_html(lineItemLabel)}:</span>
+						<span class="pud-kpi-line-item-val">${lineItemCount}</span>
+					</div>
 					<div class="pud-kpi-footer">
-						<div class="pud-kpi-sub">${c.item_count || 0} ${__("Items")} · ${c.total_item_qty || 0} ${__("Qty")}</div>
+						<div class="pud-kpi-sub">${Number(c.total_item_qty || 0).toLocaleString()} ${__("Total Qty")}</div>
 						${deltaHtml}
 					</div>
 				</div>
@@ -1411,15 +1422,39 @@ class PurchaseUserDashboard {
 		if (!grid) return;
 
 		const stage = this.order_intensity_stage || "all";
-		let docs = [];
+		const cards = data.cards || [];
+		const keys = ["1", "2", "3", "3+"];
 
-		(data.cards || []).forEach((c) => {
+		let totalDocs = 0;
+		const buckets = {
+			"1": { count: 0, previous_count: 0, branches: { Sanand: 0, Nandikoor: 0, Rabale: 0 } },
+			"2": { count: 0, previous_count: 0, branches: { Sanand: 0, Nandikoor: 0, Rabale: 0 } },
+			"3": { count: 0, previous_count: 0, branches: { Sanand: 0, Nandikoor: 0, Rabale: 0 } },
+			"3+": { count: 0, previous_count: 0, branches: { Sanand: 0, Nandikoor: 0, Rabale: 0 } },
+		};
+
+		cards.forEach((c) => {
 			if (stage === "all" || c.id === stage) {
-				(c.items || []).forEach((d) => docs.push(d));
+				const di = c.document_intensity;
+				if (di) {
+					totalDocs += di.total_documents !== undefined ? di.total_documents : (c.count || 0);
+					keys.forEach((k) => {
+						const b = di.buckets && di.buckets[k];
+						if (b) {
+							buckets[k].count += b.count || 0;
+							buckets[k].previous_count += b.previous_count || 0;
+							if (b.branches) {
+								PUD_BRANCHES.forEach((bName) => {
+									buckets[k].branches[bName] = (buckets[k].branches[bName] || 0) + (b.branches[bName] || 0);
+								});
+							}
+						}
+					});
+				} else {
+					totalDocs += c.count || 0;
+				}
 			}
 		});
-
-		const totalDocs = docs.length;
 
 		// Update section heading context badge
 		const contextEl = this.wrapper.querySelector("#order-context");
@@ -1434,30 +1469,17 @@ class PurchaseUserDashboard {
 			this.animate_values(contextEl);
 		}
 
-		// Categorize documents into 4 severity buckets based on line-item count
-		const buckets = { "1": [], "2": [], "3": [], "3+": [] };
-
-		docs.forEach((doc) => {
-			const itemsCount = (doc.doc_items && doc.doc_items.length) || 1;
-			if (itemsCount <= 1) buckets["1"].push(doc);
-			else if (itemsCount === 2) buckets["2"].push(doc);
-			else if (itemsCount === 3) buckets["3"].push(doc);
-			else buckets["3+"].push(doc);
-		});
-
-		const keys = ["1", "2", "3", "3+"];
-
 		grid.innerHTML = keys.map((key) => {
 			const meta = PUD_DOC_SEVERITY[key];
-			const bucketDocs = buckets[key] || [];
-			const val = bucketDocs.length;
-			const branches = this.get_branch_breakdown_from_docs(bucketDocs);
+			const bData = buckets[key];
+			const val = bData.count;
+			const prevVal = bData.previous_count;
 
 			return this.intensity_card({
 				label: meta.label,
 				value: val,
-				previous_value: Math.round(val * 0.9),
-				branches: branches,
+				previous_value: prevVal,
+				branches: bData.branches,
 				action_type: "order-change",
 				severity_key: key,
 				accent: meta.key,
@@ -1474,13 +1496,39 @@ class PurchaseUserDashboard {
 		if (!grid) return;
 
 		const stage = this.batch_intensity_stage || "all";
-		let items = data.item_summary || [];
+		const cards = data.cards || [];
+		const keys = ["1", "2", "3", "3+"];
 
-		if (stage !== "all") {
-			items = items.filter((it) => it.stage_id === stage);
-		}
+		let totalLineItems = 0;
+		const buckets = {
+			"1": { count: 0, previous_count: 0, branches: { Sanand: 0, Nandikoor: 0, Rabale: 0 } },
+			"2": { count: 0, previous_count: 0, branches: { Sanand: 0, Nandikoor: 0, Rabale: 0 } },
+			"3": { count: 0, previous_count: 0, branches: { Sanand: 0, Nandikoor: 0, Rabale: 0 } },
+			"3+": { count: 0, previous_count: 0, branches: { Sanand: 0, Nandikoor: 0, Rabale: 0 } },
+		};
 
-		const totalItems = items.length;
+		cards.forEach((c) => {
+			if (stage === "all" || c.id === stage) {
+				const lineItems = c.line_item_count !== undefined ? c.line_item_count : (c.item_count || 0);
+				totalLineItems += lineItems;
+
+				const ii = c.item_intensity;
+				if (ii && ii.buckets) {
+					keys.forEach((k) => {
+						const b = ii.buckets[k];
+						if (b) {
+							buckets[k].count += b.count || 0;
+							buckets[k].previous_count += b.previous_count || 0;
+							if (b.branches) {
+								PUD_BRANCHES.forEach((bName) => {
+									buckets[k].branches[bName] = (buckets[k].branches[bName] || 0) + (b.branches[bName] || 0);
+								});
+							}
+						}
+					});
+				}
+			}
+		});
 
 		// Update section heading context badge
 		const contextEl = this.wrapper.querySelector("#batch-context");
@@ -1489,36 +1537,23 @@ class PurchaseUserDashboard {
 				<span class="pud-section-context-badge">
 					${pud_icon("inbox", "pud-section-context-icon")}
 					<span>${__("Total Line Items")}:</span>
-					<span class="pud-section-context-count" data-count="${totalItems}">0</span>
+					<span class="pud-section-context-count" data-count="${totalLineItems}">0</span>
 				</span>
 			`;
 			this.animate_values(contextEl);
 		}
 
-		// Categorize items into 4 buckets based on linked documents count
-		const buckets = { "1": [], "2": [], "3": [], "3+": [] };
-
-		items.forEach((it) => {
-			const docCount = it.doc_count || (it.docs && it.docs.length) || 1;
-			if (docCount <= 1) buckets["1"].push(it);
-			else if (docCount === 2) buckets["2"].push(it);
-			else if (docCount === 3) buckets["3"].push(it);
-			else buckets["3+"].push(it);
-		});
-
-		const keys = ["1", "2", "3", "3+"];
-
 		grid.innerHTML = keys.map((key) => {
 			const meta = PUD_ITEM_SEVERITY[key];
-			const bucketItems = buckets[key] || [];
-			const val = bucketItems.length;
-			const branches = this.get_branch_breakdown_from_items(bucketItems);
+			const bData = buckets[key];
+			const val = bData.count;
+			const prevVal = bData.previous_count;
 
 			return this.intensity_card({
 				label: meta.label,
 				value: val,
-				previous_value: Math.round(val * 0.9),
-				branches: branches,
+				previous_value: prevVal,
+				branches: bData.branches,
 				action_type: "batch-change",
 				severity_key: key,
 				accent: meta.key,
@@ -1618,20 +1653,32 @@ class PurchaseUserDashboard {
 	// ------------------------------------------------------------- Item Table
 	render_item_table() {
 		const items = this.item_summary || [];
+		const cards = (this.last_data && this.last_data.cards) || [];
+		const getCardLineItems = (id) => {
+			const c = cards.find((card) => card.id === id);
+			return c ? (c.line_item_count !== undefined ? c.line_item_count : (c.item_count || 0)) : null;
+		};
 
-		// Update stage tab count pills
+		const poPending = getCardLineItems("po_pending");
+		const mrCompleted = getCardLineItems("mr_completed");
+		const prPending = getCardLineItems("pr_pending");
+		const piPending = getCardLineItems("pi_pending");
+		const piCompleted = getCardLineItems("pi_completed");
+
 		const counts = {
-			all: items.length,
-			po_pending: items.filter((i) => i.stage_id === "po_pending").length,
-			mr_completed: items.filter((i) => i.stage_id === "mr_completed").length,
-			pr_pending: items.filter((i) => i.stage_id === "pr_pending").length,
-			pi_pending: items.filter((i) => i.stage_id === "pi_pending").length,
-			pi_completed: items.filter((i) => i.stage_id === "pi_completed").length,
+			all: (poPending !== null && mrCompleted !== null && prPending !== null && piPending !== null && piCompleted !== null)
+				? (poPending + mrCompleted + prPending + piPending + piCompleted)
+				: items.length,
+			po_pending: poPending !== null ? poPending : items.filter((i) => i.stage_id === "po_pending").length,
+			mr_completed: mrCompleted !== null ? mrCompleted : items.filter((i) => i.stage_id === "mr_completed").length,
+			pr_pending: prPending !== null ? prPending : items.filter((i) => i.stage_id === "pr_pending").length,
+			pi_pending: piPending !== null ? piPending : items.filter((i) => i.stage_id === "pi_pending").length,
+			pi_completed: piCompleted !== null ? piCompleted : items.filter((i) => i.stage_id === "pi_completed").length,
 		};
 
 		const setPill = (id, val) => {
 			const el = this.wrapper.querySelector(`#${id}`);
-			if (el) el.textContent = val;
+			if (el) el.textContent = Number(val).toLocaleString();
 		};
 
 		setPill("pud-pill-all", counts.all);
@@ -2132,7 +2179,7 @@ class PurchaseUserDashboard {
 
 	open_list_view(cardId, customDoctype = null, docNames = null) {
 		const filters = {};
-		let doctype = customDoctype || "Material Request";
+		let doctype = "Material Request";
 
 		if (cardId === "po_pending") {
 			doctype = "Material Request";
@@ -2157,36 +2204,38 @@ class PurchaseUserDashboard {
 			doctype = "Purchase Invoice";
 			filters.docstatus = 1;
 			filters.is_return = 0;
+		} else if (customDoctype) {
+			doctype = customDoctype;
 		}
 
-		if (customDoctype) {
-			doctype = customDoctype;
+		if (docNames && Array.isArray(docNames) && docNames.length > 0) {
+			const targetFilters = {};
+			if (docNames.length === 1) {
+				targetFilters.name = docNames[0];
+			} else {
+				targetFilters.name = ["in", docNames];
+			}
+			frappe.route_options = targetFilters;
+			frappe.set_route("List", doctype);
+			return;
 		}
 
 		const dateField = (doctype === "Purchase Receipt" || doctype === "Purchase Invoice") ? "posting_date" : "transaction_date";
 
-		if (docNames && Array.isArray(docNames) && docNames.length > 0) {
-			if (docNames.length === 1) {
-				filters.name = docNames[0];
-			} else {
-				filters.name = ["in", docNames];
-			}
-		} else {
-			if (this.filters.from_date && this.filters.to_date) {
-				filters[dateField] = ["between", [this.filters.from_date, this.filters.to_date]];
-			} else if (this.filters.from_date) {
-				filters[dateField] = [">=", this.filters.from_date];
-			} else if (this.filters.to_date) {
-				filters[dateField] = ["<=", this.filters.to_date];
-			}
+		if (this.filters.from_date && this.filters.to_date) {
+			filters[dateField] = ["between", [this.filters.from_date, this.filters.to_date]];
+		} else if (this.filters.from_date) {
+			filters[dateField] = [">=", this.filters.from_date];
+		} else if (this.filters.to_date) {
+			filters[dateField] = ["<=", this.filters.to_date];
+		}
 
-			if (this.filters.branch) {
-				filters.branch = this.filters.branch;
-			}
+		if (this.filters.branch) {
+			filters.branch = this.filters.branch;
+		}
 
-			if (this.filters.users && this.filters.users.length) {
-				filters.owner = ["in", this.filters.users];
-			}
+		if (this.filters.users && this.filters.users.length) {
+			filters.owner = ["in", this.filters.users];
 		}
 
 		frappe.route_options = filters;
@@ -2648,9 +2697,19 @@ const PUD_CSS = `
 .pud-kpi-icon::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: currentColor; opacity: .14; }
 .pud-kpi-icon .pud-icon { position: relative; z-index: 1; width: 19px; height: 19px; }
 .pud-kpi-label { font-size: 12px; color: var(--pud-ink-secondary); text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
-.pud-kpi-value { font-size: 36px; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
-.pud-kpi-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-.pud-kpi-sub { font-size: 12px; color: var(--pud-muted); }
+.pud-kpi-main { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 2px; }
+.pud-kpi-value { font-size: 34px; font-weight: 800; line-height: 1; letter-spacing: -.02em; }
+.pud-kpi-doc-badge { font-size: 11px; font-weight: 700; color: var(--pud-muted); text-transform: uppercase; letter-spacing: .05em; }
+.pud-kpi-line-item-row {
+	display: flex; align-items: center; justify-content: space-between; gap: 6px;
+	padding: 6px 10px; border-radius: var(--pud-radius-sm);
+	background: var(--pud-surface-2); border: 1px solid var(--pud-border);
+	font-size: 12px; line-height: 1.3;
+}
+.pud-kpi-line-item-label { font-weight: 600; color: var(--pud-ink-secondary); }
+.pud-kpi-line-item-val { font-weight: 800; color: var(--pud-ink); }
+.pud-kpi-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+.pud-kpi-sub { font-size: 12px; color: var(--pud-muted); font-weight: 500; }
 .pud-kpi-delta {
 	display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700;
 	padding: 3px 8px; border-radius: 999px; background: var(--pud-surface-2);

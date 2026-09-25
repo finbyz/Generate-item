@@ -43,17 +43,22 @@ The **Purchase User Dashboard** provides real-time operational visibility and ex
 
 ## 4. Top KPI Cards (Procurement Lifecycle)
 
-The dashboard presents 5 primary lifecycle KPI cards at the top. Each card displays the total quantity/count, percentage change compared to the previous period, and an **"Open in List View"** shortcut.
+The dashboard presents 5 primary lifecycle KPI cards at the top. Each card clearly presents two distinct metric levels:
+- **Main Large Number**: Total **Document Count** (e.g. total Material Requests or Purchase Orders).
+- **Line Items Row**: Total **Pending / Completed Child Line Items** within those documents.
+- **Footer**: Aggregated total quantity across line items and comparative period delta.
+- **List View Shortcut**: Quick button to open the filtered ERPNext List View.
 
 ```
-┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐ ┌─────────────────┐
-│   MR PENDING    │ │  MR COMPLETED   │ │   PR PENDING    │ │   PI PENDING    │ │  PI COMPLETED   │
-│   (PO Pending)  │ │   (PO Ordered)  │ │   (Receipt Due) │ │  (Invoice Due)  │ │(Billed & Closed)│
-│                 │ │                 │ │                 │ │                 │ │                 │
-│      1,240      │ │      3,890      │ │       412       │ │       285       │ │      3,150      │
-│  ▲ +12% vs last │ │  ▲ +5% vs last  │ │  ▼ -3% vs last  │ │  ▲ +8% vs last  │ │  ▲ +14% vs last │
-│  [↗ List View]  │ │  [↗ List View]  │ │  [↗ List View]  │ │  [↗ List View]  │ │  [↗ List View]  │
-└─────────────────┘ └─────────────────┘ └─────────────────┘ └─────────────────┘ └─────────────────┘
+┌────────────────────────┐ ┌────────────────────────┐ ┌────────────────────────┐ ┌────────────────────────┐ ┌────────────────────────┐
+│      MR PENDING        │ │      MR COMPLETED      │ │       PR PENDING       │ │       PI PENDING       │ │   TOTAL PI COMPLETED   │
+│                        │ │                        │ │                        │ │                        │ │                        │
+│ 164 DOCUMENTS          │ │ 320 DOCUMENTS          │ │ 75 DOCUMENTS           │ │ 42 DOCUMENTS           │ │ 210 DOCUMENTS          │
+│ Line Items Pending:    │ │ Line Items Completed:  │ │ Line Items Pending:    │ │ Line Items Pending:    │ │ Line Items Completed:  │
+│ 1,245                  │ │ 2,850                  │ │ 164                    │ │ 96                     │ │ 1,560                  │
+│ 15,400 Qty ▲ +12%      │ │ 38,900 Qty ▲ +5%       │ │ 2,400 Qty ▼ -3%        │ │ 1,100 Qty ▲ +8%        │ │ 18,500 Qty ▲ +14%      │
+│ [↗ List View]          │ │ [↗ List View]          │ │ [↗ List View]          │ │ [↗ List View]          │ │ [↗ List View]          │
+└────────────────────────┘ └────────────────────────┘ └────────────────────────┘ └────────────────────────┘ └────────────────────────┘
 ```
 
 ### Stage Definitions & Business Logic:

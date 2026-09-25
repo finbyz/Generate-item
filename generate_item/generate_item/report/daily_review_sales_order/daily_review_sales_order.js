@@ -90,6 +90,30 @@ frappe.query_reports["Daily Review Sales Order"] = {
         const me = frappe.query_reports["Daily Review Sales Order"];
         me._report = report;
 
+        // Ensure date input calendar icon adapts cleanly to dark and light theme
+        if (!$("#daily-review-so-custom-style").length) {
+            $(`
+                <style id="daily-review-so-custom-style">
+                    [data-theme="dark"] .inline-editor[type="date"],
+                    [data-theme-mode="dark"] .inline-editor[type="date"] {
+                        color-scheme: dark !important;
+                    }
+                    [data-theme="light"] .inline-editor[type="date"],
+                    [data-theme-mode="light"] .inline-editor[type="date"] {
+                        color-scheme: light !important;
+                    }
+                    .inline-editor[type="date"]::-webkit-calendar-picker-indicator {
+                        cursor: pointer;
+                        opacity: 0.9;
+                        padding: 2px;
+                    }
+                    .inline-editor[type="date"]::-webkit-calendar-picker-indicator:hover {
+                        opacity: 1;
+                    }
+                </style>
+            `).appendTo("head");
+        }
+
         frappe.call({
             method: "generate_item.generate_item.report.daily_review_sales_order.daily_review_sales_order.get_sn_field_meta",
             callback(r) {
@@ -111,6 +135,8 @@ frappe.query_reports["Daily Review Sales Order"] = {
 
         // ── Cell click → open inline editor ─────────────────────────────────
         report.$report.on("click", ".dt-cell", function (e) {
+            // Ignore click if clicking inside an already active inline editor
+            if ($(e.target).closest(".inline-editor").length) return;
             me._on_cell_click(e, $(this));
         });
     },
@@ -147,7 +173,6 @@ frappe.query_reports["Daily Review Sales Order"] = {
         if (!meta) {
             meta = { fieldtype: "Data" };
             console.error("Metadata not found for field:", fieldname);
-            
         }
 
         // Use the already-staged value if the cell was edited before
@@ -165,87 +190,178 @@ frappe.query_reports["Daily Review Sales Order"] = {
     _render_editor($cell, meta, cur_value, on_stage) {
         $cell.css("position", "relative");
 
+        // Close any active inline editor before opening a new one
+        $(document).trigger("close_report_inline_editor");
+
+        let _closed = false;
+        const _close = (should_save, custom_val) => {
+            if (_closed) return;
+            _closed = true;
+            $(document).off("pointerdown.report_inline_editor close_report_inline_editor");
+            if (should_save && $editor) {
+                const val = custom_val !== undefined ? custom_val : $editor.val();
+                const trimmed = (val !== null && val !== undefined) ? String(val).trim() : "";
+                if (trimmed !== cur_value) {
+                    on_stage(trimmed);
+                }
+            }
+            if ($editor) $editor.remove();
+        };
+
+        $(document).on("close_report_inline_editor", () => _close(true));
+
         let $editor;
 
-        if (meta.fieldtype === "Select") {
-            // ── Select ───────────────────────────────────────────────────────
-            const options_array = (meta.options || "").split("\n");
-            const opts = options_array
-                .map(o => `<option value="${frappe.utils.escape_html(o)}"${o === cur_value ? " selected" : ""}>${o || "--"}</option>`)
-                .join("");
+        if (meta.fieldtype === "Select" || (meta.user_options && meta.user_options.length)) {
+            // ── Select / User Dropdown ────────────────────────────────────────
+            let opts = "";
+            if (meta.user_options && meta.user_options.length) {
+                opts = `<option value="">-- Select User --</option>` + meta.user_options
+                    .map(u => `<option value="${frappe.utils.escape_html(u.value)}"${(u.value === cur_value || u.label === cur_value) ? " selected" : ""}>${frappe.utils.escape_html(u.label || u.value)}</option>`)
+                    .join("");
+            } else {
+                const options_array = (meta.options || "").split("\n");
+                opts = options_array
+                    .map(o => `<option value="${frappe.utils.escape_html(o)}"${o === cur_value ? " selected" : ""}>${o || "--"}</option>`)
+                    .join("");
+            }
 
             $editor = $(`
-                <select class="inline-editor" style="
+                <select class="inline-editor form-control input-sm" style="
                     position:absolute; top:0; left:0; width:100%; height:100%;
                     z-index:100; font-size:12px; border:2px solid var(--primary, var(--blue-500, #3b82f6));
                     background:var(--control-bg, var(--card-bg, #ffffff)); color:var(--text-color, #1f272e); padding:2px;
-                    border-radius:3px; outline:none;
+                    border-radius:3px; outline:none; cursor:pointer;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
                 ">${opts}</select>
             `);
 
             $editor.on("change", function () {
-                on_stage($(this).val());
-                $editor.remove();
+                _close(true, $(this).val());
             });
             $editor.on("keydown", function (e) {
-                if (e.key === "Escape") $editor.remove();
+                if (e.key === "Enter")  { e.preventDefault(); _close(true, $(this).val()); }
+                if (e.key === "Escape") { e.preventDefault(); _close(false); }
             });
 
         } else if (meta.fieldtype === "Date") {
             // ── Date ─────────────────────────────────────────────────────────
+            const is_dark = document.documentElement.getAttribute("data-theme") === "dark"
+                || document.documentElement.getAttribute("data-theme-mode") === "dark"
+                || document.body.getAttribute("data-theme") === "dark"
+                || frappe.ui.color_mode === "dark"
+                || window.matchMedia?.("(prefers-color-scheme: dark)")?.matches;
+            const color_scheme = is_dark ? "dark" : "light";
+
             $editor = $(`
-                <input type="date" class="inline-editor" value="${cur_value || ""}" style="
+                <input type="date" class="inline-editor form-control input-sm" value="${cur_value || ""}" style="
                     position:absolute; top:0; left:0; width:100%; height:100%;
                     z-index:100; font-size:12px; border:2px solid var(--primary, var(--blue-500, #3b82f6));
-                    background:var(--control-bg, var(--card-bg, #ffffff)); color:var(--text-color, #1f272e); color-scheme:light dark; padding:2px;
-                    border-radius:3px; outline:none;
+                    background:var(--control-bg, var(--card-bg, #ffffff)); color:var(--text-color, #1f272e);
+                    color-scheme:${color_scheme} !important; padding:2px 4px;
+                    border-radius:3px; outline:none; cursor:pointer;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
                 "/>
             `);
 
             $editor.on("change", function () {
-                on_stage($(this).val());
-                $editor.remove();
+                _close(true, $(this).val());
             });
-            $editor.on("keydown", function (e) {
-                if (e.key === "Escape") $editor.remove();
+            $editor.on("keydown", (e) => {
+                if (e.key === "Enter")  { e.preventDefault(); _close(true, $editor.val()); }
+                if (e.key === "Escape") { _close(false); }
             });
 
-        } 
-        else {
-            // ── Data / Small Text / plain text ────────────────────────────────
-            
-            let _closed = false;
+            // Open calendar picker when clicked
+            $editor.on("click", function () {
+                try {
+                    if (typeof this.showPicker === "function") {
+                        this.showPicker();
+                    }
+                } catch (err) {}
+            });
 
-            const _close = (should_save) => {
-                if (_closed) return;     // ← guard: execute only once
-                _closed = true;
-
-                if (should_save) {
-                    const val = $editor.val().trim();
-                    if (val !== cur_value) on_stage(val);
-                }
-                // Detach after we've read the value — order matters
-                $editor.remove();
-            };
-
+        } else if (meta.fieldtype === "Link") {
+            // ── Link (User / Link autocomplete) ──────────────────────────────
             $editor = $(`
-                <input type="text" class="inline-editor" value="${frappe.utils.escape_html(cur_value)}" style="
+                <input type="text" class="inline-editor form-control input-sm" value="${frappe.utils.escape_html(cur_value)}" style="
                     position:absolute; top:0; left:0; width:100%; height:100%;
                     z-index:100; font-size:12px; border:2px solid var(--primary, var(--blue-500, #3b82f6));
-                    background:var(--control-bg, var(--card-bg, #ffffff)); color:var(--text-color, #1f272e); padding:2px;
+                    background:var(--control-bg, var(--card-bg, #ffffff)); color:var(--text-color, #1f272e); padding:2px 4px;
                     border-radius:3px; outline:none;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
                 "/>
             `);
 
-            $editor.on("blur",    ()  => _close(true));
             $editor.on("keydown", (e) => {
-                if (e.key === "Enter")  { e.preventDefault(); _close(true);  }
+                if (e.key === "Enter")  { e.preventDefault(); _close(true, $editor.val()); }
+                if (e.key === "Escape") { _close(false); }
+            });
+
+            // Autocomplete for Link DocType
+            if (meta.options) {
+                frappe.call({
+                    method: "frappe.desk.search.search_link",
+                    args: { doctype: meta.options, txt: "" },
+                    callback(r) {
+                        if (r.message && $editor.is(":visible")) {
+                            const list = r.message.map(m => m.value);
+                            if (window.Awesomplete) {
+                                new Awesomplete($editor[0], {
+                                    list: list,
+                                    minChars: 0,
+                                    autoFirst: true,
+                                });
+                            }
+                        }
+                    }
+                });
+            }
+
+        } else {
+            // ── Data / Small Text / plain text ────────────────────────────────
+            $editor = $(`
+                <input type="text" class="inline-editor form-control input-sm" value="${frappe.utils.escape_html(cur_value)}" style="
+                    position:absolute; top:0; left:0; width:100%; height:100%;
+                    z-index:100; font-size:12px; border:2px solid var(--primary, var(--blue-500, #3b82f6));
+                    background:var(--control-bg, var(--card-bg, #ffffff)); color:var(--text-color, #1f272e); padding:2px 4px;
+                    border-radius:3px; outline:none;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+                "/>
+            `);
+
+            $editor.on("keydown", (e) => {
+                if (e.key === "Enter")  { e.preventDefault(); _close(true, $editor.val()); }
                 if (e.key === "Escape") {                      _close(false); }
             });
         }
 
+        // Prevent events from bubbling to .dt-cell
+        $editor.on("click pointerdown mousedown", (e) => {
+            e.stopPropagation();
+        });
+
         $cell.append($editor);
         $editor.focus();
+
+        if (meta.fieldtype === "Date") {
+            try {
+                if (typeof $editor[0].showPicker === "function") {
+                    $editor[0].showPicker();
+                }
+            } catch (err) {
+                // Ignore if browser restricts automatic showPicker without direct interaction
+            }
+        }
+
+        // Close when clicking anywhere outside this cell
+        setTimeout(() => {
+            $(document).on("pointerdown.report_inline_editor", (e) => {
+                if (!$(e.target).closest($cell).length && !$(e.target).closest(".awesomplete").length) {
+                    _close(true, $editor.val());
+                }
+            });
+        }, 100);
     },
 
     // ─── STAGE A CHANGE (NO REPORT REFRESH) ──────────────────────────────────
@@ -259,15 +375,32 @@ frappe.query_reports["Daily Review Sales Order"] = {
         row_data[fieldname] = new_value;
 
         // Update only this cell's DOM — no full grid refresh
-        me._paint_cell($cell, new_value, true /* pending */);
+        me._paint_cell($cell, new_value, true /* pending */, fieldname);
 
         me._update_save_button();
     },
 
+    _get_empty_label(fieldname) {
+        const USER_ENTRY_FIELDS = ["mds_no", "design_remarks", "other_remarks", "reason_for_delay"];
+        const label = USER_ENTRY_FIELDS.includes(fieldname) ? "User Entry" : "User Select";
+        return `<span style="color:var(--text-muted);">${__(label)}</span>`;
+    },
 
-    _paint_cell($cell, value, pending) {
-        const display = frappe.utils.escape_html(value || "");
-        const empty   = `<span style="color:var(--text-muted);">User Select</span>`;
+    _format_cell_display_val(fieldname, val) {
+        if (!val) return "";
+        const me = frappe.query_reports["Daily Review Sales Order"];
+        if (fieldname === "engg_bom_created_by" && me._sn_meta && me._sn_meta.engg_bom_created_by && me._sn_meta.engg_bom_created_by.user_options) {
+            const u = me._sn_meta.engg_bom_created_by.user_options.find(opt => opt.value === val);
+            if (u && u.label) return u.label;
+        }
+        return val;
+    },
+
+    _paint_cell($cell, value, pending, fieldname) {
+        const me      = frappe.query_reports["Daily Review Sales Order"];
+        const raw_val = me._format_cell_display_val(fieldname, value);
+        const display = frappe.utils.escape_html(raw_val || "");
+        const empty   = me._get_empty_label(fieldname);
 
         const inner_html = pending
             ? `<span style="
@@ -566,6 +699,12 @@ _open_bulk_update_dialog() {
     });
 
     dialog.show();
+
+    if (dialog.fields_dict.engg_bom_created_by) {
+        dialog.fields_dict.engg_bom_created_by.get_query = () => ({
+            filters: { enabled: 1, user_type: "System User" }
+        });
+    }
 
     // ── 7. Apply filter defaults AFTER render ──────────────────────────────
     //    setTimeout lets the dialog DOM fully initialise before we push values.
@@ -905,8 +1044,9 @@ async _execute_bulk_update(values, dialog) {
         if (data.sn_name && me._pending_changes) {
             const pending_key = `${data.sn_name}::${column.fieldname}`;
             if (me._pending_changes[pending_key]) {
+                const pending_val = me._pending_changes[pending_key].new_value || "";
                 const display = frappe.utils.escape_html(
-                    me._pending_changes[pending_key].new_value || ""
+                    me._format_cell_display_val(column.fieldname, pending_val)
                 );
                 return `<span style="
                     display:block;
@@ -915,7 +1055,7 @@ async _execute_bulk_update(values, dialog) {
                     border-left:3px solid var(--yellow-500, #facc15);
                     padding:2px 6px; border-radius:2px; cursor:cell;
                 " title="${__('Unsaved — click Save Changes to apply')}">
-                    ${display || `<span style="color:var(--text-muted);">User Select</span>`}
+                    ${display || me._get_empty_label(column.fieldname)}
                 </span>`;
             }
         }
@@ -942,8 +1082,9 @@ async _execute_bulk_update(values, dialog) {
         }
 
         if (column.editable) {
+            const formatted = me._format_cell_display_val(column.fieldname, value);
             value = `<span style="cursor:cell;" title="${__("Click to edit")}">` +
-                    (value || `<span style="color:var(--text-muted);">User Select</span>`) +
+                    (formatted || me._get_empty_label(column.fieldname)) +
                     `</span>`;
         }
 

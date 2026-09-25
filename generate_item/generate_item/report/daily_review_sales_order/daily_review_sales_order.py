@@ -159,68 +159,64 @@ def get_columns():
         {"fieldname": "batch_key", "label": _("Batch Key"), "fieldtype": "Data", "width": 0, "hidden": 1},
         {"fieldname": "source_doctype", "label": _("Source Doctype"), "fieldtype": "Data", "width": 0, "hidden": 1},
 
-        # ─── A : Batch / SO Line ─────────────────────────────────────────────
-        {"fieldname": "batch_no",       "label": _("Batch No"), "fieldtype": "Link",  "options": "Batch",        "width": 160},
+        # ─── 1-6 : SO Line & Reference ──────────────────────────────────────
         {"fieldname": "sales_order",    "label": _("Sales Order"),        "fieldtype": "Link",  "options": "Sales Order",  "width": 150},
+        {"fieldname": "batch_no",       "label": _("Batch No"),          "fieldtype": "Link",  "options": "Batch",        "width": 160},
         {"fieldname": "order_status",   "label": _("Order Status"),       "fieldtype": "Data",  "width": 130},
-        {"fieldname": "so_line_status", "label": _("SO Line Status"),     "fieldtype": "Data",  "width": 170},
         {"fieldname": "customer_name",  "label": _("Customer Name"),      "fieldtype": "Data",  "width": 200},
+        {"fieldname": "so_approved_date", "label": _("SO Approved Date"), "fieldtype": "Datetime", "width": 160},
+        {"fieldname": "so_line_status", "label": _("SO Line Status"),     "fieldtype": "Data",  "width": 170},
 
-        # ─── F–Q : Serial Number editable ────────────────────────────────────
+        # ─── 7-19 : Serial Number editable (MDS, GAD, ITP/QAP) ───────────────
         {"fieldname": "mds_status",    "label": _("MDS Status"),   "fieldtype": "Select", "options": "\nYES\nNO\nNA",         "width": 170, "editable": 1, "sn_field": 1},
         {"fieldname": "mds_no",        "label": _("MDS No."),      "fieldtype": "Data",                                       "width": 120, "editable": 1, "sn_field": 1},
         {"fieldname": "mds_rev",       "label": _("MDS Rev."),     "fieldtype": "Select", "options": "\nNA\n00\n01\n02\n03\n04\n05\n06", "width": 90,  "editable": 1, "sn_field": 1},
         {"fieldname": "mds_date",      "label": _("MDS Date"),     "fieldtype": "Date",                                       "width": 110, "editable": 1, "sn_field": 1},
         {"fieldname": "gad_required",  "label": _("GAD Required"), "fieldtype": "Select", "options": "\nYES\nNO\nNA",         "width": 150, "editable": 1, "sn_field": 1},
         {"fieldname": "gad_status",    "label": _("GAD Status"),   "fieldtype": "Select", "options": "\nSSV STD GAD\nNO\nNA\nApproved\nSubmitted\nInprocess", "width": 130, "editable": 1, "sn_field": 1},
-        {"fieldname": "gad_rev",       "label": _("GAD Rev."),     "fieldtype": "Select", "options": "\n00\n01\n02\n03\n04\n05\n06\nNO", "width": 90, "editable": 1, "sn_field": 1},
+        {"fieldname": "gad_rev",       "label": _("GAD Rev."),     "fieldtype": "Select", "options": "\n00\n01\n02\n03\n04\n05\n06\nA\nB\nC\nD\nE\nNO", "width": 90, "editable": 1, "sn_field": 1},
         {"fieldname": "gad_receive_date",                   "label": _("GAD Receive Date"),                   "fieldtype": "Date",   "width": 170, "editable": 1, "sn_field": 1},
         {"fieldname": "after_gad_change_bom_change_required","label": _("AFTER GAD CHANGE BOM CHANGE REQUIRED"),      "fieldtype": "Select", "options": "\nYES\nNO",        "width": 360, "editable": 1, "sn_field": 1},
-        {"fieldname": "itpqap",                             "label": _("ITP/QAP"),                            "fieldtype": "Select", "options": "\nYES\nNO",        "width": 90,  "editable": 1, "sn_field": 1},
-        {"fieldname": "itpqap_rev",                         "label": _("ITP/QAP Rev."),                       "fieldtype": "Select", "options": "\n00\n01\n02\n03\n04\n05\n06", "width": 130, "editable": 1, "sn_field": 1},
+        {"fieldname": "itpqap",                             "label": _("ITP/QAP"),                            "fieldtype": "Select", "options": "\nYES\nNO\nNA",    "width": 90,  "editable": 1, "sn_field": 1},
+        {"fieldname": "itpqap_rev",                         "label": _("ITP/QAP Rev."),                       "fieldtype": "Select", "options": "\n00\n01\n02\n03\n04\n05\n06\nA\nB\nC\nD\nE", "width": 130, "editable": 1, "sn_field": 1},
+        {"fieldname": "itpqap_status",                      "label": _("ITP/QAP Status"),                     "fieldtype": "Select", "options": "\nSSV STD GAD\nNO\nNA\nApproved\nSubmitted\nInprocess", "width": 140, "editable": 1, "sn_field": 1},
         {"fieldname": "itpqap_receive_date",                "label": _("ITP/QAP Receive Date"),               "fieldtype": "Date",   "width": 180, "editable": 1, "sn_field": 1},
 
-        # ─── R–T : SO Item read-only ──────────────────────────────────────────
+        # ─── 20-22 : SO Item read-only ───────────────────────────────────────
         {"fieldname": "item_code",       "label": _("Item Code"),       "fieldtype": "Link", "options": "Item", "width": 180},
         {"fieldname": "main_description","label": _("Main Description"),"fieldtype": "Small Text",              "width": 300},
         {"fieldname": "valve_qty",       "label": _("Valve Qty"),       "fieldtype": "Int",                     "width": 100},
-        {"fieldname": "is_free_item",    "label": _("Free Issue Item"),"fieldtype": "Check",                   "width": 130},
 
-        # ─── U : Mfg Type ─────────────────────────────────────────────────────
-        {"fieldname": "mfg_type", "label": _("Mfg Type"), "fieldtype": "Select", "options": "\nIN-HOUSE\nOUTSOURCE", "width": 120,  "sn_field": 1},
-
-        # ─── V : BOM status ───────────────────────────────────────────────────
-        {"fieldname": "bom_status", "label": _("BOM Status"), "fieldtype": "Data", "width": 110},
-
-        # ─── W–X ──────────────────────────────────────────────────────────────
+        # ─── 23-27 : Mfg Type, BOM Status, Released Date, After GAD ──────────
+        {"fieldname": "mfg_type",                           "label": _("Mfg Type"),                           "fieldtype": "Select", "options": "\nIN-HOUSE\nOUTSOURCE", "width": 120, "editable": 1, "sn_field": 1},
+        {"fieldname": "bom_status",                         "label": _("BOM Status"),                         "fieldtype": "Data", "width": 110},
+        {"fieldname": "bom_released_date",                  "label": _("BOM Released Date"),                  "fieldtype": "Date",     "width": 160},
         {"fieldname": "after_gad_change_bom_update_or_not", "label": _("AFTER GAD CHANGE BOM Update or NOT"), "fieldtype": "Select", "options": "\nUpdated\nNot Updated", "width": 320, "editable": 1, "sn_field": 1},
-        {"fieldname": "after_gad_rev_bom_released",         "label": _("After GAD Rev – BOM Released"), "fieldtype": "Data", "width": 260},
+        {"fieldname": "after_gad_rev_bom_released",         "label": _("After GAD Rev – BOM Released"),       "fieldtype": "Data", "width": 260},
 
-        # ─── Y–AB : dates ─────────────────────────────────────────────────────
-        {"fieldname": "so_approved_date",   "label": _("SO Approved Date"),    "fieldtype": "Datetime", "width": 160},
-        {"fieldname": "bom_released_date",  "label": _("BOM Released Date"),   "fieldtype": "Date",     "width": 160},
+        # ─── 28-31 : Amendment Dates & Computed Delays ───────────────────────
         {"fieldname": "so_amendment_date",  "label": _("SO Amendment Date"),   "fieldtype": "Date",     "width": 170},
         {"fieldname": "bom_amendment_date", "label": _("BOM Amendment Date"),  "fieldtype": "Date",     "width": 180},
+        {"fieldname": "bom_delay_days",     "label": _("BOM Delay Days"),      "fieldtype": "Data",     "width": 150},
+        {"fieldname": "bom_delay_weeks",    "label": _("BOM Delay Weeks"),     "fieldtype": "Data",     "width": 150},
 
-        # ─── AC–AD : computed delay ───────────────────────────────────────────
-        {"fieldname": "bom_delay_days",  "label": _("BOM Delay Days"),  "fieldtype": "Data",  "width": 150},
-        {"fieldname": "bom_delay_weeks", "label": _("BOM Delay Weeks"), "fieldtype": "Data", "width": 150},
-
-        # ─── AE–AH : SN editable ─────────────────────────────────────────────
+        # ─── 32-35 : SN editable (Remarks, Pattern, Action) ──────────────────
         {"fieldname": "design_remarks",          "label": _("Design Remarks"),         "fieldtype": "Small Text", "width": 180, "editable": 1, "sn_field": 1},
         {"fieldname": "pattern_status",          "label": _("Pattern Status"),         "fieldtype": "Select", "options": "\nAvailable\nNew Development\nModification",           "width": 150, "editable": 1, "sn_field": 1},
         {"fieldname": "advance_action_casting",  "label": _("Advance Action Casting"), "fieldtype": "Select", "options": "\nYES\nNO",                               "width": 210, "editable": 1, "sn_field": 1},
         {"fieldname": "advance_action_trim",     "label": _("Advance Action Trim"),    "fieldtype": "Select", "options": "\nYES\nNO",                               "width": 180, "editable": 1, "sn_field": 1},
 
-        # ─── AI : BOM owner (read-only) ───────────────────────────────────────
+        # ─── 36-37 : BOM Created By (ERP full name & Engg User Link) ─────────
         {"fieldname": "erp_bom_created_by", "label": _("ERP BOM Created By"), "fieldtype": "Data", "width": 170},
+        {"fieldname": "engg_bom_created_by", "label": _("Engg. BOM Created By"), "fieldtype": "Link", "options": "User", "width": 180, "editable": 1, "sn_field": 1},
 
-        # ─── AJ–AM : SN editable ─────────────────────────────────────────────
-        {"fieldname": "engg_bom_created_by",              "label": _("Engg. BOM Created By"),           "fieldtype": "Data",       "width": 180, "editable": 1, "sn_field": 1},
+        # ─── 38-41 : Expected Date, Expected Delay, BOM Rel In GAD Rev ────────
         {"fieldname": "release_date_expected",            "label": _("Release Date (Expected)"),        "fieldtype": "Date",       "width": 190, "editable": 1, "sn_field": 1},
         {"fieldname": "expected_based_delay_days",        "label": _("Expected Based Delay Days"),      "fieldtype": "Data",       "width": 210},
-        {"fieldname": "expected_based_delay_week",        "label": _("Expected Based Delay Week"),      "fieldtype": "Data", "width": 220, },
-        {"fieldname": "bom_released_in_which_gad_revision","label": _("BOM Released In Which GAD Rev."),"fieldtype": "Select", "options": "\n00\n01\n02\n03\n04\n05\n06", "width": 260, "editable": 1, "sn_field": 1},
+        {"fieldname": "expected_based_delay_week",        "label": _("Expected Based Delay Week"),      "fieldtype": "Data",       "width": 220},
+        {"fieldname": "bom_released_in_which_gad_revision","label": _("BOM Released In Which GAD Rev."),"fieldtype": "Select", "options": "\n00\n01\n02\n03\n04\n05\n06\nA\nB\nC\nD\nE", "width": 260, "editable": 1, "sn_field": 1},
+
+        # ─── 42-43 : Remarks & Reason For Delay ──────────────────────────────
         {"fieldname": "other_remarks",   "label": _("Other Remarks"),   "fieldtype": "Small Text", "width": 180, "editable": 1, "sn_field": 1},
         {"fieldname": "reason_for_delay","label": _("Reason For Delay"),"fieldtype": "Small Text", "width": 180, "editable": 1, "sn_field": 1},
     ]
@@ -260,14 +256,22 @@ def _fetch_rows(filters):
             rep_sn.sn_name                                      AS sn_name,
             soi.custom_batch_no                                 AS batch_key,
             rep_sn.source_doctype                               AS source_doctype,
-            /*── A-E : SO + SO Item ───────────────────────────────────────────*/
-            soi.custom_batch_no                                 AS batch_no,
+            /*── 1-6 : SO + SO Item ───────────────────────────────────────────*/
             so.name                                             AS sales_order,
+            soi.custom_batch_no                                 AS batch_no,
             so.status                                           AS order_status,
-            soi.line_status                                     AS so_line_status,
             so.customer_name,
+            (
+                SELECT sc.modification_time
+                FROM   `tabState Change Items` sc
+                WHERE  sc.parent         = so.name
+                  AND  sc.workflow_state = 'Approved'
+                ORDER  BY sc.modification_time DESC
+                LIMIT  1
+            )                                                   AS so_approved_date,
+            soi.line_status                                     AS so_line_status,
 
-            /*── F-Q : Serial Number editable fields ──────────────────────────*/
+            /*── 7-19 : Serial Number editable fields ──────────────────────────*/
             rep_sn.mds_status,
             rep_sn.mds_no,
             rep_sn.mds_rev,
@@ -279,65 +283,38 @@ def _fetch_rows(filters):
             rep_sn.after_gad_change_bom_change_required,
             rep_sn.itpqap,
             rep_sn.itpqap_rev,
+            rep_sn.itpqap_status,
             rep_sn.itpqap_receive_date,
 
-            /*── R-T : SO Item ────────────────────────────────────────────────*/
+            /*── 20-22 : SO Item ──────────────────────────────────────────────*/
             soi.item_code,
             soi.description                                     AS main_description,
             soi.qty                                             AS valve_qty,
-            soi.is_free_item                                    AS is_free_item,
 
-            /*── U : Mfg Type ─────────────────────────────────────────────────*/
+            /*── 23-27 : Mfg Type, BOM Status, Released Date, After GAD ───────*/
             rep_sn.mfg_type,
-
-            /*── V : BOM ──────────────────────────────────────────────────────*/
-            # bom.status                                          AS bom_status,
-
-            /*── W : After-GAD BOM update flag ───────────────────────────────*/
-            rep_sn.after_gad_change_bom_update_or_not,
-
-            /*── Y : SO Approved timestamp via State Change Items ─────────────*/
-            (
-                SELECT sc.modification_time
-                FROM   `tabState Change Items` sc
-                WHERE  sc.parent         = so.name
-                  AND  sc.workflow_state = 'Approved'
-                ORDER  BY sc.modification_time DESC
-                LIMIT  1
-            )                                                   AS so_approved_date,
-
-            /*── Z : BOM Released Date ────────────────────────────────────────*/
             CASE
                 WHEN bom.docstatus = 1 THEN DATE(bom.creation)
                 ELSE NULL
             END                                                 AS bom_released_date,
+            rep_sn.after_gad_change_bom_update_or_not,
 
-            /*── AA : SO Amendment Date ───────────────────────────────────────*/
-        
-            so.rev_date as so_amendment_date,
-
-            /*── AB : BOM Amendment Date ──────────────────────────────────────*/
-    
-
+            /*── 28-29 : Amendment Dates ──────────────────────────────────────*/
+            so.rev_date                                         AS so_amendment_date,
             (
                 SELECT MAX(bi.rev_date) 
                 FROM `tabBOM Item` bi 
                 WHERE bi.parent = bom.name
-            )  as bom_amendment_date,
-            
+            )                                                   AS bom_amendment_date,
 
-
-
-            /*── AI : ERP BOM owner ───────────────────────────────────────────*/
-            bom.owner                                           AS erp_bom_created_by,
-            /*── V : BOM ──────────────────────────────────────────────────────*/
+            /*── 36 : ERP BOM owner Full Name ─────────────────────────────────*/
+            COALESCE(usr.full_name, bom.owner)                  AS erp_bom_created_by,
             bom.name                                            AS bom_id,
             bom.docstatus                                       AS bom_docstatus,
 
-            /*── AJ-AP : more SN editable fields ─────────────────────────────*/
-            rep_sn.engg_bom_created_by,
+            /*── 37-43 : More SN editable fields ──────────────────────────────*/
+            COALESCE(engg_usr.full_name, rep_sn.engg_bom_created_by) AS engg_bom_created_by,
             rep_sn.release_date_expected,
-            # rep_sn.expected_based_delay_week,
             rep_sn.bom_released_in_which_gad_revision,
             rep_sn.design_remarks,
             rep_sn.pattern_status,
@@ -353,14 +330,11 @@ def _fetch_rows(filters):
                ON  so.name      = soi.parent
                AND so.docstatus = 1
 
-        /*── Representative Serial Number
-             We use a derived table that picks the FIRST SN per batch
-             (ORDER BY name ASC).  This is a single indexed scan per batch
-             and avoids 5 000-row fan-out in the join.                        */
+        /*── Representative Serial Number ───────────────────────────────────*/
         LEFT JOIN (
             SELECT 'Serial Number' AS source_doctype, sn.batch, sn.name AS sn_name, sn.mds_status, sn.mds_no, sn.mds_rev,
                    sn.mds_date, sn.gad_required, sn.gad_status, sn.gad_rev, sn.gad_receive_date,
-                   sn.after_gad_change_bom_change_required, sn.itpqap, sn.itpqap_rev,
+                   sn.after_gad_change_bom_change_required, sn.itpqap, sn.itpqap_rev, sn.itpqap_status,
                    sn.itpqap_receive_date, sn.mfg_type, sn.after_gad_change_bom_update_or_not,
                    sn.engg_bom_created_by, sn.release_date_expected,
                    sn.bom_released_in_which_gad_revision, sn.design_remarks, sn.pattern_status,
@@ -375,7 +349,7 @@ def _fetch_rows(filters):
 
             SELECT 'Valve Spare Serial' AS source_doctype, vss.batch, vss.name AS sn_name, vss.mds_status, vss.mds_no, vss.mds_rev,
                    vss.mds_date, vss.gad_required, vss.gad_status, vss.gad_rev, vss.gad_receive_date,
-                   vss.after_gad_change_bom_change_required, vss.itpqap, vss.itpqap_rev,
+                   vss.after_gad_change_bom_change_required, vss.itpqap, vss.itpqap_rev, vss.itpqap_status,
                    vss.itpqap_receive_date, vss.mfg_type, vss.after_gad_change_bom_update_or_not,
                    vss.engg_bom_created_by, vss.release_date_expected,
                    vss.bom_released_in_which_gad_revision, vss.design_remarks, vss.pattern_status,
@@ -388,23 +362,7 @@ def _fetch_rows(filters):
         ) AS rep_sn
                ON rep_sn.batch = soi.custom_batch_no
 
-        /*── Latest active / submitted BOM per item ───────────────────────────
-             Correlated sub-query: docstatus DESC then creation DESC.
-             is_active=1 guard avoids obsolete BOMs.                          */
-        # LEFT JOIN `tabBOM` bom
-        #        ON bom.name = (
-        #            SELECT b.name
-        #            FROM   `tabBOM` b
-        #            WHERE  b.item       = soi.item_code
-        #              AND  b.docstatus  IN (0, 1)
-        #              AND  b.is_active  = 1
-        #            ORDER  BY b.docstatus DESC,
-        #                      b.creation  DESC
-        #            LIMIT  1
-        #        )
-
         /*── BOM Joined by Batch ───────────────────────────────────────────*/
-
         LEFT JOIN `tabBOM` bom
             ON bom.name = (
                 SELECT b.name
@@ -414,7 +372,14 @@ def _fetch_rows(filters):
                 ORDER BY b.docstatus DESC, b.creation DESC
                 LIMIT 1
             )
-                    
+
+        /*── ERP BOM Created By User Full Name ─────────────────────────────*/
+        LEFT JOIN `tabUser` usr
+            ON usr.name = bom.owner
+
+        /*── Engg BOM Created By User Full Name ────────────────────────────*/
+        LEFT JOIN `tabUser` engg_usr
+            ON engg_usr.name = rep_sn.engg_bom_created_by
 
         WHERE soi.docstatus = 1
           AND soi.custom_batch_no IS NOT NULL
@@ -502,7 +467,7 @@ def _post_process(rows):
         else:
             exp_date = r.get("release_date_expected")
             if exp_date:
-                delay_days = date_diff(getdate(exp_date),today)
+                delay_days = date_diff(today, getdate(exp_date))
                 r["expected_based_delay_days"] = delay_days
                 r["expected_based_delay_week"] = _get_week_bucket(delay_days, is_released=False)
                 
@@ -590,13 +555,12 @@ def get_sn_field_meta():
         "mds_status", "mds_no", "mds_rev", "mds_date",
         "gad_required", "gad_status", "gad_rev", "gad_receive_date",
         "after_gad_change_bom_change_required",
-        "itpqap", "itpqap_rev", "itpqap_receive_date",
-        # "mfg_type", 
+        "itpqap", "itpqap_rev", "itpqap_status", "itpqap_receive_date",
+        "mfg_type", 
         "after_gad_change_bom_update_or_not",
         "design_remarks", "pattern_status",
         "advance_action_casting", "advance_action_trim",
         "engg_bom_created_by", "release_date_expected",
-        # "expected_based_delay_week",
         "bom_released_in_which_gad_revision",
         "other_remarks", "reason_for_delay",
     ]
@@ -604,19 +568,36 @@ def get_sn_field_meta():
     meta    = frappe.get_meta("Serial Number")
     result  = {}
 
+    enabled_users = frappe.get_all(
+        "User",
+        filters={"enabled": 1, "user_type": "System User", "name": ["not in", ["Guest"]]},
+        fields=["name", "full_name"],
+        order_by="full_name asc"
+    )
+    user_options = []
+    for u in enabled_users:
+        lbl = u.full_name if u.full_name else u.name
+        if u.full_name and u.full_name != u.name:
+            lbl = f"{u.full_name} ({u.name})"
+        user_options.append({"value": u.name, "label": lbl})
+
     for fname in EDITABLE_FIELDS:
         df = meta.get_field(fname)
         if not df: continue
         
         fieldtype = df.fieldtype
         
-        
-        result[fname] = {
+        field_info = {
             "fieldtype": fieldtype, 
             "label": df.label,
             "options": df.options or "",
             "reqd": df.reqd,
         }
+        if fname == "engg_bom_created_by" or df.options == "User":
+            field_info["user_options"] = user_options
+
+        result[fname] = field_info
+
     return result
 
 
@@ -641,7 +622,9 @@ EDITABLE_SN_FIELDS = frozenset({
     "after_gad_change_bom_change_required",
     "itpqap",
     "itpqap_rev",
+    "itpqap_status",
     "itpqap_receive_date",
+    "mfg_type",
     "after_gad_change_bom_update_or_not",
     "design_remarks",
     "pattern_status",
