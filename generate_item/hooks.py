@@ -33,8 +33,9 @@ app_license = "mit"
 
 app_include_js = [
     "/assets/generate_item/js/report_export.js?v=6.0",
-     "/assets/generate_item/js/login_redirect.js?v=1.4",
-     "/assets/generate_item/js/hide_title.js"
+    "/assets/generate_item/js/login_redirect.js?v=1.4",
+    "/assets/generate_item/js/hide_title.js",
+    "/assets/generate_item/js/hide_grid_upload.js?v=1.0",
 ]
 # --- Login Redirect feature --------------------------------------------------
 

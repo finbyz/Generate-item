@@ -198,12 +198,13 @@ class PurchaseUserDashboard {
 		const optionsContainer = userSelect.querySelector(".pud-custom-select-options");
 		if (!optionsContainer) return;
 
-		let html = `<div class="pud-custom-option selected" data-value="">${__("All Allowed Users")}</div>`;
-		users.forEach((u) => {
-			const val = u.value || u.name;
-			const lbl = u.label || u.full_name || val;
-			html += `<div class="pud-custom-option" data-value="${frappe.utils.escape_html(val)}">${frappe.utils.escape_html(lbl)}</div>`;
-		});
+		const sessionUserId = frappe.session.user || "Administrator";
+		const found = (users || []).find((u) => (u.value || u.name) === sessionUserId);
+		const sessionUserLabel = (found && (found.label || found.full_name)) || (frappe.session.user_fullname && frappe.session.user_fullname !== "Guest" ? frappe.session.user_fullname : sessionUserId);
+
+		let html = `<div class="pud-custom-option ${!this.filters.user ? "selected" : ""}" data-value="">${__("All Allowed Users")}</div>`;
+		html += `<div class="pud-custom-option ${this.filters.user === sessionUserId ? "selected" : ""}" data-value="${frappe.utils.escape_html(sessionUserId)}">${frappe.utils.escape_html(sessionUserLabel)}</div>`;
+
 		optionsContainer.innerHTML = html;
 		this.bind_select_events(userSelect.closest(".pud-custom-select-wrapper"));
 	}
