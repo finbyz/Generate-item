@@ -17,14 +17,14 @@ from frappe.utils import flt, today, date_diff, getdate
 
 
 DOC_ORDER = [
-	"quote", "so", "mr", "po", "sco", "scr", "pr", "sr",
+	"quote", "so", "bom", "pp", "mr", "po", "sco", "scr", "pr", "sr",
 	"pi", "dn", "si", "pe_in", "pe_out", "je",
 ]
 
 # Columns shown on the Tab 1 list grid, in this order:
-# MR -> PO -> Subcontracting Order -> Subcontracting Receipt -> Purchase
+# BOM -> Production Plan -> Material Request -> Purchase Order -> Purchase
 # Receipt -> Purchase Invoice -> Delivery Note -> Sales Invoice.
-LIST_DOC_KEYS = ["mr", "po", "sco", "scr", "pr", "pi", "dn", "si"]
+LIST_DOC_KEYS = ["bom", "pp", "mr", "po", "pr", "pi", "dn", "si"]
 
 DOC_CONFIG = {
 	"quote": {
@@ -34,6 +34,14 @@ DOC_CONFIG = {
 	"so": {
 		"doctype": "Sales Order", "label": "Sales Order", "short": "SO",
 		"status_field": "status", "amount_field": "grand_total",
+	},
+	"bom": {
+		"doctype": "BOM", "label": "BOM", "short": "BOM",
+		"status_field": "workflow_state", "amount_field": "total_cost",
+	},
+	"pp": {
+		"doctype": "Production Plan", "label": "Production Plan", "short": "PP",
+		"status_field": "status", "amount_field": None,
 	},
 	"mr": {
 		"doctype": "Material Request", "label": "Material Request", "short": "MR",
@@ -132,16 +140,37 @@ def resolve_status_field(doctype, cfg):
 	return None
 
 
+def check_detail_view_permission(throw=True):
+	"""Checks if logged in user has the role configured in Selling Settings."""
+	configured_role = (frappe.db.get_single_value("Selling Settings", "role_allowed_to_detail_view_sales_order_tracker") or "").strip()
+	user_roles = frappe.get_roles(frappe.session.user)
+
+	if frappe.session.user == "Administrator" or "System Manager" in user_roles:
+		return True
+
+	if configured_role and configured_role in user_roles:
+		return True
+
+	if throw:
+		frappe.throw(
+			_("You do not have permission to view Sales Order Tracker details. Configured role: {0}").format(
+				configured_role or _("None (System Manager only)")
+			),
+			frappe.PermissionError,
+		)
+	return False
+
+
 # ---------------------------------------------------------------------------
 # List view (Tab 1 — Status Overview)
 # Driven by Sales Order, Item, and Batch
 # ---------------------------------------------------------------------------
 
 @frappe.whitelist()
-def get_ao_list(
+def get_sales_order_list(
 	from_date=None, to_date=None, sales_order=None, customer=None,
 	project=None, branch=None, company=None, batch_no=None, item_code=None,
-	view_mode="batch", page=1, page_length=50, limit=None
+	so_status=None, view_mode="batch", page=1, page_length=50, limit=None
 ):
 	"""Returns line-wise item rows driven by Sales Order, with document status trail."""
 	import math
@@ -156,6 +185,19 @@ def get_ao_list(
 	company = (company or "").strip()
 	batch_no = (batch_no or "").strip()
 	item_code = (item_code or "").strip()
+	so_status = (so_status or "").strip()
+
+	# Show only open Sales Orders by default unless specified otherwise
+	if not so_status or so_status.lower() in ("open", "open orders"):
+		so_filters["status"] = ["not in", ["Closed", "Completed", "Cancelled"]]
+	elif so_status.lower() == "all":
+		pass  # keep docstatus != 2
+	elif so_status in ("To Deliver and Bill", "To Build and Deliver"):
+		so_filters["status"] = ["in", ["To Deliver and Bill", "To Build and Deliver"]]
+	elif so_status == "To Build":
+		so_filters["status"] = ["in", ["To Deliver and Bill", "To Build and Deliver", "To Deliver"]]
+	else:
+		so_filters["status"] = so_status
 
 	page = max(1, frappe.utils.cint(page or 1))
 	page_length = frappe.utils.cint(limit or page_length or 50)
@@ -175,7 +217,6 @@ def get_ao_list(
 			so_filters[date_field] = ["<=", to_date]
 
 	if sales_order:
-		# so_filters["name"] = ["like", f"%{sales_order}%"]
 		so_filters["name"] = sales_order
 	if customer and field_exists("Sales Order", "customer"):
 		so_filters["customer"] = customer
@@ -187,8 +228,21 @@ def get_ao_list(
 		so_filters["company"] = company
 
 	total_sos = 0  # Only consider Sales Orders that have stock items
-	so_item_conds = ["soi.docstatus != 2", "item.is_stock_item = 1"]
+	so_item_conds = ["soi.docstatus != 2", "item.is_stock_item = 1", "so.docstatus != 2"]
 	so_item_vals = {}
+
+	if not so_status or so_status.lower() in ("open", "open orders"):
+		so_item_conds.append("so.status not in ('Closed', 'Completed', 'Cancelled')")
+	elif so_status.lower() == "all":
+		pass
+	elif so_status in ("To Deliver and Bill", "To Build and Deliver"):
+		so_item_conds.append("so.status in ('To Deliver and Bill', 'To Build and Deliver')")
+	elif so_status == "To Build":
+		so_item_conds.append("so.status in ('To Deliver and Bill', 'To Build and Deliver', 'To Deliver')")
+	else:
+		so_item_conds.append("so.status = %(so_status)s")
+		so_item_vals["so_status"] = so_status
+
 	if sales_order:
 		so_item_conds.append("soi.parent = %(sales_order)s")
 		so_item_vals["sales_order"] = sales_order
@@ -211,6 +265,7 @@ def get_ao_list(
 		f"""
 		select distinct soi.parent
 		from `tabSales Order Item` soi
+		join `tabSales Order` so on so.name = soi.parent
 		inner join `tabItem` item on item.name = soi.item_code
 		where {' and '.join(so_item_conds)}
 		""",
@@ -227,6 +282,7 @@ def get_ao_list(
 			"page_length": page_length,
 			"total_pages": 0,
 			"view_mode": view_mode or "batch",
+			"can_view_detail": check_detail_view_permission(throw=False),
 		}
 	if not sales_order:
 		so_filters["name"] = ["in", matching_sos]
@@ -452,6 +508,18 @@ def get_ao_list(
 				so_join_conds.append(f"({' or '.join(b_clauses)})")
 				so_join_vals["batch_no"] = f"%{batch_no}%"
 
+		if not so_status or so_status.lower() in ("open", "open orders"):
+			so_join_conds.append("so.status not in ('Closed', 'Completed', 'Cancelled')")
+		elif so_status.lower() == "all":
+			pass
+		elif so_status in ("To Deliver and Bill", "To Build and Deliver"):
+			so_join_conds.append("so.status in ('To Deliver and Bill', 'To Build and Deliver')")
+		elif so_status == "To Build":
+			so_join_conds.append("so.status in ('To Deliver and Bill', 'To Build and Deliver', 'To Deliver')")
+		else:
+			so_join_conds.append("so.status = %(so_status)s")
+			so_join_vals["so_status"] = so_status
+
 		if item_code:
 			so_join_conds.append("soi.item_code like %(item_code)s")
 			so_join_vals["item_code"] = f"%{item_code}%"
@@ -478,7 +546,14 @@ def get_ao_list(
 		"page_length": page_length,
 		"total_pages": math.ceil(total_sos / page_length) if page_length and total_sos else 1,
 		"view_mode": view_mode or "batch",
+		"can_view_detail": check_detail_view_permission(throw=False),
 	}
+
+
+@frappe.whitelist()
+def get_ao_list(*args, **kwargs):
+	"""Backward compatibility wrapper for get_sales_order_list."""
+	return get_sales_order_list(*args, **kwargs)
 
 
 def bulk_prefetch_docs(sales_orders_list, all_so_items, branch=None):
@@ -515,6 +590,97 @@ def bulk_prefetch_docs(sales_orders_list, all_so_items, branch=None):
 			if q_no:
 				so_docnames_map[so.name]["quote"].add(q_no)
 				all_discovered_docnames["Quotation"].add(q_no)
+
+	# 1b. BOMs (via Sales Order, SO Item, Batch, or Item Default)
+	if doctype_installed("BOM"):
+		item_codes_set = {it.item_code for it in all_so_items if it.get("item_code")}
+		bom_where = ["sales_order in %(so_names)s"]
+		bom_vals = {"so_names": so_names}
+		if item_codes_set:
+			bom_where.append("(item in %(item_codes)s and is_default = 1 and is_active = 1)")
+			bom_vals["item_codes"] = tuple(item_codes_set)
+
+		bom_rows = frappe.db.sql(
+			f"""
+			select name, item, sales_order, custom_batch_no, is_default, is_active
+			from `tabBOM`
+			where docstatus != 2 and ({' or '.join(bom_where)})
+			""",
+			bom_vals,
+			as_dict=True,
+		)
+		for b_row in bom_rows:
+			bname = b_row.name
+			all_discovered_docnames["BOM"].add(bname)
+			so = b_row.sales_order
+			cb = b_row.custom_batch_no
+			ic = b_row.item
+			if so:
+				so_docnames_map[so]["bom"].add(bname)
+				if cb:
+					batch_docnames_map[(so, cb)]["bom"].add(bname)
+				if ic:
+					item_code_docnames_map[(so, ic)]["bom"].add(bname)
+			elif ic and b_row.is_default:
+				for so_n in so_names:
+					item_code_docnames_map[(so_n, ic)]["bom"].add(bname)
+
+		for it in all_so_items:
+			b_no = it.get("bom_no")
+			if b_no:
+				so_docnames_map[it.sales_order]["bom"].add(b_no)
+				item_docnames_map[(it.sales_order, it.so_item_name)]["bom"].add(b_no)
+				all_discovered_docnames["BOM"].add(b_no)
+
+	# 1c. Production Plans (via Production Plan Item and Production Plan Sales Order)
+	if doctype_installed("Production Plan"):
+		if doctype_installed("Production Plan Item"):
+			pp_items = frappe.db.sql(
+				"""
+				select parent as docname, sales_order, sales_order_item, custom_batch_no, item_code, bom_no
+				from `tabProduction Plan Item`
+				where docstatus != 2 and sales_order in %(so_names)s
+				""",
+				{"so_names": so_names},
+				as_dict=True,
+			)
+			for ppi in pp_items:
+				pname = ppi.docname
+				all_discovered_docnames["Production Plan"].add(pname)
+				so = ppi.sales_order
+				soi = ppi.sales_order_item
+				cb = ppi.custom_batch_no
+				ic = ppi.item_code
+				bom = ppi.bom_no
+				if so:
+					so_docnames_map[so]["pp"].add(pname)
+					if soi:
+						item_docnames_map[(so, soi)]["pp"].add(pname)
+					if cb:
+						batch_docnames_map[(so, cb)]["pp"].add(pname)
+					if ic:
+						item_code_docnames_map[(so, ic)]["pp"].add(pname)
+					if bom:
+						all_discovered_docnames["BOM"].add(bom)
+						so_docnames_map[so]["bom"].add(bom)
+						if soi:
+							item_docnames_map[(so, soi)]["bom"].add(bom)
+						if cb:
+							batch_docnames_map[(so, cb)]["bom"].add(bom)
+
+		if doctype_installed("Production Plan Sales Order"):
+			pp_so_rows = frappe.db.sql(
+				"""
+				select parent as docname, sales_order
+				from `tabProduction Plan Sales Order`
+				where docstatus != 2 and sales_order in %(so_names)s
+				""",
+				{"so_names": so_names},
+				as_dict=True,
+			)
+			for ppr in pp_so_rows:
+				all_discovered_docnames["Production Plan"].add(ppr.docname)
+				so_docnames_map[ppr.sales_order]["pp"].add(ppr.docname)
 
 	# 2. Child tables for MR, PO, SCO, SCR, DN, SI, PR, PI
 	doc_specs = [
@@ -704,74 +870,118 @@ def bulk_prefetch_docs(sales_orders_list, all_so_items, branch=None):
 
 def determine_pending(docs, so_doc=None):
 	so_status = so_doc.get("status") if so_doc else (docs.get("so") or {}).get("status")
-	if not so_doc and not docs.get("so"):
-		return "Sales Order creation", "so"
+	if so_status == "Completed":
+		return "Completed", None
 	if so_status in PENDING_STATUSES:
-		return "Sales Order approval", "so"
+		return "Sales Order", "so"
 
+	# 1. BOM
+	bom = docs.get("bom")
+	if not bom or bom.get("status") in PENDING_STATUSES:
+		return "BOM", "bom"
+
+	# 2. Production Plan
+	pp = docs.get("pp")
+	if not pp or pp.get("status") in PENDING_STATUSES:
+		return "Production Plan", "pp"
+
+	# 3. Material Request
 	mr = docs.get("mr")
-	if not mr:
-		return "Material Request creation", "mr"
-	if mr.get("status") in PENDING_STATUSES:
-		return "Material Request approval", "mr"
+	if not mr or mr.get("status") in PENDING_STATUSES:
+		return "Material Request", "mr"
 
+	# 4. Purchase Order
 	po = docs.get("po")
 	sco = docs.get("sco")
 	if not po and not sco:
-		return "Purchase Order / Subcontracting Order creation", "po"
+		return "Purchase Order", "po"
 	if (po and po.get("status") in PENDING_STATUSES) and not (sco and sco.get("status") not in PENDING_STATUSES):
-		return "Purchase Order approval", "po"
+		return "Purchase Order", "po"
 	if (sco and sco.get("status") in PENDING_STATUSES) and not (po and po.get("status") not in PENDING_STATUSES):
-		return "Subcontracting Order approval", "sco"
+		return "Purchase Order", "sco"
 
+	# 5. Purchase Receipt
 	pr = docs.get("pr")
 	scr = docs.get("scr")
 	if not pr and not scr:
-		return "Purchase Receipt / Subcontracting Receipt", "pr"
+		return "Purchase Receipt", "pr"
+	if (pr and pr.get("status") in PENDING_STATUSES) and not (scr and scr.get("status") not in PENDING_STATUSES):
+		return "Purchase Receipt", "pr"
 
+	# 6. Purchase Invoice
+	pi = docs.get("pi")
+	if not pi or pi.get("status") in PENDING_STATUSES:
+		return "Purchase Invoice", "pi"
+
+	# 7. Delivery Note
 	dn = docs.get("dn")
-	if not dn:
+	per_delivered = flt(so_doc.get("per_delivered") if so_doc else 0)
+	if not dn or per_delivered < 100 or dn.get("status") in PENDING_STATUSES:
 		return "Delivery Note", "dn"
 
+	# 8. Sales Invoice
 	si = docs.get("si")
-	if not si:
+	per_billed = flt(so_doc.get("per_billed") if so_doc else 0)
+	if not si or per_billed < 100 or si.get("status") in PENDING_STATUSES:
 		return "Sales Invoice", "si"
 
-	return "", None
+	return "Completed", None
 
 
 def determine_item_pending(docs, item_data=None, so_status=None):
+	if so_status == "Completed":
+		return "Completed", None
 	if so_status in PENDING_STATUSES:
-		return "Sales Order approval", "so"
-	if item_data and flt(item_data.get("qty")) > 0 and flt(item_data.get("delivered_qty")) >= flt(item_data.get("qty")):
-		return "Delivered", "dn"
+		return "Sales Order", "so"
 
+	# 1. BOM
+	bom = docs.get("bom")
+	if not bom or bom.get("status") in PENDING_STATUSES:
+		return "BOM", "bom"
+
+	# 2. Production Plan
+	pp = docs.get("pp")
+	if not pp or pp.get("status") in PENDING_STATUSES:
+		return "Production Plan", "pp"
+
+	# 3. Material Request
 	mr = docs.get("mr")
-	if not mr:
-		return "Material Request creation", "mr"
-	if mr.get("status") in PENDING_STATUSES:
-		return "Material Request approval", "mr"
+	if not mr or mr.get("status") in PENDING_STATUSES:
+		return "Material Request", "mr"
 
+	# 4. Purchase Order
 	po = docs.get("po")
 	sco = docs.get("sco")
 	if not po and not sco:
-		return "Purchase Order / SCO creation", "po"
+		return "Purchase Order", "po"
 	if (po and po.get("status") in PENDING_STATUSES) and not (sco and sco.get("status") not in PENDING_STATUSES):
-		return "Purchase Order approval", "po"
+		return "Purchase Order", "po"
 	if (sco and sco.get("status") in PENDING_STATUSES) and not (po and po.get("status") not in PENDING_STATUSES):
-		return "Subcontracting Order approval", "sco"
+		return "Purchase Order", "sco"
 
+	# 5. Purchase Receipt
 	pr = docs.get("pr")
 	scr = docs.get("scr")
 	if not pr and not scr:
-		return "Purchase / Subcontract Receipt", "pr"
+		return "Purchase Receipt", "pr"
+	if (pr and pr.get("status") in PENDING_STATUSES) and not (scr and scr.get("status") not in PENDING_STATUSES):
+		return "Purchase Receipt", "pr"
 
+	# 6. Purchase Invoice
+	pi = docs.get("pi")
+	if not pi or pi.get("status") in PENDING_STATUSES:
+		return "Purchase Invoice", "pi"
+
+	# 7. Delivery Note
+	qty = flt((item_data or {}).get("qty", 0))
+	delivered_qty = flt((item_data or {}).get("delivered_qty", 0))
 	dn = docs.get("dn")
-	if not dn:
+	if not dn or (qty > 0 and delivered_qty < qty) or dn.get("status") in PENDING_STATUSES:
 		return "Delivery Note", "dn"
 
+	# 8. Sales Invoice
 	si = docs.get("si")
-	if not si:
+	if not si or si.get("status") in PENDING_STATUSES:
 		return "Sales Invoice", "si"
 
 	return "Completed", None
@@ -838,8 +1048,9 @@ def determine_item_priority(item_data, so_status=None):
 # ---------------------------------------------------------------------------
 
 @frappe.whitelist()
-def get_ao_detail(sales_order=None, project=None, branch=None, batch_no=None):
+def get_sales_order_detail(sales_order=None, project=None, branch=None, batch_no=None):
 	"""Returns complete Sales Order details, BOM items & consumption, and linked documents."""
+	check_detail_view_permission(throw=True)
 	so_name = sales_order
 	if not so_name and project:
 		so_name = frappe.db.get_value("Sales Order", {"project": project, "docstatus": ["!=", 2]}, "name")
@@ -891,6 +1102,12 @@ def get_ao_detail(sales_order=None, project=None, branch=None, batch_no=None):
 		},
 		"doc_order": DOC_ORDER,
 	}
+
+
+@frappe.whitelist()
+def get_ao_detail(*args, **kwargs):
+	"""Backward compatibility wrapper for get_sales_order_detail."""
+	return get_sales_order_detail(*args, **kwargs)
 
 
 def is_doc_type_queryable(cfg, key=None):
@@ -962,6 +1179,24 @@ def get_doc_names_for_so(sales_order, key, cfg, project=None, branch=None):
 
 	if key == "so":
 		return [sales_order] if frappe.db.exists("Sales Order", sales_order) else []
+
+	if key == "bom":
+		if field_exists("BOM", "sales_order") and sales_order:
+			b_names = frappe.get_all("BOM", filters={"sales_order": sales_order, "docstatus": ["!=", 2]}, pluck="name")
+			names.update(b_names)
+		if doctype_installed("Sales Order Item") and field_exists("Sales Order Item", "bom_no") and sales_order:
+			b_soi = frappe.get_all("Sales Order Item", filters={"parent": sales_order, "bom_no": ["is", "set"], "docstatus": ["!=", 2]}, pluck="bom_no")
+			names.update(b_soi)
+		return list(names)
+
+	if key == "pp":
+		if doctype_installed("Production Plan Item") and sales_order:
+			pp_names = frappe.get_all("Production Plan Item", filters={"sales_order": sales_order, "docstatus": ["!=", 2]}, pluck="parent")
+			names.update(pp_names)
+		if doctype_installed("Production Plan Sales Order") and sales_order:
+			pp_so = frappe.get_all("Production Plan Sales Order", filters={"sales_order": sales_order, "docstatus": ["!=", 2]}, pluck="parent")
+			names.update(pp_so)
+		return list(names)
 
 	# Direct child item link to Sales Order (e.g. against_sales_order / sales_order)
 	item_doctype = cfg.get("item_doctype")
@@ -1156,6 +1391,53 @@ def get_doc_names_for_so_item(sales_order, key, cfg, so_item_name=None, item_cod
 
 	if key == "so":
 		return [sales_order] if sales_order and frappe.db.exists("Sales Order", sales_order) else []
+
+	if key == "bom":
+		if sales_order:
+			if batch_no:
+				b_names = frappe.get_all("BOM", filters={"sales_order": sales_order, "custom_batch_no": ["like", f"%{batch_no}%"], "docstatus": ["!=", 2]}, pluck="name")
+				names.update(b_names)
+			if so_item_name:
+				b_no = frappe.db.get_value("Sales Order Item", so_item_name, "bom_no")
+				if b_no:
+					names.add(b_no)
+			if matching_soi_names:
+				b_sois = frappe.get_all("Sales Order Item", filters={"name": ["in", matching_soi_names], "bom_no": ["is", "set"], "docstatus": ["!=", 2]}, pluck="bom_no")
+				names.update(b_sois)
+			if not names:
+				b_so = frappe.get_all("BOM", filters={"sales_order": sales_order, "docstatus": ["!=", 2]}, pluck="name")
+				names.update(b_so)
+		if item_code and not names:
+			b_def = frappe.db.get_value("BOM", {"item": item_code, "is_default": 1, "docstatus": 1, "is_active": 1}, "name")
+			if b_def:
+				names.add(b_def)
+		return list(names)
+
+	if key == "pp":
+		pp_conds = ["docstatus != 2"]
+		pp_vals = {}
+		if sales_order:
+			pp_conds.append("sales_order = %(so)s")
+			pp_vals["so"] = sales_order
+		if batch_no:
+			pp_conds.append("custom_batch_no like %(batch_no)s")
+			pp_vals["batch_no"] = f"%{batch_no}%"
+		elif so_item_name:
+			pp_conds.append("sales_order_item = %(soi)s")
+			pp_vals["soi"] = so_item_name
+		elif matching_soi_names:
+			pp_conds.append("sales_order_item in %(matching_soi_names)s")
+			pp_vals["matching_soi_names"] = tuple(matching_soi_names)
+		elif item_code:
+			pp_conds.append("item_code = %(ic)s")
+			pp_vals["ic"] = item_code
+		pp_parents = frappe.db.sql(
+			f"select distinct parent from `tabProduction Plan Item` where {' and '.join(pp_conds)}",
+			pp_vals,
+			pluck=True,
+		)
+		names.update(pp_parents)
+		return list(names)
 
 	item_doctype = cfg.get("item_doctype")
 	item_so_field = cfg.get("item_so_field")
@@ -1689,7 +1971,7 @@ def get_doc_summary(doctype=None, name=None, batch_no=None):
 
 	child_fieldname = None
 	for df in doc.meta.get_table_fields():
-		if df.fieldname in ("items", "required_items", "supplied_items"):
+		if df.fieldname in ("items", "po_items", "required_items", "supplied_items"):
 			child_fieldname = df.fieldname
 			break
 
@@ -1716,6 +1998,11 @@ def get_doc_summary(doctype=None, name=None, batch_no=None):
 					pluck=True,
 				)
 				matching_soi_names.update(soi_res)
+
+	# Doctypes whose child rows do NOT have batch_no / SO-item link fields.
+	# Always show all their child items without batch filtering.
+	SKIP_BATCH_FILTER_DOCTYPES = {"BOM", "Production Plan", "Stock Entry", "Journal Entry", "Quotation"}
+	skip_batch_filter = doctype in SKIP_BATCH_FILTER_DOCTYPES
 
 	items = []
 	if child_fieldname:
@@ -1744,24 +2031,37 @@ def get_doc_summary(doctype=None, name=None, batch_no=None):
 				if is_stock == 0:
 					continue
 
-			# If batch_no is specified, filter items
-			if batch_no:
+			# For doctypes like BOM/Production Plan, skip batch filtering — always show all child items
+			if not skip_batch_filter and batch_no:
 				batch_match = (batch_no.lower() in row_batch.lower()) if row_batch else False
 				soi_match = (row_soi in matching_soi_names) if row_soi and matching_soi_names else False
 				if not batch_match and not soi_match:
 					continue
 
+			# Determine qty across different child table schemas
+			row_qty = flt(
+				row.get("qty")
+				or row.get("planned_qty")
+				or row.get("required_qty")
+				or row.get("stock_qty")
+				or row.get("transfer_qty")
+				or 0
+			)
+			# Rate across schemas: BOM Item may have rate_with_margin or valuation_rate
+			row_rate = row.get("rate") or row.get("rate_with_margin") or row.get("valuation_rate")
+			row_amount = row.get("amount") or row.get("base_amount")
+
 			items.append({
 				"item_code": row.get("item_code") or row.get("production_item") or row.get("rm_item_code"),
 				"item_name": row.get("item_name") or row.get("item_code") or row.get("production_item"),
 				"description": row.get("description"),
-				"batch_no": row_batch or (batch_no if (batch_match or soi_match) else None),
-				"qty": flt(row.get("qty") or row.get("required_qty") or row.get("stock_qty") or 0),
+				"batch_no": row_batch or None,
+				"qty": row_qty,
 				"uom": row.get("uom") or row.get("stock_uom"),
-				"rate": flt(row.get("rate")) if row.get("rate") is not None else None,
-				"amount": flt(row.get("amount")) if row.get("amount") is not None else None,
-				"warehouse": row.get("warehouse") or row.get("t_warehouse") or row.get("from_warehouse") or row.get("set_warehouse"),
-				"delivery_date": str(row.get("delivery_date") or row.get("schedule_date") or row.get("required_by") or "") or None,
+				"rate": flt(row_rate) if row_rate is not None else None,
+				"amount": flt(row_amount) if row_amount is not None else None,
+				"warehouse": row.get("warehouse") or row.get("t_warehouse") or row.get("source_warehouse") or row.get("from_warehouse") or row.get("set_warehouse"),
+				"delivery_date": str(row.get("delivery_date") or row.get("schedule_date") or row.get("required_by") or row.get("planned_start_date") or "") or None,
 				"reference": reference,
 			})
 
@@ -1774,14 +2074,18 @@ def get_doc_summary(doctype=None, name=None, batch_no=None):
 	party_label = "Supplier" if doc.meta.has_field("supplier") else ("Customer" if doc.meta.has_field("customer") else None)
 	party_name = doc.get("supplier_name") or doc.get("supplier") if party_label == "Supplier" else (doc.get("customer_name") or doc.get("customer") if party_label == "Customer" else None)
 
-	total_qty = sum(i["qty"] for i in items) if items else flt(doc.get("total_qty") or doc.get("qty") or 0)
-	grand_total = sum(i["amount"] for i in items if i.get("amount") is not None) if (batch_no and items and any(i.get("amount") is not None for i in items)) else flt(doc.get("grand_total") or doc.get("total") or doc.get("paid_amount") or 0)
+	total_qty = sum(i["qty"] for i in items) if items else flt(doc.get("total_qty") or doc.get("total_planned_qty") or doc.get("qty") or doc.get("quantity") or 0)
+	grand_total = sum(i["amount"] for i in items if i.get("amount") is not None) if (batch_no and items and any(i.get("amount") is not None for i in items)) else flt(doc.get("grand_total") or doc.get("total_cost") or doc.get("total") or doc.get("paid_amount") or 0)
+
+	doc_status = doc.get(status_field) if status_field else None
+	if not doc_status:
+		doc_status = "Submitted" if doc.docstatus == 1 else ("Cancelled" if doc.docstatus == 2 else "Draft")
 
 	return {
 		"doctype": doctype,
 		"name": doc.name,
 		"batch_no": batch_no or None,
-		"status": doc.get(status_field) if status_field else None,
+		"status": doc_status,
 		"sales_order": sales_order,
 		"project": project,
 		"date": str(doc.get("transaction_date") or doc.get("posting_date") or doc.get("creation") or "")[:10] or None,
