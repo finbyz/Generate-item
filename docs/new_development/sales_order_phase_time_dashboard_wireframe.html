@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sales Order Phase Time Dashboard - Frappe Wireframe</title>
+<style>
+  :root{
+    --bg:#f8f9fa; --surface:#fff; --border:#d1d8dd; --text:#1f272e;
+    --muted:#6b7280; --primary:#2490ef; --primary-soft:#eaf5ff;
+    --green:#28a745; --orange:#f59e0b; --shadow:0 1px 3px rgba(0,0,0,.08);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:14px}
+  .page{max-width:1500px;margin:0 auto;padding:22px 28px 40px}
+  .breadcrumb{color:var(--muted);font-size:12px;margin-bottom:8px}
+  .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}
+  h1{font-size:24px;margin:0 0 5px;font-weight:600}
+  .subtitle{color:var(--muted);font-size:13px}
+  .actions{display:flex;gap:8px}
+  button{font:inherit;border:1px solid var(--border);background:#fff;border-radius:6px;padding:7px 12px;cursor:pointer}
+  button.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+  .filter-card,.section,.card{background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:var(--shadow)}
+  .filter-card{padding:16px;margin-bottom:18px}
+  .filter-title{font-weight:600;margin-bottom:12px}
+  .filters{display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1.25fr 1.25fr auto;gap:12px;align-items:end}
+  label{display:block;font-size:12px;color:#5e6b75;margin-bottom:5px}
+  input,select{width:100%;height:34px;border:1px solid var(--border);border-radius:6px;background:#fff;padding:6px 9px;color:var(--text);outline:none}
+  input:focus,select:focus{border-color:var(--primary);box-shadow:0 0 0 2px rgba(36,144,239,.1)}
+  .filter-actions{display:flex;gap:7px}
+  .cards{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:18px}
+  .card{padding:15px 16px;min-height:116px}
+  .card .label{font-size:12px;color:var(--muted);line-height:1.35;min-height:32px}
+  .value{font-size:25px;font-weight:650;margin:8px 0 3px}
+  .unit{font-size:12px;color:var(--muted)}
+  .delta{font-size:11px;color:var(--green)}
+  .section{overflow:hidden;margin-bottom:18px}
+  .section-head{display:flex;justify-content:space-between;align-items:center;padding:15px 16px;border-bottom:1px solid var(--border)}
+  .section-head h2{font-size:16px;margin:0;font-weight:600}
+  .section-head span{font-size:12px;color:var(--muted)}
+  .table-wrap{overflow:auto}
+  table{border-collapse:collapse;width:100%;min-width:1250px}
+  th,td{border-bottom:1px solid #e5e7eb;padding:11px 12px;text-align:left;vertical-align:middle}
+  th{background:#f7f8fa;font-size:12px;color:#59636e;font-weight:600;white-space:nowrap}
+  td{font-size:13px}
+  tbody tr:hover{background:#fafcff}
+  .so{color:#1672c4;font-weight:600}
+  .phase-name{font-weight:500}
+  .duration{font-weight:600;white-space:nowrap}
+  .muted{color:var(--muted)}
+  .badge{display:inline-flex;padding:3px 7px;border-radius:12px;background:#eef2f5;color:#53606b;font-size:11px}
+  .footer-note{font-size:12px;color:var(--muted);padding:0 3px}
+  .legend{display:flex;gap:14px;align-items:center;font-size:12px;color:var(--muted)}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block;background:var(--primary);margin-right:5px}
+  .formula{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:6px;padding:10px 12px;margin:0 16px 16px;font-size:12px;color:#52606d}
+  @media(max-width:1100px){
+    .filters{grid-template-columns:repeat(3,1fr)}
+    .cards{grid-template-columns:repeat(3,1fr)}
+  }
+  @media(max-width:700px){
+    .page{padding:16px}
+    .header{display:block}.actions{margin-top:12px}
+    .filters{grid-template-columns:1fr}
+    .cards{grid-template-columns:1fr 1fr}
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="breadcrumb">Home / Selling / Reports / Sales Order Phase Time Dashboard</div>
+
+  <div class="header">
+    <div>
+      <h1>Sales Order Phase Time Dashboard</h1>
+      <div class="subtitle">Average elapsed time between key Sales Order, BOM, Purchase and Production phases</div>
+    </div>
+    <div class="actions">
+      <button>Refresh</button>
+      <button class="primary">Export</button>
+    </div>
+  </div>
+
+  <div class="filter-card">
+    <div class="filter-title">Filters</div>
+    <div class="filters">
+      <div>
+        <label>Period</label>
+        <select>
+          <option>Last Month</option><option>Today</option><option>Last Week</option><option>Last Quarter</option><option>Custom</option>
+        </select>
+      </div>
+      <div>
+        <label>From Date</label>
+        <input type="date" value="2026-09-01">
+      </div>
+      <div>
+        <label>To Date</label>
+        <input type="date" value="2026-09-28">
+      </div>
+      <div>
+        <label>Branch</label>
+        <input placeholder="Select Branch">
+      </div>
+      <div>
+        <label>Sales Order</label>
+        <input placeholder="Select Sales Order">
+      </div>
+      <div>
+        <label>Customer</label>
+        <input placeholder="Select Customer">
+      </div>
+      <div class="filter-actions">
+        <button class="primary" onclick="alert('Filters applied in the wireframe')">Apply</button>
+        <button onclick="location.reload()">Clear</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="cards">
+    <div class="card">
+      <div class="label">SO Approval → Last BOM Created</div>
+      <div class="value">2.4</div><div class="unit">days average</div>
+    </div>
+    <div class="card">
+      <div class="label">Last BOM Created → Last BOM Submitted</div>
+      <div class="value">1.2</div><div class="unit">days average</div>
+    </div>
+    <div class="card">
+      <div class="label">Last BOM Submitted → Last PO Submitted</div>
+      <div class="value">3.7</div><div class="unit">days average</div>
+    </div>
+    <div class="card">
+      <div class="label">Last PO Submitted → Last Purchase Receipt Submitted</div>
+      <div class="value">5.1</div><div class="unit">days average</div>
+    </div>
+    <div class="card">
+      <div class="label">Last Purchase Receipt → Last Work Order Submitted</div>
+      <div class="value">2.8</div><div class="unit">days average</div>
+    </div>
+    <div class="card">
+      <div class="label">Sales Order → Last Work Order Submitted</div>
+      <div class="value">15.2</div><div class="unit">days average</div>
+      <div class="delta">End-to-end cycle</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-head">
+      <div>
+        <h2>Sales Order Phase Timeline</h2>
+        <span>One row per Sales Order; phase duration is calculated from document submitted/created timestamps</span>
+      </div>
+      <div class="legend"><span><i class="dot"></i>Duration</span><span>8 Sales Orders</span></div>
+    </div>
+
+    <div class="formula">
+      <strong>Calculation:</strong> Duration = later phase timestamp − earlier phase timestamp. If a required downstream document does not exist, display “—” and exclude that phase from its average.
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Sales Order</th>
+            <th>Customer</th>
+            <th>SO Date</th>
+            <th>SO Approval<br>(Submitted)</th>
+            <th>Last BOM<br>Created</th>
+            <th>Last BOM<br>Submitted</th>
+            <th>Last PO<br>Submitted</th>
+            <th>Last Purchase Receipt<br>Submitted</th>
+            <th>Last Work Order<br>Submitted</th>
+            <th>SO Approval →<br>Last BOM Created</th>
+            <th>BOM Created →<br>BOM Submitted</th>
+            <th>BOM Submitted →<br>PO Submitted</th>
+            <th>PO Submitted →<br>PR Submitted</th>
+            <th>PR Submitted →<br>WO Submitted</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="so">SAL-ORD-2026-00125</td><td>ABC Industries</td><td>01-Sep-2026</td><td>02-Sep-2026</td><td>03-Sep-2026</td><td>04-Sep-2026</td><td>06-Sep-2026</td><td>10-Sep-2026</td><td>12-Sep-2026</td>
+            <td class="duration">1.0 d</td><td class="duration">1.0 d</td><td class="duration">2.0 d</td><td class="duration">4.0 d</td><td class="duration">2.0 d</td>
+          </tr>
+          <tr>
+            <td class="so">SAL-ORD-2026-00131</td><td>XYZ Ceramics</td><td>03-Sep-2026</td><td>04-Sep-2026</td><td>06-Sep-2026</td><td>07-Sep-2026</td><td>10-Sep-2026</td><td>14-Sep-2026</td><td>17-Sep-2026</td>
+            <td class="duration">2.0 d</td><td class="duration">1.0 d</td><td class="duration">3.0 d</td><td class="duration">4.0 d</td><td class="duration">3.0 d</td>
+          </tr>
+          <tr>
+            <td class="so">SAL-ORD-2026-00142</td><td>Modern Tiles Ltd.</td><td>05-Sep-2026</td><td>06-Sep-2026</td><td>09-Sep-2026</td><td>10-Sep-2026</td><td>12-Sep-2026</td><td>17-Sep-2026</td><td>20-Sep-2026</td>
+            <td class="duration">3.0 d</td><td class="duration">1.0 d</td><td class="duration">2.0 d</td><td class="duration">5.0 d</td><td class="duration">3.0 d</td>
+          </tr>
+          <tr>
+            <td class="so">SAL-ORD-2026-00157</td><td>BuildWell Pvt. Ltd.</td><td>08-Sep-2026</td><td>09-Sep-2026</td><td>11-Sep-2026</td><td>13-Sep-2026</td><td>15-Sep-2026</td><td>18-Sep-2026</td><td>22-Sep-2026</td>
+            <td class="duration">2.0 d</td><td class="duration">2.0 d</td><td class="duration">2.0 d</td><td class="duration">3.0 d</td><td class="duration">4.0 d</td>
+          </tr>
+          <tr>
+            <td class="so">SAL-ORD-2026-00163</td><td>Sunrise Materials</td><td>10-Sep-2026</td><td>11-Sep-2026</td><td>13-Sep-2026</td><td>14-Sep-2026</td><td>18-Sep-2026</td><td>22-Sep-2026</td><td>24-Sep-2026</td>
+            <td class="duration">2.0 d</td><td class="duration">1.0 d</td><td class="duration">4.0 d</td><td class="duration">4.0 d</td><td class="duration">2.0 d</td>
+          </tr>
+          <tr>
+            <td class="so">SAL-ORD-2026-00171</td><td>Global Build Corp.</td><td>13-Sep-2026</td><td>14-Sep-2026</td><td>16-Sep-2026</td><td>18-Sep-2026</td><td>21-Sep-2026</td><td>25-Sep-2026</td><td class="muted">—</td>
+            <td class="duration">2.0 d</td><td class="duration">2.0 d</td><td class="duration">3.0 d</td><td class="duration">4.0 d</td><td class="muted">—</td>
+          </tr>
+          <tr>
+            <td class="so">SAL-ORD-2026-00182</td><td>Prime Ceramics</td><td>16-Sep-2026</td><td>17-Sep-2026</td><td>19-Sep-2026</td><td>20-Sep-2026</td><td>23-Sep-2026</td><td class="muted">—</td><td class="muted">—</td>
+            <td class="duration">2.0 d</td><td class="duration">1.0 d</td><td class="duration">3.0 d</td><td class="muted">—</td><td class="muted">—</td>
+          </tr>
+          <tr>
+            <td class="so">SAL-ORD-2026-00195</td><td>Metro Construction</td><td>19-Sep-2026</td><td>20-Sep-2026</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td>
+            <td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td><td class="muted">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    Wireframe note: Implement the filters and calculations using native Frappe/ERPNext report/dashboard UI wherever possible. Link fields should behave as Frappe Link fields; date fields should use Frappe Date controls; table should support sorting, pagination and clickable document links.
+  </div>
+</div>
+</body>
+</html>
