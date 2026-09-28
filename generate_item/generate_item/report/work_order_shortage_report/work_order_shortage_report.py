@@ -24,8 +24,8 @@ def execute(filters=None):
     item_codes = list({r["input_item_code"] for r in base_data if r.get("input_item_code")})
 
     mr_data_map, all_mr_item_names, mr_item_to_batch = get_material_request_data(batch_numbers, pp_numbers, item_codes)
-    po_data_map, all_po_item_names, po_item_to_batch, all_po_names, po_to_batch = get_purchase_order_data(batch_numbers, all_mr_item_names, item_codes, mr_item_to_batch)
-    pr_data_map = get_purchase_receipt_data(all_po_item_names, all_po_names, batch_numbers, item_codes, po_item_to_batch, po_to_batch)
+    po_data_map, all_po_item_names, po_item_to_batch, all_po_names, po_to_item = get_purchase_order_data(batch_numbers, all_mr_item_names, item_codes, mr_item_to_batch)
+    pr_data_map = get_purchase_receipt_data(all_po_item_names, all_po_names, item_codes, po_item_to_batch, po_to_item)
     stock_map = get_stock_data(filters, item_codes)
 
     data = build_final_data(base_data, mr_data_map, po_data_map, pr_data_map, stock_map)
@@ -34,6 +34,7 @@ def execute(filters=None):
 
     chart = get_chart_data(data, filters)
     summary = get_report_summary(data)
+
 
     return columns, data, None, chart, summary
 
