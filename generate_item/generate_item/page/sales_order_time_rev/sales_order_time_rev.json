@@ -1,0 +1,20 @@
+{
+ "content": null,
+ "creation": "2026-09-28 17:29:10.307089",
+ "docstatus": 0,
+ "doctype": "Page",
+ "icon": "fa fa-line-chart",
+ "idx": 0,
+ "modified": "2026-09-28 17:29:32.435908",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "sales-order-time-rev",
+ "owner": "Administrator",
+ "page_name": "sales-order-time-rev",
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Sales Order Phase Time Dashboard"
+}

@@ -1,0 +1,393 @@
+/* Sales Order Phase Time Dashboard Styles */
+.sopt-page-wrap {
+    max-width: 1600px;
+    margin: 0 auto;
+    padding: 12px 16px 40px;
+    color: var(--text-color, #1f272e);
+    font-size: var(--text-sm, 13px);
+}
+
+.sopt-filter-card {
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color, #d1d8dd);
+    border-radius: 8px;
+    box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.05));
+    padding: 16px;
+    margin-bottom: 20px;
+}
+
+.sopt-filter-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.sopt-filter-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-color, #1f272e);
+}
+
+.sopt-filter-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px 16px;
+    align-items: end;
+}
+
+.sopt-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.sopt-filter-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted, #6b7280);
+}
+
+.sopt-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+}
+
+.sopt-card {
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color, #d1d8dd);
+    border-radius: 8px;
+    padding: 14px 16px;
+    box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.04));
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 104px;
+    position: relative;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.sopt-card:hover {
+    box-shadow: var(--shadow-md, 0 4px 6px rgba(0, 0, 0, 0.06));
+}
+
+.sopt-card-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-muted, #6b7280);
+    margin-bottom: 6px;
+    line-height: 1.3;
+}
+
+.sopt-card-value {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text-color, #1f272e);
+    line-height: 1.1;
+    margin-bottom: 6px;
+}
+
+.sopt-card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--text-muted, #8d99a6);
+}
+
+.sopt-card-unit {
+    font-weight: 500;
+}
+
+.sopt-card-delta {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--primary, #171717);
+    background: var(--control-bg, #f4f5f6);
+    border-radius: 4px;
+    padding: 2px 6px;
+}
+
+.sopt-card-count {
+    font-size: 11px;
+    color: var(--text-muted, #8d99a6);
+}
+
+.sopt-section {
+    background: var(--card-bg, #fff);
+    border: 1px solid var(--border-color, #d1d8dd);
+    border-radius: 8px;
+    box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.05));
+    overflow: hidden;
+    margin-bottom: 24px;
+}
+
+.sopt-section-head {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border-color, #ebeff2);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.sopt-section-title-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sopt-section-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-color, #1f272e);
+    margin: 0;
+}
+
+.sopt-section-subtitle {
+    font-size: 12px;
+    color: var(--text-muted, #6b7280);
+}
+
+.sopt-formula-bar {
+    background: var(--control-bg, #f8f9fa);
+    border-bottom: 1px solid var(--border-color, #ebeff2);
+    padding: 8px 18px;
+    font-size: 12px;
+    color: var(--text-muted, #555);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sopt-formula-tag {
+    background: #e3f2fd;
+    color: #1565c0;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+.sopt-table-toolbar {
+    padding: 10px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    background: #fff;
+    border-bottom: 1px solid var(--border-color, #ebeff2);
+}
+
+.sopt-search-box {
+    position: relative;
+    width: 280px;
+}
+
+.sopt-search-box input {
+    width: 100%;
+    height: 32px;
+    padding: 4px 10px 4px 30px;
+    font-size: 12px;
+    border: 1px solid var(--border-color, #d1d8dd);
+    border-radius: 6px;
+    outline: none;
+}
+
+.sopt-search-box input:focus {
+    border-color: var(--primary, #171717);
+}
+
+.sopt-search-icon {
+    position: absolute;
+    left: 10px;
+    top: 8px;
+    font-size: 12px;
+    color: var(--text-muted, #8d99a6);
+}
+
+.sopt-table-wrap {
+    overflow-x: auto;
+    width: 100%;
+    max-height: 640px;
+    position: relative;
+}
+
+.sopt-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 12px;
+    text-align: left;
+}
+
+.sopt-table thead th {
+    background: var(--control-bg, #f8f9fa);
+    color: var(--text-muted, #525f6e);
+    font-weight: 600;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border-color, #d1d8dd);
+    border-right: 1px solid var(--border-color, #f0f0f0);
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    user-select: none;
+}
+
+.sopt-table thead th.sortable {
+    cursor: pointer;
+}
+
+.sopt-table thead th.sortable:hover {
+    background: #ebeff2;
+    color: var(--text-color, #1f272e);
+}
+
+.sopt-table thead th.sortable .sort-icon {
+    font-size: 10px;
+    margin-left: 4px;
+    opacity: 0.6;
+}
+
+.sopt-table thead th.sortable.sorted .sort-icon {
+    opacity: 1;
+    color: var(--primary, #171717);
+}
+
+.sopt-table thead tr.sub-header th {
+    font-size: 11px;
+    background: #f0f4f7;
+    padding: 6px 12px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.sopt-table tbody tr {
+    transition: background 0.15s ease;
+}
+
+.sopt-table tbody tr:hover {
+    background: #f7f9fa;
+}
+
+.sopt-table tbody td {
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border-color, #f0f4f7);
+    border-right: 1px solid var(--border-color, #f9f9f9);
+    vertical-align: middle;
+}
+
+.sopt-table th.sticky-col,
+.sopt-table td.sticky-col {
+    position: sticky;
+    left: 0;
+    background: #fff;
+    z-index: 1;
+    box-shadow: 2px 0 4px rgba(0, 0, 0, 0.04);
+}
+
+.sopt-table thead th.sticky-col {
+    z-index: 3;
+    background: var(--control-bg, #f8f9fa);
+}
+
+.sopt-table tbody tr:hover td.sticky-col {
+    background: #f7f9fa;
+}
+
+.sopt-duration-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 58px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    font-size: 11px;
+    background: #eef2ff;
+    color: #3730a3;
+    border: 1px solid #c7d2fe;
+    white-space: nowrap;
+}
+
+.sopt-duration-badge.overall {
+    background: #ecfdf5;
+    color: #065f46;
+    border-color: #a7f3d0;
+    font-weight: 700;
+}
+
+.sopt-muted-dash {
+    color: #adb5bd;
+    font-weight: 500;
+    font-size: 14px;
+    text-align: center;
+    display: inline-block;
+    width: 100%;
+}
+
+.sopt-so-link {
+    font-weight: 600;
+    color: var(--primary, #171717);
+    text-decoration: none;
+}
+
+.sopt-so-link:hover {
+    text-decoration: underline;
+    color: #000;
+}
+
+.sopt-doc-sublink {
+    font-size: 11px;
+    color: var(--text-muted, #6b7280);
+    text-decoration: none;
+    display: inline-block;
+    margin-top: 2px;
+}
+
+.sopt-doc-sublink:hover {
+    text-decoration: underline;
+    color: var(--primary, #171717);
+}
+
+.sopt-pagination {
+    padding: 10px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #fff;
+    border-top: 1px solid var(--border-color, #ebeff2);
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.sopt-loading-wrap {
+    position: relative;
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.sopt-empty-state {
+    text-align: center;
+    padding: 48px 16px;
+    color: var(--text-muted, #8d99a6);
+}
+
+.sopt-empty-state i {
+    font-size: 32px;
+    margin-bottom: 8px;
+    opacity: 0.4;
+}
+
+.sopt-empty-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-color, #1f272e);
+    margin-bottom: 4px;
+}
