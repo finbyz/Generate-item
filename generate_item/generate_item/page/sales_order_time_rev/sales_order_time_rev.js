@@ -46,68 +46,800 @@ class SalesOrderPhaseTimeDashboard {
     }
 
     inject_styles() {
-        if (document.getElementById("sopt-styles")) return;
+        if (document.getElementById("sopt-enterprise-styles")) return;
         const style = document.createElement("style");
-        style.id = "sopt-styles";
+        style.id = "sopt-enterprise-styles";
         style.textContent = `
-            .sopt-page-wrap { max-width: 1600px; margin: 0 auto; padding: 12px 16px 40px; color: var(--text-color, #1f272e); font-size: var(--text-sm, 13px); }
-            .sopt-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 18px; }
-            .sopt-title { font-size: 22px; font-weight: 700; margin: 0 0 4px; color: var(--text-color, #1f272e); }
-            .sopt-subtitle { font-size: 13px; color: var(--text-muted, #6b7280); }
-            .sopt-header-actions { display: flex; gap: 8px; }
-            .sopt-filter-card { background: var(--card-bg, #fff); border: 1px solid var(--border-color, #d1d8dd); border-radius: 8px; box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.05)); padding: 16px; margin-bottom: 20px; }
-            .sopt-filter-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-            .sopt-filter-title { font-weight: 600; font-size: 14px; color: var(--text-color, #1f272e); }
-            .sopt-filter-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px 16px; align-items: end; }
-            .sopt-filter-group { display: flex; flex-direction: column; gap: 4px; }
-            .sopt-filter-label { font-size: 12px; font-weight: 500; color: var(--text-muted, #6b7280); }
-            .sopt-filter-actions { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
-            .sopt-cards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 24px; }
-            .sopt-card { background: var(--card-bg, #fff); border: 1px solid var(--border-color, #d1d8dd); border-radius: 8px; padding: 14px 16px; box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.04)); display: flex; flex-direction: column; justify-content: space-between; min-height: 104px; position: relative; }
-            .sopt-card-label { font-size: 12px; font-weight: 600; color: var(--text-muted, #6b7280); margin-bottom: 6px; line-height: 1.3; }
-            .sopt-card-value { font-size: 26px; font-weight: 700; color: var(--text-color, #1f272e); line-height: 1.1; margin-bottom: 6px; }
-            .sopt-card-footer { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-muted, #8d99a6); }
-            .sopt-card-unit { font-weight: 500; }
-            .sopt-card-delta { font-size: 11px; font-weight: 600; color: var(--primary, #171717); background: var(--control-bg, #f4f5f6); border-radius: 4px; padding: 2px 6px; }
-            .sopt-card-count { font-size: 11px; color: var(--text-muted, #8d99a6); }
-            .sopt-section { background: var(--card-bg, #fff); border: 1px solid var(--border-color, #d1d8dd); border-radius: 8px; box-shadow: var(--shadow-sm, 0 1px 3px rgba(0,0,0,0.05)); overflow: hidden; margin-bottom: 24px; }
-            .sopt-section-head { padding: 14px 18px; border-bottom: 1px solid var(--border-color, #ebeff2); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; }
-            .sopt-section-title-wrap { display: flex; flex-direction: column; gap: 2px; }
-            .sopt-section-title { font-size: 16px; font-weight: 700; color: var(--text-color, #1f272e); margin: 0; }
-            .sopt-section-subtitle { font-size: 12px; color: var(--text-muted, #6b7280); }
-            .sopt-formula-bar { background: var(--control-bg, #f8f9fa); border-bottom: 1px solid var(--border-color, #ebeff2); padding: 8px 18px; font-size: 12px; color: var(--text-muted, #555); display: flex; align-items: center; gap: 8px; }
-            .sopt-formula-tag { background: #e3f2fd; color: #1565c0; font-weight: 600; padding: 2px 6px; border-radius: 4px; font-size: 11px; }
-            .sopt-table-toolbar { padding: 10px 18px; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; background: #fff; border-bottom: 1px solid var(--border-color, #ebeff2); }
-            .sopt-search-box { position: relative; width: 280px; }
-            .sopt-search-box input { width: 100%; height: 32px; padding: 4px 10px 4px 30px; font-size: 12px; border: 1px solid var(--border-color, #d1d8dd); border-radius: 6px; outline: none; }
-            .sopt-search-box input:focus { border-color: var(--primary, #171717); }
-            .sopt-search-icon { position: absolute; left: 10px; top: 8px; font-size: 12px; color: var(--text-muted, #8d99a6); }
-            .sopt-table-wrap { overflow-x: auto; width: 100%; max-height: 640px; position: relative; }
-            .sopt-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12px; text-align: left; }
-            .sopt-table thead th { background: var(--control-bg, #f8f9fa); color: var(--text-muted, #525f6e); font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--border-color, #d1d8dd); border-right: 1px solid var(--border-color, #f0f0f0); white-space: nowrap; position: sticky; top: 0; z-index: 2; user-select: none; }
-            .sopt-table thead th.sortable { cursor: pointer; }
-            .sopt-table thead th.sortable:hover { background: #ebeff2; color: var(--text-color, #1f272e); }
-            .sopt-table thead th.sortable .sort-icon { font-size: 10px; margin-left: 4px; opacity: 0.6; }
-            .sopt-table thead th.sortable.sorted .sort-icon { opacity: 1; color: var(--primary, #171717); }
-            .sopt-table thead tr.sub-header th { font-size: 11px; background: #f0f4f7; padding: 6px 12px; font-weight: 600; text-align: center; }
-            .sopt-table tbody tr { transition: background 0.15s ease; }
-            .sopt-table tbody tr:hover { background: #f7f9fa; }
-            .sopt-table tbody td { padding: 9px 12px; border-bottom: 1px solid var(--border-color, #f0f4f7); border-right: 1px solid var(--border-color, #f9f9f9); vertical-align: middle; }
-            .sopt-table th.sticky-col, .sopt-table td.sticky-col { position: sticky; left: 0; background: #fff; z-index: 1; box-shadow: 2px 0 4px rgba(0,0,0,0.04); }
-            .sopt-table thead th.sticky-col { z-index: 3; background: var(--control-bg, #f8f9fa); }
-            .sopt-table tbody tr:hover td.sticky-col { background: #f7f9fa; }
-            .sopt-duration-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 58px; padding: 3px 8px; border-radius: 4px; font-weight: 600; font-size: 11px; background: #eef2ff; color: #3730a3; border: 1px solid #c7d2fe; white-space: nowrap; }
-            .sopt-duration-badge.overall { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; font-weight: 700; }
-            .sopt-muted-dash { color: #adb5bd; font-weight: 500; font-size: 14px; text-align: center; display: inline-block; width: 100%; }
-            .sopt-so-link { font-weight: 600; color: var(--primary, #171717); text-decoration: none; }
-            .sopt-so-link:hover { text-decoration: underline; color: #000; }
-            .sopt-doc-sublink { font-size: 11px; color: var(--text-muted, #6b7280); text-decoration: none; display: inline-block; margin-top: 2px; }
-            .sopt-doc-sublink:hover { text-decoration: underline; color: var(--primary, #171717); }
-            .sopt-pagination { padding: 10px 18px; display: flex; justify-content: space-between; align-items: center; background: #fff; border-top: 1px solid var(--border-color, #ebeff2); flex-wrap: wrap; gap: 8px; font-size: 12px; }
-            .sopt-loading-wrap { position: relative; opacity: 0.6; pointer-events: none; }
-            .sopt-empty-state { text-align: center; padding: 48px 16px; color: var(--text-muted, #8d99a6); }
-            .sopt-empty-state i { font-size: 32px; margin-bottom: 8px; opacity: 0.4; }
-            .sopt-empty-title { font-weight: 600; font-size: 14px; color: var(--text-color, #1f272e); margin-bottom: 4px; }
+            :root {
+                --sopt-bg: #f8fafc;
+                --sopt-surface: #ffffff;
+                --sopt-surface-subtle: #f8fafc;
+                --sopt-border: #e2e8f0;
+                --sopt-border-strong: #cbd5e1;
+                --sopt-text: #0f172a;
+                --sopt-text-secondary: #475569;
+                --sopt-muted: #64748b;
+                --sopt-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+                --sopt-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+                --sopt-radius-sm: 6px;
+                --sopt-radius-md: 10px;
+                --sopt-radius-lg: 14px;
+            }
+
+            .sopt-page-wrap {
+                max-width: 1720px;
+                margin: 0 auto;
+                padding: 14px 20px 60px;
+                color: var(--sopt-text);
+                font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, sans-serif;
+                font-size: 13px;
+            }
+
+            /* Hero / Header */
+            .sopt-hero {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+                border-radius: var(--sopt-radius-lg);
+                padding: 20px 26px;
+                margin-bottom: 20px;
+                color: #ffffff;
+                box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.25);
+                position: relative;
+                overflow: hidden;
+            }
+
+            .sopt-hero::after {
+                content: "";
+                position: absolute;
+                right: -40px;
+                top: -40px;
+                width: 220px;
+                height: 220px;
+                background: radial-gradient(circle, rgba(59, 130, 246, 0.25) 0%, rgba(59, 130, 246, 0) 70%);
+                pointer-events: none;
+            }
+
+            .sopt-hero-left {
+                display: flex;
+                align-items: center;
+                gap: 16px;
+                z-index: 1;
+            }
+
+            .sopt-hero-icon {
+                width: 48px;
+                height: 48px;
+                border-radius: 12px;
+                background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #fff;
+                font-size: 22px;
+                box-shadow: 0 4px 12px rgba(37, 99, 235, 0.4);
+                flex-shrink: 0;
+            }
+
+            .sopt-hero-title-group h1 {
+                font-size: 21px;
+                font-weight: 700;
+                margin: 0 0 3px;
+                letter-spacing: -0.01em;
+                color: #ffffff;
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            }
+
+            .sopt-hero-title-group p {
+                font-size: 13px;
+                margin: 0;
+                color: #94a3b8;
+            }
+
+            .sopt-hero-badge {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 11px;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                background: rgba(16, 185, 129, 0.18);
+                color: #34d399;
+                border: 1px solid rgba(52, 211, 153, 0.3);
+                padding: 2px 8px;
+                border-radius: 9999px;
+            }
+
+            .sopt-live-dot {
+                width: 6px;
+                height: 6px;
+                background: #34d399;
+                border-radius: 50%;
+                animation: sopt-pulse 2s infinite ease-in-out;
+            }
+
+            @keyframes sopt-pulse {
+                0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.7); }
+                70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(52, 211, 153, 0); }
+                100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+            }
+
+            .sopt-hero-actions {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                z-index: 1;
+            }
+
+            .sopt-hero-btn {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 8px 14px;
+                border-radius: var(--sopt-radius-sm);
+                font-size: 12px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.15s ease;
+                border: 1px solid transparent;
+            }
+
+            .sopt-hero-btn.primary {
+                background: #3b82f6;
+                color: #fff;
+                box-shadow: 0 2px 4px rgba(37, 99, 235, 0.25);
+            }
+
+            .sopt-hero-btn.primary:hover {
+                background: #2563eb;
+                transform: translateY(-1px);
+            }
+
+            .sopt-hero-btn.outline {
+                background: rgba(255, 255, 255, 0.08);
+                color: #ffffff;
+                border-color: rgba(255, 255, 255, 0.15);
+            }
+
+            .sopt-hero-btn.outline:hover {
+                background: rgba(255, 255, 255, 0.15);
+            }
+
+            /* Filter Panel */
+            .sopt-filter-card {
+                background: var(--sopt-surface);
+                border: 1px solid var(--sopt-border);
+                border-radius: var(--sopt-radius-md);
+                box-shadow: var(--sopt-shadow-sm);
+                padding: 16px 20px 18px;
+                margin-bottom: 22px;
+            }
+
+            .sopt-filter-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 12px;
+                padding-bottom: 8px;
+                border-bottom: 1px solid #f1f5f9;
+            }
+
+            .sopt-filter-title {
+                font-weight: 600;
+                font-size: 13px;
+                color: var(--sopt-text);
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }
+
+            .sopt-filter-title i {
+                color: #6366f1;
+            }
+
+            .sopt-filter-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+                gap: 14px 16px;
+                align-items: end;
+            }
+
+            .sopt-filter-group {
+                display: flex;
+                flex-direction: column;
+                gap: 5px;
+            }
+
+            .sopt-filter-label {
+                font-size: 11px;
+                font-weight: 600;
+                color: var(--sopt-muted);
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+            }
+
+            /* Number Cards Grid */
+            .sopt-cards-grid {
+                display: grid;
+                grid-template-columns: repeat(6, 1fr);
+                gap: 14px;
+                margin-bottom: 24px;
+            }
+
+            @media (max-width: 1440px) {
+                .sopt-cards-grid { grid-template-columns: repeat(3, 1fr); }
+            }
+
+            @media (max-width: 820px) {
+                .sopt-cards-grid { grid-template-columns: repeat(2, 1fr); }
+            }
+
+            @media (max-width: 520px) {
+                .sopt-cards-grid { grid-template-columns: 1fr; }
+            }
+
+            .sopt-card {
+                background: var(--sopt-surface);
+                border: 1px solid var(--sopt-border);
+                border-radius: var(--sopt-radius-md);
+                padding: 16px 16px 14px;
+                box-shadow: var(--sopt-shadow-sm);
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                min-height: 144px;
+                position: relative;
+                overflow: hidden;
+                transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
+            }
+
+            .sopt-card::before {
+                content: "";
+                position: absolute;
+                top: 0;
+                left: 0;
+                right: 0;
+                height: 4px;
+                background: var(--card-accent, #94a3b8);
+            }
+
+            .sopt-card:hover {
+                transform: translateY(-3px);
+                box-shadow: var(--sopt-shadow-md);
+                border-color: var(--sopt-border-strong);
+            }
+
+            .sopt-card.phase-1 { --card-accent: #2563eb; --card-icon-bg: rgba(37, 99, 235, 0.1); --card-icon-color: #2563eb; }
+            .sopt-card.phase-2 { --card-accent: #7c3aed; --card-icon-bg: rgba(124, 58, 237, 0.1); --card-icon-color: #7c3aed; }
+            .sopt-card.phase-3 { --card-accent: #d97706; --card-icon-bg: rgba(217, 119, 6, 0.1); --card-icon-color: #d97706; }
+            .sopt-card.phase-4 { --card-accent: #0284c7; --card-icon-bg: rgba(2, 132, 199, 0.1); --card-icon-color: #0284c7; }
+            .sopt-card.phase-5 { --card-accent: #0891b2; --card-icon-bg: rgba(8, 145, 178, 0.1); --card-icon-color: #0891b2; }
+            .sopt-card.phase-overall {
+                --card-accent: #059669;
+                --card-icon-bg: rgba(5, 150, 105, 0.1);
+                --card-icon-color: #059669;
+                background: linear-gradient(180deg, #ffffff 0%, #f0fdf4 100%);
+                border-color: #bbf7d0;
+            }
+
+            .sopt-card-top {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 8px;
+            }
+
+            .sopt-card-tag {
+                font-size: 10px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                padding: 2px 7px;
+                border-radius: 4px;
+                background: var(--card-icon-bg);
+                color: var(--card-icon-color);
+            }
+
+            .sopt-card-icon-circle {
+                width: 28px;
+                height: 28px;
+                border-radius: 8px;
+                background: var(--card-icon-bg);
+                color: var(--card-icon-color);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 12px;
+            }
+
+            .sopt-card-title {
+                font-size: 11.5px;
+                font-weight: 600;
+                color: var(--sopt-muted);
+                line-height: 1.35;
+                min-height: 32px;
+                margin-bottom: 6px;
+            }
+
+            .sopt-card-body {
+                display: flex;
+                align-items: baseline;
+                gap: 6px;
+                margin-bottom: 8px;
+            }
+
+            .sopt-card-num {
+                font-size: 28px;
+                font-weight: 800;
+                color: var(--sopt-text);
+                line-height: 1;
+                letter-spacing: -0.02em;
+            }
+
+            .sopt-card-unit {
+                font-size: 12px;
+                font-weight: 600;
+                color: var(--sopt-muted);
+            }
+
+            .sopt-card-footer {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 11px;
+                color: var(--sopt-muted);
+                padding-top: 6px;
+                border-top: 1px dashed #f1f5f9;
+            }
+
+            .sopt-card-count {
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                font-weight: 500;
+                color: #475569;
+            }
+
+            .sopt-card-subbadge {
+                font-size: 10px;
+                font-weight: 700;
+                color: #047857;
+                background: #d1fae5;
+                padding: 1px 6px;
+                border-radius: 4px;
+            }
+
+            /* Table Section */
+            .sopt-table-section {
+                background: var(--sopt-surface);
+                border: 1px solid var(--sopt-border);
+                border-radius: var(--sopt-radius-md);
+                box-shadow: var(--sopt-shadow-sm);
+                overflow: hidden;
+                margin-bottom: 24px;
+            }
+
+            .sopt-table-header-bar {
+                padding: 16px 22px;
+                background: #ffffff;
+                border-bottom: 1px solid var(--sopt-border);
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 14px;
+            }
+
+            .sopt-table-heading h3 {
+                font-size: 16px;
+                font-weight: 700;
+                color: var(--sopt-text);
+                margin: 0 0 3px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+
+            .sopt-table-heading span {
+                font-size: 12px;
+                color: var(--sopt-muted);
+            }
+
+            .sopt-table-legend {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                flex-wrap: wrap;
+            }
+
+            .sopt-legend-item {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+                font-size: 11px;
+                font-weight: 500;
+                color: #475569;
+            }
+
+            .sopt-dur-dot {
+                width: 8px;
+                height: 8px;
+                border-radius: 50%;
+            }
+            .sopt-dur-dot.fast { background: #10b981; }
+            .sopt-dur-dot.moderate { background: #3b82f6; }
+            .sopt-dur-dot.extended { background: #f59e0b; }
+            .sopt-dur-dot.overall { background: #059669; }
+
+            .sopt-table-subtoolbar {
+                padding: 10px 22px;
+                background: #f8fafc;
+                border-bottom: 1px solid var(--sopt-border);
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                gap: 12px;
+                flex-wrap: wrap;
+            }
+
+            .sopt-search-container {
+                position: relative;
+                width: 320px;
+            }
+
+            .sopt-search-input {
+                width: 100%;
+                height: 34px;
+                padding: 6px 12px 6px 34px;
+                font-size: 12px;
+                background: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                outline: none;
+                transition: all 0.15s ease;
+            }
+
+            .sopt-search-input:focus {
+                border-color: #3b82f6;
+                box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+            }
+
+            .sopt-search-icon {
+                position: absolute;
+                left: 11px;
+                top: 10px;
+                font-size: 12px;
+                color: #94a3b8;
+            }
+
+            /* Table Layout */
+            .sopt-table-wrap {
+                overflow-x: auto;
+                width: 100%;
+                max-height: 680px;
+                position: relative;
+            }
+
+            .sopt-data-table {
+                width: 100%;
+                border-collapse: separate;
+                border-spacing: 0;
+                font-size: 12px;
+                text-align: left;
+            }
+
+            .sopt-data-table thead tr.group-header th {
+                background: #f1f5f9;
+                color: #334155;
+                font-size: 11px;
+                font-weight: 700;
+                text-transform: uppercase;
+                letter-spacing: 0.04em;
+                padding: 9px 14px;
+                border-bottom: 1px solid #cbd5e1;
+                border-right: 1px solid #e2e8f0;
+                position: sticky;
+                top: 0;
+                z-index: 4;
+            }
+
+            .sopt-data-table thead tr.group-header th.group-durations {
+                background: #eef2ff;
+                color: #3730a3;
+                border-left: 2px solid #c7d2fe;
+            }
+
+            .sopt-data-table thead tr.col-header th {
+                background: #f8fafc;
+                color: #475569;
+                font-size: 11.5px;
+                font-weight: 600;
+                padding: 10px 12px;
+                border-bottom: 1px solid var(--sopt-border);
+                border-right: 1px solid #f1f5f9;
+                white-space: nowrap;
+                position: sticky;
+                top: 35px;
+                z-index: 3;
+                user-select: none;
+            }
+
+            .sopt-data-table thead tr.col-header th.sortable {
+                cursor: pointer;
+                transition: background 0.15s ease;
+            }
+
+            .sopt-data-table thead tr.col-header th.sortable:hover {
+                background: #e2e8f0;
+                color: #0f172a;
+            }
+
+            .sopt-data-table thead tr.col-header th.sortable .sort-icon {
+                font-size: 10px;
+                margin-left: 4px;
+                opacity: 0.4;
+            }
+
+            .sopt-data-table thead tr.col-header th.sortable.sorted {
+                color: #1e40af;
+                background: #e0e7ff;
+            }
+
+            .sopt-data-table thead tr.col-header th.sortable.sorted .sort-icon {
+                opacity: 1;
+            }
+
+            .sopt-data-table th.sticky-col,
+            .sopt-data-table td.sticky-col {
+                position: sticky;
+                left: 0;
+                background: #ffffff;
+                z-index: 2;
+                box-shadow: 3px 0 6px -2px rgba(0, 0, 0, 0.06);
+                border-right: 2px solid #e2e8f0 !important;
+            }
+
+            .sopt-data-table thead tr.group-header th.sticky-col {
+                z-index: 6;
+                background: #f1f5f9;
+            }
+
+            .sopt-data-table thead tr.col-header th.sticky-col {
+                z-index: 5;
+                background: #f8fafc;
+            }
+
+            .sopt-data-table tbody tr {
+                transition: background 0.12s ease;
+            }
+
+            .sopt-data-table tbody tr:hover {
+                background: #f8fafc;
+            }
+
+            .sopt-data-table tbody tr:hover td.sticky-col {
+                background: #f8fafc;
+            }
+
+            .sopt-data-table tbody td {
+                padding: 10px 12px;
+                border-bottom: 1px solid #f1f5f9;
+                border-right: 1px solid #f8fafc;
+                vertical-align: middle;
+            }
+
+            .sopt-data-table tbody td.col-border-group {
+                border-left: 2px solid #e0e7ff;
+            }
+
+            .sopt-so-cell {
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
+            }
+
+            .sopt-so-link {
+                font-size: 13px;
+                font-weight: 700;
+                color: #2563eb;
+                text-decoration: none;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+            }
+
+            .sopt-so-link:hover {
+                color: #1d4ed8;
+                text-decoration: underline;
+            }
+
+            .sopt-branch-pill {
+                display: inline-block;
+                font-size: 10px;
+                font-weight: 600;
+                background: #f1f5f9;
+                color: #475569;
+                border-radius: 4px;
+                padding: 1px 6px;
+                width: fit-content;
+            }
+
+            .sopt-cust-cell {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                max-width: 220px;
+            }
+
+            .sopt-cust-avatar {
+                width: 26px;
+                height: 26px;
+                border-radius: 6px;
+                background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+                color: #334155;
+                font-size: 10px;
+                font-weight: 700;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-shrink: 0;
+            }
+
+            .sopt-cust-name {
+                font-weight: 500;
+                color: var(--sopt-text);
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
+            }
+
+            .sopt-milestone-cell {
+                display: flex;
+                flex-direction: column;
+                gap: 3px;
+            }
+
+            .sopt-milestone-date {
+                font-size: 12px;
+                color: #334155;
+                white-space: nowrap;
+            }
+
+            .sopt-doc-chip {
+                font-size: 10.5px;
+                font-weight: 500;
+                color: #64748b;
+                background: #f1f5f9;
+                border: 1px solid #e2e8f0;
+                border-radius: 4px;
+                padding: 2px 6px;
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+                text-decoration: none;
+                transition: all 0.15s ease;
+                width: fit-content;
+                white-space: nowrap;
+            }
+
+            .sopt-doc-chip:hover {
+                background: #e0e7ff;
+                border-color: #c7d2fe;
+                color: #3730a3;
+                text-decoration: none;
+            }
+
+            .sopt-dur-pill {
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                padding: 3px 8px;
+                border-radius: 6px;
+                font-size: 11.5px;
+                font-weight: 600;
+                white-space: nowrap;
+                border: 1px solid transparent;
+            }
+
+            .sopt-dur-pill.fast {
+                background: #ecfdf5;
+                color: #047857;
+                border-color: #a7f3d0;
+            }
+
+            .sopt-dur-pill.moderate {
+                background: #eff6ff;
+                color: #1d4ed8;
+                border-color: #bfdbfe;
+            }
+
+            .sopt-dur-pill.extended {
+                background: #fffbeb;
+                color: #b45309;
+                border-color: #fde68a;
+            }
+
+            .sopt-dur-pill.overall {
+                background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+                color: #065f46;
+                border-color: #6ee7b7;
+                font-weight: 700;
+                box-shadow: 0 1px 2px rgba(6, 95, 70, 0.08);
+            }
+
+            .sopt-dash {
+                color: #cbd5e1;
+                font-weight: 600;
+                font-size: 14px;
+                text-align: center;
+                display: block;
+            }
+
+            .sopt-pagination-bar {
+                padding: 12px 22px;
+                background: #ffffff;
+                border-top: 1px solid var(--sopt-border);
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                flex-wrap: wrap;
+                gap: 12px;
+                font-size: 12px;
+                color: var(--sopt-muted);
+            }
+
+            .sopt-page-btn {
+                border: 1px solid #cbd5e1;
+                background: #ffffff;
+                border-radius: 6px;
+                padding: 4px 10px;
+                font-size: 12px;
+                font-weight: 500;
+                color: #334155;
+                cursor: pointer;
+                transition: all 0.15s ease;
+            }
+
+            .sopt-page-btn:hover:not(:disabled) {
+                background: #f1f5f9;
+                border-color: #94a3b8;
+            }
+
+            .sopt-page-btn:disabled {
+                opacity: 0.4;
+                cursor: not-allowed;
+            }
+
+            .sopt-page-indicator {
+                font-weight: 600;
+                color: #0f172a;
+                padding: 3px 10px;
+                background: #f1f5f9;
+                border-radius: 6px;
+            }
+
+            .sopt-empty-box {
+                text-align: center;
+                padding: 56px 20px;
+                color: #64748b;
+            }
+
+            .sopt-empty-box i {
+                font-size: 38px;
+                color: #cbd5e1;
+                margin-bottom: 12px;
+            }
+
+            .sopt-empty-box h4 {
+                font-size: 15px;
+                font-weight: 600;
+                color: #0f172a;
+                margin: 0 0 6px;
+            }
         `;
         document.head.appendChild(style);
     }
@@ -124,17 +856,46 @@ class SalesOrderPhaseTimeDashboard {
 
         const html = `
             <div class="sopt-page-wrap">
-                <!-- Top Filters Card -->
+                <!-- Executive Hero Header -->
+                <div class="sopt-hero">
+                    <div class="sopt-hero-left">
+                        <div class="sopt-hero-icon">
+                            <i class="fa fa-tachometer"></i>
+                        </div>
+                        <div class="sopt-hero-title-group">
+                            <h1>
+                                ${__("Sales Order Phase Time Dashboard")}
+                                <span class="sopt-hero-badge"><span class="sopt-live-dot"></span> ${__("Live Metrics")}</span>
+                            </h1>
+                            <p>${__("Measure and track turnaround elapsed days across Sales Order approval, BOM release, Procurement, and Work Order issuance.")}</p>
+                        </div>
+                    </div>
+                    <div class="sopt-hero-actions">
+                        <button class="sopt-hero-btn outline sopt-btn-reload" type="button" title="${__("Reload data")}">
+                            <i class="fa fa-refresh"></i> <span>${__("Refresh")}</span>
+                        </button>
+                        <button class="sopt-hero-btn primary sopt-btn-export" type="button" title="${__("Export CSV")}">
+                            <i class="fa fa-download"></i> <span>${__("Export CSV")}</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Filters Card -->
                 <div class="sopt-filter-card">
                     <div class="sopt-filter-header">
-                        <div class="sopt-filter-title"><i class="fa fa-filter mr-1"></i> ${__("Filters & Parameters")}</div>
+                        <div class="sopt-filter-title">
+                            <i class="fa fa-sliders"></i>
+                            <span>${__("Dashboard Filters & Parameters")}</span>
+                        </div>
                         <div>
-                            <button class="btn btn-xs btn-default sopt-btn-reset"><i class="fa fa-undo"></i> ${__("Reset")}</button>
+                            <button class="btn btn-xs btn-default sopt-btn-reset" type="button">
+                                <i class="fa fa-undo"></i> ${__("Reset Filters")}
+                            </button>
                         </div>
                     </div>
                     <div class="sopt-filter-grid">
                         <div class="sopt-filter-group" data-filter="period">
-                            <label class="sopt-filter-label">${__("Period")}</label>
+                            <label class="sopt-filter-label">${__("Period Preset")}</label>
                             <div class="sopt-control-period"></div>
                         </div>
                         <div class="sopt-filter-group" data-filter="from_date">
@@ -160,92 +921,87 @@ class SalesOrderPhaseTimeDashboard {
                     </div>
                 </div>
 
-                <!-- Number Cards -->
+                <!-- Number Cards Grid (The 6 Phase Cards) -->
                 <div class="sopt-cards-grid" data-role="cards-container">
                     ${this.get_skeleton_cards_html()}
                 </div>
 
-                <!-- Sales Order Phase Timeline Section -->
-                <div class="sopt-section">
-                    <div class="sopt-section-head">
-                        <div class="sopt-section-title-wrap">
-                            <h3 class="sopt-section-title">${__("Sales Order Phase Timeline")}</h3>
-                            <span class="sopt-section-subtitle">${__("One row per Sales Order; phase duration is calculated from document timestamps.")}</span>
+                <!-- Main Timeline Table Section -->
+                <div class="sopt-table-section">
+                    <div class="sopt-table-header-bar">
+                        <div class="sopt-table-heading">
+                            <h3><i class="fa fa-list-alt text-primary"></i> ${__("Sales Order Phase Timeline")}</h3>
+                            <span>${__("Granular document milestone timestamps and calculated turnaround days per Sales Order.")}</span>
                         </div>
-                        <div class="d-flex align-items-center gap-2">
-                            <span class="badge badge-light" data-role="record-count">0 ${__("Sales Orders")}</span>
+                        <div class="sopt-table-legend">
+                            <span class="sopt-legend-item"><span class="sopt-dur-dot fast"></span> ${__("≤ 5 Days (Fast)")}</span>
+                            <span class="sopt-legend-item"><span class="sopt-dur-dot moderate"></span> ${__("5–20 Days")}</span>
+                            <span class="sopt-legend-item"><span class="sopt-dur-dot extended"></span> ${__("> 20 Days (Watch)")}</span>
+                            <span class="sopt-legend-item"><span class="sopt-dur-dot overall"></span> ${__("Total Turnaround")}</span>
+                            <span class="badge badge-light ml-2" data-role="record-count" style="font-size: 11px; padding: 4px 8px;">0 Orders</span>
                         </div>
                     </div>
 
-                    <div class="sopt-formula-bar">
-                        <span class="sopt-formula-tag">${__("Calculation Rule")}</span>
-                        <span>${__("Duration = later milestone timestamp − earlier milestone timestamp. If a required document does not exist, display '—' and exclude that row from that phase's average.")}</span>
-                    </div>
-
-                    <div class="sopt-table-toolbar">
-                        <div class="sopt-search-box">
+                    <div class="sopt-table-subtoolbar">
+                        <div class="sopt-search-container">
                             <i class="fa fa-search sopt-search-icon"></i>
-                            <input type="text" placeholder="${__("Search Sales Order, Customer, BOM, PO, WO...")}" data-role="table-search">
+                            <input type="text" class="sopt-search-input" placeholder="${__("Search Sales Order, Customer, BOM, PO, WO...")}" data-role="table-search">
                         </div>
                         <div class="d-flex align-items-center gap-2">
-                            <span class="text-muted small">${__("Rows per page:")}</span>
-                            <select class="form-control input-xs" style="width: auto; height: 30px;" data-role="page-size-select">
-                                <option value="10">10</option>
-                                <option value="25" selected>25</option>
-                                <option value="50">50</option>
-                                <option value="100">100</option>
-                                <option value="999999">${__("All")}</option>
+                            <span class="text-muted small">${__("Page size:")}</span>
+                            <select class="form-control input-xs" style="width: auto; height: 32px;" data-role="page-size-select">
+                                <option value="10">10 rows</option>
+                                <option value="25" selected>25 rows</option>
+                                <option value="50">50 rows</option>
+                                <option value="100">100 rows</option>
+                                <option value="999999">${__("Show All")}</option>
                             </select>
                         </div>
                     </div>
 
                     <div class="sopt-table-wrap">
-                        <table class="sopt-table">
+                        <table class="sopt-data-table">
                             <thead>
-                                <tr>
-                                    <th rowspan="2" class="sticky-col sortable" data-sort="sales_order">${__("Sales Order")} <span class="sort-icon"></span></th>
-                                    <th rowspan="2" class="sortable" data-sort="customer_name">${__("Customer")} <span class="sort-icon"></span></th>
-                                    <th rowspan="2" class="sortable" data-sort="so_date_raw">${__("SO Date")} <span class="sort-icon"></span></th>
-                                    <th rowspan="2" class="sortable" data-sort="so_approval_date_raw">${__("SO Approval (Submitted)")} <span class="sort-icon"></span></th>
-                                    <th colspan="5" style="text-align: center; border-left: 2px solid var(--border-color, #d1d8dd); border-right: 2px solid var(--border-color, #d1d8dd);">${__("Milestone Dates & Document Links")}</th>
-                                    <th colspan="6" style="text-align: center;">${__("Phase Durations (Days)")}</th>
+                                <tr class="group-header">
+                                    <th colspan="3" class="sticky-col">${__("Order Identification")}</th>
+                                    <th colspan="6" class="group-durations" style="text-align: center;">
+                                        <i class="fa fa-clock-o mr-1"></i> ${__("Calculated Phase Durations (Elapsed Days)")}
+                                    </th>
                                 </tr>
-                                <tr class="sub-header">
-                                    <!-- Milestones -->
-                                    <th class="sortable" data-sort="last_bom_created_date_raw">${__("Last BOM Created")} <span class="sort-icon"></span></th>
-                                    <th class="sortable" data-sort="last_bom_submitted_date_raw">${__("Last BOM Submitted")} <span class="sort-icon"></span></th>
-                                    <th class="sortable" data-sort="last_po_submitted_date_raw">${__("Last PO Submitted")} <span class="sort-icon"></span></th>
-                                    <th class="sortable" data-sort="last_pr_submitted_date_raw">${__("Last PR Submitted")} <span class="sort-icon"></span></th>
-                                    <th class="sortable" data-sort="last_wo_submitted_date_raw">${__("Last WO Submitted")} <span class="sort-icon"></span></th>
+                                <tr class="col-header">
+                                    <th class="sticky-col sortable" data-sort="sales_order">${__("Sales Order")} <span class="sort-icon"></span></th>
+                                    <th class="sortable" data-sort="customer_name">${__("Customer")} <span class="sort-icon"></span></th>
+                                    <th class="sortable" data-sort="so_date_raw">${__("SO Date")} <span class="sort-icon"></span></th>
 
-                                    <!-- Durations -->
-                                    <th class="sortable" data-sort="dur_so_to_bom_created">${__("SO Approval → Last BOM Created")} <span class="sort-icon"></span></th>
+                                    <!-- Phase Durations -->
+                                    <th class="sortable col-border-group" data-sort="dur_so_to_bom_created">${__("SO Approval → BOM Created")} <span class="sort-icon"></span></th>
                                     <th class="sortable" data-sort="dur_bom_created_to_submitted">${__("BOM Created → BOM Submitted")} <span class="sort-icon"></span></th>
                                     <th class="sortable" data-sort="dur_bom_to_po_submitted">${__("BOM Submitted → PO Submitted")} <span class="sort-icon"></span></th>
                                     <th class="sortable" data-sort="dur_po_to_pr_submitted">${__("PO Submitted → PR Submitted")} <span class="sort-icon"></span></th>
                                     <th class="sortable" data-sort="dur_pr_to_wo_submitted">${__("PR Submitted → WO Submitted")} <span class="sort-icon"></span></th>
-                                    <th class="sortable" data-sort="dur_overall">${__("Sales Order → Last WO Submitted")} <span class="sort-icon"></span></th>
+                                    <th class="sortable" data-sort="dur_overall" style="background: #eef2ff;">${__("Sales Order → Last WO Submitted")} <span class="sort-icon"></span></th>
                                 </tr>
                             </thead>
                             <tbody data-role="table-body">
                                 <tr>
-                                    <td colspan="15" class="sopt-empty-state">
+                                    <td colspan="9" class="sopt-empty-box">
                                         <i class="fa fa-spinner fa-spin"></i>
-                                        <div class="sopt-empty-title">${__("Loading Sales Orders...")}</div>
+                                        <h4>${__("Fetching Data...")}</h4>
+                                        <div>${__("Loading Sales Orders and calculating phase durations.")}</div>
                                     </td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
 
-                    <div class="sopt-pagination">
-                        <div class="text-muted" data-role="footer-info">
+                    <div class="sopt-pagination-bar">
+                        <div data-role="footer-info">
                             ${__("Showing 0 to 0 of 0 records")}
                         </div>
                         <div class="d-flex align-items-center gap-2">
-                            <button class="btn btn-default btn-xs" data-role="prev-page" disabled><i class="fa fa-chevron-left"></i> ${__("Previous")}</button>
-                            <span class="small font-weight-bold" data-role="page-indicator">${__("Page 1 of 1")}</span>
-                            <button class="btn btn-default btn-xs" data-role="next-page" disabled>${__("Next")} <i class="fa fa-chevron-right"></i></button>
+                            <button class="sopt-page-btn" data-role="prev-page" disabled><i class="fa fa-chevron-left mr-1"></i> ${__("Previous")}</button>
+                            <span class="sopt-page-indicator" data-role="page-indicator">${__("Page 1 of 1")}</span>
+                            <button class="sopt-page-btn" data-role="next-page" disabled>${__("Next")} <i class="fa fa-chevron-right ml-1"></i></button>
                         </div>
                     </div>
                 </div>
@@ -258,7 +1014,7 @@ class SalesOrderPhaseTimeDashboard {
     init_filter_controls() {
         const body = $(this.page.body);
 
-        // 1. Period Select Control
+        // 1. Period Preset
         this.controls.period = frappe.ui.form.make_control({
             parent: body.find(".sopt-control-period"),
             df: {
@@ -280,7 +1036,7 @@ class SalesOrderPhaseTimeDashboard {
             render_input: true,
         });
 
-        // 2. From Date Control
+        // 2. From Date
         this.controls.from_date = frappe.ui.form.make_control({
             parent: body.find(".sopt-control-from-date"),
             df: {
@@ -295,7 +1051,7 @@ class SalesOrderPhaseTimeDashboard {
             render_input: true,
         });
 
-        // 3. To Date Control
+        // 3. To Date
         this.controls.to_date = frappe.ui.form.make_control({
             parent: body.find(".sopt-control-to-date"),
             df: {
@@ -310,7 +1066,7 @@ class SalesOrderPhaseTimeDashboard {
             render_input: true,
         });
 
-        // 4. Branch Link Control
+        // 4. Branch Link
         this.controls.branch = frappe.ui.form.make_control({
             parent: body.find(".sopt-control-branch"),
             df: {
@@ -326,7 +1082,7 @@ class SalesOrderPhaseTimeDashboard {
             render_input: true,
         });
 
-        // 5. Sales Order Link Control
+        // 5. Sales Order Link
         this.controls.sales_order = frappe.ui.form.make_control({
             parent: body.find(".sopt-control-sales-order"),
             df: {
@@ -348,7 +1104,7 @@ class SalesOrderPhaseTimeDashboard {
             render_input: true,
         });
 
-        // 6. Customer Link Control
+        // 6. Customer Link
         this.controls.customer = frappe.ui.form.make_control({
             parent: body.find(".sopt-control-customer"),
             df: {
@@ -367,6 +1123,10 @@ class SalesOrderPhaseTimeDashboard {
 
     bind_events() {
         const body = $(this.page.body);
+
+        // Header actions
+        body.find(".sopt-btn-reload").on("click", () => this.load_data());
+        body.find(".sopt-btn-export").on("click", () => this.export_data());
 
         // Reset filters button
         body.find(".sopt-btn-reset").on("click", () => {
@@ -425,7 +1185,7 @@ class SalesOrderPhaseTimeDashboard {
         });
 
         // Column sort
-        body.find(".sopt-table thead th.sortable").on("click", (e) => {
+        body.find(".sopt-data-table thead th.sortable").on("click", (e) => {
             const th = $(e.currentTarget);
             const sort_field = th.data("sort");
             if (!sort_field) return;
@@ -480,7 +1240,8 @@ class SalesOrderPhaseTimeDashboard {
 
     load_data() {
         const body = $(this.page.body);
-        body.find(".sopt-section").addClass("sopt-loading-wrap");
+        const btnReload = body.find(".sopt-btn-reload i");
+        btnReload.addClass("fa-spin");
 
         frappe.call({
             method: "generate_item.generate_item.page.sales_order_time_rev.sales_order_time_rev.get_dashboard_data",
@@ -493,7 +1254,7 @@ class SalesOrderPhaseTimeDashboard {
                 customer: this.filters.customer,
             },
             callback: (r) => {
-                body.find(".sopt-section").removeClass("sopt-loading-wrap");
+                btnReload.removeClass("fa-spin");
                 if (r && r.message) {
                     this.raw_rows = r.message.rows || [];
                     this.summary = r.message.summary || {};
@@ -509,7 +1270,7 @@ class SalesOrderPhaseTimeDashboard {
                 }
             },
             error: () => {
-                body.find(".sopt-section").removeClass("sopt-loading-wrap");
+                btnReload.removeClass("fa-spin");
                 frappe.msgprint({
                     title: __("Error"),
                     message: __("Failed to load Sales Order phase time data."),
@@ -528,21 +1289,39 @@ class SalesOrderPhaseTimeDashboard {
             return;
         }
 
-        const html = cards.map((card) => {
-            const val_str = card.avg_days !== null && card.avg_days !== undefined
-                ? `${card.avg_days} <span style="font-size: 14px; font-weight: 500; color: var(--text-muted, #6c757d);">${Math.abs(card.avg_days - 1.0) < 0.001 ? 'Day' : 'Days'}</span>`
-                : `<span class="sopt-muted-dash">—</span>`;
-            
+        const phase_meta = [
+            { cls: "phase-1", tag: "PHASE 1", icon: "fa-sitemap" },
+            { cls: "phase-2", tag: "PHASE 2", icon: "fa-check-circle-o" },
+            { cls: "phase-3", tag: "PHASE 3", icon: "fa-shopping-cart" },
+            { cls: "phase-4", tag: "PHASE 4", icon: "fa-truck" },
+            { cls: "phase-5", tag: "PHASE 5", icon: "fa-cogs" },
+            { cls: "phase-overall", tag: "TOTAL CYCLE", icon: "fa-flag-checkered" },
+        ];
+
+        const html = cards.map((card, idx) => {
+            const meta = phase_meta[idx] || { cls: "phase-1", tag: `PHASE ${idx+1}`, icon: "fa-clock-o" };
+            const has_val = card.avg_days !== null && card.avg_days !== undefined;
+            const val_str = has_val ? card.avg_days : `<span class="sopt-dash">—</span>`;
+            const unit_str = has_val ? (Math.abs(card.avg_days - 1.0) < 0.001 ? "Day avg" : "Days avg") : "";
+
             const badge_html = card.delta
-                ? `<span class="sopt-card-delta">${card.delta}</span>`
-                : (card.count > 0 ? `<span class="sopt-card-count">${card.count} of ${card.total} orders</span>` : ``);
+                ? `<span class="sopt-card-subbadge">${card.delta}</span>`
+                : (card.count > 0 ? `<span class="sopt-card-count"><i class="fa fa-check text-success"></i> ${card.count} of ${card.total} orders</span>` : `<span class="text-muted">— no data</span>`);
 
             return `
-                <div class="sopt-card">
-                    <div class="sopt-card-label">${card.label}</div>
-                    <div class="sopt-card-value">${val_str}</div>
+                <div class="sopt-card ${meta.cls}">
+                    <div class="sopt-card-top">
+                        <span class="sopt-card-tag">${meta.tag}</span>
+                        <div class="sopt-card-icon-circle">
+                            <i class="fa ${meta.icon}"></i>
+                        </div>
+                    </div>
+                    <div class="sopt-card-title">${card.label}</div>
+                    <div class="sopt-card-body">
+                        <span class="sopt-card-num">${val_str}</span>
+                        ${unit_str ? `<span class="sopt-card-unit">${unit_str}</span>` : ""}
+                    </div>
                     <div class="sopt-card-footer">
-                        <span class="sopt-card-unit">${card.avg_days !== null ? card.unit : __("no data")}</span>
                         ${badge_html}
                     </div>
                 </div>
@@ -562,15 +1341,35 @@ class SalesOrderPhaseTimeDashboard {
             __("Sales Order → Last Work Order Submitted"),
         ];
 
-        return labels.map((label) => `
-            <div class="sopt-card">
-                <div class="sopt-card-label">${label}</div>
-                <div class="sopt-card-value text-muted">—</div>
-                <div class="sopt-card-footer">
-                    <span class="sopt-card-unit">${__("days average")}</span>
+        const phase_meta = [
+            { cls: "phase-1", tag: "PHASE 1", icon: "fa-sitemap" },
+            { cls: "phase-2", tag: "PHASE 2", icon: "fa-check-circle-o" },
+            { cls: "phase-3", tag: "PHASE 3", icon: "fa-shopping-cart" },
+            { cls: "phase-4", tag: "PHASE 4", icon: "fa-truck" },
+            { cls: "phase-5", tag: "PHASE 5", icon: "fa-cogs" },
+            { cls: "phase-overall", tag: "TOTAL CYCLE", icon: "fa-flag-checkered" },
+        ];
+
+        return labels.map((label, idx) => {
+            const meta = phase_meta[idx] || { cls: "phase-1", tag: "PHASE", icon: "fa-clock-o" };
+            return `
+                <div class="sopt-card ${meta.cls}">
+                    <div class="sopt-card-top">
+                        <span class="sopt-card-tag">${meta.tag}</span>
+                        <div class="sopt-card-icon-circle">
+                            <i class="fa ${meta.icon}"></i>
+                        </div>
+                    </div>
+                    <div class="sopt-card-title">${label}</div>
+                    <div class="sopt-card-body">
+                        <span class="sopt-card-num"><span class="sopt-dash">—</span></span>
+                    </div>
+                    <div class="sopt-card-footer">
+                        <span class="text-muted">${__("Loading...")}</span>
+                    </div>
                 </div>
-            </div>
-        `).join("");
+            `;
+        }).join("");
     }
 
     get_filtered_rows() {
@@ -601,7 +1400,7 @@ class SalesOrderPhaseTimeDashboard {
             let va = a[field];
             let vb = b[field];
 
-            // Handle nulls: always place null at the bottom
+            // Always place nulls at bottom
             if (va === null || va === undefined || va === "") return 1;
             if (vb === null || vb === undefined || vb === "") return -1;
 
@@ -622,7 +1421,7 @@ class SalesOrderPhaseTimeDashboard {
     }
 
     update_sort_headers() {
-        const ths = $(this.page.body).find(".sopt-table thead th");
+        const ths = $(this.page.body).find(".sopt-data-table thead th.sortable");
         ths.removeClass("sorted").find(".sort-icon").text("");
 
         const current_th = ths.filter(`[data-sort="${this.sort_field}"]`);
@@ -637,15 +1436,15 @@ class SalesOrderPhaseTimeDashboard {
         const filtered = this.get_filtered_rows();
         const total = filtered.length;
 
-        body.find('[data-role="record-count"]').text(`${total} ${__("Sales Orders")}`);
+        body.find('[data-role="record-count"]').text(`${total} ${__("Orders")}`);
 
         if (total === 0) {
             body.find('[data-role="table-body"]').html(`
                 <tr>
-                    <td colspan="15" class="sopt-empty-state">
+                    <td colspan="15" class="sopt-empty-box">
                         <i class="fa fa-folder-open-o"></i>
-                        <div class="sopt-empty-title">${__("No Sales Orders Found")}</div>
-                        <div>${__("Try adjusting your filters, period, or search keywords.")}</div>
+                        <h4>${__("No Sales Orders Found")}</h4>
+                        <div>${__("Try changing your period preset, adjusting filters, or clearing the search box.")}</div>
                     </td>
                 </tr>
             `);
@@ -663,45 +1462,60 @@ class SalesOrderPhaseTimeDashboard {
         const page_rows = filtered.slice(start_idx, end_idx);
 
         const html = page_rows.map((r) => {
+            const cust_display = r.customer_name || r.customer || "";
+            const initials = this.get_initials(cust_display);
+
             return `
                 <tr>
+                    <!-- Sticky Sales Order Column -->
                     <td class="sticky-col">
-                        <a href="/app/sales-order/${frappe.utils.escape_html(r.sales_order)}" class="sopt-so-link" target="_blank">
-                            ${frappe.utils.escape_html(r.sales_order)}
-                        </a>
+                        <div class="sopt-so-cell">
+                            <a href="/app/sales-order/${frappe.utils.escape_html(r.sales_order)}" class="sopt-so-link" target="_blank">
+                                ${frappe.utils.escape_html(r.sales_order)}
+                                <i class="fa fa-external-link" style="font-size: 10px; opacity: 0.6;"></i>
+                            </a>
+                            ${r.branch ? `<span class="sopt-branch-pill">${frappe.utils.escape_html(r.branch)}</span>` : ""}
+                        </div>
                     </td>
+
+                    <!-- Customer -->
                     <td>
-                        <span title="${frappe.utils.escape_html(r.customer_name || r.customer)}">
-                            ${frappe.utils.escape_html(r.customer_name || r.customer)}
-                        </span>
-                    </td>
-                    <td class="text-nowrap">${r.so_date || `<span class="sopt-muted-dash">—</span>`}</td>
-                    <td class="text-nowrap">${r.so_approval_date || `<span class="sopt-muted-dash">—</span>`}</td>
-
-                    <!-- Milestone Dates + Clickable Links -->
-                    <td class="text-nowrap">
-                        ${this.format_milestone_cell(r.last_bom_created_date, r.last_bom_created_name, "bom")}
-                    </td>
-                    <td class="text-nowrap">
-                        ${this.format_milestone_cell(r.last_bom_submitted_date, r.last_bom_submitted_name, "bom")}
-                    </td>
-                    <td class="text-nowrap">
-                        ${this.format_milestone_cell(r.last_po_submitted_date, r.last_po_submitted_name, "purchase-order")}
-                    </td>
-                    <td class="text-nowrap">
-                        ${this.format_milestone_cell(r.last_pr_submitted_date, r.last_pr_submitted_name, "purchase-receipt")}
-                    </td>
-                    <td class="text-nowrap">
-                        ${this.format_milestone_cell(r.last_wo_submitted_date, r.last_wo_submitted_name, "work-order")}
+                        <div class="sopt-cust-cell" title="${frappe.utils.escape_html(cust_display)}">
+                            <div class="sopt-cust-avatar">${initials}</div>
+                            <span class="sopt-cust-name">${frappe.utils.escape_html(cust_display)}</span>
+                        </div>
                     </td>
 
-                    <!-- Phase Durations -->
-                    <td>${this.format_duration_cell(r.dur_so_to_bom_created)}</td>
-                    <td>${this.format_duration_cell(r.dur_bom_created_to_submitted)}</td>
-                    <td>${this.format_duration_cell(r.dur_bom_to_po_submitted)}</td>
-                    <td>${this.format_duration_cell(r.dur_po_to_pr_submitted)}</td>
-                    <td>${this.format_duration_cell(r.dur_pr_to_wo_submitted)}</td>
-                    <td>${this.format_duration_cell(r.dur_overall, true)}</td>
+                    <!-- SO Date -->
+                    <td class="text-nowrap">${r.so_date || `<span class="sopt-dash">—</span>`}</td>
+
+                    <!-- SO Approval Date -->
+                    <td class="text-nowrap">${r.so_approval_date || `<span class="sopt-dash">—</span>`}</td>
+
+                    <!-- Milestone Dates & Clickable Document Chips -->
+                    <td class="text-nowrap">
+                        ${this.format_milestone_cell(r.last_bom_created_date, r.last_bom_created_name, "bom", "fa-sitemap")}
+                    </td>
+                    <td class="text-nowrap">
+                        ${this.format_milestone_cell(r.last_bom_submitted_date, r.last_bom_submitted_name, "bom", "fa-check-circle-o")}
+                    </td>
+                    <td class="text-nowrap">
+                        ${this.format_milestone_cell(r.last_po_submitted_date, r.last_po_submitted_name, "purchase-order", "fa-shopping-cart")}
+                    </td>
+                    <td class="text-nowrap">
+                        ${this.format_milestone_cell(r.last_pr_submitted_date, r.last_pr_submitted_name, "purchase-receipt", "fa-truck")}
+                    </td>
+                    <td class="text-nowrap">
+                        ${this.format_milestone_cell(r.last_wo_submitted_date, r.last_wo_submitted_name, "work-order", "fa-cogs")}
+                    </td>
+
+                    <!-- Phase Durations (Status Pills) -->
+                    <td class="col-border-group">${this.format_duration_pill(r.dur_so_to_bom_created)}</td>
+                    <td>${this.format_duration_pill(r.dur_bom_created_to_submitted)}</td>
+                    <td>${this.format_duration_pill(r.dur_bom_to_po_submitted)}</td>
+                    <td>${this.format_duration_pill(r.dur_po_to_pr_submitted)}</td>
+                    <td>${this.format_duration_pill(r.dur_pr_to_wo_submitted)}</td>
+                    <td style="background: rgba(240, 253, 244, 0.4);">${this.format_duration_pill(r.dur_overall, true)}</td>
                 </tr>
             `;
         }).join("");
@@ -710,24 +1524,49 @@ class SalesOrderPhaseTimeDashboard {
         this.update_pagination(start_idx + 1, end_idx, total);
     }
 
-    format_milestone_cell(date_str, doc_name, doctype_route) {
+    format_milestone_cell(date_str, doc_name, doctype_route, icon = "fa-file-text-o") {
         if (!date_str) {
-            return `<span class="sopt-muted-dash">—</span>`;
+            return `<span class="sopt-dash">—</span>`;
         }
-        let link_html = "";
+        let doc_chip = "";
         if (doc_name) {
-            link_html = `<br><a href="/app/${doctype_route}/${frappe.utils.escape_html(doc_name)}" class="sopt-doc-sublink" target="_blank" title="${frappe.utils.escape_html(doc_name)}">${frappe.utils.escape_html(doc_name)}</a>`;
+            doc_chip = `
+                <a href="/app/${doctype_route}/${frappe.utils.escape_html(doc_name)}" class="sopt-doc-chip" target="_blank" title="${frappe.utils.escape_html(doc_name)}">
+                    <i class="fa ${icon}"></i>
+                    <span>${frappe.utils.escape_html(doc_name)}</span>
+                </a>
+            `;
         }
-        return `<span>${date_str}</span>${link_html}`;
+        return `
+            <div class="sopt-milestone-cell">
+                <span class="sopt-milestone-date">${date_str}</span>
+                ${doc_chip}
+            </div>
+        `;
     }
 
-    format_duration_cell(duration, is_overall = false) {
+    format_duration_pill(duration, is_overall = false) {
         if (duration === null || duration === undefined) {
-            return `<span class="sopt-muted-dash">—</span>`;
+            return `<span class="sopt-dash">—</span>`;
         }
-        const unit_text = Math.abs(duration - 1.0) < 0.001 ? "Day" : "Days";
-        const cls = is_overall ? "sopt-duration-badge overall" : "sopt-duration-badge";
-        return `<span class="${cls}">${duration} ${unit_text}</span>`;
+        const unit = Math.abs(duration - 1.0) < 0.001 ? "Day" : "Days";
+        if (is_overall) {
+            return `<span class="sopt-dur-pill overall" title="${__("Complete Order Turnaround")}"><i class="fa fa-flag-checkered mr-1"></i> ${duration} ${unit}</span>`;
+        }
+        let level = "moderate";
+        if (duration <= 5.0) {
+            level = "fast";
+        } else if (duration > 20.0) {
+            level = "extended";
+        }
+        return `<span class="sopt-dur-pill ${level}">${duration} ${unit}</span>`;
+    }
+
+    get_initials(name) {
+        if (!name) return "SO";
+        const parts = name.trim().split(/\s+/);
+        if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+        return (parts[0][0] + parts[1][0]).toUpperCase();
     }
 
     update_pagination(start, end, total) {
@@ -736,7 +1575,7 @@ class SalesOrderPhaseTimeDashboard {
 
         body.find('[data-role="footer-info"]').text(
             total > 0
-                ? `${__("Showing")} ${start} ${__("to")} ${end} ${__("of")} ${total} ${__("records")}`
+                ? `${__("Showing")} ${start}–${end} ${__("of")} ${total} ${__("Sales Orders")}`
                 : __("Showing 0 to 0 of 0 records")
         );
 
