@@ -60,5 +60,9 @@ frappe.query_reports["Batch Wise Report"] = {
 		}
 		return value;
 	},
-
+	"onload": function (report) {
+		if (typeof frappe.add_custom_report_export_button === "function") {
+			frappe.add_custom_report_export_button(report);
+		}
+	},
 };
