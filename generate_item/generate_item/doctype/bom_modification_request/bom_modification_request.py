@@ -22,6 +22,7 @@ class BomModificationRequest(Document):
     def validate(self):
         self.validate_qty_and_rev_qty()
         self.validate_main_bom_not_draft()
+        self.validate_sub_assembly_bom_submitted()
 
     def on_submit(self):
         if self.bom:
@@ -53,6 +54,55 @@ class BomModificationRequest(Document):
                 ).format(frappe.utils.get_link_to_form("BOM", self.bom)),
                 title=_("BOM is in Draft"),
             )
+
+    def validate_sub_assembly_bom_submitted(self):
+        for row in (self.items or []):
+            if not getattr(row, "rev_bom_no", None):
+                continue
+
+            bom_status = frappe.db.get_value(
+                "BOM", row.rev_bom_no, ["docstatus", "is_active"], as_dict=True
+            )
+            if not bom_status:
+                frappe.throw(
+                    _("Row #{0}: Sub Assembly BOM {1} does not exist.").format(
+                        row.idx,
+                        row.rev_bom_no,
+                    ),
+                    title=_("Invalid Sub Assembly BOM"),
+                )
+
+            if bom_status.docstatus == 0:
+                frappe.throw(
+                    _(
+                        "Row #{0}: Sub Assembly BOM {1} is in Draft. "
+                        "Please submit the Sub Assembly BOM before submitting or saving the BOM Modification Request."
+                    ).format(
+                        row.idx,
+                        frappe.utils.get_link_to_form("BOM", row.rev_bom_no),
+                    ),
+                    title=_("Sub Assembly BOM is in Draft"),
+                )
+            elif bom_status.docstatus == 2:
+                frappe.throw(
+                    _(
+                        "Row #{0}: Sub Assembly BOM {1} is Cancelled."
+                    ).format(
+                        row.idx,
+                        frappe.utils.get_link_to_form("BOM", row.rev_bom_no),
+                    ),
+                    title=_("Sub Assembly BOM is Cancelled"),
+                )
+            elif not bom_status.is_active:
+                frappe.throw(
+                    _(
+                        "Row #{0}: Sub Assembly BOM {1} is not active."
+                    ).format(
+                        row.idx,
+                        frappe.utils.get_link_to_form("BOM", row.rev_bom_no),
+                    ),
+                    title=_("Sub Assembly BOM Inactive"),
+                )
 
     def update_production_plan_bom_modification(self):
         frappe.db.sql(

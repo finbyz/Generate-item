@@ -367,23 +367,48 @@ class SalesOrderPhaseTimeDashboard {
 
             .sopt-card-body {
                 display: flex;
-                align-items: baseline;
-                gap: 6px;
+                align-items: center;
+                gap: 8px;
                 margin-bottom: 8px;
             }
 
             .sopt-card-num {
-                font-size: 28px;
+                font-size: 26px;
                 font-weight: 800;
                 color: var(--sopt-text);
                 line-height: 1;
                 letter-spacing: -0.02em;
             }
 
+            .sopt-card-units-group {
+                display: flex;
+                flex-direction: column;
+                gap: 2px;
+            }
+
             .sopt-card-unit {
-                font-size: 12px;
+                font-size: 11px;
                 font-weight: 600;
                 color: var(--sopt-muted);
+                line-height: 1.1;
+            }
+
+            .sopt-card-days-pill {
+                font-size: 10px;
+                font-weight: 600;
+                color: var(--card-icon-color, #475569);
+                background: var(--card-icon-bg, rgba(71, 85, 105, 0.1));
+                padding: 1px 5px;
+                border-radius: 4px;
+                width: fit-content;
+                line-height: 1.2;
+            }
+
+            .sopt-pill-days {
+                font-size: 10.5px;
+                font-weight: 500;
+                opacity: 0.82;
+                margin-left: 3px;
             }
 
             .sopt-card-footer {
@@ -929,7 +954,7 @@ class SalesOrderPhaseTimeDashboard {
                                 <tr class="group-header">
                                     <th colspan="3" class="sticky-col">${__("Order Identification")}</th>
                                     <th colspan="6" class="group-durations" style="text-align: center;">
-                                        <i class="fa fa-clock-o mr-1"></i> ${__("Calculated Phase Durations (Weeks)")}
+                                        <i class="fa fa-clock-o mr-1"></i> ${__("Calculated Phase Durations (Weeks & Days)")}
                                     </th>
                                 </tr>
                                 <tr class="col-header">
@@ -952,8 +977,8 @@ class SalesOrderPhaseTimeDashboard {
                                     <!-- 5. Last PO Approved → Last PR Submitted on -->
                                     <th class="sortable" data-sort="dur_po_app_to_last_pur_sub">${__("Last PO Approved → Last PR Submitted on")} <span class="sort-icon"></span></th>
 
-                                    <!-- 6. Sales Order Delivery Date → Work Order Submitted -->
-                                    <th class="sortable" data-sort="dur_so_delivery_to_wo_sub">${__("Sales Order Delivery Date → Work Order Submitted")} <span class="sort-icon"></span></th>
+                                    <!-- 6. Sales Order Created on → Work Order Submitted -->
+                                    <th class="sortable" data-sort="dur_so_cre_to_wo_sub">${__("Sales Order Created on → Work Order Submitted")} <span class="sort-icon"></span></th>
                                 </tr>
                             </thead>
                             <tbody data-role="table-body">
@@ -1275,9 +1300,11 @@ class SalesOrderPhaseTimeDashboard {
         const html = cards.map((card, idx) => {
             const meta = phase_meta[idx] || { cls: "phase-1", tag: `STAGE ${idx+1}`, icon: "fa-clock-o" };
             const val = card.avg_weeks !== null && card.avg_weeks !== undefined ? card.avg_weeks : null;
+            const days_val = card.avg_days !== null && card.avg_days !== undefined ? card.avg_days : null;
             const has_val = val !== null && val !== undefined;
             const val_str = has_val ? Number(val).toFixed(2) : `<span class="sopt-dash">—</span>`;
             const unit_str = has_val ? "Weeks avg" : "";
+            const days_str = has_val && days_val !== null ? `${Number(days_val).toFixed(1)} days avg` : "";
 
             const badge_html = card.delta
                 ? `<span class="sopt-card-subbadge">${card.delta}</span>`
@@ -1294,7 +1321,10 @@ class SalesOrderPhaseTimeDashboard {
                     <div class="sopt-card-title">${card.label}</div>
                     <div class="sopt-card-body">
                         <span class="sopt-card-num">${val_str}</span>
-                        ${unit_str ? `<span class="sopt-card-unit">${unit_str}</span>` : ""}
+                        <div class="sopt-card-units-group">
+                            ${unit_str ? `<span class="sopt-card-unit">${unit_str}</span>` : ""}
+                            ${days_str ? `<span class="sopt-card-days-pill">${days_str}</span>` : ""}
+                        </div>
                     </div>
                     <div class="sopt-card-footer">
                         ${badge_html}
@@ -1313,7 +1343,7 @@ class SalesOrderPhaseTimeDashboard {
             __("Last BOM Submitted → Last Material Request Created on"),
             __("Last Material Request Submitted → Last Purchase Order Created on"),
             __("Last PO Approved → Last PR Submitted on"),
-            __("Sales Order Delivery Date → Work Order Submitted"),
+            __("Sales Order Created on → Work Order Submitted"),
         ];
 
         const phase_meta = [
@@ -1460,22 +1490,22 @@ class SalesOrderPhaseTimeDashboard {
                     <td class="text-nowrap">${r.so_date || `<span class="sopt-dash">—</span>`}</td>
 
                     <!-- 1. SO Creation → SO Approved -->
-                    <td class="col-border-group text-nowrap">${this.format_duration_pill(r.dur_so_cre_to_so_app)}</td>
+                    <td class="col-border-group text-nowrap">${this.format_duration_pill(r.dur_so_cre_to_so_app, r.days_so_cre_to_so_app)}</td>
 
                     <!-- 2. SO Approval → Last BOM Submitted -->
-                    <td class="text-nowrap">${this.format_duration_pill(r.dur_so_app_to_last_bom_sub)}</td>
+                    <td class="text-nowrap">${this.format_duration_pill(r.dur_so_app_to_last_bom_sub, r.days_so_app_to_last_bom_sub)}</td>
 
                     <!-- 3. Last BOM Submitted → Last Material Request Created on -->
-                    <td class="text-nowrap">${this.format_duration_pill(r.dur_bom_sub_to_mr_cre)}</td>
+                    <td class="text-nowrap">${this.format_duration_pill(r.dur_bom_sub_to_mr_cre, r.days_bom_sub_to_mr_cre)}</td>
 
                     <!-- 4. Last Material Request Submitted → Last Purchase Order Created on -->
-                    <td class="text-nowrap">${this.format_duration_pill(r.dur_mr_sub_to_po_cre)}</td>
+                    <td class="text-nowrap">${this.format_duration_pill(r.dur_mr_sub_to_po_cre, r.days_mr_sub_to_po_cre)}</td>
 
                     <!-- 5. Last PO Approved → Last PR Submitted on -->
-                    <td class="text-nowrap">${this.format_duration_pill(r.dur_po_app_to_last_pur_sub)}</td>
+                    <td class="text-nowrap">${this.format_duration_pill(r.dur_po_app_to_last_pur_sub, r.days_po_app_to_last_pur_sub)}</td>
 
-                    <!-- 6. Sales Order Delivery Date → Work Order Submitted -->
-                    <td class="text-nowrap">${this.format_duration_pill(r.dur_so_delivery_to_wo_sub)}</td>
+                    <!-- 6. Sales Order Created on → Work Order Submitted -->
+                    <td class="text-nowrap">${this.format_duration_pill(r.dur_so_cre_to_wo_sub, r.days_so_cre_to_wo_sub)}</td>
                 </tr>
             `;
         }).join("");
@@ -1484,15 +1514,18 @@ class SalesOrderPhaseTimeDashboard {
         this.update_pagination(start_idx + 1, end_idx, total);
     }
 
-    format_duration_pill(duration) {
-        if (duration === null || duration === undefined || isNaN(duration)) {
+    format_duration_pill(weeks, days) {
+        if (weeks === null || weeks === undefined || isNaN(weeks)) {
             return `<span class="sopt-dash">—</span>`;
         }
-        const val_str = Number(duration).toFixed(2) + " weeks";
+        const w_str = Number(weeks).toFixed(2) + " wks";
+        const d_count = days !== null && days !== undefined && !isNaN(days) ? days : Math.round(weeks * 7);
+        const d_str = `(${d_count} ${Math.abs(d_count) === 1 ? "day" : "days"})`;
+        const val_str = `${w_str} <span class="sopt-pill-days">${d_str}</span>`;
         let level = "moderate";
-        if (duration <= 1.0) {
+        if (weeks <= 1.0) {
             level = "fast";
-        } else if (duration > 4.0) {
+        } else if (weeks > 4.0) {
             level = "extended";
         }
         return `<span class="sopt-dur-pill ${level}">${val_str}</span>`;
@@ -1535,27 +1568,31 @@ class SalesOrderPhaseTimeDashboard {
             "Customer",
             "Branch",
             "SO Date",
-            "SO Creation to SO Approved (Weeks)",
-            "SO Approval to Last BOM Submitted (Weeks)",
-            "Last BOM Submitted to Last Material Request Created on (Weeks)",
-            "Last Material Request Submitted to Last Purchase Order Created on (Weeks)",
-            "Last PO Approved to Last PR Submitted on (Weeks)",
-            "Sales Order Delivery Date to Work Order Submitted (Weeks)",
+            "SO Creation to SO Approved (Weeks & Days)",
+            "SO Approval to Last BOM Submitted (Weeks & Days)",
+            "Last BOM Submitted to Last Material Request Created on (Weeks & Days)",
+            "Last Material Request Submitted to Last Purchase Order Created on (Weeks & Days)",
+            "Last PO Approved to Last PR Submitted on (Weeks & Days)",
+            "Sales Order Created on to Work Order Submitted (Weeks & Days)",
         ];
 
-        const fmt_weeks = (v) => (v !== null && v !== undefined && !isNaN(v)) ? Number(v).toFixed(2) + " weeks" : "-";
+        const fmt_dur = (w, d) => {
+            if (w === null || w === undefined || isNaN(w)) return "-";
+            const d_count = d !== null && d !== undefined && !isNaN(d) ? d : Math.round(w * 7);
+            return `${Number(w).toFixed(2)} weeks (${d_count} days)`;
+        };
 
         const csv_rows = rows.map((r) => [
             r.sales_order,
             `"${(r.customer_name || r.customer || "").replace(/"/g, '""')}"`,
             r.branch || "",
             r.so_date || "",
-            fmt_weeks(r.dur_so_cre_to_so_app),
-            fmt_weeks(r.dur_so_app_to_last_bom_sub),
-            fmt_weeks(r.dur_bom_sub_to_mr_cre),
-            fmt_weeks(r.dur_mr_sub_to_po_cre),
-            fmt_weeks(r.dur_po_app_to_last_pur_sub),
-            fmt_weeks(r.dur_so_delivery_to_wo_sub),
+            fmt_dur(r.dur_so_cre_to_so_app, r.days_so_cre_to_so_app),
+            fmt_dur(r.dur_so_app_to_last_bom_sub, r.days_so_app_to_last_bom_sub),
+            fmt_dur(r.dur_bom_sub_to_mr_cre, r.days_bom_sub_to_mr_cre),
+            fmt_dur(r.dur_mr_sub_to_po_cre, r.days_mr_sub_to_po_cre),
+            fmt_dur(r.dur_po_app_to_last_pur_sub, r.days_po_app_to_last_pur_sub),
+            fmt_dur(r.dur_so_cre_to_wo_sub, r.days_so_cre_to_wo_sub),
         ]);
 
         let csv_content = headers.join(",") + "\n";

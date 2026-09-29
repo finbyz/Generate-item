@@ -10,13 +10,13 @@ from frappe.utils import getdate, format_date
 def get_dashboard_data(period=None, from_date=None, to_date=None, branch=None, sales_order=None, customer=None):
     """
     Returns Sales Order Phase Time Dashboard metrics and line items.
-    Calculates elapsed duration in weeks across exactly 6 stages:
+    Calculates elapsed duration in both weeks and days across exactly 6 stages:
       1. SO Creation → SO Approved
       2. SO Approval → Last BOM Submitted
       3. Last BOM Submitted → Last Material Request Created on
       4. Last Material Request Submitted → Last Purchase Order Created on
       5. Last PO Approved → Last PR Submitted on
-      6. Sales Order Delivery Date → Work Order Submitted
+      6. Sales Order Created on → Work Order Submitted
     """
     conditions = ["so.docstatus = 1"]
     values = {}
@@ -175,9 +175,14 @@ def get_dashboard_data(period=None, from_date=None, to_date=None, branch=None, s
         if wo.sales_order not in wo_sub_map:
             wo_sub_map[wo.sales_order] = wo
 
-    # 3. Assemble rows & calculate 6 stage durations in weeks
+    # 3. Assemble rows & calculate 6 stage durations in both weeks and days
     rows = []
-    s1_weeks, s2_weeks, s3_weeks, s4_weeks, s5_weeks, s6_weeks = [], [], [], [], [], []
+    s1_weeks, s1_days = [], []
+    s2_weeks, s2_days = [], []
+    s3_weeks, s3_days = [], []
+    s4_weeks, s4_days = [], []
+    s5_weeks, s5_days = [], []
+    s6_weeks, s6_days = [], []
 
     for so in sales_orders:
         so_cre_dt = so.so_creation
@@ -205,26 +210,38 @@ def get_dashboard_data(period=None, from_date=None, to_date=None, branch=None, s
         wo = wo_sub_map.get(so.sales_order)
         wo_dt = wo.modified or wo.creation if wo else None
 
-        # Calculate 6 duration columns in weeks: (End Date - Start Date).days / 7
+        # Calculate 6 duration columns in weeks and days:
         # 1. SO Creation -> SO Approved
-        dur_1 = _calc_duration_weeks(so_cre_dt, so_approved_dt)
+        dur_1, days_1 = _calc_durations(so_cre_dt, so_approved_dt)
         # 2. SO Approval -> Last BOM Submitted
-        dur_2 = _calc_duration_weeks(so_approved_dt, bs_dt)
+        dur_2, days_2 = _calc_durations(so_approved_dt, bs_dt)
         # 3. Last BOM Submitted -> Last Material Request Created on
-        dur_3 = _calc_duration_weeks(bs_dt, mr_c_dt)
+        dur_3, days_3 = _calc_durations(bs_dt, mr_c_dt)
         # 4. Last Material Request Submitted -> Last Purchase Order Created on
-        dur_4 = _calc_duration_weeks(mr_s_dt, po_c_dt)
+        dur_4, days_4 = _calc_durations(mr_s_dt, po_c_dt)
         # 5. Last PO Approved -> Last PR Submitted on
-        dur_5 = _calc_duration_weeks(po_a_dt, pr_dt)
-        # 6. Sales Order Delivery Date -> Work Order Submitted
-        dur_6 = _calc_duration_weeks(so_delivery_dt, wo_dt, allow_negative=True)
+        dur_5, days_5 = _calc_durations(po_a_dt, pr_dt)
+        # 6. Sales Order Created on -> Work Order Submitted
+        dur_6, days_6 = _calc_durations(so_cre_dt, wo_dt)
 
-        if dur_1 is not None: s1_weeks.append(dur_1)
-        if dur_2 is not None: s2_weeks.append(dur_2)
-        if dur_3 is not None: s3_weeks.append(dur_3)
-        if dur_4 is not None: s4_weeks.append(dur_4)
-        if dur_5 is not None: s5_weeks.append(dur_5)
-        if dur_6 is not None: s6_weeks.append(dur_6)
+        if dur_1 is not None:
+            s1_weeks.append(dur_1)
+            s1_days.append(days_1)
+        if dur_2 is not None:
+            s2_weeks.append(dur_2)
+            s2_days.append(days_2)
+        if dur_3 is not None:
+            s3_weeks.append(dur_3)
+            s3_days.append(days_3)
+        if dur_4 is not None:
+            s4_weeks.append(dur_4)
+            s4_days.append(days_4)
+        if dur_5 is not None:
+            s5_weeks.append(dur_5)
+            s5_days.append(days_5)
+        if dur_6 is not None:
+            s6_weeks.append(dur_6)
+            s6_days.append(days_6)
 
         rows.append({
             "sales_order": so.sales_order,
@@ -269,16 +286,27 @@ def get_dashboard_data(period=None, from_date=None, to_date=None, branch=None, s
             "last_wo_submitted_date": format_date(wo_dt, "dd-MMM-yyyy") if wo_dt else "",
             "last_wo_submitted_date_raw": str(wo_dt or ""),
 
-            # Exactly 6 Phase Durations in Weeks
+            # Exactly 6 Phase Durations in Weeks and Days
             "dur_so_cre_to_so_app": dur_1,
+            "days_so_cre_to_so_app": days_1,
+
             "dur_so_app_to_last_bom_sub": dur_2,
+            "days_so_app_to_last_bom_sub": days_2,
+
             "dur_bom_sub_to_mr_cre": dur_3,
+            "days_bom_sub_to_mr_cre": days_3,
+
             "dur_mr_sub_to_po_cre": dur_4,
+            "days_mr_sub_to_po_cre": days_4,
+
             "dur_po_app_to_last_pur_sub": dur_5,
-            "dur_so_delivery_to_wo_sub": dur_6,
+            "days_po_app_to_last_pur_sub": days_5,
+
+            "dur_so_cre_to_wo_sub": dur_6,
+            "days_so_cre_to_wo_sub": days_6,
         })
 
-    # 4. Summary Number Cards (in weeks)
+    # 4. Summary Number Cards (in both weeks and days)
     summary = {
         "total_orders": len(sales_orders),
         "cards": [
@@ -286,55 +314,55 @@ def get_dashboard_data(period=None, from_date=None, to_date=None, branch=None, s
                 "id": "so_cre_to_so_app",
                 "label": _("SO Creation → SO Approved"),
                 "avg_weeks": _compute_avg(s1_weeks),
-                "avg_days": round(_compute_avg(s1_weeks) * 7.0, 1) if _compute_avg(s1_weeks) is not None else None,
+                "avg_days": _compute_avg(s1_days, 1),
                 "count": len(s1_weeks),
                 "total": len(sales_orders),
-                "unit": _("weeks average"),
+                "unit": _("Weeks avg"),
             },
             {
                 "id": "so_app_to_last_bom_sub",
                 "label": _("SO Approval → Last BOM Submitted"),
                 "avg_weeks": _compute_avg(s2_weeks),
-                "avg_days": round(_compute_avg(s2_weeks) * 7.0, 1) if _compute_avg(s2_weeks) is not None else None,
+                "avg_days": _compute_avg(s2_days, 1),
                 "count": len(s2_weeks),
                 "total": len(sales_orders),
-                "unit": _("weeks average"),
+                "unit": _("Weeks avg"),
             },
             {
                 "id": "bom_sub_to_mr_cre",
                 "label": _("Last BOM Submitted → Last Material Request Created on"),
                 "avg_weeks": _compute_avg(s3_weeks),
-                "avg_days": round(_compute_avg(s3_weeks) * 7.0, 1) if _compute_avg(s3_weeks) is not None else None,
+                "avg_days": _compute_avg(s3_days, 1),
                 "count": len(s3_weeks),
                 "total": len(sales_orders),
-                "unit": _("weeks average"),
+                "unit": _("Weeks avg"),
             },
             {
                 "id": "mr_sub_to_po_cre",
                 "label": _("Last Material Request Submitted → Last Purchase Order Created on"),
                 "avg_weeks": _compute_avg(s4_weeks),
-                "avg_days": round(_compute_avg(s4_weeks) * 7.0, 1) if _compute_avg(s4_weeks) is not None else None,
+                "avg_days": _compute_avg(s4_days, 1),
                 "count": len(s4_weeks),
                 "total": len(sales_orders),
-                "unit": _("weeks average"),
+                "unit": _("Weeks avg"),
             },
             {
                 "id": "po_app_to_last_pur_sub",
                 "label": _("Last PO Approved → Last PR Submitted on"),
                 "avg_weeks": _compute_avg(s5_weeks),
-                "avg_days": round(_compute_avg(s5_weeks) * 7.0, 1) if _compute_avg(s5_weeks) is not None else None,
+                "avg_days": _compute_avg(s5_days, 1),
                 "count": len(s5_weeks),
                 "total": len(sales_orders),
-                "unit": _("weeks average"),
+                "unit": _("Weeks avg"),
             },
             {
-                "id": "so_delivery_to_wo_sub",
-                "label": _("Sales Order Delivery Date → Work Order Submitted"),
+                "id": "so_cre_to_wo_sub",
+                "label": _("Sales Order Created on → Work Order Submitted"),
                 "avg_weeks": _compute_avg(s6_weeks),
-                "avg_days": round(_compute_avg(s6_weeks) * 7.0, 1) if _compute_avg(s6_weeks) is not None else None,
+                "avg_days": _compute_avg(s6_days, 1),
                 "count": len(s6_weeks),
                 "total": len(sales_orders),
-                "unit": _("weeks average"),
+                "unit": _("Weeks avg"),
             },
         ],
     }
@@ -345,42 +373,42 @@ def get_dashboard_data(period=None, from_date=None, to_date=None, branch=None, s
     }
 
 
-def _calc_duration_weeks(start_ts, end_ts, allow_negative=False):
+def _calc_durations(start_ts, end_ts, allow_negative=False):
     """
-    Calculates elapsed weeks rounded to 2 decimal places using date portions: (End Date - Start Date).days / 7.
-    Returns None if either date is missing.
-    If allow_negative is False, returns None when end_date < start_date.
+    Calculates elapsed weeks rounded to 2 decimal places and exact days.
+    Returns (None, None) if either date is missing.
+    If allow_negative is False, returns (None, None) when end_date < start_date.
     """
     if not start_ts or not end_ts:
-        return None
+        return None, None
     try:
         s_date = getdate(start_ts)
         e_date = getdate(end_ts)
         if not s_date or not e_date:
-            return None
+            return None, None
         diff_days = (e_date - s_date).days
         if not allow_negative and diff_days < 0:
-            return None
-        return round(diff_days / 7.0, 2)
+            return None, None
+        return round(diff_days / 7.0, 2), diff_days
     except Exception:
-        return None
+        return None, None
 
 
-def _compute_avg(durations):
-    """Averages only non-null values rounded to 2 decimal places. Missing records are never treated as zero."""
-    if not durations:
+def _compute_avg(values, decimals=2):
+    """Averages only non-null values rounded to specified decimals. Missing records are never treated as zero."""
+    if not values:
         return None
-    return round(sum(durations) / len(durations), 2)
+    return round(sum(values) / len(values), decimals)
 
 
 def _build_empty_response():
     cards = [
-        {"id": "so_cre_to_so_app", "label": _("SO Creation → SO Approved"), "avg_weeks": None, "avg_days": None, "count": 0, "total": 0, "unit": _("weeks average")},
-        {"id": "so_app_to_last_bom_sub", "label": _("SO Approval → Last BOM Submitted"), "avg_weeks": None, "avg_days": None, "count": 0, "total": 0, "unit": _("weeks average")},
-        {"id": "bom_sub_to_mr_cre", "label": _("Last BOM Submitted → Last Material Request Created on"), "avg_weeks": None, "avg_days": None, "count": 0, "total": 0, "unit": _("weeks average")},
-        {"id": "mr_sub_to_po_cre", "label": _("Last Material Request Submitted → Last Purchase Order Created on"), "avg_weeks": None, "avg_days": None, "count": 0, "total": 0, "unit": _("weeks average")},
-        {"id": "po_app_to_last_pur_sub", "label": _("Last PO Approved → Last PR Submitted on"), "avg_weeks": None, "avg_days": None, "count": 0, "total": 0, "unit": _("weeks average")},
-        {"id": "so_delivery_to_wo_sub", "label": _("Sales Order Delivery Date → Work Order Submitted"), "avg_weeks": None, "avg_days": None, "count": 0, "total": 0, "unit": _("weeks average")},
+        {"id": "so_cre_to_so_app", "label": _("SO Creation → SO Approved"), "avg_weeks": None, "avg_days": None, "count": 0, "total": 0, "unit": _("Weeks avg")},
+        {"id": "so_app_to_last_bom_sub", "label": _("SO Approval → Last BOM Submitted"), "avg_weeks": None, "avg_days": None, "count": 0, "total": 0, "unit": _("Weeks avg")},
+        {"id": "bom_sub_to_mr_cre", "label": _("Last BOM Submitted → Last Material Request Created on"), "avg_weeks": None, "avg_days": None, "count": 0, "total": 0, "unit": _("Weeks avg")},
+        {"id": "mr_sub_to_po_cre", "label": _("Last Material Request Submitted → Last Purchase Order Created on"), "avg_weeks": None, "avg_days": None, "count": 0, "total": 0, "unit": _("Weeks avg")},
+        {"id": "po_app_to_last_pur_sub", "label": _("Last PO Approved → Last PR Submitted on"), "avg_weeks": None, "avg_days": None, "count": 0, "total": 0, "unit": _("Weeks avg")},
+        {"id": "so_cre_to_wo_sub", "label": _("Sales Order Created on → Work Order Submitted"), "avg_weeks": None, "avg_days": None, "count": 0, "total": 0, "unit": _("Weeks avg")},
     ]
     return {
         "summary": {"total_orders": 0, "cards": cards},
