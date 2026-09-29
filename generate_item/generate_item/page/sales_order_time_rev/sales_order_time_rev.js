@@ -697,42 +697,6 @@ class SalesOrderPhaseTimeDashboard {
                 white-space: nowrap;
             }
 
-            .sopt-milestone-cell {
-                display: flex;
-                flex-direction: column;
-                gap: 3px;
-            }
-
-            .sopt-milestone-date {
-                font-size: 12px;
-                color: #334155;
-                white-space: nowrap;
-            }
-
-            .sopt-doc-chip {
-                font-size: 10.5px;
-                font-weight: 500;
-                color: #64748b;
-                background: #f1f5f9;
-                border: 1px solid #e2e8f0;
-                border-radius: 4px;
-                padding: 2px 6px;
-                display: inline-flex;
-                align-items: center;
-                gap: 4px;
-                text-decoration: none;
-                transition: all 0.15s ease;
-                width: fit-content;
-                white-space: nowrap;
-            }
-
-            .sopt-doc-chip:hover {
-                background: #e0e7ff;
-                border-color: #c7d2fe;
-                color: #3730a3;
-                text-decoration: none;
-            }
-
             .sopt-dur-pill {
                 display: inline-flex;
                 align-items: center;
@@ -867,7 +831,7 @@ class SalesOrderPhaseTimeDashboard {
                                 ${__("Sales Order Phase Time Dashboard")}
                                 <span class="sopt-hero-badge"><span class="sopt-live-dot"></span> ${__("Live Metrics")}</span>
                             </h1>
-                            <p>${__("Measure and track turnaround elapsed days across Sales Order approval, BOM release, Procurement, and Work Order issuance.")}</p>
+                            <p>${__("Measure and track turnaround elapsed weeks across Sales Order approval, BOM release, Procurement, and Work Order issuance.")}</p>
                         </div>
                     </div>
                     <div class="sopt-hero-actions">
@@ -921,7 +885,7 @@ class SalesOrderPhaseTimeDashboard {
                     </div>
                 </div>
 
-                <!-- Number Cards Grid (The 6 Phase Cards) -->
+                <!-- Number Cards Grid (The 6 Phase Cards in Weeks) -->
                 <div class="sopt-cards-grid" data-role="cards-container">
                     ${this.get_skeleton_cards_html()}
                 </div>
@@ -931,12 +895,12 @@ class SalesOrderPhaseTimeDashboard {
                     <div class="sopt-table-header-bar">
                         <div class="sopt-table-heading">
                             <h3><i class="fa fa-list-alt text-primary"></i> ${__("Sales Order Phase Timeline")}</h3>
-                            <span>${__("Granular document milestone timestamps and calculated turnaround days per Sales Order.")}</span>
+                            <span>${__("Calculated turnaround durations in weeks per Sales Order.")}</span>
                         </div>
                         <div class="sopt-table-legend">
-                            <span class="sopt-legend-item"><span class="sopt-dur-dot fast"></span> ${__("≤ 5 Days (Fast)")}</span>
-                            <span class="sopt-legend-item"><span class="sopt-dur-dot moderate"></span> ${__("5–20 Days")}</span>
-                            <span class="sopt-legend-item"><span class="sopt-dur-dot extended"></span> ${__("> 20 Days (Watch)")}</span>
+                            <span class="sopt-legend-item"><span class="sopt-dur-dot fast"></span> ${__("≤ 1.00 Week (Fast)")}</span>
+                            <span class="sopt-legend-item"><span class="sopt-dur-dot moderate"></span> ${__("1.00–4.00 Weeks")}</span>
+                            <span class="sopt-legend-item"><span class="sopt-dur-dot extended"></span> ${__("> 4.00 Weeks (Watch)")}</span>
                             <span class="sopt-legend-item"><span class="sopt-dur-dot overall"></span> ${__("Total Turnaround")}</span>
                             <span class="badge badge-light ml-2" data-role="record-count" style="font-size: 11px; padding: 4px 8px;">0 Orders</span>
                         </div>
@@ -945,7 +909,7 @@ class SalesOrderPhaseTimeDashboard {
                     <div class="sopt-table-subtoolbar">
                         <div class="sopt-search-container">
                             <i class="fa fa-search sopt-search-icon"></i>
-                            <input type="text" class="sopt-search-input" placeholder="${__("Search Sales Order, Customer, BOM, PO, WO...")}" data-role="table-search">
+                            <input type="text" class="sopt-search-input" placeholder="${__("Search Sales Order, Customer, Branch...")}" data-role="table-search">
                         </div>
                         <div class="d-flex align-items-center gap-2">
                             <span class="text-muted small">${__("Page size:")}</span>
@@ -964,8 +928,8 @@ class SalesOrderPhaseTimeDashboard {
                             <thead>
                                 <tr class="group-header">
                                     <th colspan="3" class="sticky-col">${__("Order Identification")}</th>
-                                    <th colspan="6" class="group-durations" style="text-align: center;">
-                                        <i class="fa fa-clock-o mr-1"></i> ${__("Calculated Phase Durations (Elapsed Days)")}
+                                    <th colspan="7" class="group-durations" style="text-align: center;">
+                                        <i class="fa fa-clock-o mr-1"></i> ${__("Calculated Phase Durations (Weeks)")}
                                     </th>
                                 </tr>
                                 <tr class="col-header">
@@ -973,21 +937,34 @@ class SalesOrderPhaseTimeDashboard {
                                     <th class="sortable" data-sort="customer_name">${__("Customer")} <span class="sort-icon"></span></th>
                                     <th class="sortable" data-sort="so_date_raw">${__("SO Date")} <span class="sort-icon"></span></th>
 
-                                    <!-- Phase Durations -->
-                                    <th class="sortable col-border-group" data-sort="dur_so_to_bom_created">${__("SO Approval → BOM Created")} <span class="sort-icon"></span></th>
-                                    <th class="sortable" data-sort="dur_bom_created_to_submitted">${__("BOM Created → BOM Submitted")} <span class="sort-icon"></span></th>
-                                    <th class="sortable" data-sort="dur_bom_to_po_submitted">${__("BOM Submitted → PO Submitted")} <span class="sort-icon"></span></th>
-                                    <th class="sortable" data-sort="dur_po_to_pr_submitted">${__("PO Submitted → PR Submitted")} <span class="sort-icon"></span></th>
-                                    <th class="sortable" data-sort="dur_pr_to_wo_submitted">${__("PR Submitted → WO Submitted")} <span class="sort-icon"></span></th>
-                                    <th class="sortable" data-sort="dur_overall" style="background: #eef2ff;">${__("Sales Order → Last WO Submitted")} <span class="sort-icon"></span></th>
+                                    <!-- 1. SO Creation → SO Approval -->
+                                    <th class="sortable col-border-group" data-sort="dur_so_cre_to_so_app">${__("SO Creation → SO Approval")} <span class="sort-icon"></span></th>
+
+                                    <!-- 2. SO Approval → BOM Created -->
+                                    <th class="sortable" data-sort="dur_so_app_to_bom_cre">${__("SO Approval → BOM Created")} <span class="sort-icon"></span></th>
+
+                                    <!-- 3. BOM Created → BOM Submitted -->
+                                    <th class="sortable" data-sort="dur_bom_cre_to_bom_sub">${__("BOM Created → BOM Submitted")} <span class="sort-icon"></span></th>
+
+                                    <!-- 4. BOM Submitted → PO Submitted -->
+                                    <th class="sortable" data-sort="dur_bom_sub_to_po_sub">${__("BOM Submitted → PO Submitted")} <span class="sort-icon"></span></th>
+
+                                    <!-- 5. PO Submitted → PR Submitted -->
+                                    <th class="sortable" data-sort="dur_po_sub_to_pr_sub">${__("PO Submitted → PR Submitted")} <span class="sort-icon"></span></th>
+
+                                    <!-- 6. PR Submitted → Work Order Submitted -->
+                                    <th class="sortable" data-sort="dur_pr_sub_to_wo_sub">${__("PR Submitted → Work Order Submitted")} <span class="sort-icon"></span></th>
+
+                                    <!-- 7. Sales Order → Last Work Order Submitted -->
+                                    <th class="sortable" data-sort="dur_so_cre_to_last_wo_sub" style="background: #eef2ff;">${__("Sales Order → Last Work Order Submitted")} <span class="sort-icon"></span></th>
                                 </tr>
                             </thead>
                             <tbody data-role="table-body">
                                 <tr>
-                                    <td colspan="9" class="sopt-empty-box">
+                                    <td colspan="10" class="sopt-empty-box">
                                         <i class="fa fa-spinner fa-spin"></i>
                                         <h4>${__("Fetching Data...")}</h4>
-                                        <div>${__("Loading Sales Orders and calculating phase durations.")}</div>
+                                        <div>${__("Loading Sales Orders and calculating milestone durations.")}</div>
                                     </td>
                                 </tr>
                             </tbody>
@@ -1300,9 +1277,10 @@ class SalesOrderPhaseTimeDashboard {
 
         const html = cards.map((card, idx) => {
             const meta = phase_meta[idx] || { cls: "phase-1", tag: `PHASE ${idx+1}`, icon: "fa-clock-o" };
-            const has_val = card.avg_days !== null && card.avg_days !== undefined;
-            const val_str = has_val ? card.avg_days : `<span class="sopt-dash">—</span>`;
-            const unit_str = has_val ? (Math.abs(card.avg_days - 1.0) < 0.001 ? "Day avg" : "Days avg") : "";
+            const val = card.avg_weeks !== null && card.avg_weeks !== undefined ? card.avg_weeks : (card.avg_days !== null && card.avg_days !== undefined ? Number((card.avg_days / 7.0).toFixed(2)) : null);
+            const has_val = val !== null && val !== undefined;
+            const val_str = has_val ? Number(val).toFixed(2) : `<span class="sopt-dash">—</span>`;
+            const unit_str = has_val ? "Weeks avg" : "";
 
             const badge_html = card.delta
                 ? `<span class="sopt-card-subbadge">${card.delta}</span>`
@@ -1338,7 +1316,7 @@ class SalesOrderPhaseTimeDashboard {
             __("Last BOM Submitted → Last PO Submitted"),
             __("Last PO Submitted → Last Purchase Receipt Submitted"),
             __("Last Purchase Receipt → Last Work Order Submitted"),
-            __("Sales Order → Last Work Order Submitted"),
+            __("SO Creation → Last Work Order Submitted"),
         ];
 
         const phase_meta = [
@@ -1382,12 +1360,7 @@ class SalesOrderPhaseTimeDashboard {
                     (r.sales_order && r.sales_order.toLowerCase().includes(q)) ||
                     (r.customer && r.customer.toLowerCase().includes(q)) ||
                     (r.customer_name && r.customer_name.toLowerCase().includes(q)) ||
-                    (r.branch && r.branch.toLowerCase().includes(q)) ||
-                    (r.last_bom_created_name && r.last_bom_created_name.toLowerCase().includes(q)) ||
-                    (r.last_bom_submitted_name && r.last_bom_submitted_name.toLowerCase().includes(q)) ||
-                    (r.last_po_submitted_name && r.last_po_submitted_name.toLowerCase().includes(q)) ||
-                    (r.last_pr_submitted_name && r.last_pr_submitted_name.toLowerCase().includes(q)) ||
-                    (r.last_wo_submitted_name && r.last_wo_submitted_name.toLowerCase().includes(q))
+                    (r.branch && r.branch.toLowerCase().includes(q))
                 );
             });
         }
@@ -1441,7 +1414,7 @@ class SalesOrderPhaseTimeDashboard {
         if (total === 0) {
             body.find('[data-role="table-body"]').html(`
                 <tr>
-                    <td colspan="15" class="sopt-empty-box">
+                    <td colspan="10" class="sopt-empty-box">
                         <i class="fa fa-folder-open-o"></i>
                         <h4>${__("No Sales Orders Found")}</h4>
                         <div>${__("Try changing your period preset, adjusting filters, or clearing the search box.")}</div>
@@ -1489,33 +1462,26 @@ class SalesOrderPhaseTimeDashboard {
                     <!-- SO Date -->
                     <td class="text-nowrap">${r.so_date || `<span class="sopt-dash">—</span>`}</td>
 
-                    <!-- SO Approval Date -->
-                    <td class="text-nowrap">${r.so_approval_date || `<span class="sopt-dash">—</span>`}</td>
+                    <!-- 1. SO Creation → SO Approval -->
+                    <td class="col-border-group text-nowrap">${this.format_duration_pill(r.dur_so_cre_to_so_app)}</td>
 
-                    <!-- Milestone Dates & Clickable Document Chips -->
-                    <td class="text-nowrap">
-                        ${this.format_milestone_cell(r.last_bom_created_date, r.last_bom_created_name, "bom", "fa-sitemap")}
-                    </td>
-                    <td class="text-nowrap">
-                        ${this.format_milestone_cell(r.last_bom_submitted_date, r.last_bom_submitted_name, "bom", "fa-check-circle-o")}
-                    </td>
-                    <td class="text-nowrap">
-                        ${this.format_milestone_cell(r.last_po_submitted_date, r.last_po_submitted_name, "purchase-order", "fa-shopping-cart")}
-                    </td>
-                    <td class="text-nowrap">
-                        ${this.format_milestone_cell(r.last_pr_submitted_date, r.last_pr_submitted_name, "purchase-receipt", "fa-truck")}
-                    </td>
-                    <td class="text-nowrap">
-                        ${this.format_milestone_cell(r.last_wo_submitted_date, r.last_wo_submitted_name, "work-order", "fa-cogs")}
-                    </td>
+                    <!-- 2. SO Approval → BOM Created -->
+                    <td class="text-nowrap">${this.format_duration_pill(r.dur_so_app_to_bom_cre)}</td>
 
-                    <!-- Phase Durations (Status Pills) -->
-                    <td class="col-border-group">${this.format_duration_pill(r.dur_so_to_bom_created)}</td>
-                    <td>${this.format_duration_pill(r.dur_bom_created_to_submitted)}</td>
-                    <td>${this.format_duration_pill(r.dur_bom_to_po_submitted)}</td>
-                    <td>${this.format_duration_pill(r.dur_po_to_pr_submitted)}</td>
-                    <td>${this.format_duration_pill(r.dur_pr_to_wo_submitted)}</td>
-                    <td style="background: rgba(240, 253, 244, 0.4);">${this.format_duration_pill(r.dur_overall, true)}</td>
+                    <!-- 3. BOM Created → BOM Submitted -->
+                    <td class="text-nowrap">${this.format_duration_pill(r.dur_bom_cre_to_bom_sub)}</td>
+
+                    <!-- 4. BOM Submitted → PO Submitted -->
+                    <td class="text-nowrap">${this.format_duration_pill(r.dur_bom_sub_to_po_sub)}</td>
+
+                    <!-- 5. PO Submitted → PR Submitted -->
+                    <td class="text-nowrap">${this.format_duration_pill(r.dur_po_sub_to_pr_sub)}</td>
+
+                    <!-- 6. PR Submitted → Work Order Submitted -->
+                    <td class="text-nowrap">${this.format_duration_pill(r.dur_pr_sub_to_wo_sub)}</td>
+
+                    <!-- 7. Sales Order → Last Work Order Submitted -->
+                    <td class="text-nowrap" style="background: rgba(240, 253, 244, 0.4);">${this.format_duration_pill(r.dur_so_cre_to_last_wo_sub, true)}</td>
                 </tr>
             `;
         }).join("");
@@ -1524,42 +1490,21 @@ class SalesOrderPhaseTimeDashboard {
         this.update_pagination(start_idx + 1, end_idx, total);
     }
 
-    format_milestone_cell(date_str, doc_name, doctype_route, icon = "fa-file-text-o") {
-        if (!date_str) {
-            return `<span class="sopt-dash">—</span>`;
-        }
-        let doc_chip = "";
-        if (doc_name) {
-            doc_chip = `
-                <a href="/app/${doctype_route}/${frappe.utils.escape_html(doc_name)}" class="sopt-doc-chip" target="_blank" title="${frappe.utils.escape_html(doc_name)}">
-                    <i class="fa ${icon}"></i>
-                    <span>${frappe.utils.escape_html(doc_name)}</span>
-                </a>
-            `;
-        }
-        return `
-            <div class="sopt-milestone-cell">
-                <span class="sopt-milestone-date">${date_str}</span>
-                ${doc_chip}
-            </div>
-        `;
-    }
-
     format_duration_pill(duration, is_overall = false) {
-        if (duration === null || duration === undefined) {
+        if (duration === null || duration === undefined || isNaN(duration)) {
             return `<span class="sopt-dash">—</span>`;
         }
-        const unit = Math.abs(duration - 1.0) < 0.001 ? "Day" : "Days";
+        const val_str = Number(duration).toFixed(2) + " weeks";
         if (is_overall) {
-            return `<span class="sopt-dur-pill overall" title="${__("Complete Order Turnaround")}"><i class="fa fa-flag-checkered mr-1"></i> ${duration} ${unit}</span>`;
+            return `<span class="sopt-dur-pill overall" title="${__("Sales Order to Last Work Order Turnaround")}"><i class="fa fa-flag-checkered mr-1"></i> ${val_str}</span>`;
         }
         let level = "moderate";
-        if (duration <= 5.0) {
+        if (duration <= 1.0) {
             level = "fast";
-        } else if (duration > 20.0) {
+        } else if (duration > 4.0) {
             level = "extended";
         }
-        return `<span class="sopt-dur-pill ${level}">${duration} ${unit}</span>`;
+        return `<span class="sopt-dur-pill ${level}">${val_str}</span>`;
     }
 
     get_initials(name) {
@@ -1599,47 +1544,29 @@ class SalesOrderPhaseTimeDashboard {
             "Customer",
             "Branch",
             "SO Date",
-            "SO Approval Date",
-            "Last BOM Created Date",
-            "Last BOM Created Doc",
-            "Last BOM Submitted Date",
-            "Last BOM Submitted Doc",
-            "Last PO Submitted Date",
-            "Last PO Submitted Doc",
-            "Last PR Submitted Date",
-            "Last PR Submitted Doc",
-            "Last WO Submitted Date",
-            "Last WO Submitted Doc",
-            "SO Approval to Last BOM Created (Days)",
-            "BOM Created to BOM Submitted (Days)",
-            "BOM Submitted to PO Submitted (Days)",
-            "PO Submitted to PR Submitted (Days)",
-            "PR Submitted to WO Submitted (Days)",
-            "Sales Order to Last WO Submitted Overall (Days)",
+            "SO Creation to SO Approval (Weeks)",
+            "SO Approval to BOM Created (Weeks)",
+            "BOM Created to BOM Submitted (Weeks)",
+            "BOM Submitted to PO Submitted (Weeks)",
+            "PO Submitted to PR Submitted (Weeks)",
+            "PR Submitted to Work Order Submitted (Weeks)",
+            "Sales Order to Last Work Order Submitted (Weeks)",
         ];
+
+        const fmt_weeks = (v) => (v !== null && v !== undefined && !isNaN(v)) ? Number(v).toFixed(2) + " weeks" : "-";
 
         const csv_rows = rows.map((r) => [
             r.sales_order,
             `"${(r.customer_name || r.customer || "").replace(/"/g, '""')}"`,
             r.branch || "",
             r.so_date || "",
-            r.so_approval_date || "",
-            r.last_bom_created_date || "",
-            r.last_bom_created_name || "",
-            r.last_bom_submitted_date || "",
-            r.last_bom_submitted_name || "",
-            r.last_po_submitted_date || "",
-            r.last_po_submitted_name || "",
-            r.last_pr_submitted_date || "",
-            r.last_pr_submitted_name || "",
-            r.last_wo_submitted_date || "",
-            r.last_wo_submitted_name || "",
-            r.dur_so_to_bom_created !== null ? r.dur_so_to_bom_created : "",
-            r.dur_bom_created_to_submitted !== null ? r.dur_bom_created_to_submitted : "",
-            r.dur_bom_to_po_submitted !== null ? r.dur_bom_to_po_submitted : "",
-            r.dur_po_to_pr_submitted !== null ? r.dur_po_to_pr_submitted : "",
-            r.dur_pr_to_wo_submitted !== null ? r.dur_pr_to_wo_submitted : "",
-            r.dur_overall !== null ? r.dur_overall : "",
+            fmt_weeks(r.dur_so_cre_to_so_app),
+            fmt_weeks(r.dur_so_app_to_bom_cre),
+            fmt_weeks(r.dur_bom_cre_to_bom_sub),
+            fmt_weeks(r.dur_bom_sub_to_po_sub),
+            fmt_weeks(r.dur_po_sub_to_pr_sub),
+            fmt_weeks(r.dur_pr_sub_to_wo_sub),
+            fmt_weeks(r.dur_so_cre_to_last_wo_sub),
         ]);
 
         let csv_content = headers.join(",") + "\n";
