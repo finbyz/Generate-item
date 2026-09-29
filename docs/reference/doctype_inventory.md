@@ -22,6 +22,11 @@
 | Customer Supplier Workflow Settings | Single | Branch approval rules. |
 | Scenario Workflow Settings | Single | Stock Entry and MR submit roles. |
 | Selective Products | Single | Products using selective description rules. |
+| Valve Assembly | Submittable | Serialized valve fitting, technical attributes, and assembly tracking. |
+| Valve Testing | Submittable | Pre, Final, and TPI pressure testing and leak defect tracking. |
+| Valve Painting | Submittable | Two-stage (Received and Finished) valve surface coating. |
+| Valve Spare Serial | Submittable | Spare valve serial tracking and engineering status. |
+| General Employee | Master | Shop-floor technicians and inspectors by branch and department. |
 
 ## Supporting child DocTypes
 
@@ -49,8 +54,12 @@
 | Material Request Approval Rule | MR creator/approver role map. |
 | Customer Approval Rule | Branch Customer approval roles. |
 | Supplier Approval Rule | Branch Supplier approval roles. |
+| Assembly Item Serial No | Valve Assembly serialized items and specifications table. |
+| Valve Testing Item | Valve Testing items, test results, and leak defect reasons table. |
+| Valve Painting Item | Valve Painting items and coating specifications table. |
+| General Employee Item | General Employee groups and department assignments table. |
 
-The app contains 40 DocType JSON definitions in total, including parent, child, Single, and master definitions.
+The app contains DocType JSON definitions including parent, child, Single, and master definitions.
 
 ## Source location
 

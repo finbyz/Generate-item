@@ -92,6 +92,45 @@ Values are presented in lakhs where implemented. The dashboard supports date and
 
 The implemented page title is `Sales Performance Dashboard`. There is no separate page named exactly `Sales Dashboard`.
 
+## Sales Order TAT
+
+Route:
+
+```text
+sales-order-tat
+```
+
+Primary files:
+
+- `generate_item/generate_item/page/sales_order_tat/sales_order_tat.json`
+- `sales_order_tat.js`
+- `sales_order_tat.py`
+- `sales_order_tat.css`
+
+
+### Purpose
+
+Measures and visualizes turnaround elapsed time (in days) across downstream manufacturing and procurement milestone phases of the Sales Order lifecycle:
+1. **SO Approval → Last BOM Created**: Sales Order approval/submitted date to latest BOM created timestamp.
+2. **Last BOM Created → Last BOM Submitted**: Latest BOM created timestamp to latest BOM submission timestamp (`docstatus = 1`).
+3. **Last BOM Submitted → Last PO Submitted**: Latest submitted BOM timestamp to latest submitted Purchase Order timestamp (`docstatus = 1`).
+4. **Last PO Submitted → Last Purchase Receipt Submitted**: Latest submitted Purchase Order timestamp to latest submitted Purchase Receipt timestamp (`docstatus = 1`).
+5. **Last Purchase Receipt Submitted → Last Work Order Submitted**: Latest submitted Purchase Receipt timestamp to latest submitted Work Order timestamp (`docstatus = 1`).
+6. **Overall (SO Approval → Last Work Order Submitted)**: Sales Order approval timestamp to latest submitted Work Order timestamp.
+
+### Features & Rules
+
+- **Native Frappe UI**: Uses standard Frappe Page controls (`ControlLink`, `ControlDate`, `frappe.ui.make_app_page`), Frappe CSS variables, and native responsive cards/tables.
+- **Filters**: Period presets (Today, Last Week, Last Month, Last Quarter, Custom) with auto-populating From/To Dates, Branch (Link), Sales Order (Link), and Customer (Link).
+- **Number Cards (Averages)**: Displays average duration (in days) across filtered Sales Orders. Missing downstream documents are marked as `—` and excluded from that phase's average (never counted as 0).
+- **Interactive Table**: Shows Sales Order, Customer, SO Date, milestone timestamps with direct document links, phase durations, debounced search, column sorting, pagination, and CSV export.
+
+### API
+
+| Method | Parameters | Result |
+| --- | --- | --- |
+| `get_dashboard_data` | `period`, `from_date`, `to_date`, `branch`, `sales_order`, `customer` | Aggregated card metrics and detailed Sales Order row records. |
+
 ## Adding a dashboard
 
 Create a Page folder containing:
@@ -116,3 +155,4 @@ Primary files:
 Lists submitted Advance Material Request items and lets users assign batch-matched Production Plans through an inline editor. It supports Company/date filters, staged bulk saving, and CSV export.
 
 See [Pending Advance Material Request Page Report](pending_advance_material_request.md) for its design, APIs, validation, limitations, and tests.
+
