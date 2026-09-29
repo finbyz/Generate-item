@@ -1,20 +1,59 @@
 
 
 function set_supplier_warehouse(frm) {
-	if (!frm.doc.branch || !frm.doc.supplier) return;
+	if (!frm.doc.supplier) {
+		render_po_mould_set_info(frm);
+		return;
+	}
 
-	frappe.db.get_list("Warehouse", {
-		filters: [
-			["Warehouse", "branch", "=", frm.doc.branch],
-			["Warehouse", "is_group", "=", 0],
-			["Warehouse", "name", "like", `%${frm.doc.supplier}%`]
-		],
-		fields: ["name"],
-		order_by: "name asc",
-		limit: 1
-	}).then(r => {
-		if (r.length) {
-			frm.set_value("supplier_warehouse", r[0].name);
+	// 1. Primary: Use 'warehouse' field configured under Supplier master
+	frappe.db.get_value("Supplier", frm.doc.supplier, "warehouse").then(r => {
+		if (r && r.message && r.message.warehouse) {
+			frm.set_value("supplier_warehouse", r.message.warehouse);
+			render_po_mould_set_info(frm);
+		} else if (frm.doc.branch) {
+			// 2. Fallback: match warehouse by branch and supplier name
+			frappe.db.get_list("Warehouse", {
+				filters: [
+					["Warehouse", "branch", "=", frm.doc.branch],
+					["Warehouse", "is_group", "=", 0],
+					["Warehouse", "name", "like", `%${frm.doc.supplier}%`]
+				],
+				fields: ["name"],
+				order_by: "name asc",
+				limit: 1
+			}).then(res => {
+				if (res.length) {
+					frm.set_value("supplier_warehouse", res[0].name);
+				}
+				render_po_mould_set_info(frm);
+			});
+		} else {
+			render_po_mould_set_info(frm);
+		}
+	});
+}
+
+function render_po_mould_set_info(frm) {
+	if (!frm.fields_dict.mould_set_info) return;
+
+	let items = (frm.doc.items || []).map(row => ({
+		item_code: row.item_code,
+		fg_item: row.fg_item || ''
+	}));
+
+	frappe.call({
+		method: "generate_item.mould_set_management.po_enhancement.get_po_mould_set_info",
+		args: {
+			po_name: frm.doc.name || '',
+			supplier: frm.doc.supplier || '',
+			supplier_warehouse: frm.doc.supplier_warehouse || '',
+			items: JSON.stringify(items)
+		},
+		callback: function (r) {
+			if (r.message && frm.fields_dict.mould_set_info) {
+				frm.fields_dict.mould_set_info.$wrapper.html(r.message.html);
+			}
 		}
 	});
 }
@@ -63,6 +102,15 @@ frappe.ui.form.on('Purchase Order', {
 		set_po_defaults(frm)
 
 	},
+	supplier_warehouse: function (frm) {
+		render_po_mould_set_info(frm);
+	},
+	items_add: function (frm) {
+		render_po_mould_set_info(frm);
+	},
+	items_remove: function (frm) {
+		render_po_mould_set_info(frm);
+	},
 	order_type: function (frm) {
 		set_po_defaults(frm);
 	},
@@ -103,6 +151,7 @@ frappe.ui.form.on('Purchase Order', {
 		// Check if items exist and iterate properly
 
 		set_po_defaults(frm);
+		render_po_mould_set_info(frm);
 
 
 
@@ -266,6 +315,7 @@ frappe.ui.form.on('Purchase Order Item', {
 					}
 				});
 		}
+		render_po_mould_set_info(frm);
 	}
 });
 

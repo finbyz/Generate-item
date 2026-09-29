@@ -24,6 +24,10 @@ The content is code-verified from `apps/generate_item`. Features owned by anothe
 | Branch/Item physical location | [Item Location](new_development/item_location.md) |
 | Scheduled Currency Exchange integration | [Currency Exchange Synchronization](new_development/currency_exchange_sync.md) |
 | Selected Work Order spreadsheet output | [Work Order Excel Export](new_development/work_order_excel_export.md) |
+| Valve Manufacturing Operations Architecture | [Valve Manufacturing Operations](new_development/valve_manufacturing_operations.md) |
+| Serialized valve assembly tracking & inspector inches | [Valve Assembly](new_development/valve_assembly.md) |
+| Hydrostatic, pneumatic & TPI valve testing lifecycle | [Valve Testing](new_development/valve_testing.md) |
+| Two-stage paint custody (Received & Finished) | [Valve Painting](new_development/valve_painting.md) |
 
 ## ERPNext customizations
 
@@ -35,7 +39,8 @@ The content is code-verified from `apps/generate_item`. Features owned by anothe
 
 ## Pages and dashboards
 
-[Pages and Dashboards](pages_and_dashboards/dashboard_catalog.md) documents Director Dashboard and Sales Performance Dashboard, including routes, metrics, filters, and APIs.
+[Pages and Dashboards](pages_and_dashboards/dashboard_catalog.md) documents Director Dashboard, Sales Performance Dashboard, and Sales Order Phase Time Dashboard, including routes, metrics, filters, and APIs.
+
 
 ## Technical reference
 

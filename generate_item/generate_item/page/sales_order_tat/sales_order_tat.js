@@ -1,16 +1,16 @@
 // Copyright (c) 2026, Finbyz and contributors
 // For license information, please see license.txt
 
-frappe.pages['sales-order-time-rev'].on_page_load = function (wrapper) {
-    frappe.sales_order_time_rev = new SalesOrderPhaseTimeDashboard(wrapper);
+frappe.pages['sales-order-tat'].on_page_load = function (wrapper) {
+    frappe.sales_order_tat = new SalesOrderTATDashboard(wrapper);
 };
 
-class SalesOrderPhaseTimeDashboard {
+class SalesOrderTATDashboard {
     constructor(wrapper) {
         this.wrapper = wrapper;
         this.page = frappe.ui.make_app_page({
             parent: wrapper,
-            title: __("Sales Order Phase Time Dashboard"),
+            title: __("Sales Order TAT"),
             single_column: true,
         });
 
@@ -853,7 +853,7 @@ class SalesOrderPhaseTimeDashboard {
                         </div>
                         <div class="sopt-hero-title-group">
                             <h1>
-                                ${__("Sales Order Phase Time Dashboard")}
+                                ${__("Sales Order TAT")}
                                 <span class="sopt-hero-badge"><span class="sopt-live-dot"></span> ${__("Live Metrics")}</span>
                             </h1>
                             <p>${__("Measure and track turnaround elapsed weeks across Sales Order approval, BOM release, Procurement, and Work Order issuance.")}</p>
@@ -919,7 +919,7 @@ class SalesOrderPhaseTimeDashboard {
                 <div class="sopt-table-section">
                     <div class="sopt-table-header-bar">
                         <div class="sopt-table-heading">
-                            <h3><i class="fa fa-list-alt text-primary"></i> ${__("Sales Order Phase Timeline")}</h3>
+                            <h3><i class="fa fa-list-alt text-primary"></i> ${__("Sales Order TAT Timeline")}</h3>
                             <span>${__("Calculated turnaround durations in weeks per Sales Order.")}</span>
                         </div>
                         <div class="sopt-table-legend">
@@ -1243,7 +1243,7 @@ class SalesOrderPhaseTimeDashboard {
         btnReload.addClass("fa-spin");
 
         frappe.call({
-            method: "generate_item.generate_item.page.sales_order_time_rev.sales_order_time_rev.get_dashboard_data",
+            method: "generate_item.generate_item.page.sales_order_tat.sales_order_tat.get_dashboard_data",
             args: {
                 period: this.filters.period,
                 from_date: this.filters.from_date,
@@ -1272,7 +1272,7 @@ class SalesOrderPhaseTimeDashboard {
                 btnReload.removeClass("fa-spin");
                 frappe.msgprint({
                     title: __("Error"),
-                    message: __("Failed to load Sales Order phase time data."),
+                    message: __("Failed to load Sales Order TAT data."),
                     indicator: "red"
                 });
             }

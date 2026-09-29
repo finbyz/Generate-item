@@ -124,6 +124,44 @@ frappe.query_reports["Requested Items To Be Received"] = {
             },
         },
         {
+            fieldname: "status",
+            label: __("Status"),
+            fieldtype: "MultiSelectList",
+            options: [
+                "To Receive",
+                "To Receive and Bill",
+                "To Bill",
+                "Completed",
+                "Closed",
+                "On Hold"
+            ],
+            default: ["To Receive", "To Receive and Bill"],
+            get_data: function (txt) {
+                let status = [
+                    "To Receive",
+                    "To Receive and Bill",
+                    "To Bill",
+                    "Completed",
+                    "Closed",
+                    "On Hold"
+                ];
+                let options = [];
+                for (let option of status) {
+                    options.push({
+                        value: option,
+                        label: __(option),
+                        description: "",
+                    });
+                }
+                return options;
+            },
+            on_change: function () {
+                frappe.query_report.refresh().then(() => {
+                    unchecked_all_checkbox();
+                });
+            },
+        },
+        {
             fieldname: "show_all_lines", label: "Show All Lines", fieldtype: "Check",
             on_change: function () {
                 let show_all = frappe.query_report.get_filter_value("show_all_lines");
@@ -136,83 +174,16 @@ frappe.query_reports["Requested Items To Be Received"] = {
 
             }
         },
-        {
-            fieldname: "allowed_branches",
-            label: __("Allowed Branches"),
-            fieldtype: "Data",
-            hidden: 1
-        },
-
-
-
-
-
     ],
     onload: function (report) {
-
-        // fetch_and_set_branches(report, function () {
-        //     report.refresh();
-        // })
-
-        fetch_and_set_branches(report, function () {
-            report.refresh().then(() => {
-                // Cache branch from filter after load
-                CACHED_BRANCH = frappe.query_report.get_filter_value("branch");
-            });
-        });
-        // frappe.call({
-        //     method: "generate_item.generate_item.report.requested_items_to_be_received.requested_items_to_be_received.get_pr_naming_series",
-        //     callback: function (r) {
-        //         // console.log("series-------",r)
-        //         if (r.message) {
-
-        //             PR_SERIES_OPTIONS = r.message;
-        //         }
-        //     }
-        // });
         report.page.add_inner_button(
             __("Past Purchase Receipt History"),
             function () {
                 show_past_purchase_history();
             }
         );
-    },
-    before_refresh: function (report) {
-
-        return new Promise((resolve) => {
-            fetch_and_set_branches(report, resolve);
-        });
     }
-
 };
-
-
-function fetch_and_set_branches(report, callback) {
-    frappe.call({
-        method: "frappe.client.get_list",
-        args: {
-            doctype: "User Permission",
-            filters: {
-                user: frappe.session.user,
-                allow: "Branch",
-
-            },
-            fields: ["for_value"],
-            limit: 100
-        },
-        callback: function (r) {
-            if (r.message && r.message.length > 0) {
-                let branches = r.message.map(d => d.for_value);
-                report.set_filter_value("allowed_branches", branches.join(","));
-            } else {
-
-                report.set_filter_value("allowed_branches", "");
-            }
-            if (callback) callback();
-        }
-    });
-
-}
 
 function show_purchase_history_dialog(data) {
     let html = `

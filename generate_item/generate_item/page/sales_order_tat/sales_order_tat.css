@@ -133,35 +133,58 @@
 .sopt-hero-btn {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 8px 14px;
+    justify-content: center;
+    gap: 8px;
+    height: 36px;
+    min-width: 120px;
+    padding: 0 16px;
     border-radius: var(--sopt-radius-sm);
     font-size: 12px;
     font-weight: 600;
+    line-height: 1;
     cursor: pointer;
     transition: all 0.15s ease;
     border: 1px solid transparent;
+    box-sizing: border-box;
+    white-space: nowrap;
+    text-align: center;
+}
+
+.sopt-hero-btn i {
+    font-size: 13px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.sopt-hero-btn span {
+    display: inline-block;
+    line-height: 1;
 }
 
 .sopt-hero-btn.primary {
     background: #3b82f6;
-    color: #fff;
+    color: #ffffff;
+    border-color: #3b82f6;
     box-shadow: 0 2px 4px rgba(37, 99, 235, 0.25);
 }
 
 .sopt-hero-btn.primary:hover {
     background: #2563eb;
+    border-color: #2563eb;
     transform: translateY(-1px);
 }
 
 .sopt-hero-btn.outline {
     background: rgba(255, 255, 255, 0.08);
     color: #ffffff;
-    border-color: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
 .sopt-hero-btn.outline:hover {
     background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.3);
 }
 
 /* --------------------------------------------------------------------------

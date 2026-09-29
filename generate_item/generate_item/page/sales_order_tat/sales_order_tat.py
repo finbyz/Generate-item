@@ -9,7 +9,7 @@ from frappe.utils import getdate, format_date
 @frappe.whitelist()
 def get_dashboard_data(period=None, from_date=None, to_date=None, branch=None, sales_order=None, customer=None):
     """
-    Returns Sales Order Phase Time Dashboard metrics and line items.
+    Returns Sales Order TAT Dashboard metrics and line items.
     Calculates elapsed duration in both weeks and days across exactly 6 stages:
       1. SO Creation → SO Approved
       2. SO Approval → Last BOM Submitted

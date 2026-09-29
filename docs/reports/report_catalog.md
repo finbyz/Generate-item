@@ -54,6 +54,18 @@ Reference: Order Modification Request.
 
 Shows OMR item changes and bulk approval details for change-review users.
 
+### Valve Assembly Report
+
+Reference: Valve Assembly.
+
+Tracks daily serialized assembly throughput by date, branch, batch, sales order, item, and operator. Summarizes total valves assembled and total Inspector Inches.
+
+### Valve Testing Report
+
+Reference: Valve Testing.
+
+Detailed quality assurance report across Pre Testing, Final Testing, and TPI Testing phases. Provides pass/fail metrics, leak defect root cause breakdown, total tested inspector inches, and tester productivity.
+
 ## Sales reports
 
 ### Daily Review Sales Order
@@ -207,6 +219,8 @@ Developers adding a report must update JSON roles as well as server-side permiss
 | `stock_ledger_with_location` | Stock ledger with Location |
 | `stock_production_plan_projected_qty` | Stock Production Plan Projected Qty |
 | `tagging_sheet` | Tagging Sheet |
+| `valve_assembly_report` | Valve Assembly Report |
+| `valve_testing_report` | Valve Testing Report |
 | `vendor_item_list` | Vendor Item List |
 | `work_order_shortage_report` | Work Order Shortage Report |
 

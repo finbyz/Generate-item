@@ -8,13 +8,13 @@
  "modified": "2026-09-28 17:29:32.435908",
  "modified_by": "Administrator",
  "module": "Generate Item",
- "name": "sales-order-time-rev",
+ "name": "sales-order-tat",
  "owner": "Administrator",
- "page_name": "sales-order-time-rev",
+ "page_name": "sales-order-tat",
  "roles": [],
  "script": null,
  "standard": "Yes",
  "style": null,
  "system_page": 0,
- "title": "Sales Order Phase Time Dashboard"
+ "title": "Sales Order TAT"
 }

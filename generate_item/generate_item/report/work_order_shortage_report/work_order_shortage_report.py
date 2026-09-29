@@ -24,8 +24,8 @@ def execute(filters=None):
     item_codes = list({r["input_item_code"] for r in base_data if r.get("input_item_code")})
 
     mr_data_map, all_mr_item_names, mr_item_to_batch = get_material_request_data(batch_numbers, pp_numbers, item_codes)
-    po_data_map, all_po_item_names, po_item_to_batch, all_po_names, po_to_item = get_purchase_order_data(batch_numbers, all_mr_item_names, item_codes, mr_item_to_batch)
-    pr_data_map = get_purchase_receipt_data(all_po_item_names, all_po_names, item_codes, po_item_to_batch, po_to_item)
+    po_data_map, all_po_item_names, po_item_to_batch, all_po_names, po_to_batch = get_purchase_order_data(batch_numbers, all_mr_item_names, item_codes, mr_item_to_batch)
+    pr_data_map = get_purchase_receipt_data(all_po_item_names, all_po_names, item_codes, po_item_to_batch, po_to_batch)
     stock_map = get_stock_data(filters, item_codes)
 
     data = build_final_data(base_data, mr_data_map, po_data_map, pr_data_map, stock_map)
@@ -440,7 +440,7 @@ def get_purchase_order_data(batch_numbers, all_mr_item_names, item_codes, mr_ite
             poi.parent AS po_no,
             poi.item_code,
             COALESCE(poi.stock_qty, poi.qty, 0) AS stock_qty,
-            COALESCE(poi.received_qty_in_stock_uom, poi.received_qty, 0) AS po_received_qty,
+            COALESCE(NULLIF(poi.received_qty_in_stock_uom, 0), poi.received_qty, 0) AS po_received_qty,
             poi.custom_batch_no,
             poi.material_request_item,
             COALESCE(poi.po_line_no, poi.idx) AS po_line_no,
@@ -518,45 +518,38 @@ def get_purchase_order_data(batch_numbers, all_mr_item_names, item_codes, mr_ite
     return po_map, all_po_item_names, po_item_to_batch, all_po_names, po_to_batch
 
 
-def get_purchase_receipt_data(all_po_item_names, all_po_names, batch_numbers, item_codes, po_item_to_batch, po_to_batch):
+def get_purchase_receipt_data(all_po_item_names, all_po_names, item_codes, po_item_to_batch, po_to_batch=None):
     """
-    Fetch Purchase Receipt Items batch-wise.
+    Fetch Purchase Receipt Items strictly mapped by purchase_order_item.
     Splits into:
-    - Submitted receipts (docstatus = 1) -> received_qty (uses received_stock_qty)
+    - Submitted receipts (docstatus = 1) -> received_qty (uses stock_qty)
     - Draft receipts (docstatus = 0) -> receipt_draft_qty (uses stock_qty)
     """
     pr_map = {}
 
-    if not item_codes or (not all_po_item_names and not all_po_names):
+    if not item_codes or not all_po_item_names:
         return pr_map
 
-    params = {"item_codes": tuple(item_codes)}
-    or_clauses = []
-    if all_po_item_names:
-        or_clauses.append("pri.purchase_order_item IN %(po_item_names)s")
-        params["po_item_names"] = tuple(all_po_item_names)
-    if all_po_names:
-        or_clauses.append("pri.purchase_order IN %(po_names)s")
-        params["po_names"] = tuple(all_po_names)
+    params = {
+        "item_codes": tuple(item_codes),
+        "po_item_names": tuple(all_po_item_names)
+    }
 
-    where_clause = f"({' OR '.join(or_clauses)})"
-
-    pr_rows = frappe.db.sql(f"""
+    pr_rows = frappe.db.sql("""
         SELECT
             pri.name AS pri_name,
             pri.parent AS pr_name,
             pri.item_code,
             pri.purchase_order,
             pri.purchase_order_item,
-            COALESCE(pri.received_stock_qty, 0) AS received_stock_qty,
-            COALESCE(pri.stock_qty,  0) AS stock_qty,
+            COALESCE(pri.stock_qty, 0) AS stock_qty,
             pr.docstatus
         FROM `tabPurchase Receipt Item` pri
         JOIN `tabPurchase Receipt` pr ON pr.name = pri.parent
         WHERE
             pr.docstatus IN (0, 1)
             AND pri.item_code IN %(item_codes)s
-            AND {where_clause}
+            AND pri.purchase_order_item IN %(po_item_names)s
     """, params, as_dict=True)
 
     seen_pri = set()
@@ -566,10 +559,10 @@ def get_purchase_receipt_data(all_po_item_names, all_po_names, batch_numbers, it
         seen_pri.add(row.pri_name)
 
         poi_name = row.purchase_order_item
-        po_name = row.purchase_order
+   
         docstatus = row.docstatus
 
-        target_key = po_item_to_batch.get(poi_name) or po_to_batch.get(po_name)
+        target_key = po_item_to_batch.get(poi_name) 
         if not target_key:
             continue
 
@@ -579,10 +572,12 @@ def get_purchase_receipt_data(all_po_item_names, all_po_names, batch_numbers, it
                 "receipt_draft_qty": 0.0
             }
 
+        stock_qty = flt(row.stock_qty)
+
         if docstatus == 1:
-            pr_map[target_key]["received_qty"] += flt(row.stock_qty)
+            pr_map[target_key]["received_qty"] += stock_qty
         elif docstatus == 0:
-            pr_map[target_key]["receipt_draft_qty"] += flt(row.stock_qty)
+            pr_map[target_key]["receipt_draft_qty"] += stock_qty
 
     return pr_map
 

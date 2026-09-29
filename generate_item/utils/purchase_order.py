@@ -14,6 +14,11 @@ def validate(doc, method):
         if i.rate == 0:
             frappe.throw(f"Please enter a valid rate for item in line No. {i.idx}. The rate cannot be 0.",
                          title="Zero Rate Found")
+    try:
+        from generate_item.mould_set_management.po_enhancement import on_po_validate_or_save
+        on_po_validate_or_save(doc, method)
+    except Exception as e:
+        frappe.log_error(f"Error updating mould set info on PO {getattr(doc, 'name', 'New')}: {str(e)}", "Mould Set PO Validate")
 
 
 def validate_duplicate_po(doc, method):
