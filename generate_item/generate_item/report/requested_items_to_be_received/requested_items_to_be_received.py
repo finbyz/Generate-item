@@ -108,9 +108,27 @@ def get_columns():
 
 
 
+def get_user_branches():
+    """Return allowed branches for logged in user"""
+    branches = frappe.get_all(
+        "User Permission",
+        filters={
+            "user": frappe.session.user,
+            "allow": "Branch"
+        },
+        pluck="for_value"
+    )
+    return branches
+
+
 def get_data(filters):
     conditions = []
     values = {}
+
+    allowed_branches = get_user_branches()
+    if allowed_branches:
+        conditions.append("po.branch IN %(allowed_branches)s")
+        values["allowed_branches"] = tuple(allowed_branches)
 
     if filters.get("company"):
         conditions.append("po.company = %(company)s")
@@ -130,12 +148,6 @@ def get_data(filters):
         conditions.append("po.branch = %(branch)s")
         values["branch"] = filters["branch"]
 
-    if filters.get("allowed_branches"):
-        branch_list = [b.strip() for b in filters["allowed_branches"].split(",") if b.strip()]
-        if branch_list:
-            conditions.append("po.branch IN %(allowed_branches)s")
-            values["allowed_branches"] = tuple(branch_list)
-
     created_by = filters.get("created_by")
     if created_by:
         if isinstance(created_by, str):
@@ -153,6 +165,30 @@ def get_data(filters):
     if filters.get("to_date"):
         conditions.append("po.transaction_date <= %(to_date)s")
         values["to_date"] = filters["to_date"]
+
+    status = filters.get("status")
+    if status:
+        if isinstance(status, str):
+            try:
+                import json
+                parsed = json.loads(status)
+                if isinstance(parsed, list):
+                    status_list = parsed
+                else:
+                    status_list = [s.strip() for s in status.replace(",", "\n").split("\n") if s.strip()]
+            except Exception:
+                status_list = [s.strip() for s in status.replace(",", "\n").split("\n") if s.strip()]
+        elif isinstance(status, (list, tuple, set)):
+            status_list = list(status)
+        else:
+            status_list = [status]
+
+        if status_list:
+            conditions.append("po.status IN %(status)s")
+            values["status"] = tuple(status_list)
+    else:
+        conditions.append("po.status IN %(status)s")
+        values["status"] = ("To Receive", "To Receive and Bill")
 
     where_clause = " AND ".join(conditions)
     if where_clause:
