@@ -1,183 +1,147 @@
-# Purchase User Dashboard — Functional User Guide & Documentation
+# Purchase User Dashboard — Data Filtering & Testing Reference
 
-## 1. Overview
-The **Purchase User Dashboard** provides real-time operational visibility and executive insights across the end-to-end procurement cycle in ERPNext. It tracks and measures Material Requests (MR), Purchase Orders (PO), Purchase Receipts (PR), and Purchase Invoices (PI), enabling purchase managers and officers to identify bottlenecks, optimize item fulfillment, and track team output.
+This document details the exact filtering mechanisms, database queries, and testing steps implemented in [purchase_user.py](file:///home/frappe/benches/steelstrong-v16-bench/apps/generate_item/generate_item/generate_item/page/purchase_user/purchase_user.py) and [purchase_user.js](file:///home/frappe/benches/steelstrong-v16-bench/apps/generate_item/generate_item/generate_item/page/purchase_user/purchase_user.js).
 
 ---
 
-## 2. Dashboard Layout & Navigation
+## 1. Global Filter Bar & Permission Logic
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│  HEADER: Title & Operational Summary                                                  │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│  FILTER TOOLBAR: Branch · User · Date Range Preset · Date Picker · Today · Reset · Ref │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│  TOP KPI CARDS: MR Pending · MR Completed · PR Pending · PI Pending · PI Completed    │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│  SECTION 01: Material Request Trend (Item-wise Line Chart / Area Chart)               │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│  SECTION 02: Document Intensity (Document-wise Batching Analysis)                     │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│  SECTION 03: Item Intensity (Item-wise Batching & Searchable Table with CSV Export)   │
-├────────────────────────────────────────────────────────────────────────────────────────┤
-│  SECTION 04: Creator Leaderboards (Most Purchase Orders & Fewest Purchase Orders)     │
-└────────────────────────────────────────────────────────────────────────────────────────┘
+```text
+┌─────────────────┐   ┌──────────────────────┐   ┌────────────────────────┐
+│  BRANCH FILTER  │   │  CREATED BY (USER)   │   │  DATE RANGE / PERIOD   │
+└────────┬────────┘   └──────────┬───────────┘   └───────────┬────────────┘
+         │                       │                           │
+         ▼                       ▼                           ▼
+[tabBranch Perms]      [tabUser Permission BFS]    [transaction_date / posting_date]
 ```
 
----
-
-## 3. Global Filters & Toolbar
-
-| Control | Description | Functional Behavior |
-| :--- | :--- | :--- |
-| **Branch Filter** | Multi-branch dropdown | Filters all metrics, charts, tables, and leaderboards by the selected operating branch or plant. |
-| **Created By / User Filter** | User dropdown | Filters dashboard metrics by the creator (`owner`) with options for `All Allowed Users` and the current logged-in Session User. |
-| **Date Preset Selector** | Quick range dropdown | Select from predefined periods: `Today`, `This Week`, `This Month`, `This Quarter`, `This Year`, `Last Month`, or `Custom`. Automatically calculates comparative previous period ranges for delta calculations. |
-| **Date Range Inputs** | From Date & To Date | Custom start and end date pickers (active when `Custom` preset is selected). |
-| **Today Shortcut** | Quick button | One-click shortcut to set the active filter to today's date. |
-| **Reset Button** | Ghost icon button | Clears all filters back to system defaults (`All Branches`, `All Users`, `This Month`). |
-| **Refresh Button** | Solid action button | Triggers background data refresh without a full page reload. |
+| Filter | Code Identifier | Target DB Column | How It Filters |
+| :--- | :--- | :--- | :--- |
+| **Branch** | `this.filters.branch` | `doc.branch` | Matches the selected plant (e.g. `Sanand`, `Nandikoor`, `Rabale`). Users without unrestricted access only see their permitted branches. |
+| **Created By** | `this.filters.user` | `doc.owner` | Filters records by document creator. Restricted to logged-in user and direct/indirect subordinates in the User Permission hierarchy. |
+| **Period** | `this.filters.from_date`<br>`this.filters.to_date` | `transaction_date`<br>or `posting_date` | • `Material Request` & `Purchase Order`: `transaction_date BETWEEN from_date AND to_date`<br>• `Purchase Receipt` & `Purchase Invoice`: `posting_date BETWEEN from_date AND to_date` |
 
 ---
 
-## 4. Top KPI Cards (Procurement Lifecycle)
+## 2. Child-Table Foreign Key Linkage (Source of Truth)
 
-The dashboard presents 5 primary lifecycle KPI cards at the top. Each card clearly presents two distinct metric levels:
-- **Main Large Number**: Total **Document Count** (e.g. total Material Requests or Purchase Orders).
-- **Line Items Row**: Total **Pending / Completed Child Line Items** within those documents.
-- **Footer**: Aggregated total quantity across line items and comparative period delta.
-- **List View Shortcut**: Quick button to open the filtered ERPNext List View.
+Calculations rely strictly on ERPNext's native child-table row IDs (`name`) and reference fields:
 
-```
-┌────────────────────────┐ ┌────────────────────────┐ ┌────────────────────────┐ ┌────────────────────────┐ ┌────────────────────────┐
-│      MR PENDING        │ │      MR COMPLETED      │ │       PR PENDING       │ │       PI PENDING       │ │   TOTAL PI COMPLETED   │
-│                        │ │                        │ │                        │ │                        │ │                        │
-│ 164 DOCUMENTS          │ │ 320 DOCUMENTS          │ │ 75 DOCUMENTS           │ │ 42 DOCUMENTS           │ │ 210 DOCUMENTS          │
-│ Line Items Pending:    │ │ Line Items Completed:  │ │ Line Items Pending:    │ │ Line Items Pending:    │ │ Line Items Completed:  │
-│ 1,245                  │ │ 2,850                  │ │ 164                    │ │ 96                     │ │ 1,560                  │
-│ 15,400 Qty ▲ +12%      │ │ 38,900 Qty ▲ +5%       │ │ 2,400 Qty ▼ -3%        │ │ 1,100 Qty ▲ +8%        │ │ 18,500 Qty ▲ +14%      │
-│ [↗ List View]          │ │ [↗ List View]          │ │ [↗ List View]          │ │ [↗ List View]          │ │ [↗ List View]          │
-└────────────────────────┘ └────────────────────────┘ └────────────────────────┘ └────────────────────────┘ └────────────────────────┘
+```text
+tabMaterial Request Item (name: "mri_01")
+        │
+        ▼ Purchase Order Item.material_request_item = "mri_01"
+tabPurchase Order Item (name: "poi_01")
+        │
+        ▼ Purchase Receipt Item.purchase_order_item = "poi_01"
+tabPurchase Receipt Item (name: "pri_01")
+        │
+        ▼ Purchase Invoice Item.pr_detail = "pri_01"
+tabPurchase Invoice Item (name: "pii_01")
 ```
 
-### Stage Definitions & Business Logic:
+---
 
-1. **MR Pending (`po_pending`)**:
-   - **Definition**: Material Requests that have been submitted (`docstatus = 1`) where line items still require a Purchase Order (`qty - ordered_qty > 0`).
-   - **Click Action**: Opens a drill-down modal showing all pending Material Requests and item quantities.
-   - **List View Button**: Directly opens `Material Request List` filtered by `status = 'Pending'`.
+## 3. Stage-by-Stage Filtering Logic (`purchase_user.py`)
 
-2. **MR Completed (`mr_completed`)**:
-   - **Definition**: Material Requests where all line items have been fully ordered (`ordered_qty >= qty`).
-   - **Click Action**: Opens a modal showing completed Material Requests.
-   - **List View Button**: Directly opens `Material Request List` filtered by `status = 'Ordered'`.
-
-3. **PR Pending (`pr_pending`)**:
-   - **Definition**: Purchase Orders submitted (`docstatus = 1`) that are pending goods receipt / warehouse delivery (`per_received < 100%`).
-   - **Click Action**: Opens a modal showing Purchase Orders awaiting receipt.
-   - **List View Button**: Directly opens `Purchase Order List` filtered by `status = 'To Receive and Bill'` / `To Receive`.
-
-4. **PI Pending (`pi_pending`)**:
-   - **Definition**: Purchase Orders or Receipts awaiting supplier invoice booking (`per_billed < 100%`).
-   - **Click Action**: Opens a modal showing pending purchase invoices.
-   - **List View Button**: Directly opens `Purchase Order List` filtered by `status = 'To Bill'`.
-
-5. **PI Completed (`pi_completed`)**:
-   - **Definition**: Fully completed, received, and billed procurement cycles (`per_received >= 100%` and `per_billed >= 100%`).
-   - **Click Action**: Opens a modal showing completed POs.
-   - **List View Button**: Directly opens `Purchase Order List` filtered by `status = 'Completed'`.
+### Card 1 · MR Pending (`id: "po_pending"`)
+* **Parent Doctype**: `Material Request` (`docstatus = 1`, `material_request_type = 'Purchase'`, `status NOT IN ('Stopped', 'Cancelled')`).
+* **Child Table**: `Material Request Item` where `(qty - COALESCE(ordered_qty, 0)) > 0`.
+* **Metric Calculation**:
+  * **Document Count**: `COUNT(DISTINCT mr.name)`
+  * **Line Items Pending**: `COUNT(mri.name)`
+  * **Total Quantity**: `SUM(mri.qty - mri.ordered_qty)`
+* **Special Rule**: **Branch filter applies, User filter is BYPASSED**. Pending Material Requests represent plant-wide requirements rather than individual buyer tasks.
 
 ---
 
-## 5. Section 01 · Material Request Trend (Item-wise)
-
-- **Purpose**: Displays the daily or weekly progression of procurement requirements over the selected timeframe.
-- **Visuals**: Interactive dual-series area chart:
-  - 🔵 **Total Items Requested**: Line item volume raised in Material Requests.
-  - 🟢 **Items Ordered / Fulfilled**: Line item volume converted into Purchase Orders.
-- **Interactivity**: Hover over data points to inspect date-wise counts, rates of fulfillment, and comparative volume.
-
----
-
-## 6. Section 02 · Document Intensity (Document-wise)
-
-- **Purpose**: Analyzes document complexity by grouping procurement transactions by the number of line items per document.
-- **Stage Pills**: Filter between `All Stages`, `MR Pending`, `MR Ordered`, `PR Pending`, `PI Pending`, and `PI Completed`.
-- **4 Complexity Buckets**:
-  1. **Single Item (1 Item)**: Fast-track, single-line purchases.
-  2. **2 Items**: Dual-item procurement.
-  3. **3 Items**: Medium-sized purchase documents.
-  4. **4+ Items (Heavy)**: Complex, high-density multi-line orders requiring extra attention.
-- **Branch Breakdown**: Each card displays a mini bar graph and branch-specific item counts (e.g. *Plant 1, Plant 2, Corporate*).
-- **Drill-Down**: Clicking any intensity card opens a modal listing all matching documents with clickable links.
+### Card 2 · PO Converted (`id: "mr_completed"`)
+* **Linkage**: `tabPurchase Order Item.material_request_item = tabMaterial Request Item.name`.
+* **Parent Doctype**: `Purchase Order` (`docstatus = 1`, date in period, matches user & branch).
+* **Child Table**: `Material Request Item` linked to submitted Purchase Order Items.
+* **Metric Calculation**:
+  * **Document Count**: `COUNT(DISTINCT mr.name)` (Unique Material Requests converted to PO).
+  * **Line Items Converted**: `COUNT(DISTINCT mri.name)` (Unique MR Item row IDs converted).
+  * **Total Quantity**: `SUM(poi.qty)`
 
 ---
 
-## 7. Section 03 · Item Intensity & Live Searchable Table
-
-### A. Item Intensity Buckets
-Categorizes individual line items based on how many separate procurement documents they appear in during the selected period:
-- **Single Doc (1)**: Items appearing in only 1 purchase document.
-- **2 Docs**: Moderately requested items.
-- **3 Docs**: Frequently requisitioned items.
-- **4+ Docs (High Frequency)**: High-demand items requiring consolidated bulk purchasing agreements.
-
-### B. Searchable Item Table
-A real-time, interactive table embedded directly below the intensity cards:
-- **Instant Search**: Type item code, item name, or linked document number to instantly filter line items.
-- **Stage Tabs**: Quick buttons with live count pills (`All Items`, `MR Pending`, `MR Ordered`, `PR Pending`, `PI Pending`, `PI Completed`).
-- **Columns Displayed**:
-  - `Item Code` (Clickable link to Item master)
-  - `Item Name` & `Supplier`
-  - `Stage Badge`
-  - `Pending Qty` with colored alert tags (amber if pending, green if 0)
-  - `Total Qty` & `UOM`
-  - `Est. Amount` (Formatted in `₹` INR currency)
-  - `Branch / Warehouse`
-  - `Linked Documents` (Clickable chips routing directly to source Material Request or Purchase Order forms)
-- **CSV Export**: Click the **"Export CSV"** button to download all filtered line items into an Excel-ready `.csv` file.
+### Card 3 · PR Pending (`id: "pr_pending"`)
+* **Parent Doctype**: `Purchase Order` (`docstatus = 1`, `status NOT IN ('Closed', 'Cancelled', 'Delivered', 'Completed')`).
+* **Child Table**: `Purchase Order Item` where `(qty - COALESCE(received_qty, 0)) > 0`.
+* **Metric Calculation**:
+  * **Document Count**: `COUNT(DISTINCT po.name)`
+  * **Line Items Pending**: `COUNT(poi.name)`
+  * **Total Quantity**: `SUM(poi.qty - poi.received_qty)`
 
 ---
 
-## 8. Section 04 · Creator Leaderboard (Purchase Orders)
+### Card 4 · PI Pending (`id: "pi_pending"`)
+* **Parent Doctype**: `Purchase Receipt` (`docstatus = 1`, `is_return = 0`, `status IN ('Partly Billed', 'To Bill', 'Partially Billed')`).
+* **Child Table**: `Purchase Receipt Item` where `(amount - COALESCE(billed_amt, 0)) > 0`.
+* **Metric Calculation**:
+  * **Document Count**: `COUNT(DISTINCT pr.name)`
+  * **Line Items Pending**: `COUNT(pri.name)`
+  * **Total Amount**: `SUM(pri.amount - pri.billed_amt)`
 
-Provides performance visibility into user workload and procurement throughput.
+---
 
+### Card 5 · Total PI Completed (`id: "pi_completed"`)
+* **Parent Doctype**: `Purchase Invoice` (`docstatus = 1`, `is_return = 0`, `posting_date` in period).
+* **Child Table**: `Purchase Invoice Item`.
+* **Metric Calculation**:
+  * **Document Count**: `COUNT(DISTINCT pi.name)`
+  * **Line Items Completed**: `COUNT(pii.name)`
+  * **Total Amount**: `SUM(pii.amount)`
+
+---
+
+## 4. UI Actions & Drill-Down Routing (`purchase_user.js`)
+
+1. **Card Click (Modal Popup)**:
+   * Opens `#pud-modal` displaying parent documents (`it.ao`), dates (`it.date`), creators (`it.who`), and branches (`it.branch`).
+   * Expanding a document reveals the table of child items (`it.doc_items`) with item codes, names, pending quantities, schedule dates, and amounts.
+2. **List View Button ([↗ List])**:
+   * Directly routes to ERPNext standard List View with pre-populated filters matching the active card stage, branch, and date range.
+3. **Section 02 (Document Intensity)**:
+   * Groups documents into `1 Item`, `2 Items`, `3 Items`, and `3+ Items` buckets with branch distribution. Clicking any bucket opens the matching document modal.
+4. **Section 03 (Item-wise Summary Table)**:
+   * Aggregates line items by `(item_code, stage_id)`. Includes live multi-column search and **Export CSV** download.
+5. **Section 04 (Leaderboards)**:
+   * Ranks buyers by PO count and grand total. Clicking any buyer opens their Purchase Orders in ERPNext List View.
+
+---
+
+## 5. How to Test & Verify
+
+### Verification via Python Bench Console:
+```bash
+bench --site steelstrong.finbyz.com console
 ```
-┌──────────────────────────────────────┐  ┌──────────────────────────────────────┐
-│  🏆 MOST PURCHASE ORDERS             │  │  📉 FEWEST PURCHASE ORDERS           │
-│  Top creators by submitted PO count  │  │  Creators with lower PO volume       │
-├──────────────────────────────────────┤  ├──────────────────────────────────────┤
-│  🔍 Search creator...                │  │  🔍 Search creator...                │
-│                                      │  │                                      │
-│  🥇 [JD] John Doe       42 POs · ₹12L│  │  1.  [AS] Alice Smith   2 POs · ₹45K │
-│  🥈 [RK] Rahul Kumar    35 POs · ₹8.5L│ │  2.  [VK] Vikas K       3 POs · ₹80K │
-│  🥉 [PS] Priya Sharma   28 POs · ₹6.1L│ │  3.  [NB] Neha B        4 POs · ₹1.1L│
-│  4.  [AM] Amit Mehta    19 POs · ₹4.2L│ │  4.  [RP] Ravi Patel    5 POs · ₹1.8L│
-│  5.  [SK] Suresh K      14 POs · ₹2.9L│ │  5.  [MK] Manoj K       6 POs · ₹2.2L│
-│                                      │  │                                      │
-│  [ ▼ View More ]                     │  │  [ ▼ View More ]                     │
-└──────────────────────────────────────┘  └──────────────────────────────────────┘
+```python
+import frappe
+from generate_item.generate_item.page.purchase_user.purchase_user import get_dashboard
+
+# Test for today's date
+data = get_dashboard(from_date="2026-09-30", to_date="2026-09-30")
+
+for card in data["cards"]:
+    print(f"[{card['title']}] Count: {card['count']} Docs, {card['line_item_count']} Line Items | Modal Items: {len(card.get('items', []))}")
 ```
 
-### Key Leaderboard Features:
-1. **Most Purchase Orders (Left Card)**:
-   - Ranks users in descending order of submitted Purchase Orders (`docstatus = 1`).
-   - Highlights top 3 performers with gold (🥇), silver (🥈), and bronze (🥉) medals.
-2. **Fewest Purchase Orders (Right Card)**:
-   - Ranks users in ascending order to identify team members who may have capacity or require re-allocation.
-3. **Metrics per User**:
-   - Initials Avatar with distinctive color palette.
-   - Total submitted PO count (`X POs`).
-   - Total currency value badge (`₹ Amount`).
-   - Proportional visual progress bar.
-4. **Interactive Controls**:
-   - **In-card Search**: Live filter creators by typing their name or email.
-   - **View More Toggle**: Defaults to top 5 users; click `View More` to expand the full list of contributors.
-   - **Open in List View on Click**: Clicking any creator row immediately opens the **Purchase Order List View** filtered by that creator (`owner = user`), submitted status (`docstatus = 1`), and active dashboard date/branch filters.
-   - **Header List View Button**: Click the `List View` button in the card header to view all Purchase Orders in the period.
-   - **Export CSV**: Export creator breakdown data to CSV with one click.
-
----
-
+### Verification via SQL (Card 1 Example):
+```sql
+SELECT 
+    mr.name AS mr_id,
+    mri.item_code,
+    mri.qty,
+    mri.ordered_qty,
+    (mri.qty - COALESCE(mri.ordered_qty, 0)) AS pending_qty
+FROM `tabMaterial Request` mr
+INNER JOIN `tabMaterial Request Item` mri ON mr.name = mri.parent AND mri.parenttype = 'Material Request'
+WHERE mr.docstatus = 1 
+  AND mr.material_request_type = 'Purchase'
+  AND mr.status NOT IN ('Stopped', 'Cancelled')
+  AND (mri.qty - COALESCE(mri.ordered_qty, 0)) > 0
+  AND mr.transaction_date = '2026-09-30';
+```

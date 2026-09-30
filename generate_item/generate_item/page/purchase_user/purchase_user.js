@@ -338,7 +338,7 @@ class PurchaseUserDashboard {
 					<div class="pud-stage-pills-bar" data-pills="order-change">
 						<button type="button" class="pud-stage-pill active" data-stage="all">${__("All Stages")}</button>
 						<button type="button" class="pud-stage-pill" data-stage="po_pending">${__("MR Pending")}</button>
-						<button type="button" class="pud-stage-pill" data-stage="mr_completed">${__("MR Ordered")}</button>
+						<button type="button" class="pud-stage-pill" data-stage="mr_completed">${__("PO Converted")}</button>
 						<button type="button" class="pud-stage-pill" data-stage="pr_pending">${__("PR Pending")}</button>
 						<button type="button" class="pud-stage-pill" data-stage="pi_pending">${__("PI Pending")}</button>
 						<button type="button" class="pud-stage-pill" data-stage="pi_completed">${__("PI Completed")}</button>
@@ -357,7 +357,7 @@ class PurchaseUserDashboard {
 					<div class="pud-stage-pills-bar" data-pills="batch-change">
 						<button type="button" class="pud-stage-pill active" data-stage="all">${__("All Stages")}</button>
 						<button type="button" class="pud-stage-pill" data-stage="po_pending">${__("MR Pending")}</button>
-						<button type="button" class="pud-stage-pill" data-stage="mr_completed">${__("MR Ordered")}</button>
+						<button type="button" class="pud-stage-pill" data-stage="mr_completed">${__("PO Converted")}</button>
 						<button type="button" class="pud-stage-pill" data-stage="pr_pending">${__("PR Pending")}</button>
 						<button type="button" class="pud-stage-pill" data-stage="pi_pending">${__("PI Pending")}</button>
 						<button type="button" class="pud-stage-pill" data-stage="pi_completed">${__("PI Completed")}</button>
@@ -375,7 +375,7 @@ class PurchaseUserDashboard {
 								<div class="pud-item-stage-tabs" role="tablist">
 									<button type="button" class="pud-stage-tab-btn active" data-tab="all">${__("All Items")} <span class="pud-count-pill" id="pud-pill-all">0</span></button>
 									<button type="button" class="pud-stage-tab-btn" data-tab="po_pending">${__("MR Pending")} <span class="pud-count-pill" id="pud-pill-po">0</span></button>
-									<button type="button" class="pud-stage-tab-btn" data-tab="mr_completed">${__("MR Ordered")} <span class="pud-count-pill" id="pud-pill-mr">0</span></button>
+									<button type="button" class="pud-stage-tab-btn" data-tab="mr_completed">${__("PO Converted")} <span class="pud-count-pill" id="pud-pill-mr">0</span></button>
 									<button type="button" class="pud-stage-tab-btn" data-tab="pr_pending">${__("PR Pending")} <span class="pud-count-pill" id="pud-pill-pr">0</span></button>
 									<button type="button" class="pud-stage-tab-btn" data-tab="pi_pending">${__("PI Pending")} <span class="pud-count-pill" id="pud-pill-pi">0</span></button>
 									<button type="button" class="pud-stage-tab-btn" data-tab="pi_completed">${__("PI Completed")} <span class="pud-count-pill" id="pud-pill-cmp">0</span></button>
@@ -2190,7 +2190,7 @@ class PurchaseUserDashboard {
 			doctype = "Material Request";
 			filters.docstatus = 1;
 			filters.material_request_type = "Purchase";
-			filters.status = ["in", ["Partially Received", "Ordered", "Issued", "Transferred", "Received"]];
+			filters.status = ["in", ["Partially Received", "Partially Ordered", "Ordered", "Issued", "Transferred", "Received"]];
 		} else if (cardId === "pr_pending") {
 			doctype = "Purchase Order";
 			filters.docstatus = 1;

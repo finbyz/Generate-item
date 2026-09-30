@@ -1087,6 +1087,27 @@ class SalesOrderTracker {
 				return `<td class="aot-grp-start aot-doc-cell"><span class="aot-muted">—</span></td>`;
 			}
 
+			if (col.key === 'bom') {
+				const bomStatus = d.status || (d.docstatus === 1 ? 'Approved' : 'Pending');
+				const [bg, ink] = this.tone(bomStatus);
+				if (d.name) {
+					return `
+						<td class="aot-grp-start aot-doc-cell">
+							<div class="aot-combined-cell">
+								<a href="javascript:void(0)" class="aot-doc-link aot-mini-pill" style="background:${bg};color:${ink};text-decoration:none;font-weight:600;display:inline-block;" data-doctype="BOM" data-name="${frappe.utils.escape_html(d.name)}" data-batch="${frappe.utils.escape_html(it.batch_no || '')}" title="${__('Open BOM')} ${frappe.utils.escape_html(d.name)}">
+									${frappe.utils.escape_html(bomStatus)}
+								</a>
+							</div>
+						</td>
+					`;
+				}
+				return `
+					<td class="aot-grp-start aot-doc-cell">
+						<span class="aot-mini-pill" style="background:${bg};color:${ink};">${frappe.utils.escape_html(bomStatus)}</span>
+					</td>
+				`;
+			}
+
 			if (d.count && d.count > 1) {
 				const plural = col.full_label || (col.label + 's');
 				return `
@@ -1162,6 +1183,27 @@ class SalesOrderTracker {
 			const d = ao.docs ? ao.docs[col.key] : null;
 			if (!d) {
 				return `<td class="aot-grp-start aot-doc-cell"><span class="aot-muted">—</span></td>`;
+			}
+
+			if (col.key === 'bom') {
+				const bomStatus = d.status || (d.docstatus === 1 ? 'Approved' : 'Pending');
+				const [bg, ink] = this.tone(bomStatus);
+				if (d.name) {
+					return `
+						<td class="aot-grp-start aot-doc-cell">
+							<div class="aot-combined-cell">
+								<a href="javascript:void(0)" class="aot-doc-link aot-mini-pill" style="background:${bg};color:${ink};text-decoration:none;font-weight:600;display:inline-block;" data-doctype="BOM" data-name="${frappe.utils.escape_html(d.name)}" title="${__('Open BOM')} ${frappe.utils.escape_html(d.name)}">
+									${frappe.utils.escape_html(bomStatus)}
+								</a>
+							</div>
+						</td>
+					`;
+				}
+				return `
+					<td class="aot-grp-start aot-doc-cell">
+						<span class="aot-mini-pill" style="background:${bg};color:${ink};">${frappe.utils.escape_html(bomStatus)}</span>
+					</td>
+				`;
 			}
 
 			if (d.count && d.count > 1) {
@@ -1271,6 +1313,22 @@ class SalesOrderTracker {
 									const docTrailPills = this.doc_columns.map(col => {
 										const d = (it.docs || {})[col.key];
 										if (!d) return '';
+										if (col.key === 'bom') {
+											const bomStatus = d.status || (d.docstatus === 1 ? 'Approved' : 'Pending');
+											const [bBg, bInk] = this.tone(bomStatus);
+											if (d.name) {
+												return `
+													<span class="aot-nested-doc-pill" style="color:${col.color};">
+														BOM: <a href="javascript:void(0)" class="aot-doc-link aot-nested-mini-pill" style="background:${bBg};color:${bInk};text-decoration:none;font-weight:600;" data-doctype="BOM" data-name="${frappe.utils.escape_html(d.name)}" data-batch="${frappe.utils.escape_html(it.batch_no || '')}" title="${__('Open BOM')} ${frappe.utils.escape_html(d.name)}">${frappe.utils.escape_html(bomStatus)}</a>
+													</span>
+												`;
+											}
+											return `
+												<span class="aot-nested-doc-pill" style="color:${col.color};" title="BOM: ${frappe.utils.escape_html(bomStatus)}">
+													BOM: <span class="aot-nested-mini-pill" style="background:${bBg};color:${bInk};">${frappe.utils.escape_html(bomStatus)}</span>
+												</span>
+											`;
+										}
 										const [bg, ink] = this.tone(d.status);
 										if (d.count > 1) {
 											return `
@@ -1360,7 +1418,7 @@ class SalesOrderTracker {
 
 	tone(status) {
 		const TONE = {
-			'Partially Ordered': 'amber', Submitted: 'amber', Expired: 'red', 'To Receive and Bill': 'amber',
+			'Partially Ordered': 'amber', Submitted: 'green', Pending: 'amber', Expired: 'red', 'To Receive and Bill': 'amber',
 			Received: 'green', Unpaid: 'amber', Draft: 'gray', Approved: 'green', Completed: 'green',
 			'Pending Approval': 'amber', Passed: 'green', Failed: 'red', Open: 'amber', Closed: 'green',
 			Booked: 'green', Confirmed: 'green', Converted: 'green', Posted: 'green', Paid: 'green'
