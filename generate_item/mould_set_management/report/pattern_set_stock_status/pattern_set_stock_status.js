@@ -17,7 +17,7 @@ frappe.query_reports["Pattern Set Stock Status"] = {
 			options: "Item",
 			get_query: () => {
 				return {
-					query: "generate_item.mould_set_management.doctype.component_transfer.component_transfer.mould_set_item_query",
+					query: "generate_item.mould_set_management.doctype.pattern_movement.pattern_movement.mould_set_item_query",
 				};
 			},
 		},

@@ -8,11 +8,23 @@ from frappe.utils import flt, get_link_to_form
 from erpnext.stock.utils import get_stock_balance
 
 
-class ComponentTransfer(Document):
+class PatternMovement(Document):
 	def validate(self):
+		self.validate_purpose_and_suppliers()
 		self.validate_warehouses()
-		self.resolve_mould_set()
 		self.validate_items()
+
+	def validate_purpose_and_suppliers(self):
+		if self.purpose == "Company to Supplier":
+			if not self.to_supplier:
+				frappe.throw(_("To Supplier is mandatory when Purpose is Company to Supplier."))
+		elif self.purpose == "Supplier to Supplier":
+			if not self.from_supplier:
+				frappe.throw(_("From Supplier is mandatory when Purpose is Supplier to Supplier."))
+			if not self.to_supplier:
+				frappe.throw(_("To Supplier is mandatory when Purpose is Supplier to Supplier."))
+			if self.from_supplier == self.to_supplier:
+				frappe.throw(_("From Supplier and To Supplier cannot be the same."))
 
 	def validate_warehouses(self):
 		if not self.from_warehouse:
@@ -21,26 +33,6 @@ class ComponentTransfer(Document):
 			frappe.throw(_("To Warehouse is required."))
 		if self.from_warehouse == self.to_warehouse:
 			frappe.throw(_("From Warehouse and To Warehouse cannot be the same."))
-
-	def resolve_mould_set(self):
-		if self.mould_set_item and not self.mould_set:
-			mould_set = frappe.db.get_value(
-				"Pattern Set",
-				{"item": self.mould_set_item, "is_default": 1, "disable": 0, "docstatus": ["!=", 2]},
-				"name",
-			)
-			if not mould_set:
-				mould_set = frappe.db.get_value(
-					"Pattern Set",
-					{"item": self.mould_set_item, "disable": 0, "docstatus": ["!=", 2]},
-					"name",
-				)
-			if mould_set:
-				self.mould_set = mould_set
-			else:
-				frappe.throw(
-					_("No active Pattern Set found for Item {0}.").format(frappe.bold(self.mould_set_item))
-				)
 
 	def validate_items(self):
 		if not self.items:
@@ -115,7 +107,7 @@ class ComponentTransfer(Document):
 		stock_entry.posting_date = self.posting_date
 		stock_entry.posting_time = self.posting_time
 		stock_entry.remarks = (
-			f"Material Transfer for Pattern Set {self.mould_set_item} via Component Transfer {self.name}"
+			f"Material Transfer for Pattern Set {self.mould_set} via Pattern Movement {self.name}"
 		)
 
 		for item in self.items:
@@ -170,7 +162,8 @@ class ComponentTransfer(Document):
 
 @frappe.whitelist()
 def get_mould_set_components(
-	mould_set_item,
+	mould_set=None,
+	mould_set_item=None,
 	transfer_type="All Components (Complete Set)",
 	component=None,
 	set_qty=1.0,
@@ -178,20 +171,16 @@ def get_mould_set_components(
 	to_warehouse=None,
 ):
 	"""
-	Auto-fetches all components linked to the selected Pattern Set item.
+	Auto-fetches all components linked to the selected Pattern Set.
 	"""
-	mould_set = frappe.db.get_value(
-		"Pattern Set",
-		{"item": mould_set_item, "is_default": 1, "disable": 0, "docstatus": ["!=", 2]},
-		"name",
-	)
-	if not mould_set:
+	if not mould_set and mould_set_item:
 		mould_set = frappe.db.get_value(
 			"Pattern Set",
 			{"item": mould_set_item, "disable": 0, "docstatus": ["!=", 2]},
 			"name",
 		)
-	if not mould_set:
+
+	if not mould_set or not frappe.db.exists("Pattern Set", mould_set):
 		return {"mould_set": None, "items": []}
 
 	mould_set_doc = frappe.get_doc("Pattern Set", mould_set)
@@ -226,30 +215,6 @@ def get_mould_set_components(
 
 
 @frappe.whitelist()
-def mould_set_item_query(doctype, txt, searchfield, start, page_len, filters):
-	"""
-	Filter for mould_set_item field to only show items that have an active Pattern Set.
-	"""
-	search_cond = ""
-	if txt:
-		search_cond = "AND (i.name LIKE %(txt)s OR i.item_name LIKE %(txt)s)"
-
-	return frappe.db.sql(
-		f"""
-		SELECT DISTINCT i.name, i.item_name
-		FROM `tabItem` i
-		INNER JOIN `tabPattern Set` ms ON ms.item = i.name
-		WHERE ms.docstatus != 2 AND ifnull(ms.disable, 0) = 0
-		{search_cond}
-		ORDER BY i.name ASC
-		LIMIT %(start)s, %(page_len)s
-		""",
-		{"txt": f"%{txt}%", "start": start, "page_len": page_len},
-		as_list=1,
-	)
-
-
-@frappe.whitelist()
 def component_item_query(doctype, txt, searchfield, start, page_len, filters):
 	"""
 	Filter component field to only show items that are components of the selected pattern set.
@@ -276,3 +241,26 @@ def component_item_query(doctype, txt, searchfield, start, page_len, filters):
 		as_list=1,
 	)
 
+
+@frappe.whitelist()
+def mould_set_item_query(doctype, txt, searchfield, start, page_len, filters):
+	"""
+	Filter for mould_set_item field to only show items that have an active Pattern Set.
+	"""
+	search_cond = ""
+	if txt:
+		search_cond = "AND (i.name LIKE %(txt)s OR i.item_name LIKE %(txt)s)"
+
+	return frappe.db.sql(
+		f"""
+		SELECT DISTINCT i.name, i.item_name
+		FROM `tabItem` i
+		INNER JOIN `tabPattern Set` ms ON ms.name = i.name OR ms.item = i.name
+		WHERE ms.docstatus != 2 AND ifnull(ms.disable, 0) = 0
+		{search_cond}
+		ORDER BY i.name ASC
+		LIMIT %(start)s, %(page_len)s
+		""",
+		{"txt": f"%{txt}%", "start": start, "page_len": page_len},
+		as_list=1,
+	)

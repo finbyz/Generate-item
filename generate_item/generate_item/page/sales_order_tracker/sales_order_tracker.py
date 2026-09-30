@@ -192,10 +192,8 @@ def get_sales_order_list(
 		so_filters["status"] = ["not in", ["Closed", "Completed", "Cancelled"]]
 	elif so_status.lower() == "all":
 		pass  # keep docstatus != 2
-	elif so_status in ("To Deliver and Bill", "To Build and Deliver"):
-		so_filters["status"] = ["in", ["To Deliver and Bill", "To Build and Deliver"]]
-	elif so_status == "To Build":
-		so_filters["status"] = ["in", ["To Deliver and Bill", "To Build and Deliver", "To Deliver"]]
+	elif so_status in ("To Deliver and Bill"):
+		so_filters["status"] = ["in", ["To Deliver and Bill"]]
 	else:
 		so_filters["status"] = so_status
 
@@ -235,10 +233,8 @@ def get_sales_order_list(
 		so_item_conds.append("so.status not in ('Closed', 'Completed', 'Cancelled')")
 	elif so_status.lower() == "all":
 		pass
-	elif so_status in ("To Deliver and Bill", "To Build and Deliver"):
-		so_item_conds.append("so.status in ('To Deliver and Bill', 'To Build and Deliver')")
-	elif so_status == "To Build":
-		so_item_conds.append("so.status in ('To Deliver and Bill', 'To Build and Deliver', 'To Deliver')")
+	elif so_status in ("To Deliver and Bill"):
+		so_item_conds.append("so.status in ('To Deliver and Bill')")
 	else:
 		so_item_conds.append("so.status = %(so_status)s")
 		so_item_vals["so_status"] = so_status
@@ -512,10 +508,8 @@ def get_sales_order_list(
 			so_join_conds.append("so.status not in ('Closed', 'Completed', 'Cancelled')")
 		elif so_status.lower() == "all":
 			pass
-		elif so_status in ("To Deliver and Bill", "To Build and Deliver"):
-			so_join_conds.append("so.status in ('To Deliver and Bill', 'To Build and Deliver')")
-		elif so_status == "To Build":
-			so_join_conds.append("so.status in ('To Deliver and Bill', 'To Build and Deliver', 'To Deliver')")
+		elif so_status in ("To Deliver and Bill"):
+			so_join_conds.append("so.status in ('To Deliver and Bill')")
 		else:
 			so_join_conds.append("so.status = %(so_status)s")
 			so_join_vals["so_status"] = so_status
@@ -568,13 +562,14 @@ def bulk_prefetch_docs(sales_orders_list, all_so_items, branch=None):
 		return {}, {}
 
 	so_names = [s.name for s in sales_orders_list]
-	so_item_names = [it.so_item_name for it in all_so_items if it.get("so_item_name")]
+	all_discovered_docnames = defaultdict(set)
 
 	so_docnames_map = defaultdict(lambda: defaultdict(set))
 	item_docnames_map = defaultdict(lambda: defaultdict(set))
-	batch_docnames_map = defaultdict(lambda: defaultdict(set))
-	item_code_docnames_map = defaultdict(lambda: defaultdict(set))
-	all_discovered_docnames = defaultdict(set)
+
+	items_by_so = defaultdict(list)
+	for it in all_so_items:
+		items_by_so[it.sales_order].append(it)
 
 	# 1. Quotations
 	for it in all_so_items:
@@ -591,206 +586,552 @@ def bulk_prefetch_docs(sales_orders_list, all_so_items, branch=None):
 				so_docnames_map[so.name]["quote"].add(q_no)
 				all_discovered_docnames["Quotation"].add(q_no)
 
-	# 1b. BOMs (via Sales Order, SO Item, Batch, or Item Default)
+	# 2. BOMs
+	# Match ONLY Finished Good item for each SO item line.
+	# Apply Batch filter if batch exists.
 	if doctype_installed("BOM"):
 		item_codes_set = {it.item_code for it in all_so_items if it.get("item_code")}
 		bom_where = ["sales_order in %(so_names)s"]
 		bom_vals = {"so_names": so_names}
 		if item_codes_set:
-			bom_where.append("(item in %(item_codes)s and is_default = 1 and is_active = 1)")
+			bom_where.append("(item in %(item_codes)s and is_default = 1 and is_active = 1 and docstatus = 1)")
 			bom_vals["item_codes"] = tuple(item_codes_set)
+
+		has_cb_field = field_exists("BOM", "custom_batch_no")
+		cb_select = "custom_batch_no" if has_cb_field else "NULL as custom_batch_no"
 
 		bom_rows = frappe.db.sql(
 			f"""
-			select name, item, sales_order, custom_batch_no, is_default, is_active
+			select name, item, sales_order, {cb_select}, is_default, is_active, docstatus, workflow_state, total_cost
 			from `tabBOM`
 			where docstatus != 2 and ({' or '.join(bom_where)})
 			""",
 			bom_vals,
 			as_dict=True,
 		)
-		for b_row in bom_rows:
-			bname = b_row.name
-			all_discovered_docnames["BOM"].add(bname)
-			so = b_row.sales_order
-			cb = b_row.custom_batch_no
-			ic = b_row.item
-			if so:
-				so_docnames_map[so]["bom"].add(bname)
+		boms_by_item_so_batch = defaultdict(list)
+		boms_by_item_so = defaultdict(list)
+		default_boms_by_item = defaultdict(list)
+
+		for b in bom_rows:
+			all_discovered_docnames["BOM"].add(b.name)
+			ic = b.item
+			so = b.sales_order
+			cb = (b.custom_batch_no or "").strip()
+			if so and ic:
 				if cb:
-					batch_docnames_map[(so, cb)]["bom"].add(bname)
-				if ic:
-					item_code_docnames_map[(so, ic)]["bom"].add(bname)
-			elif ic and b_row.is_default:
-				for so_n in so_names:
-					item_code_docnames_map[(so_n, ic)]["bom"].add(bname)
+					boms_by_item_so_batch[(so, ic, cb)].append(b)
+				else:
+					boms_by_item_so[(so, ic)].append(b)
+			if ic and b.is_default and b.is_active and b.docstatus == 1:
+				default_boms_by_item[ic].append(b)
 
 		for it in all_so_items:
 			b_no = it.get("bom_no")
 			if b_no:
-				so_docnames_map[it.sales_order]["bom"].add(b_no)
-				item_docnames_map[(it.sales_order, it.so_item_name)]["bom"].add(b_no)
 				all_discovered_docnames["BOM"].add(b_no)
 
-	# 1c. Production Plans (via Production Plan Item and Production Plan Sales Order)
+		for it in all_so_items:
+			so_n = it.sales_order
+			soi_n = it.so_item_name
+			ic = it.item_code
+			b_no = (it.get("batch_no") or "").strip()
+			explicit_bom = it.get("bom_no")
+
+			matched_bom = None
+			if b_no and boms_by_item_so_batch.get((so_n, ic, b_no)):
+				candidates = boms_by_item_so_batch[(so_n, ic, b_no)]
+				submitted = [c for c in candidates if c.docstatus == 1]
+				matched_bom = submitted[0].name if submitted else candidates[0].name
+			elif explicit_bom:
+				matched_bom = explicit_bom
+			elif boms_by_item_so.get((so_n, ic)):
+				candidates = boms_by_item_so[(so_n, ic)]
+				submitted = [c for c in candidates if c.docstatus == 1]
+				matched_bom = submitted[0].name if submitted else candidates[0].name
+			elif default_boms_by_item.get(ic):
+				matched_bom = default_boms_by_item[ic][0].name
+
+			if matched_bom:
+				item_docnames_map[(so_n, soi_n)]["bom"].add(matched_bom)
+				so_docnames_map[so_n]["bom"].add(matched_bom)
+
+	# 3. Production Plans
+	pp_by_so_item = defaultdict(set)
+	pp_by_so_batch = defaultdict(set)
+	pp_by_so = defaultdict(set)
+	all_pp_names = set()
+
 	if doctype_installed("Production Plan"):
 		if doctype_installed("Production Plan Item"):
-			pp_items = frappe.db.sql(
-				"""
-				select parent as docname, sales_order, sales_order_item, custom_batch_no, item_code, bom_no
+			has_ppi_cb = field_exists("Production Plan Item", "custom_batch_no")
+			ppi_cb_col = "custom_batch_no" if has_ppi_cb else "NULL as custom_batch_no"
+			ppi_rows = frappe.db.sql(
+				f"""
+				select parent as pp_name, name as ppi_name, sales_order, sales_order_item, item_code, {ppi_cb_col}, bom_no
 				from `tabProduction Plan Item`
 				where docstatus != 2 and sales_order in %(so_names)s
 				""",
 				{"so_names": so_names},
 				as_dict=True,
 			)
-			for ppi in pp_items:
-				pname = ppi.docname
-				all_discovered_docnames["Production Plan"].add(pname)
-				so = ppi.sales_order
-				soi = ppi.sales_order_item
-				cb = ppi.custom_batch_no
+			for ppi in ppi_rows:
+				pp_name = ppi.pp_name
+				so_n = ppi.sales_order
+				soi_n = ppi.sales_order_item
+				cb = (ppi.custom_batch_no or "").strip()
 				ic = ppi.item_code
 				bom = ppi.bom_no
-				if so:
-					so_docnames_map[so]["pp"].add(pname)
-					if soi:
-						item_docnames_map[(so, soi)]["pp"].add(pname)
-					if cb:
-						batch_docnames_map[(so, cb)]["pp"].add(pname)
-					if ic:
-						item_code_docnames_map[(so, ic)]["pp"].add(pname)
-					if bom:
-						all_discovered_docnames["BOM"].add(bom)
-						so_docnames_map[so]["bom"].add(bom)
-						if soi:
-							item_docnames_map[(so, soi)]["bom"].add(bom)
-						if cb:
-							batch_docnames_map[(so, cb)]["bom"].add(bom)
+
+				all_discovered_docnames["Production Plan"].add(pp_name)
+				all_pp_names.add(pp_name)
+				so_docnames_map[so_n]["pp"].add(pp_name)
+				pp_by_so[so_n].add(pp_name)
+
+				if soi_n:
+					item_docnames_map[(so_n, soi_n)]["pp"].add(pp_name)
+					pp_by_so_item[(so_n, soi_n)].add(pp_name)
+				if cb:
+					pp_by_so_batch[(so_n, cb)].add(pp_name)
+
+				if bom and ic:
+					for it in items_by_so[so_n]:
+						if it.item_code == ic and ((not cb) or (it.get("batch_no") == cb)):
+							if not item_docnames_map[(so_n, it.so_item_name)]["bom"]:
+								item_docnames_map[(so_n, it.so_item_name)]["bom"].add(bom)
+								so_docnames_map[so_n]["bom"].add(bom)
+								all_discovered_docnames["BOM"].add(bom)
 
 		if doctype_installed("Production Plan Sales Order"):
-			pp_so_rows = frappe.db.sql(
+			ppso_rows = frappe.db.sql(
 				"""
-				select parent as docname, sales_order
+				select parent as pp_name, sales_order
 				from `tabProduction Plan Sales Order`
 				where docstatus != 2 and sales_order in %(so_names)s
 				""",
 				{"so_names": so_names},
 				as_dict=True,
 			)
-			for ppr in pp_so_rows:
-				all_discovered_docnames["Production Plan"].add(ppr.docname)
-				so_docnames_map[ppr.sales_order]["pp"].add(ppr.docname)
+			for ppso in ppso_rows:
+				pp_name = ppso.pp_name
+				so_n = ppso.sales_order
+				all_discovered_docnames["Production Plan"].add(pp_name)
+				all_pp_names.add(pp_name)
+				so_docnames_map[so_n]["pp"].add(pp_name)
+				pp_by_so[so_n].add(pp_name)
 
-	# 2. Child tables for MR, PO, SCO, SCR, DN, SI, PR, PI
-	doc_specs = [
-		{"key": "mr", "doctype": "Material Request", "item_doctype": "Material Request Item", "so_field": "sales_order", "soi_field": "sales_order_item"},
-		{"key": "po", "doctype": "Purchase Order", "item_doctype": "Purchase Order Item", "so_field": "sales_order", "soi_field": "sales_order_item"},
-		{"key": "sco", "doctype": "Subcontracting Order", "item_doctype": "Subcontracting Order Item", "so_field": "against_sales_order", "soi_field": "sales_order_item"},
-		{"key": "scr", "doctype": "Subcontracting Receipt", "item_doctype": "Subcontracting Receipt Item", "so_field": "against_sales_order", "soi_field": "sales_order_item"},
-		{"key": "dn", "doctype": "Delivery Note", "item_doctype": "Delivery Note Item", "so_field": "against_sales_order", "soi_field": "so_detail"},
-		{"key": "si", "doctype": "Sales Invoice", "item_doctype": "Sales Invoice Item", "so_field": "sales_order", "soi_field": "so_detail"},
-		{"key": "pr", "doctype": "Purchase Receipt", "item_doctype": "Purchase Receipt Item", "so_field": "sales_order", "soi_field": "sales_order_item", "po_field": "purchase_order"},
-		{"key": "pi", "doctype": "Purchase Invoice", "item_doctype": "Purchase Invoice Item", "so_field": "sales_order", "soi_field": "sales_order_item", "po_field": "purchase_order"},
-	]
+	# 4. Material Requests
+	mr_names_set = set()
+	mr_to_so_map = defaultdict(set)
+	mr_to_soi_map = defaultdict(set)
 
+	if doctype_installed("Material Request") and doctype_installed("Material Request Item"):
+		mri_conds = []
+		mri_vals = {"so_names": so_names}
+		has_mri_so = field_exists("Material Request Item", "sales_order")
+		has_mri_pp = field_exists("Material Request Item", "production_plan")
+		has_mri_cb = field_exists("Material Request Item", "custom_batch_no")
+		has_mri_soi = field_exists("Material Request Item", "sales_order_item")
+
+		mri_so_expr = "mri.sales_order" if has_mri_so else "NULL as sales_order"
+		mri_pp_expr = "mri.production_plan" if has_mri_pp else "NULL as production_plan"
+		mri_cb_expr = "mri.custom_batch_no" if has_mri_cb else "NULL as custom_batch_no"
+		mri_soi_expr = "mri.sales_order_item" if has_mri_soi else "NULL as sales_order_item"
+
+		if has_mri_so:
+			mri_conds.append("mri.sales_order in %(so_names)s")
+		if has_mri_pp and all_pp_names:
+			mri_conds.append("mri.production_plan in %(pp_names)s")
+			mri_vals["pp_names"] = tuple(all_pp_names)
+
+		mri_rows = []
+		if mri_conds:
+			mri_rows = frappe.db.sql(
+				f"""
+				select mri.parent as mr_name, {mri_so_expr}, {mri_soi_expr}, {mri_pp_expr},
+					   {mri_cb_expr}, mri.item_code
+				from `tabMaterial Request Item` mri
+				where mri.docstatus != 2 and ({' or '.join(mri_conds)})
+				""",
+				mri_vals,
+				as_dict=True,
+			)
+
+		ppmr_rows = []
+		if all_pp_names and doctype_installed("Production Plan Material Request"):
+			ppmr_rows = frappe.db.sql(
+				"""
+				select parent as pp_name, material_request as mr_name
+				from `tabProduction Plan Material Request`
+				where docstatus != 2 and parent in %(pp_names)s and material_request is not null
+				""",
+				{"pp_names": tuple(all_pp_names)},
+				as_dict=True,
+			)
+
+		pp_to_so = defaultdict(set)
+		pp_to_soi = defaultdict(set)
+		pp_to_batch = defaultdict(set)
+		for so_n, pps in pp_by_so.items():
+			for p in pps:
+				pp_to_so[p].add(so_n)
+		for (so_n, soi_n), pps in pp_by_so_item.items():
+			for p in pps:
+				pp_to_soi[p].add((so_n, soi_n))
+		for (so_n, cb), pps in pp_by_so_batch.items():
+			for p in pps:
+				pp_to_batch[p].add((so_n, cb))
+
+		for mri in mri_rows:
+			mr_n = mri.mr_name
+			all_discovered_docnames["Material Request"].add(mr_n)
+			mr_names_set.add(mr_n)
+			so_n = mri.get("sales_order")
+			soi_n = mri.get("sales_order_item")
+			pp_n = mri.get("production_plan")
+			cb = (mri.get("custom_batch_no") or "").strip()
+
+			if so_n:
+				so_docnames_map[so_n]["mr"].add(mr_n)
+				mr_to_so_map[mr_n].add(so_n)
+				if soi_n:
+					item_docnames_map[(so_n, soi_n)]["mr"].add(mr_n)
+					mr_to_soi_map[mr_n].add((so_n, soi_n))
+				elif cb:
+					for it in items_by_so[so_n]:
+						if (it.get("batch_no") or "").strip() == cb:
+							item_docnames_map[(so_n, it.so_item_name)]["mr"].add(mr_n)
+							mr_to_soi_map[mr_n].add((so_n, it.so_item_name))
+			elif pp_n:
+				for s in pp_to_so.get(pp_n, []):
+					so_docnames_map[s]["mr"].add(mr_n)
+					mr_to_so_map[mr_n].add(s)
+				for (s, soi) in pp_to_soi.get(pp_n, []):
+					item_docnames_map[(s, soi)]["mr"].add(mr_n)
+					mr_to_soi_map[mr_n].add((s, soi))
+				for (s, b) in pp_to_batch.get(pp_n, []):
+					if (not cb) or (cb == b):
+						for it in items_by_so[s]:
+							if (it.get("batch_no") or "").strip() == b:
+								item_docnames_map[(s, it.so_item_name)]["mr"].add(mr_n)
+								mr_to_soi_map[mr_n].add((s, it.so_item_name))
+
+		for ppmr in ppmr_rows:
+			mr_n = ppmr.mr_name
+			pp_n = ppmr.pp_name
+			all_discovered_docnames["Material Request"].add(mr_n)
+			mr_names_set.add(mr_n)
+			for s in pp_to_so.get(pp_n, []):
+				so_docnames_map[s]["mr"].add(mr_n)
+				mr_to_so_map[mr_n].add(s)
+			for (s, soi) in pp_to_soi.get(pp_n, []):
+				item_docnames_map[(s, soi)]["mr"].add(mr_n)
+				mr_to_soi_map[mr_n].add((s, soi))
+
+	# 5. Purchase Orders
 	po_names_set = set()
 	po_to_so_map = defaultdict(set)
 	po_to_soi_map = defaultdict(set)
 
-	for spec in doc_specs:
-		key = spec["key"]
-		doctype = spec["doctype"]
-		item_doctype = spec["item_doctype"]
-		so_field = spec["so_field"]
-		soi_field = spec["soi_field"]
-		po_field = spec.get("po_field")
+	if doctype_installed("Purchase Order") and doctype_installed("Purchase Order Item"):
+		poi_conds = []
+		poi_vals = {"so_names": so_names}
+		has_poi_so = field_exists("Purchase Order Item", "sales_order")
+		has_poi_mr = field_exists("Purchase Order Item", "material_request")
+		has_poi_pp = field_exists("Purchase Order Item", "production_plan")
+		has_poi_cb = field_exists("Purchase Order Item", "custom_batch_no")
+		has_poi_soi = field_exists("Purchase Order Item", "sales_order_item")
 
-		if not doctype_installed(doctype) or not doctype_installed(item_doctype):
-			continue
+		poi_so_expr = "poi.sales_order" if has_poi_so else "NULL as sales_order"
+		poi_soi_expr = "poi.sales_order_item" if has_poi_soi else "NULL as sales_order_item"
+		poi_mr_expr = "poi.material_request" if has_poi_mr else "NULL as material_request"
+		poi_pp_expr = "poi.production_plan" if has_poi_pp else "NULL as production_plan"
+		poi_cb_expr = "poi.custom_batch_no" if has_poi_cb else "NULL as custom_batch_no"
 
-		has_b = field_exists(item_doctype, "batch_no")
-		has_cb = field_exists(item_doctype, "custom_batch_no")
-		b_expr = "cdt.batch_no" if has_b else ("cdt.custom_batch_no" if has_cb else "NULL")
+		if has_poi_so:
+			poi_conds.append("poi.sales_order in %(so_names)s")
+		if has_poi_mr and mr_names_set:
+			poi_conds.append("poi.material_request in %(mr_names)s")
+			poi_vals["mr_names"] = tuple(mr_names_set)
+		if has_poi_pp and all_pp_names:
+			poi_conds.append("poi.production_plan in %(pp_names)s")
+			poi_vals["pp_names"] = tuple(all_pp_names)
 
-		has_soi = soi_field and field_exists(item_doctype, soi_field)
-		soi_expr = f"cdt.{soi_field}" if has_soi else "NULL"
+		if poi_conds:
+			poi_rows = frappe.db.sql(
+				f"""
+				select poi.parent as po_name, {poi_so_expr}, {poi_soi_expr}, {poi_mr_expr},
+					   {poi_pp_expr}, {poi_cb_expr}
+				from `tabPurchase Order Item` poi
+				where poi.docstatus != 2 and ({' or '.join(poi_conds)})
+				""",
+				poi_vals,
+				as_dict=True,
+			)
+			for poi in poi_rows:
+				po_n = poi.po_name
+				all_discovered_docnames["Purchase Order"].add(po_n)
+				po_names_set.add(po_n)
+				so_n = poi.get("sales_order")
+				soi_n = poi.get("sales_order_item")
+				mr_n = poi.get("material_request")
+				pp_n = poi.get("production_plan")
+				cb = (poi.get("custom_batch_no") or "").strip()
 
-		has_sof = so_field and field_exists(item_doctype, so_field)
-		sof_expr = f"cdt.{so_field}" if has_sof else "NULL"
+				if so_n:
+					so_docnames_map[so_n]["po"].add(po_n)
+					po_to_so_map[po_n].add(so_n)
+					if soi_n:
+						item_docnames_map[(so_n, soi_n)]["po"].add(po_n)
+						po_to_soi_map[po_n].add((so_n, soi_n))
+					elif cb:
+						for it in items_by_so[so_n]:
+							if (it.get("batch_no") or "").strip() == cb:
+								item_docnames_map[(so_n, it.so_item_name)]["po"].add(po_n)
+								po_to_soi_map[po_n].add((so_n, it.so_item_name))
+				elif mr_n and mr_n in mr_to_so_map:
+					for s in mr_to_so_map[mr_n]:
+						so_docnames_map[s]["po"].add(po_n)
+						po_to_so_map[po_n].add(s)
+					for (s, soi) in mr_to_soi_map[mr_n]:
+						item_docnames_map[(s, soi)]["po"].add(po_n)
+						po_to_soi_map[po_n].add((s, soi))
+				elif pp_n:
+					for s in pp_to_so.get(pp_n, []):
+						so_docnames_map[s]["po"].add(po_n)
+						po_to_so_map[po_n].add(s)
+					for (s, soi) in pp_to_soi.get(pp_n, []):
+						item_docnames_map[(s, soi)]["po"].add(po_n)
+						po_to_soi_map[po_n].add((s, soi))
 
-		has_po = po_field and field_exists(item_doctype, po_field)
-		po_expr = f"cdt.{po_field}" if has_po else "NULL"
+	# 6. Purchase Receipts
+	if doctype_installed("Purchase Receipt") and doctype_installed("Purchase Receipt Item"):
+		pri_conds = []
+		pri_vals = {"so_names": so_names}
+		has_pri_so = field_exists("Purchase Receipt Item", "sales_order")
+		has_pri_po = field_exists("Purchase Receipt Item", "purchase_order")
+		has_pri_mr = field_exists("Purchase Receipt Item", "material_request")
+		has_pri_cb = field_exists("Purchase Receipt Item", "custom_batch_no")
+		has_pri_soi = field_exists("Purchase Receipt Item", "sales_order_item")
 
-		has_item_code = field_exists(item_doctype, "item_code")
-		ic_expr = "cdt.item_code" if has_item_code else "NULL"
+		pri_so_expr = "pri.sales_order" if has_pri_so else "NULL as sales_order"
+		pri_soi_expr = "pri.sales_order_item" if has_pri_soi else "NULL as sales_order_item"
+		pri_po_expr = "pri.purchase_order" if has_pri_po else "NULL as purchase_order"
+		pri_mr_expr = "pri.material_request" if has_pri_mr else "NULL as material_request"
+		pri_cb_expr = "pri.custom_batch_no" if has_pri_cb else "NULL as custom_batch_no"
 
-		where_clauses = []
-		vals = {"so_names": so_names}
+		if has_pri_so:
+			pri_conds.append("pri.sales_order in %(so_names)s")
+		if has_pri_po and po_names_set:
+			pri_conds.append("pri.purchase_order in %(po_names)s")
+			pri_vals["po_names"] = tuple(po_names_set)
+		if has_pri_mr and mr_names_set:
+			pri_conds.append("pri.material_request in %(mr_names)s")
+			pri_vals["mr_names"] = tuple(mr_names_set)
 
-		if has_sof:
-			where_clauses.append(f"cdt.{so_field} in %(so_names)s")
-		if has_soi and so_item_names:
-			where_clauses.append(f"cdt.{soi_field} in %(so_item_names)s")
-			vals["so_item_names"] = so_item_names
-		if po_field and has_po and po_names_set:
-			where_clauses.append(f"cdt.{po_field} in %(po_names)s")
-			vals["po_names"] = list(po_names_set)
+		if pri_conds:
+			pri_rows = frappe.db.sql(
+				f"""
+				select pri.parent as pr_name, {pri_so_expr}, {pri_soi_expr}, {pri_po_expr},
+					   {pri_mr_expr}, {pri_cb_expr}
+				from `tabPurchase Receipt Item` pri
+				where pri.docstatus != 2 and ({' or '.join(pri_conds)})
+				""",
+				pri_vals,
+				as_dict=True,
+			)
+			for pri in pri_rows:
+				pr_n = pri.pr_name
+				all_discovered_docnames["Purchase Receipt"].add(pr_n)
+				so_n = pri.get("sales_order")
+				soi_n = pri.get("sales_order_item")
+				po_n = pri.get("purchase_order")
+				mr_n = pri.get("material_request")
+				cb = (pri.get("custom_batch_no") or "").strip()
 
-		if not where_clauses:
-			continue
+				if so_n:
+					so_docnames_map[so_n]["pr"].add(pr_n)
+					if soi_n:
+						item_docnames_map[(so_n, soi_n)]["pr"].add(pr_n)
+					elif cb:
+						for it in items_by_so[so_n]:
+							if (it.get("batch_no") or "").strip() == cb:
+								item_docnames_map[(so_n, it.so_item_name)]["pr"].add(pr_n)
+				elif po_n and po_n in po_to_so_map:
+					for s in po_to_so_map[po_n]:
+						so_docnames_map[s]["pr"].add(pr_n)
+					for (s, soi) in po_to_soi_map[po_n]:
+						item_docnames_map[(s, soi)]["pr"].add(pr_n)
+				elif mr_n and mr_n in mr_to_so_map:
+					for s in mr_to_so_map[mr_n]:
+						so_docnames_map[s]["pr"].add(pr_n)
+					for (s, soi) in mr_to_soi_map[mr_n]:
+						item_docnames_map[(s, soi)]["pr"].add(pr_n)
 
-		rows = frappe.db.sql(
+	# 7. Purchase Invoices
+	pi_names_set = set()
+	pi_to_so_map = defaultdict(set)
+	pi_to_soi_map = defaultdict(set)
+
+	if doctype_installed("Purchase Invoice") and doctype_installed("Purchase Invoice Item"):
+		if po_names_set:
+			pii_rows = frappe.db.sql(
+				"""
+				select pii.parent as pi_name, pii.purchase_order
+				from `tabPurchase Invoice Item` pii
+				where pii.docstatus != 2 and pii.purchase_order in %(po_names)s
+				""",
+				{"po_names": tuple(po_names_set)},
+				as_dict=True,
+			)
+			for pii in pii_rows:
+				pi_n = pii.pi_name
+				po_n = pii.purchase_order
+				all_discovered_docnames["Purchase Invoice"].add(pi_n)
+				pi_names_set.add(pi_n)
+				for s in po_to_so_map.get(po_n, []):
+					so_docnames_map[s]["pi"].add(pi_n)
+					pi_to_so_map[pi_n].add(s)
+				for (s, soi) in po_to_soi_map[po_n]:
+					item_docnames_map[(s, soi)]["pi"].add(pi_n)
+					pi_to_soi_map[pi_n].add((s, soi))
+
+	# 8. Delivery Note
+	if doctype_installed("Delivery Note") and doctype_installed("Delivery Note Item"):
+		has_dni_sod = field_exists("Delivery Note Item", "so_detail")
+		has_dni_cb = field_exists("Delivery Note Item", "custom_batch_no")
+		has_dni_b = field_exists("Delivery Note Item", "batch_no")
+
+		dni_sod_expr = "dni.so_detail" if has_dni_sod else "NULL as so_detail"
+		dni_cb_expr = "dni.custom_batch_no" if has_dni_cb else ("dni.batch_no" if has_dni_b else "NULL as custom_batch_no")
+
+		dni_rows = frappe.db.sql(
 			f"""
-			select cdt.parent as docname, {sof_expr} as sales_order, {soi_expr} as so_item,
-				   {b_expr} as batch_no, {ic_expr} as item_code, {po_expr} as purchase_order
-			from `tab{item_doctype}` cdt
-			where cdt.docstatus != 2 and ({' or '.join(where_clauses)})
+			select dni.parent as dn_name, dni.against_sales_order as sales_order, {dni_sod_expr},
+				   dni.item_code, {dni_cb_expr}
+			from `tabDelivery Note Item` dni
+			where dni.docstatus != 2 and dni.against_sales_order in %(so_names)s
 			""",
-			vals,
+			{"so_names": so_names},
 			as_dict=True,
 		)
+		for dni in dni_rows:
+			dn_n = dni.dn_name
+			so_n = dni.sales_order
+			sod = dni.get("so_detail")
+			ic = dni.item_code
+			b_no = (dni.get("custom_batch_no") or "").strip()
+			all_discovered_docnames["Delivery Note"].add(dn_n)
+			so_docnames_map[so_n]["dn"].add(dn_n)
+			if sod:
+				item_docnames_map[(so_n, sod)]["dn"].add(dn_n)
+			else:
+				for it in items_by_so[so_n]:
+					if it.item_code == ic and ((not b_no) or ((it.get("batch_no") or "").strip() == b_no)):
+						item_docnames_map[(so_n, it.so_item_name)]["dn"].add(dn_n)
 
-		for r in rows:
-			dname = r.docname
-			all_discovered_docnames[doctype].add(dname)
-			so = r.sales_order
-			soi = r.so_item
-			b = r.batch_no
-			ic = r.item_code
-			po = r.purchase_order
+	# 9. Sales Invoice
+	si_names_set = set()
+	si_to_so_map = defaultdict(set)
+	si_to_soi_map = defaultdict(set)
 
-			if key == "po":
-				po_names_set.add(dname)
-				if so:
-					po_to_so_map[dname].add(so)
-				if soi:
-					po_to_soi_map[dname].add((so, soi))
+	if doctype_installed("Sales Invoice") and doctype_installed("Sales Invoice Item"):
+		has_sii_sod = field_exists("Sales Invoice Item", "so_detail")
+		has_sii_cb = field_exists("Sales Invoice Item", "custom_batch_no")
+		has_sii_b = field_exists("Sales Invoice Item", "batch_no")
 
-			if key in ("pr", "pi") and po and po in po_names_set:
-				for mapped_so in po_to_so_map.get(po, []):
-					so_docnames_map[mapped_so][key].add(dname)
-				for mapped_so, mapped_soi in po_to_soi_map.get(po, []):
-					item_docnames_map[(mapped_so, mapped_soi)][key].add(dname)
+		sii_sod_expr = "sii.so_detail" if has_sii_sod else "NULL as so_detail"
+		sii_cb_expr = "sii.custom_batch_no" if has_sii_cb else ("sii.batch_no" if has_sii_b else "NULL as custom_batch_no")
 
-			if so:
-				so_docnames_map[so][key].add(dname)
-				if soi:
-					item_docnames_map[(so, soi)][key].add(dname)
-				if b:
-					batch_docnames_map[(so, b)][key].add(dname)
-				if ic:
-					item_code_docnames_map[(so, ic)][key].add(dname)
+		sii_rows = frappe.db.sql(
+			f"""
+			select sii.parent as si_name, sii.sales_order, {sii_sod_expr},
+				   sii.item_code, {sii_cb_expr}
+			from `tabSales Invoice Item` sii
+			where sii.docstatus != 2 and sii.sales_order in %(so_names)s
+			""",
+			{"so_names": so_names},
+			as_dict=True,
+		)
+		for sii in sii_rows:
+			si_n = sii.si_name
+			so_n = sii.sales_order
+			sod = sii.get("so_detail")
+			ic = sii.item_code
+			b_no = (sii.get("custom_batch_no") or "").strip()
+			all_discovered_docnames["Sales Invoice"].add(si_n)
+			so_docnames_map[so_n]["si"].add(si_n)
+			si_names_set.add(si_n)
+			si_to_so_map[si_n].add(so_n)
+			if sod:
+				item_docnames_map[(so_n, sod)]["si"].add(si_n)
+				si_to_soi_map[si_n].add((so_n, sod))
+			else:
+				for it in items_by_so[so_n]:
+					if it.item_code == ic and ((not b_no) or ((it.get("batch_no") or "").strip() == b_no)):
+						item_docnames_map[(so_n, it.so_item_name)]["si"].add(si_n)
+						si_to_soi_map[si_n].add((so_n, it.so_item_name))
 
-	# 3. Direct header table links for Delivery Note and Sales Invoice
-	for h_dt, h_key in [("Delivery Note", "dn"), ("Sales Invoice", "si")]:
-		if doctype_installed(h_dt) and field_exists(h_dt, "sales_order"):
-			h_rows = frappe.get_all(h_dt, filters={"sales_order": ["in", so_names], "docstatus": ["!=", 2]}, fields=["name", "sales_order"])
-			for hr in h_rows:
-				so_docnames_map[hr.sales_order][h_key].add(hr.name)
-				all_discovered_docnames[h_dt].add(hr.name)
+	# 10. Payment Entries (Payment Paid - pe_out & Payment Received - pe_in)
+	if doctype_installed("Payment Entry") and doctype_installed("Payment Entry Reference"):
+		pe_conds = []
+		pe_vals = {"so_names": tuple(so_names)}
+		pe_conds.append("(per.reference_doctype = 'Sales Order' and per.reference_name in %(so_names)s)")
+		if pi_names_set:
+			pe_conds.append("(per.reference_doctype = 'Purchase Invoice' and per.reference_name in %(pi_names)s)")
+			pe_vals["pi_names"] = tuple(pi_names_set)
+		if po_names_set:
+			pe_conds.append("(per.reference_doctype = 'Purchase Order' and per.reference_name in %(po_names)s)")
+			pe_vals["po_names"] = tuple(po_names_set)
+		if si_names_set:
+			pe_conds.append("(per.reference_doctype = 'Sales Invoice' and per.reference_name in %(si_names)s)")
+			pe_vals["si_names"] = tuple(si_names_set)
 
-	# 4. Bulk Query Headers
+		pe_rows = frappe.db.sql(
+			f"""
+			select per.parent as pe_name, per.reference_doctype, per.reference_name, pe.payment_type
+			from `tabPayment Entry Reference` per
+			inner join `tabPayment Entry` pe on pe.name = per.parent
+			where pe.docstatus != 2 and ({' or '.join(pe_conds)})
+			""",
+			pe_vals,
+			as_dict=True,
+		)
+		for per in pe_rows:
+			pe_n = per.pe_name
+			ref_dt = per.reference_doctype
+			ref_n = per.reference_name
+			ptype = per.payment_type
+			all_discovered_docnames["Payment Entry"].add(pe_n)
+
+			if ptype in ("Pay", "Internal Transfer"):
+				if ref_dt == "Purchase Invoice":
+					for s in pi_to_so_map.get(ref_n, []):
+						so_docnames_map[s]["pe_out"].add(pe_n)
+					for (s, soi) in pi_to_soi_map.get(ref_n, []):
+						item_docnames_map[(s, soi)]["pe_out"].add(pe_n)
+				elif ref_dt == "Purchase Order":
+					for s in po_to_so_map.get(ref_n, []):
+						so_docnames_map[s]["pe_out"].add(pe_n)
+					for (s, soi) in po_to_soi_map.get(ref_n, []):
+						item_docnames_map[(s, soi)]["pe_out"].add(pe_n)
+				elif ref_dt == "Sales Order":
+					so_docnames_map[ref_n]["pe_out"].add(pe_n)
+					for it in items_by_so.get(ref_n, []):
+						item_docnames_map[(ref_n, it.so_item_name)]["pe_out"].add(pe_n)
+
+			if ptype in ("Receive", "Internal Transfer"):
+				if ref_dt == "Sales Invoice":
+					for s in si_to_so_map.get(ref_n, []):
+						so_docnames_map[s]["pe_in"].add(pe_n)
+					for (s, soi) in si_to_soi_map.get(ref_n, []):
+						item_docnames_map[(s, soi)]["pe_in"].add(pe_n)
+				elif ref_dt == "Sales Order":
+					so_docnames_map[ref_n]["pe_in"].add(pe_n)
+					for it in items_by_so.get(ref_n, []):
+						item_docnames_map[(ref_n, it.so_item_name)]["pe_in"].add(pe_n)
+
+	# Bulk Query Headers
 	headers_cache = defaultdict(dict)
 	for doctype, docnames in all_discovered_docnames.items():
 		if not docnames:
@@ -814,6 +1155,7 @@ def bulk_prefetch_docs(sales_orders_list, all_so_items, branch=None):
 				"name": d.name,
 				"creation": d.creation,
 				"status": doc_status,
+				"docstatus": d.get("docstatus"),
 				"amount": flt(d.get("amount", 0)),
 				"doctype": doctype,
 			}
@@ -821,7 +1163,13 @@ def bulk_prefetch_docs(sales_orders_list, all_so_items, branch=None):
 	def _resolve(doctype, docname_set):
 		if not docname_set:
 			return None
-		valid_docs = [headers_cache[doctype][dn] for dn in docname_set if dn in headers_cache[doctype]]
+		valid_docs = [
+			headers_cache[doctype][dn]
+			for dn in docname_set
+			if dn in headers_cache[doctype]
+			and headers_cache[doctype][dn].get("docstatus") != 2
+			and str(headers_cache[doctype][dn].get("status") or "").lower() != "cancelled"
+		]
 		if not valid_docs:
 			return None
 		valid_docs.sort(key=lambda x: str(x["creation"] or ""), reverse=True)
@@ -830,40 +1178,75 @@ def bulk_prefetch_docs(sales_orders_list, all_so_items, branch=None):
 			"name": latest["name"],
 			"creation": str(latest["creation"]),
 			"status": latest["status"],
+			"docstatus": latest["docstatus"],
 			"amount": latest["amount"],
 			"doctype": doctype,
-			"count": len(docname_set),
+			"count": len(valid_docs),
 		}
 
 	so_docs_result = {}
-	for so in sales_orders_list:
-		so_name = so.name
-		docs = {}
-		for k in LIST_DOC_KEYS:
-			dt = DOC_CONFIG[k]["doctype"]
-			docs[k] = _resolve(dt, so_docnames_map[so_name][k])
-		docs["so"] = {"name": so_name, "doctype": "Sales Order", "status": so.get("status"), "count": 1}
-		so_docs_result[so_name] = docs
-
 	item_docs_result = {}
-	for it in all_so_items:
-		so_name = it.sales_order
-		so_item_name = it.so_item_name
-		b_no = it.get("batch_no")
-		ic = it.item_code
 
+	# Resolve items
+	for it in all_so_items:
+		so_n = it.sales_order
+		soi_n = it.so_item_name
 		docs = {}
 		for k in LIST_DOC_KEYS:
 			dt = DOC_CONFIG[k]["doctype"]
-			names = set(item_docnames_map[(so_name, so_item_name)][k])
-			if b_no:
-				names.update(batch_docnames_map[(so_name, b_no)][k])
-			if ic:
-				names.update(item_code_docnames_map[(so_name, ic)][k])
-			docs[k] = _resolve(dt, names)
+			names = item_docnames_map[(so_n, soi_n)][k]
+			resolved = _resolve(dt, names)
+			if k == "bom":
+				if resolved and resolved.get("docstatus") == 1:
+					docs["bom"] = {
+						"doctype": "BOM",
+						"name": resolved["name"],
+						"creation": resolved["creation"],
+						"status": "Approved",
+						"docstatus": 1,
+						"count": 1,
+					}
+				else:
+					docs["bom"] = {
+						"doctype": "BOM",
+						"name": resolved["name"] if resolved else None,
+						"creation": resolved["creation"] if resolved else None,
+						"status": "Pending",
+						"docstatus": 0,
+						"count": 0,
+					}
+			else:
+				docs[k] = resolved
 
-		docs["so"] = {"name": so_name, "doctype": "Sales Order", "status": so_docs_result.get(so_name, {}).get("so", {}).get("status"), "count": 1}
-		item_docs_result[(so_name, so_item_name)] = docs
+		docs["so"] = {"name": so_n, "doctype": "Sales Order", "status": next((s.status for s in sales_orders_list if s.name == so_n), None), "count": 1}
+		item_docs_result[(so_n, soi_n)] = docs
+
+	# Resolve SO header
+	for so in sales_orders_list:
+		so_n = so.name
+		docs = {}
+		for k in LIST_DOC_KEYS:
+			if k == "bom":
+				so_items = items_by_so[so_n]
+				all_approved = bool(so_items) and all(
+					(item_docs_result.get((so_n, it.so_item_name), {}).get("bom") or {}).get("status") in ("Approved", "Submitted")
+					for it in so_items
+				)
+				bom_names = list(so_docnames_map[so_n]["bom"])
+				latest_bom = _resolve("BOM", bom_names)
+				docs["bom"] = {
+					"doctype": "BOM",
+					"name": latest_bom["name"] if latest_bom else None,
+					"creation": latest_bom["creation"] if latest_bom else None,
+					"status": "Approved" if all_approved else "Pending",
+					"docstatus": 1 if all_approved else 0,
+					"count": len(so_items),
+				}
+			else:
+				dt = DOC_CONFIG[k]["doctype"]
+				docs[k] = _resolve(dt, so_docnames_map[so_n][k])
+		docs["so"] = {"name": so_n, "doctype": "Sales Order", "status": so.status, "count": 1}
+		so_docs_result[so_n] = docs
 
 	return so_docs_result, item_docs_result
 
@@ -872,57 +1255,69 @@ def determine_pending(docs, so_doc=None):
 	so_status = so_doc.get("status") if so_doc else (docs.get("so") or {}).get("status")
 	if so_status == "Completed":
 		return "Completed", None
-	if so_status in PENDING_STATUSES:
+	if so_status in ("Draft", "Pending Approval", "To Approve", "On Hold", "Stopped", "Cancelled"):
 		return "Sales Order", "so"
 
 	# 1. BOM
 	bom = docs.get("bom")
-	if not bom or bom.get("status") in PENDING_STATUSES:
+	if not bom or bom.get("status") not in ("Approved", "Submitted"):
 		return "BOM", "bom"
 
 	# 2. Production Plan
 	pp = docs.get("pp")
-	if not pp or pp.get("status") in PENDING_STATUSES:
+	if not pp or pp.get("docstatus") == 0 or pp.get("status") in ("Draft", "Pending Approval", "To Approve"):
 		return "Production Plan", "pp"
 
-	# 3. Material Request
+	# 3. Material Request & Downstream Trace
 	mr = docs.get("mr")
-	if not mr or mr.get("status") in PENDING_STATUSES:
+	po = docs.get("po")
+	sco = docs.get("sco")
+	pr = docs.get("pr")
+	scr = docs.get("scr")
+	pi = docs.get("pi")
+	dn = docs.get("dn")
+	si = docs.get("si")
+
+	if not mr and not po and not sco and not pr and not scr and not pi and not dn and not si:
+		return "Material Request", "mr"
+
+	if mr and (mr.get("docstatus") == 0 or mr.get("status") in ("Draft", "Pending Approval", "To Approve")) and not po and not sco and not pr and not scr and not pi and not dn and not si:
 		return "Material Request", "mr"
 
 	# 4. Purchase Order
-	po = docs.get("po")
-	sco = docs.get("sco")
-	if not po and not sco:
+	if not po and not sco and not pr and not scr and not pi and not dn and not si:
 		return "Purchase Order", "po"
-	if (po and po.get("status") in PENDING_STATUSES) and not (sco and sco.get("status") not in PENDING_STATUSES):
+
+	if (po and (po.get("docstatus") == 0 or po.get("status") in ("Draft", "Pending Approval", "To Approve"))) and not pr and not scr and not pi and not dn and not si:
 		return "Purchase Order", "po"
-	if (sco and sco.get("status") in PENDING_STATUSES) and not (po and po.get("status") not in PENDING_STATUSES):
+	if (sco and (sco.get("docstatus") == 0 or sco.get("status") in ("Draft", "Pending Approval", "To Approve"))) and not pr and not scr and not pi and not dn and not si:
 		return "Purchase Order", "sco"
 
 	# 5. Purchase Receipt
-	pr = docs.get("pr")
-	scr = docs.get("scr")
-	if not pr and not scr:
+	if not pr and not scr and not pi and not dn and not si:
+		return "Purchase Order", "po"
+
+	if (pr and (pr.get("docstatus") == 0 or pr.get("status") in ("Draft", "Pending Approval", "To Approve"))) and not pi and not dn and not si:
 		return "Purchase Receipt", "pr"
-	if (pr and pr.get("status") in PENDING_STATUSES) and not (scr and scr.get("status") not in PENDING_STATUSES):
-		return "Purchase Receipt", "pr"
+	if (scr and (scr.get("docstatus") == 0 or scr.get("status") in ("Draft", "Pending Approval", "To Approve"))) and not pi and not dn and not si:
+		return "Purchase Receipt", "scr"
 
 	# 6. Purchase Invoice
-	pi = docs.get("pi")
-	if not pi or pi.get("status") in PENDING_STATUSES:
-		return "Purchase Invoice", "pi"
+	if not pi and not dn and not si:
+		return "Purchase Receipt", "pr"
+
+	if pi and (pi.get("docstatus") == 0 or pi.get("status") in ("Draft", "Pending Approval", "To Approve")):
+		if not dn and not si:
+			return "Purchase Invoice", "pi"
 
 	# 7. Delivery Note
-	dn = docs.get("dn")
 	per_delivered = flt(so_doc.get("per_delivered") if so_doc else 0)
-	if not dn or per_delivered < 100 or dn.get("status") in PENDING_STATUSES:
+	if not dn or per_delivered < 100 or dn.get("docstatus") == 0 or dn.get("status") in ("Draft", "Pending Approval", "To Approve"):
 		return "Delivery Note", "dn"
 
 	# 8. Sales Invoice
-	si = docs.get("si")
 	per_billed = flt(so_doc.get("per_billed") if so_doc else 0)
-	if not si or per_billed < 100 or si.get("status") in PENDING_STATUSES:
+	if not si or per_billed < 100 or si.get("docstatus") == 0 or si.get("status") in ("Draft", "Pending Approval", "To Approve"):
 		return "Sales Invoice", "si"
 
 	return "Completed", None
@@ -931,60 +1326,73 @@ def determine_pending(docs, so_doc=None):
 def determine_item_pending(docs, item_data=None, so_status=None):
 	if so_status == "Completed":
 		return "Completed", None
-	if so_status in PENDING_STATUSES:
+	if so_status in ("Draft", "Pending Approval", "To Approve", "On Hold", "Stopped", "Cancelled"):
 		return "Sales Order", "so"
 
 	# 1. BOM
 	bom = docs.get("bom")
-	if not bom or bom.get("status") in PENDING_STATUSES:
+	if not bom or bom.get("status") not in ("Approved", "Submitted"):
 		return "BOM", "bom"
 
 	# 2. Production Plan
 	pp = docs.get("pp")
-	if not pp or pp.get("status") in PENDING_STATUSES:
+	if not pp or pp.get("docstatus") == 0 or pp.get("status") in ("Draft", "Pending Approval", "To Approve"):
 		return "Production Plan", "pp"
 
-	# 3. Material Request
+	# 3. Material Request & Downstream Trace
 	mr = docs.get("mr")
-	if not mr or mr.get("status") in PENDING_STATUSES:
+	po = docs.get("po")
+	sco = docs.get("sco")
+	pr = docs.get("pr")
+	scr = docs.get("scr")
+	pi = docs.get("pi")
+	dn = docs.get("dn")
+	si = docs.get("si")
+
+	if not mr and not po and not sco and not pr and not scr and not pi and not dn and not si:
+		return "Material Request", "mr"
+
+	if mr and (mr.get("docstatus") == 0 or mr.get("status") in ("Draft", "Pending Approval", "To Approve")) and not po and not sco and not pr and not scr and not pi and not dn and not si:
 		return "Material Request", "mr"
 
 	# 4. Purchase Order
-	po = docs.get("po")
-	sco = docs.get("sco")
-	if not po and not sco:
+	if not po and not sco and not pr and not scr and not pi and not dn and not si:
 		return "Purchase Order", "po"
-	if (po and po.get("status") in PENDING_STATUSES) and not (sco and sco.get("status") not in PENDING_STATUSES):
+
+	if (po and (po.get("docstatus") == 0 or po.get("status") in ("Draft", "Pending Approval", "To Approve"))) and not pr and not scr and not pi and not dn and not si:
 		return "Purchase Order", "po"
-	if (sco and sco.get("status") in PENDING_STATUSES) and not (po and po.get("status") not in PENDING_STATUSES):
+	if (sco and (sco.get("docstatus") == 0 or sco.get("status") in ("Draft", "Pending Approval", "To Approve"))) and not pr and not scr and not pi and not dn and not si:
 		return "Purchase Order", "sco"
 
 	# 5. Purchase Receipt
-	pr = docs.get("pr")
-	scr = docs.get("scr")
-	if not pr and not scr:
+	if not pr and not scr and not pi and not dn and not si:
+		return "Purchase Order", "po"
+
+	if (pr and (pr.get("docstatus") == 0 or pr.get("status") in ("Draft", "Pending Approval", "To Approve"))) and not pi and not dn and not si:
 		return "Purchase Receipt", "pr"
-	if (pr and pr.get("status") in PENDING_STATUSES) and not (scr and scr.get("status") not in PENDING_STATUSES):
-		return "Purchase Receipt", "pr"
+	if (scr and (scr.get("docstatus") == 0 or scr.get("status") in ("Draft", "Pending Approval", "To Approve"))) and not pi and not dn and not si:
+		return "Purchase Receipt", "scr"
 
 	# 6. Purchase Invoice
-	pi = docs.get("pi")
-	if not pi or pi.get("status") in PENDING_STATUSES:
-		return "Purchase Invoice", "pi"
+	if not pi and not dn and not si:
+		return "Purchase Receipt", "pr"
+
+	if pi and (pi.get("docstatus") == 0 or pi.get("status") in ("Draft", "Pending Approval", "To Approve")):
+		if not dn and not si:
+			return "Purchase Invoice", "pi"
 
 	# 7. Delivery Note
 	qty = flt((item_data or {}).get("qty", 0))
 	delivered_qty = flt((item_data or {}).get("delivered_qty", 0))
-	dn = docs.get("dn")
-	if not dn or (qty > 0 and delivered_qty < qty) or dn.get("status") in PENDING_STATUSES:
+	if not dn or (qty > 0 and delivered_qty < qty) or dn.get("docstatus") == 0 or dn.get("status") in ("Draft", "Pending Approval", "To Approve"):
 		return "Delivery Note", "dn"
 
 	# 8. Sales Invoice
-	si = docs.get("si")
-	if not si or si.get("status") in PENDING_STATUSES:
+	if not si or si.get("docstatus") == 0 or si.get("status") in ("Draft", "Pending Approval", "To Approve"):
 		return "Sales Invoice", "si"
 
 	return "Completed", None
+
 
 
 def determine_priority(so_data):
@@ -1138,7 +1546,7 @@ def get_latest_doc_for_so(sales_order, key, cfg, project=None, branch=None):
 		return None
 
 	status_field = resolve_status_field(doctype, cfg)
-	fields = ["name", "creation"]
+	fields = ["name", "creation", "docstatus"]
 	if status_field:
 		fields.append(f"{status_field} as status")
 	if cfg.get("amount_field") and field_exists(doctype, cfg["amount_field"]):
@@ -1149,7 +1557,9 @@ def get_latest_doc_for_so(sales_order, key, cfg, project=None, branch=None):
 		return None
 
 	doc = rows[0]
-	if not status_field:
+	if key == "bom":
+		doc["status"] = "Approved" if doc.get("docstatus") == 1 else "Pending"
+	elif not status_field:
 		if doctype == "Journal Entry":
 			doc["status"] = "Submitted" if doc.get("docstatus") == 1 else "Draft"
 		else:
@@ -1181,12 +1591,20 @@ def get_doc_names_for_so(sales_order, key, cfg, project=None, branch=None):
 		return [sales_order] if frappe.db.exists("Sales Order", sales_order) else []
 
 	if key == "bom":
-		if field_exists("BOM", "sales_order") and sales_order:
-			b_names = frappe.get_all("BOM", filters={"sales_order": sales_order, "docstatus": ["!=", 2]}, pluck="name")
-			names.update(b_names)
-		if doctype_installed("Sales Order Item") and field_exists("Sales Order Item", "bom_no") and sales_order:
-			b_soi = frappe.get_all("Sales Order Item", filters={"parent": sales_order, "bom_no": ["is", "set"], "docstatus": ["!=", 2]}, pluck="bom_no")
-			names.update(b_soi)
+		if doctype_installed("Sales Order Item") and sales_order:
+			so_items = frappe.get_all("Sales Order Item", filters={"parent": sales_order, "docstatus": ["!=", 2]}, fields=["item_code", "bom_no"])
+			fg_items = list(set([d.item_code for d in so_items if d.item_code]))
+			if fg_items:
+				if field_exists("BOM", "sales_order"):
+					b_names = frappe.get_all("BOM", filters={"sales_order": sales_order, "item": ["in", fg_items], "docstatus": ["!=", 2]}, pluck="name")
+					names.update(b_names)
+				b_soi = [d.bom_no for d in so_items if d.bom_no]
+				if b_soi:
+					b_valid = frappe.get_all("BOM", filters={"name": ["in", b_soi], "item": ["in", fg_items], "docstatus": ["!=", 2]}, pluck="name")
+					names.update(b_valid)
+				if not names:
+					b_defs = frappe.get_all("BOM", filters={"item": ["in", fg_items], "is_default": 1, "is_active": 1, "docstatus": 1}, pluck="name")
+					names.update(b_defs)
 		return list(names)
 
 	if key == "pp":
@@ -1197,6 +1615,24 @@ def get_doc_names_for_so(sales_order, key, cfg, project=None, branch=None):
 			pp_so = frappe.get_all("Production Plan Sales Order", filters={"sales_order": sales_order, "docstatus": ["!=", 2]}, pluck="parent")
 			names.update(pp_so)
 		return list(names)
+
+	if key == "mr":
+		# Production Plan -> Material Request
+		pp_names = get_doc_names_for_so(sales_order, "pp", DOC_CONFIG.get("pp", {"doctype": "Production Plan"}), project=project, branch=branch)
+		if pp_names:
+			if doctype_installed("Material Request Item") and field_exists("Material Request Item", "production_plan"):
+				mr_pp = frappe.get_all("Material Request Item", filters={"production_plan": ["in", pp_names], "docstatus": ["!=", 2]}, pluck="parent")
+				names.update(mr_pp)
+			if doctype_installed("Production Plan Material Request"):
+				ppmr = frappe.get_all("Production Plan Material Request", filters={"parent": ["in", pp_names], "material_request": ["is", "set"], "docstatus": ["!=", 2]}, pluck="material_request")
+				names.update(ppmr)
+
+	if key == "po":
+		# Material Request -> Purchase Order
+		mr_names = get_doc_names_for_so(sales_order, "mr", DOC_CONFIG.get("mr", {"doctype": "Material Request"}), project=project, branch=branch)
+		if mr_names and doctype_installed("Purchase Order Item") and field_exists("Purchase Order Item", "material_request"):
+			po_mr = frappe.get_all("Purchase Order Item", filters={"material_request": ["in", mr_names], "docstatus": ["!=", 2]}, pluck="parent")
+			names.update(po_mr)
 
 	# Direct child item link to Sales Order (e.g. against_sales_order / sales_order)
 	item_doctype = cfg.get("item_doctype")
@@ -1265,6 +1701,62 @@ def get_doc_names_for_so(sales_order, key, cfg, project=None, branch=None):
 		names.update(je_rows)
 
 	# Payment Entry references
+	if key == "pe_out":
+		po_names = get_doc_names_for_so(sales_order, "po", DOC_CONFIG.get("po", {"doctype": "Purchase Order"}), project=project, branch=branch)
+		pi_names = get_doc_names_for_so(sales_order, "pi", DOC_CONFIG.get("pi", {"doctype": "Purchase Invoice"}), project=project, branch=branch)
+		pe_conds = ["pe.payment_type in ('Pay', 'Internal Transfer')", "pe.docstatus != 2"]
+		pe_refs = []
+		pe_vals = {}
+		if pi_names:
+			pe_refs.append("(per.reference_doctype = 'Purchase Invoice' and per.reference_name in %(pi_names)s)")
+			pe_vals["pi_names"] = tuple(pi_names)
+		if po_names:
+			pe_refs.append("(per.reference_doctype = 'Purchase Order' and per.reference_name in %(po_names)s)")
+			pe_vals["po_names"] = tuple(po_names)
+		if sales_order:
+			pe_refs.append("(per.reference_doctype = 'Sales Order' and per.reference_name = %(so)s)")
+			pe_vals["so"] = sales_order
+		if pe_refs:
+			pe_conds.append(f"({' or '.join(pe_refs)})")
+			pe_rows = frappe.db.sql(
+				f"""
+				select distinct per.parent
+				from `tabPayment Entry Reference` per
+				inner join `tabPayment Entry` pe on pe.name = per.parent
+				where {' and '.join(pe_conds)}
+				""",
+				pe_vals,
+				pluck=True,
+			)
+			names.update(pe_rows)
+		return list(names)
+
+	if key == "pe_in":
+		si_names = get_doc_names_for_so(sales_order, "si", DOC_CONFIG.get("si", {"doctype": "Sales Invoice"}), project=project, branch=branch)
+		pe_conds = ["pe.payment_type in ('Receive', 'Internal Transfer')", "pe.docstatus != 2"]
+		pe_refs = []
+		pe_vals = {}
+		if si_names:
+			pe_refs.append("(per.reference_doctype = 'Sales Invoice' and per.reference_name in %(si_names)s)")
+			pe_vals["si_names"] = tuple(si_names)
+		if sales_order:
+			pe_refs.append("(per.reference_doctype = 'Sales Order' and per.reference_name = %(so)s)")
+			pe_vals["so"] = sales_order
+		if pe_refs:
+			pe_conds.append(f"({' or '.join(pe_refs)})")
+			pe_rows = frappe.db.sql(
+				f"""
+				select distinct per.parent
+				from `tabPayment Entry Reference` per
+				inner join `tabPayment Entry` pe on pe.name = per.parent
+				where {' and '.join(pe_conds)}
+				""",
+				pe_vals,
+				pluck=True,
+			)
+			names.update(pe_rows)
+		return list(names)
+
 	if doctype == "Payment Entry" and doctype_installed("Payment Entry Reference"):
 		pe_rows = frappe.db.sql(
 			"""
@@ -1321,7 +1813,7 @@ def get_latest_doc_for_so_item(sales_order, key, cfg, so_item_name=None, item_co
 		return None
 
 	status_field = resolve_status_field(doctype, cfg)
-	fields = ["name", "creation"]
+	fields = ["name", "creation", "docstatus"]
 	if status_field:
 		fields.append(f"{status_field} as status")
 	if cfg.get("amount_field") and field_exists(doctype, cfg["amount_field"]):
@@ -1332,7 +1824,9 @@ def get_latest_doc_for_so_item(sales_order, key, cfg, so_item_name=None, item_co
 		return None
 
 	doc = rows[0]
-	if not status_field:
+	if key == "bom":
+		doc["status"] = "Approved" if doc.get("docstatus") == 1 else "Pending"
+	elif not status_field:
 		if doctype == "Journal Entry":
 			doc["status"] = "Submitted" if doc.get("docstatus") == 1 else "Draft"
 		else:
@@ -1393,24 +1887,44 @@ def get_doc_names_for_so_item(sales_order, key, cfg, so_item_name=None, item_cod
 		return [sales_order] if sales_order and frappe.db.exists("Sales Order", sales_order) else []
 
 	if key == "bom":
-		if sales_order:
-			if batch_no:
-				b_names = frappe.get_all("BOM", filters={"sales_order": sales_order, "custom_batch_no": ["like", f"%{batch_no}%"], "docstatus": ["!=", 2]}, pluck="name")
+		target_items = []
+		if item_code:
+			target_items = [item_code]
+		elif so_item_name:
+			ic = frappe.db.get_value("Sales Order Item", so_item_name, "item_code")
+			if ic:
+				target_items = [ic]
+		elif matching_soi_names:
+			target_items = frappe.get_all("Sales Order Item", filters={"name": ["in", matching_soi_names], "docstatus": ["!=", 2]}, pluck="item_code")
+		elif sales_order:
+			target_items = frappe.get_all("Sales Order Item", filters={"parent": sales_order, "docstatus": ["!=", 2]}, pluck="item_code")
+
+		target_items = list(set([t for t in target_items if t]))
+
+		if sales_order and target_items:
+			if batch_no and field_exists("BOM", "custom_batch_no") and field_exists("BOM", "sales_order"):
+				b_names = frappe.get_all("BOM", filters={"sales_order": sales_order, "item": ["in", target_items], "custom_batch_no": ["like", f"%{batch_no}%"], "docstatus": ["!=", 2]}, pluck="name")
 				names.update(b_names)
-			if so_item_name:
+			if so_item_name and not names:
 				b_no = frappe.db.get_value("Sales Order Item", so_item_name, "bom_no")
 				if b_no:
-					names.add(b_no)
-			if matching_soi_names:
+					b_item = frappe.db.get_value("BOM", b_no, "item")
+					if b_item in target_items:
+						names.add(b_no)
+			if matching_soi_names and not names:
 				b_sois = frappe.get_all("Sales Order Item", filters={"name": ["in", matching_soi_names], "bom_no": ["is", "set"], "docstatus": ["!=", 2]}, pluck="bom_no")
-				names.update(b_sois)
-			if not names:
-				b_so = frappe.get_all("BOM", filters={"sales_order": sales_order, "docstatus": ["!=", 2]}, pluck="name")
+				if b_sois:
+					b_valid = frappe.get_all("BOM", filters={"name": ["in", b_sois], "item": ["in", target_items], "docstatus": ["!=", 2]}, pluck="name")
+					names.update(b_valid)
+			if not names and field_exists("BOM", "sales_order"):
+				b_so = frappe.get_all("BOM", filters={"sales_order": sales_order, "item": ["in", target_items], "docstatus": ["!=", 2]}, pluck="name")
 				names.update(b_so)
-		if item_code and not names:
-			b_def = frappe.db.get_value("BOM", {"item": item_code, "is_default": 1, "docstatus": 1, "is_active": 1}, "name")
-			if b_def:
-				names.add(b_def)
+			if not names:
+				b_defs = frappe.get_all("BOM", filters={"item": ["in", target_items], "is_default": 1, "docstatus": 1, "is_active": 1}, pluck="name")
+				names.update(b_defs)
+		elif target_items and not names:
+			b_defs = frappe.get_all("BOM", filters={"item": ["in", target_items], "is_default": 1, "docstatus": 1, "is_active": 1}, pluck="name")
+			names.update(b_defs)
 		return list(names)
 
 	if key == "pp":
@@ -1428,7 +1942,7 @@ def get_doc_names_for_so_item(sales_order, key, cfg, so_item_name=None, item_cod
 		elif matching_soi_names:
 			pp_conds.append("sales_order_item in %(matching_soi_names)s")
 			pp_vals["matching_soi_names"] = tuple(matching_soi_names)
-		elif item_code:
+		if item_code:
 			pp_conds.append("item_code = %(ic)s")
 			pp_vals["ic"] = item_code
 		pp_parents = frappe.db.sql(
@@ -1437,6 +1951,97 @@ def get_doc_names_for_so_item(sales_order, key, cfg, so_item_name=None, item_cod
 			pluck=True,
 		)
 		names.update(pp_parents)
+		return list(names)
+
+	if key == "mr":
+		# Production Plan -> Material Request
+		pp_names = get_doc_names_for_so_item(
+			sales_order, "pp", DOC_CONFIG.get("pp", {"doctype": "Production Plan"}),
+			so_item_name=so_item_name, item_code=item_code, batch_no=batch_no,
+			project=project, branch=branch
+		)
+		if pp_names:
+			if doctype_installed("Material Request Item") and field_exists("Material Request Item", "production_plan"):
+				mr_pp = frappe.get_all("Material Request Item", filters={"production_plan": ["in", pp_names], "docstatus": ["!=", 2]}, pluck="parent")
+				names.update(mr_pp)
+			if doctype_installed("Production Plan Material Request"):
+				ppmr = frappe.get_all("Production Plan Material Request", filters={"parent": ["in", pp_names], "material_request": ["is", "set"], "docstatus": ["!=", 2]}, pluck="material_request")
+				names.update(ppmr)
+
+	if key == "po":
+		# Material Request -> Purchase Order
+		mr_names = get_doc_names_for_so_item(
+			sales_order, "mr", DOC_CONFIG.get("mr", {"doctype": "Material Request"}),
+			so_item_name=so_item_name, item_code=item_code, batch_no=batch_no,
+			project=project, branch=branch
+		)
+		if mr_names and doctype_installed("Purchase Order Item") and field_exists("Purchase Order Item", "material_request"):
+			po_mr = frappe.get_all("Purchase Order Item", filters={"material_request": ["in", mr_names], "docstatus": ["!=", 2]}, pluck="parent")
+			names.update(po_mr)
+
+	if key == "pe_out":
+		po_names = get_doc_names_for_so_item(
+			sales_order, "po", DOC_CONFIG.get("po", {"doctype": "Purchase Order"}),
+			so_item_name=so_item_name, item_code=item_code, batch_no=batch_no,
+			project=project, branch=branch
+		)
+		pi_names = get_doc_names_for_so_item(
+			sales_order, "pi", DOC_CONFIG.get("pi", {"doctype": "Purchase Invoice"}),
+			so_item_name=so_item_name, item_code=item_code, batch_no=batch_no,
+			project=project, branch=branch
+		)
+		pe_conds = ["pe.payment_type in ('Pay', 'Internal Transfer')", "pe.docstatus != 2"]
+		pe_refs = []
+		pe_vals = {}
+		if pi_names:
+			pe_refs.append("(per.reference_doctype = 'Purchase Invoice' and per.reference_name in %(pi_names)s)")
+			pe_vals["pi_names"] = tuple(pi_names)
+		if po_names:
+			pe_refs.append("(per.reference_doctype = 'Purchase Order' and per.reference_name in %(po_names)s)")
+			pe_vals["po_names"] = tuple(po_names)
+		if pe_refs:
+			pe_conds.append(f"({' or '.join(pe_refs)})")
+			pe_rows = frappe.db.sql(
+				f"""
+				select distinct per.parent
+				from `tabPayment Entry Reference` per
+				inner join `tabPayment Entry` pe on pe.name = per.parent
+				where {' and '.join(pe_conds)}
+				""",
+				pe_vals,
+				pluck=True,
+			)
+			names.update(pe_rows)
+		return list(names)
+
+	if key == "pe_in":
+		si_names = get_doc_names_for_so_item(
+			sales_order, "si", DOC_CONFIG.get("si", {"doctype": "Sales Invoice"}),
+			so_item_name=so_item_name, item_code=item_code, batch_no=batch_no,
+			project=project, branch=branch
+		)
+		pe_conds = ["pe.payment_type in ('Receive', 'Internal Transfer')", "pe.docstatus != 2"]
+		pe_refs = []
+		pe_vals = {}
+		if si_names:
+			pe_refs.append("(per.reference_doctype = 'Sales Invoice' and per.reference_name in %(si_names)s)")
+			pe_vals["si_names"] = tuple(si_names)
+		if sales_order:
+			pe_refs.append("(per.reference_doctype = 'Sales Order' and per.reference_name = %(so)s)")
+			pe_vals["so"] = sales_order
+		if pe_refs:
+			pe_conds.append(f"({' or '.join(pe_refs)})")
+			pe_rows = frappe.db.sql(
+				f"""
+				select distinct per.parent
+				from `tabPayment Entry Reference` per
+				inner join `tabPayment Entry` pe on pe.name = per.parent
+				where {' and '.join(pe_conds)}
+				""",
+				pe_vals,
+				pluck=True,
+			)
+			names.update(pe_rows)
 		return list(names)
 
 	item_doctype = cfg.get("item_doctype")
@@ -1461,8 +2066,8 @@ def get_doc_names_for_so_item(sales_order, key, cfg, so_item_name=None, item_cod
 				conditions.append(f"(cdt.{item_so_field} = %(so)s and ({or_b}))")
 				values["batch_no"] = f"%{batch_no}%"
 
-			# Direct Item Code match under this Sales Order
-			if item_code and field_exists(item_doctype, "item_code"):
+			# Direct Item Code match under this Sales Order (for direct FG sales docs DN / SI)
+			if item_code and field_exists(item_doctype, "item_code") and doctype in ("Delivery Note", "Sales Invoice", "Sales Order"):
 				conditions.append(f"(cdt.{item_so_field} = %(so)s and cdt.item_code = %(item_code)s)")
 				values["item_code"] = item_code
 
@@ -1505,27 +2110,17 @@ def get_doc_names_for_so_item(sales_order, key, cfg, so_item_name=None, item_cod
 		)
 		if po_names:
 			if doctype == "Purchase Receipt" and doctype_installed("Purchase Receipt Item") and field_exists("Purchase Receipt Item", "purchase_order"):
-				pr_conds = ["purchase_order in %(po_names)s", "docstatus != 2"]
-				pr_vals = {"po_names": tuple(po_names)}
-				if item_code and field_exists("Purchase Receipt Item", "item_code"):
-					pr_conds.append("item_code = %(item_code)s")
-					pr_vals["item_code"] = item_code
-				pr_rows = frappe.db.sql(
-					f"select distinct parent from `tabPurchase Receipt Item` where {' and '.join(pr_conds)}",
-					pr_vals,
-					pluck=True,
+				pr_rows = frappe.get_all(
+					"Purchase Receipt Item",
+					filters={"purchase_order": ["in", po_names], "docstatus": ["!=", 2]},
+					pluck="parent"
 				)
 				names.update(pr_rows)
 			elif doctype == "Purchase Invoice" and doctype_installed("Purchase Invoice Item") and field_exists("Purchase Invoice Item", "purchase_order"):
-				pi_conds = ["purchase_order in %(po_names)s", "docstatus != 2"]
-				pi_vals = {"po_names": tuple(po_names)}
-				if item_code and field_exists("Purchase Invoice Item", "item_code"):
-					pi_conds.append("item_code = %(item_code)s")
-					pi_vals["item_code"] = item_code
-				pi_rows = frappe.db.sql(
-					f"select distinct parent from `tabPurchase Invoice Item` where {' and '.join(pi_conds)}",
-					pi_vals,
-					pluck=True,
+				pi_rows = frappe.get_all(
+					"Purchase Invoice Item",
+					filters={"purchase_order": ["in", po_names], "docstatus": ["!=", 2]},
+					pluck="parent"
 				)
 				names.update(pi_rows)
 
@@ -1870,7 +2465,17 @@ def get_items_and_consumption(sales_order=None, project=None, branch=None, batch
 		it["amount"] = flt(it.get("amount") or (flt(it.qty) * flt(it.rate)))
 
 		if bom_available:
-			bom_name = frappe.db.get_value("BOM", {"item": it.item_code, "is_default": 1, "docstatus": 1}, "name")
+			bom_name = None
+			if it.get("batch_no") and field_exists("BOM", "custom_batch_no") and field_exists("BOM", "sales_order") and sales_order:
+				bom_name = frappe.db.get_value("BOM", {"item": it.item_code, "sales_order": sales_order, "custom_batch_no": it.get("batch_no"), "docstatus": 1}, "name")
+			if not bom_name and it.get("bom_no"):
+				b_item = frappe.db.get_value("BOM", it.get("bom_no"), "item")
+				if b_item == it.item_code:
+					bom_name = it.get("bom_no")
+			if not bom_name and field_exists("BOM", "sales_order") and sales_order:
+				bom_name = frappe.db.get_value("BOM", {"item": it.item_code, "sales_order": sales_order, "docstatus": 1}, "name")
+			if not bom_name:
+				bom_name = frappe.db.get_value("BOM", {"item": it.item_code, "is_default": 1, "docstatus": 1, "is_active": 1}, "name")
 			if bom_name:
 				bom_rows = frappe.db.sql(
 					"""
