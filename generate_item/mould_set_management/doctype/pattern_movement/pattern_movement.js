@@ -1,33 +1,27 @@
 // Copyright (c) 2026, Finbyz and contributors
 // For license information, please see license.txt
 
-frappe.ui.form.on("Component Transfer", {
+frappe.ui.form.on("Pattern Movement", {
 	setup(frm) {
-		// Filter mould_set_item to items that have an active Mould Set
-		frm.set_query("mould_set_item", function () {
+		// Filter mould_set to submitted, non-disabled Pattern Sets
+		frm.set_query("mould_set", function () {
 			return {
-				query: "generate_item.mould_set_management.doctype.component_transfer.component_transfer.mould_set_item_query",
+				filters: {
+					docstatus: 1,
+					disable: 0,
+				},
 			};
 		});
 
-		// Filter component to only components linked to selected Mould Set
+		// Filter component to only components linked to selected Pattern Set
 		frm.set_query("component", function () {
 			if (!frm.doc.mould_set) {
 				return { filters: { name: ["in", []] } };
 			}
 			return {
-				query: "generate_item.mould_set_management.doctype.component_transfer.component_transfer.component_item_query",
+				query: "generate_item.mould_set_management.doctype.pattern_movement.pattern_movement.component_item_query",
 				filters: { mould_set: frm.doc.mould_set },
 			};
-		});
-
-		// Filter mould_set to active non-disabled Mould Sets
-		frm.set_query("mould_set", function () {
-			let filters = { docstatus: ["!=", 2], disable: 0 };
-			if (frm.doc.mould_set_item) {
-				filters.item = frm.doc.mould_set_item;
-			}
-			return { filters: filters };
 		});
 
 		// Warehouse filters
@@ -64,9 +58,23 @@ frappe.ui.form.on("Component Transfer", {
 				frappe.set_route("Form", "Stock Entry", frm.doc.stock_entry);
 			}, __("Stock"));
 		}
+		frm.trigger("purpose");
 	},
 
-	mould_set_item(frm) {
+	purpose(frm) {
+		if (frm.doc.purpose === "Company to Supplier") {
+			if (frm.doc.from_supplier) {
+				frm.set_value("from_supplier", "");
+			}
+			frm.set_df_property("from_supplier", "reqd", 0);
+			frm.set_df_property("to_supplier", "reqd", 1);
+		} else if (frm.doc.purpose === "Supplier to Supplier") {
+			frm.set_df_property("from_supplier", "reqd", 1);
+			frm.set_df_property("to_supplier", "reqd", 1);
+		}
+	},
+
+	mould_set(frm) {
 		frm.trigger("fetch_components");
 	},
 
@@ -75,7 +83,6 @@ frappe.ui.form.on("Component Transfer", {
 			frm.set_value("component", "");
 			frm.trigger("fetch_components");
 		} else {
-			// Clear items until user selects a component
 			frm.clear_table("items");
 			frm.refresh_field("items");
 		}
@@ -88,7 +95,7 @@ frappe.ui.form.on("Component Transfer", {
 	},
 
 	set_qty(frm) {
-		if (frm.doc.mould_set_item) {
+		if (frm.doc.mould_set) {
 			frm.trigger("fetch_components");
 		}
 	},
@@ -111,17 +118,16 @@ frappe.ui.form.on("Component Transfer", {
 	},
 
 	fetch_components(frm) {
-		if (!frm.doc.mould_set_item) {
-			frm.set_value("mould_set", "");
+		if (!frm.doc.mould_set) {
 			frm.clear_table("items");
 			frm.refresh_field("items");
 			return;
 		}
 
 		frappe.call({
-			method: "generate_item.mould_set_management.doctype.component_transfer.component_transfer.get_mould_set_components",
+			method: "generate_item.mould_set_management.doctype.pattern_movement.pattern_movement.get_mould_set_components",
 			args: {
-				mould_set_item: frm.doc.mould_set_item,
+				mould_set: frm.doc.mould_set,
 				transfer_type: frm.doc.transfer_type || "All Components (Complete Set)",
 				component: frm.doc.component || null,
 				set_qty: frm.doc.set_qty || 1.0,
@@ -130,7 +136,6 @@ frappe.ui.form.on("Component Transfer", {
 			},
 			callback: function (r) {
 				if (r.message) {
-					frm.set_value("mould_set", r.message.mould_set);
 					frm.clear_table("items");
 					(r.message.items || []).forEach((item) => {
 						let row = frm.add_child("items");

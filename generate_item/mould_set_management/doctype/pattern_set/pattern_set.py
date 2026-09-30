@@ -4,93 +4,38 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
-from frappe.utils import cint
 
 
 class PatternSet(Document):
 	def autoname(self):
-		self.set_pattern_set_name()
-		if self.pattern_set_name:
-			self.name = self.pattern_set_name
+		valve_type = (getattr(self, "type_of_valve", None) or "").strip()
+		size = (getattr(self, "size", None) or "").strip()
+		class_val = (self.get("class") or getattr(self, "class", None) or "").strip()
+
+		if not (valve_type and size and class_val):
+			frappe.throw(_("Type of Valve, Size, and Class are required to generate Naming Series."))
+
+		self.name = get_next_pattern_set_name(
+			valve_type, size, class_val, exclude_name=self.name if not self.is_new() else None
+		)
+		self.naming_series = self.name
+		self.pattern_set_name = f"{valve_type} {size} {class_val}"
 
 	def validate(self):
 		self.set_pattern_set_name()
 		self.validate_items()
-		self.validate_default_and_disable()
 		self.sync_component_drawings()
 
 	def set_pattern_set_name(self):
 		valve_type = (getattr(self, "type_of_valve", None) or "").strip()
 		size = (getattr(self, "size", None) or "").strip()
 		class_val = (self.get("class") or getattr(self, "class", None) or "").strip()
-		parts = [p for p in [valve_type, size, class_val] if p]
-		if parts:
-			self.pattern_set_name = " ".join(parts)
-
-
-	def validate_default_and_disable(self):
-		if cint(self.disable) and cint(self.is_default):
-			frappe.throw(_("A Disabled Pattern Set cannot be set as Default."))
-
-	def on_update(self):
-		if cint(self.is_default) and self.item:
-			self.disable_other_pattern_sets()
-
-	def on_update_after_submit(self):
-		if cint(self.is_default) and self.item:
-			self.disable_other_pattern_sets()
-
-	def on_submit(self):
-		if cint(self.is_default) and self.item:
-			self.disable_other_pattern_sets()
-
-	def on_change(self):
-		if cint(self.is_default) and self.item:
-			self.disable_other_pattern_sets()
-
-	def on_cancel(self):
-		if cint(self.is_default):
-			self.db_set("is_default", 0)
-
-	def disable_other_pattern_sets(self):
-		"""
-		When this Pattern Set is set as default, disable all other Pattern Sets
-		matching the same Item and unset their default flag.
-		"""
-		other_pattern_sets = frappe.get_all(
-			"Pattern Set",
-			filters={
-				"item": self.item,
-				"name": ["!=", self.name],
-				"docstatus": ["!=", 2],
-			},
-			pluck="name",
-		)
-
-		if other_pattern_sets:
-			frappe.db.sql(
-				"""
-				UPDATE `tabPattern Set`
-				SET is_default = 0, disable = 1
-				WHERE name IN %(names)s
-				""",
-				{"names": tuple(other_pattern_sets)},
-			)
-			for ps_name in other_pattern_sets:
-				frappe.clear_document_cache("Pattern Set", ps_name)
-
-			frappe.msgprint(
-				_("Other Pattern Set(s) for Item {0} have been disabled: {1}").format(
-					frappe.bold(self.item),
-					", ".join(frappe.bold(name) for name in other_pattern_sets),
-				),
-				alert=True,
-			)
+		if valve_type and size and class_val:
+			self.pattern_set_name = f"{valve_type} {size} {class_val}"
+		if not getattr(self, "naming_series", None) and self.name:
+			self.naming_series = self.name
 
 	def validate_items(self):
-		if not self.item:
-			frappe.throw(_("Pattern Set Item is mandatory."))
-
 		if not self.items:
 			frappe.throw(_("At least one component item is required in the Pattern Set."))
 
@@ -98,13 +43,6 @@ class PatternSet(Document):
 		for row in self.items:
 			if not row.component_item:
 				frappe.throw(_("Row #{0}: Component Item is required.").format(row.idx))
-
-			if row.component_item == self.item:
-				frappe.throw(
-					_("Row #{0}: Component Item cannot be the same as Pattern Set Item ({1}).").format(
-						row.idx, self.item
-					)
-				)
 
 			if row.component_item in seen_components:
 				frappe.throw(
@@ -157,3 +95,32 @@ class PatternSet(Document):
 				row.pattern_drawing_no = item_data.custom_pattern_drawing_no
 			if not row.pattern_drawing_rev_no and item_data.custom_pattern_drawing_rev_no:
 				row.pattern_drawing_rev_no = item_data.custom_pattern_drawing_rev_no
+
+
+@frappe.whitelist()
+def get_next_pattern_set_name(type_of_valve, size, class_val, exclude_name=None):
+	valve_type = (type_of_valve or "").strip()
+	size = (size or "").strip()
+	class_val = (class_val or "").strip()
+
+	if not (valve_type and size and class_val):
+		return ""
+
+	prefix = f"{valve_type} {size} {class_val}-"
+
+	existing_names = frappe.get_all(
+		"Pattern Set",
+		filters={"name": ["like", f"{prefix}%"]},
+		pluck="name",
+	)
+
+	max_num = 0
+	for n in existing_names:
+		if exclude_name and n == exclude_name:
+			continue
+		suffix = n[len(prefix):]
+		if suffix.isdigit():
+			max_num = max(max_num, int(suffix))
+
+	next_num = max_num + 1
+	return f"{prefix}{next_num:04d}"

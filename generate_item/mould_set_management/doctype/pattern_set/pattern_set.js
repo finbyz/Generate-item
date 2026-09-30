@@ -11,7 +11,7 @@ frappe.ui.form.on("Pattern Set", {
 	},
 
 	setup(frm) {
-		frm.set_query("item", function () {
+		frm.set_query("component_item", "items", function (doc, cdt, cdn) {
 			return {
 				filters: {
 					disabled: 0,
@@ -19,68 +19,18 @@ frappe.ui.form.on("Pattern Set", {
 				},
 			};
 		});
-
-		frm.set_query("component_item", "items", function (doc, cdt, cdn) {
-			let filters = {
-				disabled: 0,
-				is_stock_item: 1,
-			};
-			if (doc.item) {
-				filters.name = ["!=", doc.item];
-			}
-			return { filters: filters };
-		});
 	},
 
 	type_of_valve(frm) {
-		update_pattern_set_name(frm);
+		update_pattern_set_fields(frm);
 	},
 
 	size(frm) {
-		update_pattern_set_name(frm);
+		update_pattern_set_fields(frm);
 	},
 
 	class(frm) {
-		update_pattern_set_name(frm);
-	},
-
-	is_default(frm) {
-		if (frm.doc.is_default) {
-			if (frm.doc.disable) {
-				frm.set_value("disable", 0);
-			}
-			if (frm.doc.item) {
-				frappe.show_alert({
-					message: __("Setting this as Default will disable all other Pattern Sets for Item {0}.", [frm.doc.item]),
-					indicator: "orange",
-				});
-			}
-		}
-	},
-
-	disable(frm) {
-		if (frm.doc.disable && frm.doc.is_default) {
-			frm.set_value("is_default", 0);
-		}
-	},
-
-	item(frm) {
-		if (frm.doc.item) {
-			frappe.db.get_value(
-				"Item",
-				frm.doc.item,
-				["item_name", "description"],
-				function (r) {
-					if (r) {
-						frm.set_value("item_name", r.item_name);
-						frm.set_value("description", r.description);
-					}
-				}
-			);
-		} else {
-			frm.set_value("item_name", "");
-			frm.set_value("description", "");
-		}
+		update_pattern_set_fields(frm);
 	},
 });
 
@@ -114,15 +64,34 @@ frappe.ui.form.on("Pattern Set Component", {
 	},
 });
 
-function update_pattern_set_name(frm) {
+function update_pattern_set_fields(frm) {
 	let parts = [];
 	if (frm.doc.type_of_valve) parts.push(String(frm.doc.type_of_valve).trim());
 	if (frm.doc.size) parts.push(String(frm.doc.size).trim());
 	if (frm.doc.class) parts.push(String(frm.doc.class).trim());
 
-	let name = parts.join(" ").trim();
-	if (name) {
-		frm.set_value("pattern_set_name", name);
+	let clean_name = parts.join(" ").trim();
+	frm.set_value("pattern_set_name", clean_name);
+
+	if (frm.is_new()) {
+		if (frm.doc.type_of_valve && frm.doc.size && frm.doc.class) {
+			frappe.call({
+				method: "generate_item.mould_set_management.doctype.pattern_set.pattern_set.get_next_pattern_set_name",
+				args: {
+					type_of_valve: frm.doc.type_of_valve,
+					size: frm.doc.size,
+					class_val: frm.doc.class,
+					exclude_name: null,
+				},
+				callback: function (r) {
+					if (r && r.message) {
+						frm.set_value("naming_series", r.message);
+					}
+				},
+			});
+		} else {
+			frm.set_value("naming_series", clean_name ? clean_name + "-0001" : "");
+		}
 	}
 }
 
@@ -168,4 +137,3 @@ function load_attribute_options(frm, fieldname, possible_attr_names) {
 	}
 	try_load(0);
 }
-

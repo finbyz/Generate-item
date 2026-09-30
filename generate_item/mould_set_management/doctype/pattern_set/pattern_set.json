@@ -2,22 +2,20 @@
  "actions": [],
  "allow_bulk_edit": 1,
  "allow_rename": 1,
- "autoname": "field:pattern_set_name",
+ "autoname": "autoname",
  "creation": "2026-09-14 16:32:59.228279",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
   "section_break_details",
+  "naming_series",
   "type_of_valve",
   "size",
   "class",
-  "pattern_set_name",
-  "item",
-  "is_default",
-  "disable",
   "column_break_main",
-  "item_name",
-  "description",
+  "disable",
+  "type_of_pattern",
+  "pattern_set_name",
   "amended_from",
   "section_break_components",
   "items"
@@ -29,11 +27,20 @@
    "label": "Pattern Set Details"
   },
   {
+   "fieldname": "naming_series",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Naming Series",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
    "fieldname": "type_of_valve",
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "Type Of Valve",
+   "label": "Type of Valve",
+   "no_copy": 1,
    "reqd": 1
   },
   {
@@ -42,6 +49,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Size",
+   "no_copy": 1,
    "reqd": 1
   },
   {
@@ -50,42 +58,38 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Class",
+   "no_copy": 1,
    "reqd": 1
   },
   {
    "fieldname": "pattern_set_name",
    "fieldtype": "Data",
    "in_list_view": 1,
+   "in_standard_filter": 1,
    "label": "Pattern Set Name",
-   "read_only": 1,
-   "reqd": 1,
-   "unique": 1
-  },
-  {
-   "fieldname": "item",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "Pattern Set Item",
-   "options": "Item",
-   "reqd": 1
+   "no_copy": 1,
+   "read_only": 1
   },
   {
    "fieldname": "column_break_main",
    "fieldtype": "Column Break"
   },
   {
-   "fetch_from": "item.item_name",
-   "fieldname": "item_name",
-   "fieldtype": "Data",
-   "label": "Item Name",
-   "read_only": 1
+   "allow_on_submit": 1,
+   "default": "0",
+   "fieldname": "disable",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Disable"
   },
   {
-   "fetch_from": "item.description",
-   "fieldname": "description",
-   "fieldtype": "Small Text",
-   "label": "Description",
-   "read_only": 1
+   "fieldname": "type_of_pattern",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Type of Pattern",
+   "options": "Aluminium\nMix\nWooden",
+   "reqd": 1
   },
   {
    "fieldname": "amended_from",
@@ -106,24 +110,9 @@
    "fieldname": "items",
    "fieldtype": "Table",
    "label": "Components",
+   "no_copy": 1,
    "options": "Pattern Set Component",
    "reqd": 1
-  },
-  {
-   "allow_on_submit": 1,
-   "default": "0",
-   "fieldname": "is_default",
-   "fieldtype": "Check",
-   "in_list_view": 1,
-   "label": "Is Default"
-  },
-  {
-   "allow_on_submit": 1,
-   "default": "0",
-   "fieldname": "disable",
-   "fieldtype": "Check",
-   "in_list_view": 1,
-   "label": "Disable"
   }
  ],
  "grid_page_length": 50,
@@ -132,15 +121,15 @@
  "links": [
   {
    "group": "Transactions",
-   "link_doctype": "Component Transfer",
+   "link_doctype": "Pattern Movement",
    "link_fieldname": "mould_set"
   }
  ],
- "modified": "2026-09-25 12:00:00.000000",
+ "modified": "2026-09-30 17:49:28.888799",
  "modified_by": "Administrator",
  "module": "Mould Set Management",
  "name": "Pattern Set",
- "naming_rule": "By fieldname",
+ "naming_rule": "By script",
  "owner": "Administrator",
  "permissions": [
   {
