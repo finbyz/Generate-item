@@ -74,13 +74,14 @@ frappe.query_reports["Valve Warranty Register"] = {
 			label: __("Warranty Status"),
 			fieldtype: "Select",
 			options: [
-				"",
+				"All",
 				"Under Warranty",
 				"Expiring in 30 Days",
 				"Expiring in 60 Days",
 				"Expired",
 				"Warranty Expiry Not Set",
 			],
+			default: "Under Warranty"
 		},
 		{
 			fieldname: "from_expiry_date",

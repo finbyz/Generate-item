@@ -28,21 +28,10 @@ frappe.query_reports["Pattern Set Stock Status"] = {
 			options: "Pattern Set",
 		},
 		{
-			fieldname: "supplier",
-			label: __("Supplier"),
-			fieldtype: "Link",
-			options: "Supplier",
-		},
-		{
 			fieldname: "warehouse",
 			label: __("Warehouse"),
 			fieldtype: "Link",
 			options: "Warehouse",
-		},
-		{
-			fieldname: "is_supplier_warehouse",
-			label: __("Supplier Warehouses Only"),
-			fieldtype: "Check",
 		},
 	],
 };

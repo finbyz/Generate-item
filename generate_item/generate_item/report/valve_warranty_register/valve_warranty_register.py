@@ -203,14 +203,14 @@ def get_data(filters: dict) -> list[dict]:
 			MAX(so.name) AS sales_order,
 			MAX(so.customer) AS customer,
 			MAX(so.po_no) AS po_no,
-			
-			MAX(si.name) AS sales_invoice,
-			MAX(si.posting_date) AS invoice_date,
-			MAX(sii.delivery_note) AS delivery_note,
-			MAX(COALESCE(soi.item_code, sii.item_code)) AS item_code,
-			MAX(COALESCE(soi.item_name, sii.item_name, item.item_name)) AS item_name,
+
+			MAX(COALESCE(si_so.name, si_b.name)) AS sales_invoice,
+			MAX(COALESCE(si_so.posting_date, si_b.posting_date)) AS invoice_date,
+			MAX(COALESCE(sii_so.delivery_note, sii_b.delivery_note)) AS delivery_note,
+			MAX(COALESCE(soi.item_code, sii_so.item_code, sii_b.item_code)) AS item_code,
+			MAX(COALESCE(soi.item_name, sii_so.item_name, sii_b.item_name, item.item_name)) AS item_name,
 			MAX(soi.tag_no) AS tag_no,
-			MAX(COALESCE(soi.warranty_period, sii.warranty_period, so.warranty_period, 0)) AS warranty_period,
+			MAX(COALESCE(soi.warranty_period, sii_so.warranty_period, sii_b.warranty_period, so.warranty_period, 0)) AS warranty_period,
 			MAX(ig.attribute_2_value) AS valve_type,
 			MAX(ig.attribute_5_value) AS size,
 			MAX(ig.attribute_6_value) AS valve_class,
@@ -222,16 +222,20 @@ def get_data(filters: dict) -> list[dict]:
 			ON soi.custom_batch_no = sn.batch AND soi.docstatus != 2
 		LEFT JOIN `tabSales Order` so
 			ON so.name = soi.parent AND so.docstatus != 2
-		LEFT JOIN `tabSales Invoice Item` sii
-			ON (sii.so_detail = soi.name OR (soi.name IS NULL AND sii.batch_no_ref = sn.batch))
-			AND sii.docstatus = 1
-		LEFT JOIN `tabSales Invoice` si
-			ON si.name = sii.parent AND si.docstatus = 1
+		LEFT JOIN `tabSales Invoice Item` sii_so
+			ON sii_so.so_detail = soi.name AND sii_so.docstatus = 1
+		LEFT JOIN `tabSales Invoice Item` sii_b
+			ON soi.name IS NULL AND sii_b.batch_no_ref = sn.batch AND sii_b.docstatus = 1
+		LEFT JOIN `tabSales Invoice` si_so
+			ON si_so.name = sii_so.parent AND si_so.docstatus = 1
+		LEFT JOIN `tabSales Invoice` si_b
+			ON si_b.name = sii_b.parent AND si_b.docstatus = 1
 		LEFT JOIN `tabItem` item
-			ON item.name = COALESCE(soi.item_code, sii.item_code)
+			ON item.name = COALESCE(soi.item_code, sii_so.item_code, sii_b.item_code)
 		LEFT JOIN `tabItem Generator` ig
-			ON ig.created_item = COALESCE(soi.item_code, sii.item_code)
+			ON ig.created_item = COALESCE(soi.item_code, sii_so.item_code, sii_b.item_code)
 		WHERE sn.docstatus != 2
+			AND sn.warranty_expiry_date IS NOT NULL
 			{conditions}
 		GROUP BY sn.name
 		ORDER BY
@@ -275,7 +279,7 @@ def build_conditions(filters: dict) -> tuple[str, dict]:
 		values["sales_order"] = filters.get("sales_order")
 
 	if filters.get("sales_invoice"):
-		conditions.append("si.name = %(sales_invoice)s")
+		conditions.append("(si_so.name = %(sales_invoice)s OR si_b.name = %(sales_invoice)s)")
 		values["sales_invoice"] = filters.get("sales_invoice")
 
 	if filters.get("batch"):
@@ -287,15 +291,15 @@ def build_conditions(filters: dict) -> tuple[str, dict]:
 		values["serial_number"] = filters.get("serial_number")
 
 	if filters.get("branch"):
-		conditions.append("(sn.branch = %(branch)s OR so.branch = %(branch)s OR si.branch = %(branch)s)")
+		conditions.append("(sn.branch = %(branch)s OR so.branch = %(branch)s OR si_so.branch = %(branch)s OR si_b.branch = %(branch)s)")
 		values["branch"] = filters.get("branch")
 
 	if filters.get("customer"):
-		conditions.append("(so.customer = %(customer)s OR si.customer = %(customer)s)")
+		conditions.append("(so.customer = %(customer)s OR si_so.customer = %(customer)s OR si_b.customer = %(customer)s)")
 		values["customer"] = filters.get("customer")
 
 	if filters.get("item_code"):
-		conditions.append("(soi.item_code = %(item_code)s OR sii.item_code = %(item_code)s)")
+		conditions.append("(soi.item_code = %(item_code)s OR sii_so.item_code = %(item_code)s OR sii_b.item_code = %(item_code)s)")
 		values["item_code"] = filters.get("item_code")
 
 	if filters.get("from_expiry_date"):
@@ -307,11 +311,11 @@ def build_conditions(filters: dict) -> tuple[str, dict]:
 		values["to_expiry_date"] = filters.get("to_expiry_date")
 
 	if filters.get("from_invoice_date"):
-		conditions.append("si.posting_date >= %(from_invoice_date)s")
+		conditions.append("COALESCE(si_so.posting_date, si_b.posting_date) >= %(from_invoice_date)s")
 		values["from_invoice_date"] = filters.get("from_invoice_date")
 
 	if filters.get("to_invoice_date"):
-		conditions.append("si.posting_date <= %(to_invoice_date)s")
+		conditions.append("COALESCE(si_so.posting_date, si_b.posting_date) <= %(to_invoice_date)s")
 		values["to_invoice_date"] = filters.get("to_invoice_date")
 
 	# Warranty Status filter
