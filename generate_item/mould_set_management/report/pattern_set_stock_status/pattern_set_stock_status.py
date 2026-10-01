@@ -38,12 +38,6 @@ def get_columns():
 			"width": 180,
 		},
 		{
-			"label": _("Supplier WH?"),
-			"fieldname": "is_supplier_warehouse",
-			"fieldtype": "Data",
-			"width": 120,
-		},
-		{
 			"label": _("Complete Sets"),
 			"fieldname": "complete_sets_available",
 			"fieldtype": "Float",
@@ -122,21 +116,12 @@ def get_data(filters):
 	if not pattern_sets:
 		return []
 
-	supplier_warehouses = set(
-		frappe.get_all("Supplier", filters={"warehouse": ["!=", ""]}, pluck="warehouse")
-	)
-
 	# Filter Warehouses
 	wh_filters = {"is_group": 0}
 	if filters.get("company"):
 		wh_filters["company"] = filters.get("company")
 	if filters.get("warehouse"):
 		wh_filters["name"] = filters.get("warehouse")
-	elif filters.get("supplier"):
-		supp_wh = frappe.db.get_value("Supplier", filters.get("supplier"), "warehouse")
-		wh_filters["name"] = supp_wh or ""
-	elif filters.get("is_supplier_warehouse"):
-		wh_filters["name"] = ["in", list(supplier_warehouses) or [""]]
 
 	warehouses = frappe.get_all(
 		"Warehouse",
@@ -189,13 +174,11 @@ def get_data(filters):
 					req_qty = flt(c.qty)
 					loose_qty = max(0.0, actual_qty - (complete_sets * req_qty))
 
-					is_supp = wh.name in supplier_warehouses
 					data.append(
 						{
 							"mould_set_item": ps.item,
 							"mould_set": ps.name,
 							"warehouse": wh.name,
-							"is_supplier_warehouse": _("Yes") if is_supp else _("No"),
 							"complete_sets_available": complete_sets,
 							"component_item": c.component_item,
 							"component_name": c.component_name,

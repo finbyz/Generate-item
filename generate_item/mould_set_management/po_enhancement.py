@@ -321,32 +321,9 @@ def render_mould_set_html(warehouse, mould_sets_data):
 
 def get_supplier_warehouse(supplier=None, po_warehouse=None, branch=None):
 	"""
-	Determines the Supplier Warehouse:
-	1. Explicit PO warehouse (supplier_warehouse or set_warehouse)
-	2. The 'warehouse' field configured under the Supplier master
-	3. Warehouse designated with is_supplier_warehouse = 1 for this supplier
-	4. Fallback matching warehouse name by branch & supplier
+	Determines the warehouse configured on the PO (supplier_warehouse or set_warehouse).
 	"""
-	if po_warehouse:
-		return po_warehouse
-
-	if supplier:
-		# 1. Custom 'warehouse' field under Supplier master
-		supplier_wh = frappe.db.get_value("Supplier", supplier, "warehouse")
-		if supplier_wh:
-			return supplier_wh
-
-		# 2. Branch & supplier name match fallback
-		if branch:
-			wh_by_branch = frappe.db.get_value(
-				"Warehouse",
-				{"branch": branch, "name": ["like", f"%{supplier}%"], "is_group": 0},
-				"name",
-			)
-			if wh_by_branch:
-				return wh_by_branch
-
-	return None
+	return po_warehouse or None
 
 
 @frappe.whitelist()
@@ -368,8 +345,6 @@ def get_po_mould_set_info(po_name=None, supplier_warehouse=None, supplier=None, 
 	branch = None
 	if po_name:
 		po = frappe.get_doc("Purchase Order", po_name)
-		if not supplier:
-			supplier = po.supplier
 		if not supplier_warehouse:
 			supplier_warehouse = po.supplier_warehouse or getattr(po, "set_warehouse", None)
 		branch = getattr(po, "branch", None)
@@ -405,15 +380,7 @@ def on_po_validate_or_save(doc, method=None):
 	- Number of complete Pattern Sets
 	- Number of individual Components (incomplete/loose items)
 	"""
-	wh = get_supplier_warehouse(
-		supplier=getattr(doc, "supplier", None),
-		po_warehouse=getattr(doc, "supplier_warehouse", None) or getattr(doc, "set_warehouse", None),
-		branch=getattr(doc, "branch", None),
-	)
-
-	# Auto-populate supplier_warehouse on doc if found from Supplier master and empty on PO
-	if wh and not getattr(doc, "supplier_warehouse", None) and hasattr(doc, "supplier_warehouse"):
-		doc.supplier_warehouse = wh
+	wh = getattr(doc, "supplier_warehouse", None) or getattr(doc, "set_warehouse", None)
 
 	if not wh:
 		return
