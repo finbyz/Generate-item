@@ -24,7 +24,7 @@
 
         const params = {
             report_name: report.report_name,
-            filters: filters || {},
+            // filters: filters || {},
             file_format_type: "Excel",
         };
 

@@ -7,10 +7,8 @@ from frappe import _
 from frappe.desk.query_report import get_column_as_dict, run
 from frappe.utils import cint, cstr, flt, get_datetime
 from openpyxl import Workbook
-from openpyxl.formatting.rule import CellIsRule
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.styles import Alignment, Border, Font, Side
 from openpyxl.utils import get_column_letter
-from openpyxl.worksheet.table import Table, TableStyleInfo
 from frappe.utils import strip_html
 
 DATE_FIELDTYPES = {"Date"}
@@ -21,8 +19,8 @@ NUMERIC_FIELDTYPES = {"Int", "Float", "Currency", "Percent"}
 @frappe.whitelist()
 def export_query_report(form_params):
     """
-    Export ANY Query Report / Script Report to a clean, branded Excel
-    workbook - header row with filters, banded rows - and stream it
+    Export ANY Query Report / Script Report to a clean Excel
+    workbook without formula or colors, and stream it
     straight back as a browser download. No File doc is created.
     """
 
@@ -59,13 +57,9 @@ def export_query_report(form_params):
     ws = wb.active
     ws.title = report_name[:31]
 
-    # ---------------- theme ----------------
-    HEADER_BLUE = "4472C4"
-    WHITE = "FFFFFF"
-
-    header_font = Font(bold=True, color=WHITE, size=10)
-    header_fill = PatternFill("solid", fgColor=HEADER_BLUE)
-    thin = Side(style="thin", color="B7C6E3")
+    # ---------------- clean theme (no colors / no fills) ----------------
+    header_font = Font(bold=True, size=10)
+    thin = Side(style="thin", color="000000")
     thin_border = Border(left=thin, right=thin, top=thin, bottom=thin)
     center = Alignment(horizontal="center", vertical="center", wrap_text=True)
     left_align = Alignment(horizontal="left", vertical="center")
@@ -74,19 +68,18 @@ def export_query_report(form_params):
     n_cols = max(len(labels), 1)
     last_col_letter = get_column_letter(n_cols)
 
-    # ---------------- header row (row 1, no banner) ----------------
+    # ---------------- header row (row 1, clean no color fill) ----------------
     header_row_idx = 1
     for idx, label in enumerate(labels, start=1):
         cell = ws.cell(row=header_row_idx, column=idx, value=label)
         cell.font = header_font
-        cell.fill = header_fill
         cell.alignment = center
         cell.border = thin_border
     ws.row_dimensions[header_row_idx].height = 20
 
     max_width = [len(str(lbl)) + 4 for lbl in labels]
 
-    # ---------------- data rows ----------------
+    # ---------------- data rows (clean raw values, no colors) ----------------
     start_data_row = header_row_idx + 1
     for r_idx, row in enumerate(rows):
         if isinstance(row, dict):
@@ -133,7 +126,10 @@ def export_query_report(form_params):
             else:
                 if isinstance(value, str) and ("<" in value and ">" in value):
                     value = strip_html(value)
-                cell.value = value
+                if isinstance(value, str) and value.startswith("="):
+                    cell.value = f"'{value}"
+                else:
+                    cell.value = value
                 cell.alignment = left_align
 
             cell.border = thin_border
@@ -149,32 +145,10 @@ def export_query_report(form_params):
     # ---------------- freeze header row ----------------
     ws.freeze_panes = f"A{start_data_row}"
 
-    # ---------------- native Excel table (filters + banding) ----------------
-    last_row = start_data_row + len(rows) - 1
-    if rows and n_cols > 0:
-        table_name = "Tbl_" + "".join(ch for ch in report_name if ch.isalnum())[:24]
-        table = Table(
-            displayName=table_name,
-            ref=f"A{header_row_idx}:{last_col_letter}{last_row}",
-        )
-        table.tableStyleInfo = TableStyleInfo(
-            name="TableStyleMedium9",
-            showFirstColumn=False,
-            showLastColumn=False,
-            showRowStripes=True,
-            showColumnStripes=False,
-        )
-        ws.add_table(table)
-
-        # negative numbers highlighted in red, for any numeric column
-        red_font = Font(color="C00000")
-        for c_idx, ftype in enumerate(fieldtypes, start=1):
-            if ftype in NUMERIC_FIELDTYPES:
-                col_letter = get_column_letter(c_idx)
-                rng = f"{col_letter}{start_data_row}:{col_letter}{last_row}"
-                ws.conditional_formatting.add(
-                    rng, CellIsRule(operator="lessThan", formula=["0"], font=red_font)
-                )
+    # ---------------- auto filter ----------------
+    # last_row = start_data_row + len(rows) - 1
+    # if rows and n_cols > 0:
+    #     ws.auto_filter.ref = f"A{header_row_idx}:{last_col_letter}{last_row}"
 
     # ---------------- direct download, no File doc ----------------
     buffer = BytesIO()
