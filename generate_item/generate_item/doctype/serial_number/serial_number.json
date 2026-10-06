@@ -39,7 +39,9 @@
   "engg_bom_created_by",
   "release_date_expected",
   "warranty_expiry_date",
-  "reason_for_delay"
+  "reason_for_delay",
+  "more_info_tab",
+  "mfg_type_change_history"
  ],
  "fields": [
   {
@@ -88,7 +90,8 @@
    "fieldtype": "Select",
    "in_standard_filter": 1,
    "label": "Mfg Type",
-   "options": "\nIN-HOUSE\nOUTSOURCE"
+   "options": "\nIn-house\nOut sources\nJob work-full Job work\nJob work-Casting part\nJob work-Trim & other Part",
+   "read_only": 1
   },
   {
    "fieldname": "branch",
@@ -239,8 +242,8 @@
    "fieldname": "engg_bom_created_by",
    "fieldtype": "Link",
    "label": "Engg. BOM Created By.",
-   "read_only": 1,
-   "options": "User"
+   "options": "User",
+   "read_only": 1
   },
   {
    "allow_on_submit": 1,
@@ -284,13 +287,26 @@
    "fieldtype": "Date",
    "label": "Warranty Expiry Date",
    "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "mfg_type_change_history",
+   "fieldtype": "Table",
+   "label": "MFG Type Change History",
+   "options": "MFG Type Change History",
+   "read_only": 1
+  },
+  {
+   "fieldname": "more_info_tab",
+   "fieldtype": "Tab Break",
+   "label": "More Info"
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-08-21 15:54:44.712544",
+ "modified": "2026-10-06 11:58:41.671985",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Serial Number",
