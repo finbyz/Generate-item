@@ -55,7 +55,7 @@ frappe.query_reports["Daily Review Sales Order"] = {
             fieldname: "mfg_type",
             label:     __("Mfg Type"),
             fieldtype: "Select",
-            options:   "\nIN-HOUSE\nOUTSOURCE",
+            options:   "\nIn-house\nOut sources\nJob work-full Job work\nJob work-Casting part\nJob work-Trim & other Part",
         },
         {
             fieldname: "gad_status",
@@ -563,10 +563,6 @@ _open_bulk_update_dialog() {
     const editable_fieldnames = editable_fields.map(f => f.fieldname);
 
     // ── 3. Helper: show/hide the entire editable section ─────────────────
-    //    Targets sec_fields + update_note + every data fieldname.
-    //    Column Break / Section Break (hide_border) layout rows have no
-    //    fieldname so they cannot be toggled individually; they render
-    //    invisibly when their neighbours are hidden — no visual impact.
     const _toggle_editable_section = (show) => {
         const hidden = show ? 0 : 1;
         dialog.set_df_property("sec_fields",  "hidden", hidden);
@@ -577,7 +573,133 @@ _open_bulk_update_dialog() {
         dialog.refresh();
     };
 
-    // ── 4. Build 2-column grid layout rows (all hidden by default) ────────
+    // ── 4. Helper: render batch selection table (ONLY ONE COLUMN: Batch) ─
+    const _render_batch_table = (batches) => {
+        const field = dialog.fields_dict.batches_table_html;
+        if (!field || !field.$wrapper) return;
+
+        if (!batches || !batches.length) {
+            field.$wrapper.empty();
+            dialog.set_df_property("batches_table_html", "hidden", 1);
+            return;
+        }
+
+        dialog.set_df_property("batches_table_html", "hidden", 0);
+
+        const html = `
+            <div class="batch-selection-container" style="margin-top: 4px; margin-bottom: 12px;">
+                <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+                    <span>
+                        <strong class="selected-batch-count" style="color: var(--text-color);">${batches.length}</strong> of <strong>${batches.length}</strong> batch(es) selected
+                    </span>
+                    <span style="display: flex; gap: 12px;">
+                        <a href="javascript:void(0)" class="batch-select-all-btn" style="color: var(--primary-color, #2490ef); font-weight: 500;">${__("Select All")}</a>
+                        <a href="javascript:void(0)" class="batch-deselect-all-btn" style="color: var(--text-muted); font-weight: 500;">${__("Deselect All")}</a>
+                    </span>
+                </div>
+                <div style="border: 1px solid var(--border-color, #d1d8dd); border-radius: var(--border-radius, 6px); max-height: 200px; overflow-y: auto; background: var(--control-bg, #fff);">
+                    <table class="table table-bordered table-hover" style="margin: 0; width: 100%; font-size: 13px;">
+                        <thead>
+                            <tr style="background: var(--table-bg, var(--bg-light-gray, #f7fafc)); position: sticky; top: 0; z-index: 2;">
+                                <th style="padding: 8px 12px; font-weight: 600; border-bottom: 1px solid var(--border-color, #d1d8dd);">
+                                    <label style="display: flex; align-items: center; gap: 10px; margin: 0; font-weight: 600; cursor: pointer;">
+                                        <input type="checkbox" class="header-batch-checkbox" style="margin: 0; cursor: pointer;" checked />
+                                        <span>${__("Batch")}</span>
+                                    </label>
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${batches.map(b => `
+                                <tr class="batch-table-row" style="cursor: pointer;">
+                                    <td style="padding: 7px 12px; vertical-align: middle;">
+                                        <label style="display: flex; align-items: center; gap: 10px; margin: 0; font-weight: normal; cursor: pointer; width: 100%;">
+                                            <input type="checkbox" class="batch-row-checkbox" value="${frappe.utils.escape_html(b)}" style="margin: 0; cursor: pointer;" checked />
+                                            <span style="font-family: var(--font-stack-monospace, monospace); font-weight: 500;">${frappe.utils.escape_html(b)}</span>
+                                        </label>
+                                    </td>
+                                </tr>
+                            `).join("")}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+
+        field.$wrapper.html(html);
+
+        const update_counts = () => {
+            const total = field.$wrapper.find(".batch-row-checkbox").length;
+            const checked = field.$wrapper.find(".batch-row-checkbox:checked").length;
+            field.$wrapper.find(".selected-batch-count").text(checked);
+            const header_cb = field.$wrapper.find(".header-batch-checkbox");
+            if (checked === total) {
+                header_cb.prop("checked", true).prop("indeterminate", false);
+            } else if (checked === 0) {
+                header_cb.prop("checked", false).prop("indeterminate", false);
+            } else {
+                header_cb.prop("checked", false).prop("indeterminate", true);
+            }
+        };
+
+        field.$wrapper.find(".header-batch-checkbox").on("change", function() {
+            const is_checked = $(this).is(":checked");
+            field.$wrapper.find(".batch-row-checkbox").prop("checked", is_checked);
+            update_counts();
+        });
+
+        field.$wrapper.find(".batch-row-checkbox").on("change", function() {
+            update_counts();
+        });
+
+        field.$wrapper.find(".batch-select-all-btn").on("click", function(e) {
+            e.preventDefault();
+            field.$wrapper.find(".batch-row-checkbox").prop("checked", true);
+            update_counts();
+        });
+
+        field.$wrapper.find(".batch-deselect-all-btn").on("click", function(e) {
+            e.preventDefault();
+            field.$wrapper.find(".batch-row-checkbox").prop("checked", false);
+            update_counts();
+        });
+    };
+
+    // ── 5. Helper: fetch batches for selected Sales Order ─────────────────
+    const _fetch_batches_for_so = (so_name) => {
+        const so = so_name || dialog.get_value("sales_order_ref");
+        if (!so) {
+            frappe.show_alert({
+                message:   __("Please select a Sales Order first."),
+                indicator: "orange",
+            }, 3);
+            return;
+        }
+
+        frappe.call({
+            method: "generate_item.generate_item.report.daily_review_sales_order.daily_review_sales_order.get_batches_for_sales_order",
+            args: { sales_order: so },
+            freeze: true,
+            freeze_message: __("Fetching batches for {0}…", [so]),
+            callback: function(r) {
+                const batches = (r && r.message) || [];
+                if (!batches.length) {
+                    frappe.msgprint({
+                        title:     __("No Batches Found"),
+                        message:   __("No active batch-linked line items found for Sales Order <b>{0}</b>.", [so]),
+                        indicator: "orange",
+                    });
+                    _render_batch_table([]);
+                    _toggle_editable_section(false);
+                    return;
+                }
+                _render_batch_table(batches);
+                _toggle_editable_section(true);
+            },
+        });
+    };
+
+    // ── 6. Build 2-column grid layout rows (all hidden by default) ────────
     const field_rows = [];
     editable_fields.forEach((f, idx) => {
         field_rows.push({
@@ -585,7 +707,7 @@ _open_bulk_update_dialog() {
             label:     f.label,
             fieldtype: f.fieldtype,
             options:   f.options,
-            hidden:    1,             // hidden until reference is selected
+            hidden:    1,             // hidden until reference/batches is selected
         });
         if (idx % 2 === 0) {
             field_rows.push({ fieldtype: "Column Break" });
@@ -594,7 +716,7 @@ _open_bulk_update_dialog() {
         }
     });
 
-    // ── 5. Dialog field schema ─────────────────────────────────────────────
+    // ── 7. Dialog field schema ─────────────────────────────────────────────
     let dialog;
 
     const dialog_fields = [
@@ -616,21 +738,24 @@ _open_bulk_update_dialog() {
                 const is_so  = val === "Sales Order";
                 const is_bat = val === "Batch";
 
-                // Show/hide the correct reference link field
-                dialog.set_df_property("sales_order_ref", "hidden", !is_so);
-                dialog.set_df_property("sales_order_ref", "reqd",    is_so ? 1 : 0);
-                dialog.set_df_property("batch_ref",       "hidden", !is_bat);
-                dialog.set_df_property("batch_ref",       "reqd",    is_bat ? 1 : 0);
+                // Show/hide reference link fields and fetch button
+                dialog.set_df_property("sales_order_ref",   "hidden", !is_so);
+                dialog.set_df_property("sales_order_ref",   "reqd",    is_so ? 1 : 0);
+                dialog.set_df_property("fetch_batches_btn", "hidden", !is_so);
+                dialog.set_df_property("batch_ref",         "hidden", !is_bat);
+                dialog.set_df_property("batch_ref",         "reqd",    is_bat ? 1 : 0);
 
-              
-                if (is_so)  dialog.set_value("batch_ref",       "");
-                if (is_bat) dialog.set_value("sales_order_ref", "");
+                _render_batch_table([]);
 
-                
-                const existing_ref = is_so
-                    ? dialog.get_value("sales_order_ref")
-                    : dialog.get_value("batch_ref");
-                _toggle_editable_section(!!existing_ref);
+                if (is_so) {
+                    dialog.set_value("batch_ref", "");
+                    _toggle_editable_section(false);
+                }
+                if (is_bat) {
+                    dialog.set_value("sales_order_ref", "");
+                    const existing_ref = dialog.get_value("batch_ref");
+                    _toggle_editable_section(!!existing_ref);
+                }
 
                 dialog.refresh();
             },
@@ -643,8 +768,18 @@ _open_bulk_update_dialog() {
             hidden:    1,
             reqd:      0,
             onchange() {
-                // Show editable fields only when a reference is actually chosen
-                _toggle_editable_section(!!dialog.get_value("sales_order_ref"));
+                // Clear previous batch selection and hide fields until Fetch Batch is clicked
+                _render_batch_table([]);
+                _toggle_editable_section(false);
+            },
+        },
+        {
+            fieldname: "fetch_batches_btn",
+            label:     __("Fetch Batch"),
+            fieldtype: "Button",
+            hidden:    1,
+            click() {
+                _fetch_batches_for_so();
             },
         },
         {
@@ -657,6 +792,13 @@ _open_bulk_update_dialog() {
             onchange() {
                 _toggle_editable_section(!!dialog.get_value("batch_ref"));
             },
+        },
+
+        // ── Batch Table section (directly above Fields to Update) ──────────
+        {
+            fieldname: "batches_table_html",
+            fieldtype: "HTML",
+            hidden:    1,
         },
 
         // ── Editable fields section (hidden until reference is selected) ───
@@ -687,7 +829,7 @@ _open_bulk_update_dialog() {
         ...field_rows,
     ];
 
-    // ── 6. Create and show dialog ──────────────────────────────────────────
+    // ── 8. Create and show dialog ──────────────────────────────────────────
     dialog = new frappe.ui.Dialog({
         title:                __("Bulk Update Serial Numbers"),
         fields:               dialog_fields,
@@ -706,10 +848,7 @@ _open_bulk_update_dialog() {
         });
     }
 
-    // ── 7. Apply filter defaults AFTER render ──────────────────────────────
-    //    setTimeout lets the dialog DOM fully initialise before we push values.
-    //    All three set_value calls are sequential so the onchange chain fires
-    //    correctly without race conditions.
+    // ── 9. Apply filter defaults AFTER render ──────────────────────────────
     if (default_type && default_ref) {
         setTimeout(() => {
             const is_so  = default_type === "Sales Order";
@@ -718,107 +857,31 @@ _open_bulk_update_dialog() {
             // Step A: set the "Update By" dropdown
             dialog.set_value("select_type", default_type);
 
-            // Step B: show the correct reference field (onchange won't fire
-            //         for programmatic set_value in all Frappe versions, so
-            //         we do it explicitly here too)
-            dialog.set_df_property("sales_order_ref", "hidden", !is_so);
-            dialog.set_df_property("sales_order_ref", "reqd",    is_so ? 1 : 0);
-            dialog.set_df_property("batch_ref",       "hidden", !is_bat);
-            dialog.set_df_property("batch_ref",       "reqd",    is_bat ? 1 : 0);
+            // Step B: show the correct reference field
+            dialog.set_df_property("sales_order_ref",   "hidden", !is_so);
+            dialog.set_df_property("sales_order_ref",   "reqd",    is_so ? 1 : 0);
+            dialog.set_df_property("fetch_batches_btn", "hidden", !is_so);
+            dialog.set_df_property("batch_ref",         "hidden", !is_bat);
+            dialog.set_df_property("batch_ref",         "reqd",    is_bat ? 1 : 0);
 
             // Step C: populate the reference field with the filter value
             const ref_field = is_so ? "sales_order_ref" : "batch_ref";
             dialog.set_value(ref_field, default_ref);
 
-            // Step D: reference is pre-filled → show the editable fields immediately
-            _toggle_editable_section(true);
+            if (is_so) {
+                // Pre-fetch batches for the default Sales Order
+                _fetch_batches_for_so(default_ref);
+            } else if (is_bat) {
+                // Step D: batch reference is pre-filled → show the editable fields immediately
+                _toggle_editable_section(true);
+            }
 
             dialog.refresh();
-        }, 120);   // 120 ms is enough for dialog paint; safe across slow machines
+        }, 120);
     }
 },
-// // ─── EXECUTE BULK UPDATE ──────────────────────────────────────────────────────
-// async _execute_bulk_update(values, dialog) {
-//     const me = frappe.query_reports["Daily Review Sales Order"];
 
-//     const select_type = values.select_type;
-//     const reference   = select_type === "Sales Order"
-//         ? values.sales_order_ref
-//         : values.batch_ref;
-
-//     if (!reference) {
-//         frappe.show_alert({
-//             message:   __("Please select a {0} first.", [select_type]),
-//             indicator: "orange",
-//         }, 3);
-//         return;
-//     }
-
-//     // ── Collect only non-blank user-filled editable fields ────────────────
-//     const field_value_map = {};
-//     for (const fieldname of Object.keys(me._sn_meta)) {
-//         const val = values[fieldname];
-//         if (val !== undefined && val !== null && val !== "") {
-//             field_value_map[fieldname] = val;
-//         }
-//     }
-
-//     const field_count = Object.keys(field_value_map).length;
-//     if (!field_count) {
-//         frappe.show_alert({
-//             message:   __("Please fill at least one field to update."),
-//             indicator: "orange",
-//         }, 3);
-//         return;
-//     }
-
-//     // ── Confirm before mass-update ────────────────────────────────────────
-//     frappe.confirm(
-//         __(`This will update <strong>{0}</strong> field(s) across all Serial Numbers
-//             linked to <strong>{1}</strong>.<br><br>
-           
-//             Are you sure?`, [
-//             field_count,
-//             reference,
-//             // Object.keys(field_value_map).join(", "),
-//         ]),
-//         async () => {
-//             dialog.hide();
-
-//             frappe.show_alert({
-//                 message:   __("Bulk updating — please wait…"),
-//                 indicator: "blue",
-//             }, 30);
-
-//             try {
-//                 const result = await frappe.xcall(
-//                     "generate_item.generate_item.report.daily_review_sales_order"
-//                     + ".daily_review_sales_order.bulk_update_by_reference",
-//                     { select_type, reference, field_value_map }
-//                 );
-
-//                 frappe.show_alert({
-//                     message: __(
-//                         "✓ {0} Serial Number(s) updated successfully across {1} field(s).",
-//                         [result.updated, field_count]
-//                     ),
-//                     indicator: "green",
-//                 }, 8);
-
-//                 me._report.refresh();
-
-//             } catch (err) {
-//                 console.error("Bulk update error:", err);
-//                 frappe.msgprint({
-//                     title:     __("Bulk Update Failed"),
-//                     message:   err.message || __("An unexpected server error occurred."),
-//                     indicator: "red",
-//                 });
-//             }
-//         }
-//     );
-// },
-
+// ─── EXECUTE BULK UPDATE ──────────────────────────────────────────────────────
 async _execute_bulk_update(values, dialog) {
     const me = frappe.query_reports["Daily Review Sales Order"];
 
@@ -835,19 +898,24 @@ async _execute_bulk_update(values, dialog) {
         return;
     }
 
-    // ── NEW: split matched rows by product type for a clear confirm message ──
-    const report_rows = me._report.data || [];
-    const matched_rows = select_type === "Sales Order"
-        ? report_rows.filter(r => r.sales_order === reference)
-        : report_rows.filter(r => r.batch_key   === reference);
+    let selected_batches = null;
+    if (select_type === "Sales Order") {
+        selected_batches = [];
+        const wrapper = dialog.fields_dict.batches_table_html?.$wrapper;
+        if (wrapper) {
+            wrapper.find(".batch-row-checkbox:checked").each(function() {
+                selected_batches.push($(this).val());
+            });
+        }
 
-    const valve_batches       = new Set(matched_rows.filter(r => r.source_doctype === "Serial Number").map(r => r.batch_key));
-    const valve_spare_batches = new Set(matched_rows.filter(r => r.source_doctype === "Valve Spare Serial").map(r => r.batch_key));
-
-    const breakdown_lines = [];
-    if (valve_batches.size)       breakdown_lines.push(__("{0} Valve batch(es)", [valve_batches.size]));
-    if (valve_spare_batches.size) breakdown_lines.push(__("{0} Valve Spare batch(es)", [valve_spare_batches.size]));
-    const breakdown_text = breakdown_lines.length ? breakdown_lines.join(" + ") : reference;
+        if (!selected_batches.length) {
+            frappe.show_alert({
+                message:   __("Please fetch and select at least one batch from the table to update."),
+                indicator: "orange",
+            }, 4);
+            return;
+        }
+    }
 
     // Collect only non-blank user-filled editable fields
     const field_value_map = {};
@@ -867,15 +935,19 @@ async _execute_bulk_update(values, dialog) {
         return;
     }
 
-    // Confirm before mass-update — now shows the Valve / Valve Spare split
-    frappe.confirm(
-        __(`This will update <strong>{0}</strong> field(s) across <strong>{1}</strong>
-            linked to <strong>{2}</strong>.<br><br>
-            Are you sure?`, [
+    const confirm_msg = select_type === "Sales Order"
+        ? __(`This will update <strong>{0}</strong> field(s) across <strong>{1}</strong> selected batch(es) linked to <strong>{2}</strong>.<br><br>Are you sure?`, [
             field_count,
-            breakdown_text,
+            selected_batches.length,
             reference,
-        ]),
+        ])
+        : __(`This will update <strong>{0}</strong> field(s) across batch <strong>{1}</strong>.<br><br>Are you sure?`, [
+            field_count,
+            reference,
+        ]);
+
+    frappe.confirm(
+        confirm_msg,
         async () => {
             dialog.hide();
 
@@ -888,10 +960,14 @@ async _execute_bulk_update(values, dialog) {
                 const result = await frappe.xcall(
                     "generate_item.generate_item.report.daily_review_sales_order"
                     + ".daily_review_sales_order.bulk_update_by_reference",
-                    { select_type, reference, field_value_map }
+                    {
+                        select_type,
+                        reference,
+                        field_value_map,
+                        selected_batches: select_type === "Sales Order" ? selected_batches : null,
+                    }
                 );
 
-                // NEW: build a message that breaks down Valve vs Valve Spare counts
                 let result_message;
                 if (result.updated == 0) {
                     result_message = __("No Serial Numbers updated.");
@@ -923,119 +999,6 @@ async _execute_bulk_update(values, dialog) {
         }
     );
 },
-
-// async _execute_bulk_update(values, dialog) {
-//     const me = frappe.query_reports["Daily Review Sales Order"];
-
-//     const select_type = values.select_type;
-//     const reference   = select_type === "Sales Order"
-//         ? values.sales_order_ref
-//         : values.batch_ref;
-
-//     if (!reference) {
-//         frappe.show_alert({
-//             message:   __("Please select a {0} first.", [select_type]),
-//             indicator: "orange",
-//         }, 3);
-//         return;
-//     }
-
-//     // ── NEW: Check cancelled SO lines from report data ────────────────────
-//     const report_rows = me._report.data || [];
-
-//     // Find all rows matching this reference
-//     const matched_rows = select_type === "Sales Order"
-//         ? report_rows.filter(r => r.sales_order === reference)
-//         : report_rows.filter(r => r.batch_key   === reference);
-
-//     const all_cancelled  = matched_rows.length > 0
-//         && matched_rows.every(r => r.so_line_status === "Cancelled");
-
-//     const some_cancelled = !all_cancelled
-//         && matched_rows.some(r => r.so_line_status === "Cancelled");
-
-//     // Case 1 — every row for this reference is cancelled → stop entirely
-//     // if (all_cancelled) {
-//     //     frappe.show_alert({
-//     //         message:   __("All rows for this {0} have a Cancelled SO line. No Serial Numbers will be updated.", [select_type]),
-//     //         indicator: "red",
-//     //     }, 6);
-//     //     return;
-//     // }
-
-//     // Case 2 — some rows are cancelled → warn but continue (server already skips them)
-//     // if (some_cancelled) {
-//     //     frappe.show_alert({
-//     //         message:   __("Some rows for this {0} have a Cancelled SO line and will be skipped.", [select_type]),
-//     //         indicator: "orange",
-//     //     }, 6);
-//     // }
-   
-
-//     // Collect only non-blank user-filled editable fields
-//     const field_value_map = {};
-//     for (const fieldname of Object.keys(me._sn_meta)) {
-//         const val = values[fieldname];
-//         if (val !== undefined && val !== null && val !== "") {
-//             field_value_map[fieldname] = val;
-//         }
-//     }
-
-//     const field_count = Object.keys(field_value_map).length;
-//     if (!field_count) {
-//         frappe.show_alert({
-//             message:   __("Please fill at least one field to update."),
-//             indicator: "orange",
-//         }, 3);
-//         return;
-//     }
-
-//     // Confirm before mass-update
-//     frappe.confirm(
-//         __(`This will update <strong>{0}</strong> field(s) across all Serial Numbers
-//             linked to <strong>{1}</strong>.<br><br>
-//             Are you sure?`, [
-//             field_count,
-//             reference,
-//         ]),
-//         async () => {
-//             dialog.hide();
-
-//             frappe.show_alert({
-//                 message:   __("Bulk updating — please wait…"),
-//                 indicator: "blue",
-//             }, 30);
-
-//             try {
-//                 const result = await frappe.xcall(
-//                     "generate_item.generate_item.report.daily_review_sales_order"
-//                     + ".daily_review_sales_order.bulk_update_by_reference",
-//                     { select_type, reference, field_value_map }
-//                 );
-
-//                 frappe.show_alert({
-//                     message: result.updated == 0
-//                         ? __("No Serial Numbers updated.")
-//                         : __(
-//                             "✓ {0} Serial Number(s) updated successfully across {1} field(s).",
-//                             [result.updated, field_count]
-//                         ),
-//                     indicator: result.updated == 0 ? "orange" : "green",
-//                 }, 8);
-
-//                 me._report.refresh();
-
-//             } catch (err) {
-//                 console.error("Bulk update error:", err);
-//                 frappe.msgprint({
-//                     title:     __("Bulk Update Failed"),
-//                     message:   err.message || __("An unexpected server error occurred."),
-//                     indicator: "red",
-//                 });
-//             }
-//         }
-//     );
-// },
     formatter(value, row, column, data, default_formatter) {
         const me = frappe.query_reports["Daily Review Sales Order"];
         value = default_formatter(value, row, column, data);

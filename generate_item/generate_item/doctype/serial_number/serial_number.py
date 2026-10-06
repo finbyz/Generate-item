@@ -15,7 +15,39 @@ from frappe.utils import nowdate, getdate
 from generate_item.generate_item.doctype.valve_spare_serial.valve_spare_serial import _handle_valve_spare_qty_changes
 
 class SerialNumber(Document):
-	pass
+	def before_save(self):
+		self._record_mfg_type_change()
+
+	def before_update_after_submit(self):
+		self._record_mfg_type_change()
+
+	def _record_mfg_type_change(self):
+		if not self.is_new():
+			doc_before_save = self.get_doc_before_save()
+			if doc_before_save:
+				old_mfg_type = doc_before_save.get("mfg_type") or ""
+			else:
+				old_mfg_type = frappe.db.get_value(self.doctype, self.name, "mfg_type") or ""
+		else:
+			old_mfg_type = ""
+
+		new_mfg_type = (self.mfg_type or "").strip()
+		old_mfg_type = (old_mfg_type or "").strip()
+
+		if old_mfg_type != new_mfg_type:
+			already_appended = False
+			if self.get("mfg_type_change_history"):
+				last_row = self.mfg_type_change_history[-1]
+				if (last_row.get("old_mfg_type") or "").strip() == old_mfg_type and (last_row.get("new_mfg_type") or "").strip() == new_mfg_type:
+					already_appended = True
+
+			if not already_appended:
+				self.append("mfg_type_change_history", {
+					"user": frappe.session.user or "Administrator",
+					"change_date": frappe.utils.now_datetime(),
+					"old_mfg_type": old_mfg_type,
+					"new_mfg_type": new_mfg_type,
+				})
 
 # ---------------------------------------------------------------------------
 # Constants
