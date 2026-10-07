@@ -24,9 +24,19 @@ function set_naming_series_by_branch(frm) {
 frappe.ui.form.on("Gate Pass Inward", {
 
     onload(frm) {
-        frm.set_query("gate_pass_outward", () => ({
-            filters: { returnable: "Yes", docstatus: 1 }
-        }));
+        frm.set_query("gate_pass_outward", () => {
+            let filters = {};
+            if (frm.doc.branch) {
+                filters.branch = frm.doc.branch;
+            }
+            return {
+                query: "generate_item.generate_item.doctype.gate_pass_outward.gate_pass_outward.get_pending_gate_pass_outward",
+                filters: filters
+            };
+        });
+        //  frm.set_query("gate_pass_outward", () => ({
+        //     filters: { returnable: "Yes", docstatus: 1 }
+        // }));
         if (frm.is_new() && frm.doc.branch) {
             set_naming_series_by_branch(frm);
         }
