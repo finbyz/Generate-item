@@ -4,26 +4,13 @@
  "docstatus": 0,
  "doctype": "Page",
  "idx": 0,
- "modified": "2026-10-01 14:24:48.283893",
+ "modified": "2026-10-07 10:04:34.838163",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "financial-dashboard",
  "owner": "Administrator",
  "page_name": "financial-dashboard",
- "roles": [
-  {
-   "role": "Accounts Manager"
-  },
-  {
-   "role": "Accounts User"
-  },
-  {
-   "role": "System Manager"
-  },
-  {
-   "role": "Sales Manager"
-  }
- ],
+ "roles": [],
  "script": null,
  "standard": "Yes",
  "style": null,

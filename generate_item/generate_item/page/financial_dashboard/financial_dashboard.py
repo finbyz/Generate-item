@@ -58,7 +58,12 @@ def get_previous_fiscal_year(fiscal_year: str) -> Optional[str]:
 
 
 @frappe.whitelist()
-def get_overview(company: Optional[str] = None, fiscal_year: Optional[str] = None, unit_dimension: Optional[str] = None) -> Dict[str, Any]:
+def get_overview(
+	company: Optional[str] = None,
+	fiscal_year: Optional[str] = None,
+	branch: Optional[str] = None,
+	unit_dimension: Optional[str] = "Branch",
+) -> Dict[str, Any]:
 	"""
 	Main overview endpoint for Financial Dashboard:
 	Returns: KPIs, Item 1 (Monthly Revenue & Operating Margin), Item 4 (Orders Booked),
@@ -82,40 +87,40 @@ def get_overview(company: Optional[str] = None, fiscal_year: Optional[str] = Non
 			fiscal_year = frappe.db.get_value("Fiscal Year", {"disabled": 0}, "name", order_by="year_start_date desc")
 
 	if not unit_dimension:
-		unit_dimension = "Cost Center"
+		unit_dimension = "Branch"
 
 	fy_start, fy_end = get_fy_dates(fiscal_year)
-	currency = frappe.get_cached_value("Company", company, "default_currency") or "INR"
+	currency = "INR"
 
 	# Previous Fiscal Year for YoY comparisons
 	prev_fy = get_previous_fiscal_year(fiscal_year)
 	prev_fy_start, prev_fy_end = (get_fy_dates(prev_fy) if prev_fy else (None, None))
 
 	# 1. Monthly Revenue and Operating Margin (Current FY)
-	rev_margin_data = get_monthly_revenue_and_margin(company, fy_start, fy_end)
+	rev_margin_data = get_monthly_revenue_and_margin(company, fy_start, fy_end, branch=branch)
 
 	# Previous FY for delta comparison
 	prev_rev_margin = (
-		get_monthly_revenue_and_margin(company, prev_fy_start, prev_fy_end)
+		get_monthly_revenue_and_margin(company, prev_fy_start, prev_fy_end, branch=branch)
 		if prev_fy_start and prev_fy_end
 		else {"total_revenue": 0.0, "total_expense": 0.0, "operating_margin": 0.0}
 	)
 
 	# 2. Orders Booked (Monthly)
-	orders_data = get_monthly_orders_booked(company, fy_start, fy_end)
+	orders_data = get_monthly_orders_booked(company, fy_start, fy_end, branch=branch)
 
 	# 3. Pending Orders Pipeline & SLA (bounded by selected Fiscal Year)
-	pending_orders = get_pending_orders_status(company, fy_start, fy_end)
+	pending_orders = get_pending_orders_status(company, fy_start, fy_end, branch=branch)
 
 	# 4. AR Ageing
-	ar_ageing = get_ar_ageing(company, fy_start, fy_end, rev_margin_data["total_revenue"])
+	ar_ageing = get_ar_ageing(company, fy_start, fy_end, rev_margin_data["total_revenue"], branch=branch)
 
 	# 5. AP Ageing
-	total_purchases = get_ytd_purchases(company, fy_start, fy_end)
-	ap_ageing = get_ap_ageing(company, fy_start, fy_end, total_purchases)
+	total_purchases = get_ytd_purchases(company, fy_start, fy_end, branch=branch)
+	ap_ageing = get_ap_ageing(company, fy_start, fy_end, total_purchases, branch=branch)
 
 	# 6. Book-to-Bill
-	sales_invoice_net = get_sales_invoice_net_total(company, fy_start, fy_end)
+	sales_invoice_net = get_sales_invoice_net_total(company, fy_start, fy_end, branch=branch)
 	book_to_bill = (
 		round(orders_data["total_orders_value"] / sales_invoice_net, 2)
 		if sales_invoice_net > 0
@@ -134,7 +139,7 @@ def get_overview(company: Optional[str] = None, fiscal_year: Optional[str] = Non
 
 	orders_delta = 0.0
 	if prev_fy_start and prev_fy_end:
-		prev_orders_count = get_orders_count_for_period(company, prev_fy_start, prev_fy_end)
+		prev_orders_count = get_orders_count_for_period(company, prev_fy_start, prev_fy_end, branch=branch)
 		if prev_orders_count > 0:
 			orders_delta = round(((orders_data["total_orders_count"] - prev_orders_count) / prev_orders_count) * 100, 1)
 
@@ -161,15 +166,24 @@ def get_overview(company: Optional[str] = None, fiscal_year: Optional[str] = Non
 		order_by="year_start_date asc",
 	)
 
+	# Fetch active branches
+	branches = frappe.get_all("Branch", fields=["name"], order_by="name asc")
+	all_branches = [b.name for b in branches] if branches else []
+	if not all_branches:
+		raw_b = frappe.db.sql("SELECT DISTINCT branch FROM `tabSales Invoice` WHERE branch IS NOT NULL AND branch != '' ORDER BY branch ASC")
+		all_branches = [r[0] for r in raw_b]
+
 	return {
 		"meta": {
 			"company": company,
 			"fiscal_year": fiscal_year,
+			"branch": branch or "",
 			"fy_start": str(fy_start),
 			"fy_end": str(fy_end),
-			"currency": currency,
+			"currency": "INR",
 			"unit_dimension": unit_dimension,
 			"all_fiscal_years": all_fys,
+			"all_branches": all_branches,
 			"generated_at": frappe.utils.now_datetime().strftime("%H:%M"),
 		},
 		"kpis": kpis,
@@ -181,13 +195,21 @@ def get_overview(company: Optional[str] = None, fiscal_year: Optional[str] = Non
 	}
 
 
-def get_monthly_revenue_and_margin(company: str, start_date: datetime.date, end_date: datetime.date) -> Dict[str, Any]:
+def get_monthly_revenue_and_margin(
+	company: str,
+	start_date: datetime.date,
+	end_date: datetime.date,
+	branch: Optional[str] = None,
+) -> Dict[str, Any]:
 	"""
 	Calculates monthly revenue and operating margin by aggregating GL Entries joined to Account.
 	Income: root_type = 'Income' -> SUM(credit - debit)
 	Expense: root_type = 'Expense' -> SUM(debit - credit)
 	Operating Margin % = (Income - Expense) / Income * 100
 	"""
+	start_date = getdate(start_date)
+	end_date = getdate(end_date)
+
 	# Generate all months between start_date and end_date
 	months = []
 	cur = datetime.date(start_date.year, start_date.month, 1)
@@ -196,8 +218,14 @@ def get_monthly_revenue_and_margin(company: str, start_date: datetime.date, end_
 		months.append(cur.strftime("%b %y"))
 		cur = add_months(cur, 1)
 
+	branch_cond = ""
+	params = [company, start_date, end_date]
+	if branch:
+		branch_cond = "AND gle.branch = %s"
+		params.append(branch)
+
 	gl_entries = frappe.db.sql(
-		"""
+		f"""
 		SELECT
 			DATE_FORMAT(gle.posting_date, '%%b %%y') AS month_label,
 			DATE_FORMAT(gle.posting_date, '%%Y-%%m') AS month_key,
@@ -210,11 +238,12 @@ def get_monthly_revenue_and_margin(company: str, start_date: datetime.date, end_
 			AND gle.is_cancelled = 0
 			AND gle.posting_date >= %s
 			AND gle.posting_date <= %s
+			{branch_cond}
 			AND acc.root_type IN ('Income', 'Expense')
 		GROUP BY month_key, month_label, acc.root_type
 		ORDER BY month_key ASC
 		""",
-		(company, start_date, end_date),
+		tuple(params),
 		as_dict=True,
 	)
 
@@ -297,9 +326,16 @@ def get_monthly_revenue_and_margin(company: str, start_date: datetime.date, end_
 
 
 def get_monthly_orders_booked(
-	company: str, start_date: datetime.date, end_date: datetime.date, target_count: float = 0.0
+	company: str,
+	start_date: datetime.date,
+	end_date: datetime.date,
+	branch: Optional[str] = None,
+	target_count: float = 0.0,
 ) -> Dict[str, Any]:
 	"""Fetches count and value of Sales Orders booked grouped by month."""
+	start_date = getdate(start_date)
+	end_date = getdate(end_date)
+
 	months = []
 	cur = datetime.date(start_date.year, start_date.month, 1)
 	end = datetime.date(end_date.year, end_date.month, 1)
@@ -307,8 +343,14 @@ def get_monthly_orders_booked(
 		months.append(cur.strftime("%b %y"))
 		cur = add_months(cur, 1)
 
+	branch_cond = ""
+	params = [company, start_date, end_date]
+	if branch:
+		branch_cond = "AND branch = %s"
+		params.append(branch)
+
 	so_data = frappe.db.sql(
-		"""
+		f"""
 		SELECT
 			DATE_FORMAT(transaction_date, '%%b %%y') AS month_label,
 			DATE_FORMAT(transaction_date, '%%Y-%%m') AS month_key,
@@ -320,10 +362,11 @@ def get_monthly_orders_booked(
 			AND status != 'Cancelled'
 			AND transaction_date >= %s
 			AND transaction_date <= %s
+			{branch_cond}
 		GROUP BY month_key, month_label
 		ORDER BY month_key ASC
 		""",
-		(company, start_date, end_date),
+		tuple(params),
 		as_dict=True,
 	)
 
@@ -363,10 +406,24 @@ def get_monthly_orders_booked(
 	}
 
 
-def get_orders_count_for_period(company: str, start_date: datetime.date, end_date: datetime.date) -> int:
+def get_orders_count_for_period(
+	company: str,
+	start_date: datetime.date,
+	end_date: datetime.date,
+	branch: Optional[str] = None,
+) -> int:
 	"""Returns total count of Sales Orders in a period."""
+	start_date = getdate(start_date)
+	end_date = getdate(end_date)
+
+	branch_cond = ""
+	params = [company, start_date, end_date]
+	if branch:
+		branch_cond = "AND branch = %s"
+		params.append(branch)
+
 	res = frappe.db.sql(
-		"""
+		f"""
 		SELECT COUNT(name)
 		FROM `tabSales Order`
 		WHERE company = %s
@@ -374,46 +431,81 @@ def get_orders_count_for_period(company: str, start_date: datetime.date, end_dat
 			AND status != 'Cancelled'
 			AND transaction_date >= %s
 			AND transaction_date <= %s
+			{branch_cond}
 		""",
-		(company, start_date, end_date),
+		tuple(params),
 	)
 	return cint(res[0][0]) if res else 0
 
 
-def get_sales_invoice_net_total(company: str, start_date: datetime.date, end_date: datetime.date) -> float:
+def get_sales_invoice_net_total(
+	company: str,
+	start_date: datetime.date,
+	end_date: datetime.date,
+	branch: Optional[str] = None,
+) -> float:
 	"""Computes net sales invoice total for book-to-bill calculation."""
+	start_date = getdate(start_date)
+	end_date = getdate(end_date)
+
+	branch_cond = ""
+	params = [company, start_date, end_date]
+	if branch:
+		branch_cond = "AND branch = %s"
+		params.append(branch)
+
 	res = frappe.db.sql(
-		"""
+		f"""
 		SELECT SUM(CASE WHEN is_return = 1 THEN -base_net_total ELSE base_net_total END)
 		FROM `tabSales Invoice`
 		WHERE company = %s
 			AND docstatus = 1
 			AND posting_date >= %s
 			AND posting_date <= %s
+			{branch_cond}
 		""",
-		(company, start_date, end_date),
+		tuple(params),
 	)
 	return flt(res[0][0]) if res and res[0][0] else 0.0
 
 
-def get_ytd_purchases(company: str, start_date: datetime.date, end_date: datetime.date) -> float:
+def get_ytd_purchases(
+	company: str,
+	start_date: datetime.date,
+	end_date: datetime.date,
+	branch: Optional[str] = None,
+) -> float:
 	"""Computes net purchase invoice total for DPO calculation."""
+	start_date = getdate(start_date)
+	end_date = getdate(end_date)
+
+	branch_cond = ""
+	params = [company, start_date, end_date]
+	if branch:
+		branch_cond = "AND branch = %s"
+		params.append(branch)
+
 	res = frappe.db.sql(
-		"""
+		f"""
 		SELECT SUM(CASE WHEN is_return = 1 THEN -base_net_total ELSE base_net_total END)
 		FROM `tabPurchase Invoice`
 		WHERE company = %s
 			AND docstatus = 1
 			AND posting_date >= %s
 			AND posting_date <= %s
+			{branch_cond}
 		""",
-		(company, start_date, end_date),
+		tuple(params),
 	)
 	return flt(res[0][0]) if res and res[0][0] else 0.0
 
 
 def get_pending_orders_status(
-	company: str, start_date: datetime.date, end_date: datetime.date, grace_days: int = 0
+	company: str,
+	start_date: datetime.date,
+	end_date: datetime.date,
+	branch: Optional[str] = None,
+	grace_days: int = 0,
 ) -> Dict[str, Any]:
 	"""
 	Classifies active pending Sales Orders within the selected Fiscal Year:
@@ -423,8 +515,17 @@ def get_pending_orders_status(
 	- Production: linked open Work Order (Not Started / In Process)
 	- Open / Unscheduled: remaining pending SOs
 	"""
+	start_date = getdate(start_date)
+	end_date = getdate(end_date)
+
+	branch_cond = ""
+	params = [company, start_date, end_date]
+	if branch:
+		branch_cond = "AND branch = %s"
+		params.append(branch)
+
 	pending_sos = frappe.db.sql(
-		"""
+		f"""
 		SELECT
 			name, status, delivery_date, base_grand_total, per_delivered, per_billed
 		FROM `tabSales Order`
@@ -433,8 +534,9 @@ def get_pending_orders_status(
 			AND status IN ('To Deliver and Bill', 'To Deliver', 'To Bill', 'On Hold')
 			AND transaction_date >= %s
 			AND transaction_date <= %s
+			{branch_cond}
 		""",
-		(company, start_date, end_date),
+		tuple(params),
 		as_dict=True,
 	)
 
@@ -539,10 +641,18 @@ def get_pending_orders_status(
 	}
 
 
-def get_ar_ageing(company: str, start_date: datetime.date, end_date: datetime.date, ytd_revenue: float) -> Dict[str, Any]:
+def get_ar_ageing(
+	company: str,
+	start_date: datetime.date,
+	end_date: datetime.date,
+	ytd_revenue: float,
+	branch: Optional[str] = None,
+) -> Dict[str, Any]:
 	"""Executes ERPNext Accounts Receivable report and builds bucket summary and DSO."""
 	from erpnext.accounts.report.accounts_receivable.accounts_receivable import execute as ar_execute
 
+	start_date = getdate(start_date)
+	end_date = getdate(end_date)
 	report_date = nowdate() if getdate(nowdate()) <= end_date else str(end_date)
 	filters = {
 		"company": company,
@@ -553,6 +663,8 @@ def get_ar_ageing(company: str, start_date: datetime.date, end_date: datetime.da
 		"range3": 90,
 		"range4": 120,
 	}
+	if branch:
+		filters["branch"] = branch
 
 	try:
 		columns, data, _, _, report_summary, _ = ar_execute(filters)
@@ -570,6 +682,8 @@ def get_ar_ageing(company: str, start_date: datetime.date, end_date: datetime.da
 		if isinstance(row, dict):
 			# Skip bold/total subtotal rows to avoid double counting
 			if row.get("bold") or row.get("party") == "Total":
+				continue
+			if branch and row.get("branch") and row.get("branch") != branch:
 				continue
 			r1 = flt(row.get("range1"))
 			r2 = flt(row.get("range2"))
@@ -611,10 +725,18 @@ def get_ar_ageing(company: str, start_date: datetime.date, end_date: datetime.da
 	}
 
 
-def get_ap_ageing(company: str, start_date: datetime.date, end_date: datetime.date, ytd_purchases: float) -> Dict[str, Any]:
+def get_ap_ageing(
+	company: str,
+	start_date: datetime.date,
+	end_date: datetime.date,
+	ytd_purchases: float,
+	branch: Optional[str] = None,
+) -> Dict[str, Any]:
 	"""Executes ERPNext Accounts Payable report and builds bucket summary and DPO."""
 	from erpnext.accounts.report.accounts_payable.accounts_payable import execute as ap_execute
 
+	start_date = getdate(start_date)
+	end_date = getdate(end_date)
 	report_date = nowdate() if getdate(nowdate()) <= end_date else str(end_date)
 	filters = {
 		"company": company,
@@ -625,6 +747,8 @@ def get_ap_ageing(company: str, start_date: datetime.date, end_date: datetime.da
 		"range3": 90,
 		"range4": 120,
 	}
+	if branch:
+		filters["branch"] = branch
 
 	try:
 		columns, data, _, _, report_summary, _ = ap_execute(filters)
@@ -641,6 +765,8 @@ def get_ap_ageing(company: str, start_date: datetime.date, end_date: datetime.da
 	for row in data:
 		if isinstance(row, dict):
 			if row.get("bold") or row.get("party") == "Total":
+				continue
+			if branch and row.get("branch") and row.get("branch") != branch:
 				continue
 			r1 = flt(row.get("range1"))
 			r2 = flt(row.get("range2"))
@@ -687,13 +813,14 @@ def get_unit_series(
 	fiscal_year: Optional[str] = None,
 	kind: str = "sales",
 	grain: str = "quarters",
-	unit_dimension: str = "Cost Center",
+	unit_dimension: str = "Branch",
+	branch: Optional[str] = None,
 ) -> Dict[str, Any]:
 	"""
 	Returns multi-unit time-series data for Sales (Item 2) or Purchases (Item 3).
 	kind: "sales" | "purchases"
 	grain: "years" | "quarters" | "months"
-	unit_dimension: "Cost Center" | "Branch" | "Company"
+	unit_dimension: "Branch" | "Cost Center" | "Company"
 	"""
 	if not company:
 		company = (
@@ -704,6 +831,9 @@ def get_unit_series(
 		)
 
 	_check_access(company)
+
+	if not unit_dimension:
+		unit_dimension = "Branch"
 
 	fy_start, fy_end = get_fy_dates(fiscal_year)
 
@@ -751,15 +881,22 @@ def get_unit_series(
 
 	# Dimension selection field
 	if unit_dimension == "Branch":
-		dim_expr = "COALESCE(parent.branch, 'Unassigned')"
+		dim_expr = "COALESCE(NULLIF(parent.branch, ''), 'Unassigned')"
 	elif unit_dimension == "Company":
 		dim_expr = "COALESCE(parent.company, 'Unassigned')"
 	else:  # Cost Center
 		dim_expr = "COALESCE(item.cost_center, parent.cost_center, 'Main')"
 
-	# Aggregate across the entire range
+	# Filter by branch if specific branch selected
+	branch_filter = ""
+	params = [company]
+	if branch:
+		branch_filter = "AND parent.branch = %s"
+		params.append(branch)
+
 	overall_start = periods[0][0] if periods else fy_start
 	overall_end = periods[-1][1] if periods else fy_end
+	params.extend([overall_start, overall_end])
 
 	query = f"""
 		SELECT
@@ -770,18 +907,19 @@ def get_unit_series(
 		INNER JOIN `tab{parent_dt}` parent ON item.parent = parent.name
 		WHERE parent.company = %s
 			AND parent.docstatus = 1
+			{branch_filter}
 			AND parent.posting_date >= %s
 			AND parent.posting_date <= %s
 		GROUP BY unit_name, parent.posting_date
 	"""
-	records = frappe.db.sql(query, (company, overall_start, overall_end), as_dict=True)
+	records = frappe.db.sql(query, tuple(params), as_dict=True)
 
 	# Group data by unit and period
 	unit_totals = defaultdict(float)
 	unit_period_matrix = defaultdict(lambda: [0.0] * len(periods))
 
 	for r in records:
-		u = r.unit_name or "General"
+		u = r.unit_name or "Unassigned"
 		# Strip company suffix if present (e.g. "Main - ST" -> "Main")
 		u_clean = u.split(" - ")[0] if " - " in u else u
 		amt = flt(r.net_amount)
@@ -793,15 +931,15 @@ def get_unit_series(
 				unit_totals[u_clean] += amt
 				break
 
-	# Pick top 4 units + group others
+	# Pick top 5 units + group others
 	sorted_units = sorted(unit_totals.keys(), key=lambda k: unit_totals[k], reverse=True)
-	top_units = sorted_units[:4]
-	other_units = sorted_units[4:]
+	top_units = sorted_units[:5]
+	other_units = sorted_units[5:]
 
 	palette = (
-		["#0284c7", "#10b981", "#f59e0b", "#8b5cf6"]
+		["#0284c7", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899"]
 		if kind == "sales"
-		else ["#3b82f6", "#ec4899", "#f97316", "#6366f1"]
+		else ["#3b82f6", "#ec4899", "#f97316", "#6366f1", "#14b8a6"]
 	)
 
 	datasets = []
@@ -827,7 +965,7 @@ def get_unit_series(
 			for idx in range(len(periods)):
 				other_points[idx] += unit_period_matrix[u_name][idx]
 		datasets.append({
-			"label": "Other Units",
+			"label": "Other Branches/Units",
 			"data": [round(max(0.0, val), 2) for val in other_points],
 			"backgroundColor": "#94a3b8",
 			"borderColor": "#94a3b8",

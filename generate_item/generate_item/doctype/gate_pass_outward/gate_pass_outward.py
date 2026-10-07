@@ -308,3 +308,50 @@ def _throw_se_error(se_name, purpose, raw_error):
         ).format(se=se_name, err=clean_error),
         title=_("Stock Entry Draft Saved — Action Required")
     )
+
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def get_pending_gate_pass_outward(doctype, txt, searchfield, start, page_len, filters):
+    """
+    Search query for Gate Pass Inward -> gate_pass_outward link field.
+    Returns submitted, returnable Outward Gate Passes that still have
+    pending quantity left to receive.
+    """
+    conditions = []
+    values = {
+        "txt": f"%{txt}%",
+        "start": int(start or 0),
+        "page_len": int(page_len or 20),
+    }
+
+    if isinstance(filters, str):
+        filters = frappe.parse_json(filters)
+
+    if isinstance(filters, dict) and filters.get("branch"):
+        conditions.append("gpo.branch = %(branch)s")
+        values["branch"] = filters.get("branch")
+
+    condition_str = f"AND {' AND '.join(conditions)}" if conditions else ""
+
+    query = f"""
+        SELECT gpo.name, gpo.date
+        FROM `tabGate Pass Outward` gpo
+        WHERE gpo.docstatus = 1
+          AND gpo.returnable = 'Yes'
+          AND gpo.name LIKE %(txt)s
+          AND (
+              (gpo.is_stock_item = 1 AND EXISTS (
+                  SELECT 1 FROM `tabGate Pass Outward Detail` d
+                  WHERE d.parent = gpo.name AND IFNULL(d.pending_qty, 0) > 0
+              ))
+              OR
+              (IFNULL(gpo.is_stock_item, 0) = 0 AND EXISTS (
+                  SELECT 1 FROM `tabGate Pass Outward Item` i
+                  WHERE i.parent = gpo.name AND IFNULL(i.pending_qty, 0) > 0
+              ))
+          )
+          {condition_str}
+        ORDER BY gpo.modified DESC
+        LIMIT %(start)s, %(page_len)s
+    """
+    return frappe.db.sql(query, values)

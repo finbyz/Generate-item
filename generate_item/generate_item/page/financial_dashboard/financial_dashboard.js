@@ -31,9 +31,10 @@ class FinancialDashboard {
 		// Single source of truth for filters
 		this.company = frappe.defaults.get_user_default('Company') || frappe.defaults.get_default('Company');
 		this.fiscal_year = null;
+		this.branch = '';
 		this.fy_start = null;
 		this.fy_end = null;
-		this.unit_dimension = 'Cost Center';
+		this.unit_dimension = 'Branch';
 
 		this.salesGrain = 'quarters';
 		this.purchasesGrain = 'quarters';
@@ -46,6 +47,7 @@ class FinancialDashboard {
 		this.data = null;
 		this.unitCache = {};
 		this.availableFYs = [];
+		this.availableBranches = [];
 		this.initialized = false;
 
 		this.specDetails = {
@@ -55,7 +57,8 @@ class FinancialDashboard {
 				items: [
 					{ label: "Executive Audience", text: "Chief Financial Officer, Operations Leadership, and Business Unit Controllers." },
 					{ label: "Coverage", text: "Implements all 7 requested financial modules with dynamic granularity and dual-axis analytics." },
-					{ label: "Data Cadence", text: "Real-time feeds refreshed continuously from core ERPNext ledgers and operational pipelines." }
+					{ label: "Currency & Denomination", text: "All financial figures displayed in Indian Rupees (₹ in INR) with Crores (Cr) / Lakhs (L) scaling." },
+					{ label: "Branch Multi-Tenancy", text: "Supports company-wide aggregated view as well as granular filtering by Branch (Sanand, Rabale, Nandikoor)." }
 				]
 			},
 			item1: {
@@ -63,26 +66,26 @@ class FinancialDashboard {
 				title: "Revenue vs Operating Margin",
 				items: [
 					{ label: "Spreadsheet Requirement", text: "Item 1: Revenue vs Operating Margin (Monthly View)." },
-					{ label: "Chart Architecture", text: "Dual-Axis Combination Chart. Left Axis (Bars): Net Revenue in Millions. Right Axis (Line): Operating Margin in %." },
+					{ label: "Chart Architecture", text: "Dual-Axis Combination Chart. Left Axis (Bars): Net Revenue in ₹ Crores. Right Axis (Line): Operating Margin in %." },
 					{ label: "Controls", text: "Filter by Full Year (12M), First Half (H1), or Second Half (H2) with dynamic summary stat recalculations." }
 				]
 			},
 			item2: {
 				category: "Module Spec #2",
-				title: "Sales from Each Unit",
+				title: "Sales from Each Unit (Branch Wise Sales)",
 				items: [
 					{ label: "Spreadsheet Requirement", text: "Item 2: Sales from each unit (Years / Year-Quarters / Year-Months)." },
-					{ label: "Grain Selector", text: "Switch instantly between multi-year aggregated view, quarterly run-rates, and monthly trends." },
-					{ label: "Units Tracked", text: "Configurable business units (Cost Center / Branch / Company)." }
+					{ label: "Unit Dimension", text: "Branch Wise Sales breakdown (Sanand, Nandikoor, Rabale)." },
+					{ label: "Grain Selector", text: "Switch instantly between multi-year aggregated view, quarterly run-rates, and monthly trends." }
 				]
 			},
 			item3: {
 				category: "Module Spec #3",
-				title: "Purchases from Each Unit",
+				title: "Purchases from Each Unit (Branch Wise Purchase)",
 				items: [
 					{ label: "Spreadsheet Requirement", text: "Item 3: Purchases from each unit (Years / Year-Quarters / Year-Months)." },
-					{ label: "Business Value", text: "Analyzes procurement expenditures and operational cost-centers across each strategic unit." },
-					{ label: "Interactive Features", text: "Temporal toggle (Years / Quarters / Months) and Stacked/Grouped comparison mode." }
+					{ label: "Unit Dimension", text: "Branch Wise Purchase breakdown (Sanand, Nandikoor, Rabale)." },
+					{ label: "Interactive Features", text: "Temporal toggle (Years / Quarters / Months) and Stacked/Grouped comparison mode in ₹ Crores." }
 				]
 			},
 			item4: {
@@ -99,7 +102,7 @@ class FinancialDashboard {
 				items: [
 					{ label: "Spreadsheet Requirement", text: "Item 5: Pending Orders status." },
 					{ label: "Lifecycle Breakdown", text: "Doughnut pipeline showing Production, QA Inspection, In Transit, Payment Hold, and Open orders." },
-					{ label: "Backlog Valuation", text: "Total pending pipeline value with delivery SLA tracking." }
+					{ label: "Backlog Valuation", text: "Total pending pipeline value in ₹ INR with delivery SLA tracking." }
 				]
 			},
 			item6: {
@@ -107,7 +110,7 @@ class FinancialDashboard {
 				title: "Accounts Receivable Ageing",
 				items: [
 					{ label: "Spreadsheet Requirement", text: "Item 6: Accounts Receivable Ageing." },
-					{ label: "Ageing Intervals", text: "< 30 Days (Current), 31-60 Days, 61-90 Days, > 90 Days (Overdue)." },
+					{ label: "Ageing Intervals", text: "< 30 Days (Current), 31-60 Days, 61-90 Days, > 90 Days (Overdue) in ₹ INR." },
 					{ label: "Health Score", text: "Outstanding balance distribution and DSO tracking." }
 				]
 			},
@@ -116,7 +119,7 @@ class FinancialDashboard {
 				title: "Accounts Payable Ageing",
 				items: [
 					{ label: "Spreadsheet Requirement", text: "Item 7: Accounts Payable Ageing." },
-					{ label: "Liability Intervals", text: "< 30 Days, 31-60 Days, 61-90 Days, > 90 Days." },
+					{ label: "Liability Intervals", text: "< 30 Days, 31-60 Days, 61-90 Days, > 90 Days in ₹ INR." },
 					{ label: "Cash Flow Health", text: "DPO calculation with scheduled payment batch distribution and disbursement actions." }
 				]
 			}
@@ -149,72 +152,71 @@ class FinancialDashboard {
 			fy_end: this.fy_end,
 			unit_dimension: this.unit_dimension,
 		};
+		if (this.branch) {
+			f.branch = this.branch;
+		}
 
 		const today = frappe.datetime.get_today();
 		const reportDate = (f.fy_end && f.fy_end < today) ? f.fy_end : today;
+
+		const baseFilters = { company: f.company };
+		if (this.branch) baseFilters.branch = this.branch;
 
 		switch (type) {
 			case 'pnl':
 			case 'revenue':
 			case 'margin':
-				return {
-					company: f.company,
+				return Object.assign({}, baseFilters, {
 					filter_based_on: 'Fiscal Year',
 					from_fiscal_year: f.fiscal_year,
 					to_fiscal_year: f.fiscal_year,
 					period_start_date: f.fy_start,
 					period_end_date: f.fy_end,
 					periodicity: 'Monthly',
-				};
+				});
 			case 'orders':
 			case 'order_book':
-				return {
-					company: f.company,
+				return Object.assign({}, baseFilters, {
 					transaction_date: ['between', [f.fy_start, f.fy_end]],
 					docstatus: 1,
-				};
+				});
 			case 'backlog':
 			case 'pending_orders':
-				return {
-					company: f.company,
+				return Object.assign({}, baseFilters, {
 					transaction_date: ['between', [f.fy_start, f.fy_end]],
 					status: ['in', ['To Deliver and Bill', 'To Deliver', 'To Bill', 'On Hold']],
 					docstatus: 1,
-				};
+				});
 			case 'sales_invoices':
 			case 'sales':
-				return {
-					company: f.company,
+				return Object.assign({}, baseFilters, {
 					posting_date: ['between', [f.fy_start, f.fy_end]],
 					docstatus: 1,
-				};
+				});
 			case 'purchase_invoices':
 			case 'purchases':
-				return {
-					company: f.company,
+				return Object.assign({}, baseFilters, {
 					posting_date: ['between', [f.fy_start, f.fy_end]],
 					docstatus: 1,
-				};
+				});
 			case 'ar':
-				return {
-					company: f.company,
+				return Object.assign({}, baseFilters, {
 					report_date: reportDate,
 					ageing_based_on: 'Due Date',
 					range1: 30,
 					range2: 60,
 					range3: 90,
 					range4: 120,
-				};
+				});
 			case 'ap':
-				return {
-					company: f.company,
+				return Object.assign({}, baseFilters, {
 					report_date: reportDate,
 					ageing_based_on: 'Due Date',
 					range1: 30,
 					range2: 60,
 					range3: 90,
 					range4: 120,
-				};
+				});
 			default:
 				return f;
 		}
@@ -228,6 +230,28 @@ class FinancialDashboard {
 		const filters = Object.assign({}, this.get_active_filters(filterType), extraFilters);
 		frappe.route_options = filters;
 		frappe.set_route(routeType, routeTarget);
+	}
+
+	format_inr(num, compact = true) {
+		const val = flt(num);
+		if (isNaN(val)) return '₹0';
+		if (!compact) {
+			return '₹' + val.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+		}
+		const absVal = Math.abs(val);
+		const sign = val < 0 ? '-' : '';
+		if (absVal >= 10000000) { // 1 Crore = 10,000,000
+			return `${sign}₹${(absVal / 10000000).toFixed(2)} Cr`;
+		} else if (absVal >= 100000) { // 1 Lakh = 100,000
+			return `${sign}₹${(absVal / 100000).toFixed(2)} L`;
+		} else if (absVal >= 1000) {
+			return `${sign}₹${(absVal / 1000).toFixed(1)} K`;
+		}
+		return `${sign}₹${absVal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+	}
+
+	format_compact(num) {
+		return this.format_inr(num, true);
 	}
 
 	render_layout() {
@@ -244,25 +268,48 @@ class FinancialDashboard {
 								</svg>
 							</div>
 							<div>
-								<div style="display: flex; align-items: center; gap: 0.5rem;">
+								<div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
 									<h1 class="fd-brand-title">${__('Financial Dashboard')}</h1>
 									<span class="fd-status-badge">
 										<span class="fd-pulse-dot"></span> Live Sync
 									</span>
-									<span class="fd-wf-metric-pill">SPEC v2.6 ACTIVE</span>
+									<span class="fd-currency-badge">₹ INR</span>
+									<span class="fd-wf-metric-pill">BRANCH READY</span>
 								</div>
-								<p class="fd-brand-subtitle">${__('Executive financial performance, unit operations & working capital')}</p>
+								<p class="fd-brand-subtitle">${__('Executive financial performance, branch operations & working capital in INR')}</p>
 							</div>
 						</div>
 
 						<!-- Controls Group -->
 						<div class="fd-controls-group">
-							<!-- FY Selector Dynamic Toggle -->
-							<div style="display: inline-flex; align-items: center; gap: 0.25rem;">
-								<span style="font-size: 0.72rem; color: var(--text-secondary); font-weight: 600;">FY:</span>
-								<div class="fd-btn-toggle-group" id="fd-fy-toggle-group">
-									<!-- Dynamically rendered from ERPNext Fiscal Years -->
-								</div>
+							<!-- FY Selector Dropdown (Current year selected by default) -->
+							<div class="fd-select-control" id="fd-fy-control" title="${__('Select Fiscal Year')}">
+								<span style="display: inline-flex; align-items: center; gap: 0.25rem; font-weight: 600; font-size: 0.72rem; color: var(--text-secondary);">
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;">
+										<rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+										<line x1="16" y1="2" x2="16" y2="6"></line>
+										<line x1="8" y1="2" x2="8" y2="6"></line>
+										<line x1="3" y1="10" x2="21" y2="10"></line>
+									</svg>
+									FY:
+								</span>
+								<select id="fd-fy-select" class="fd-form-select">
+									<!-- Dynamically populated -->
+								</select>
+							</div>
+
+							<!-- Branch Filter Dropdown -->
+							<div class="fd-select-control" id="fd-branch-control" title="${__('Filter by Branch')}">
+								<span style="display: inline-flex; align-items: center; gap: 0.25rem; font-weight: 600; font-size: 0.72rem; color: var(--text-secondary);">
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 13px; height: 13px;">
+										<path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+									</svg>
+									Branch:
+								</span>
+								<select id="fd-branch-select" class="fd-form-select">
+									<option value="">${__('All Branches')}</option>
+									<!-- Dynamically populated -->
+								</select>
 							</div>
 
 							<!-- Wireframe Mode Toggle Button -->
@@ -278,7 +325,7 @@ class FinancialDashboard {
 								<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
 									<path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
 								</svg>
-								<span>${__('Wireframe Specs')}</span>
+								<span>${__('Specs')}</span>
 							</button>
 
 							<!-- Refresh Button -->
@@ -299,7 +346,7 @@ class FinancialDashboard {
 						<!-- Card 1: Revenue -->
 						<div class="fd-kpi-card" id="fd-kpi-rev" title="${__('Click to open Profit & Loss Statement for this Fiscal Year')}">
 							<div class="fd-kpi-header">
-								<span class="fd-kpi-label">${__('Total Net Revenue')}</span>
+								<span class="fd-kpi-label">${__('Total Net Revenue (INR)')}</span>
 								<div class="fd-kpi-icon-pill" style="background: #e0f2fe; color: #0284c7;">
 									<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
 								</div>
@@ -307,7 +354,7 @@ class FinancialDashboard {
 							<div class="fd-kpi-value-row">
 								<div class="fd-kpi-value" id="kpi-revenue">-</div>
 								<span class="fd-kpi-trend" id="kpi-revenue-trend">
-									<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>+12.4%
+									<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>+0.0%
 								</span>
 							</div>
 							<div class="fd-kpi-caption" id="kpi-revenue-cap">${__('YTD performance vs target')}</div>
@@ -325,7 +372,7 @@ class FinancialDashboard {
 							<div class="fd-kpi-value-row">
 								<div class="fd-kpi-value" id="kpi-margin">-</div>
 								<span class="fd-kpi-trend" id="kpi-margin-trend">
-									<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>+1.8 pts
+									<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>+0.0 pts
 								</span>
 							</div>
 							<div class="fd-kpi-caption" id="kpi-margin-cap">${__('Avg monthly margin')}</div>
@@ -343,10 +390,10 @@ class FinancialDashboard {
 							<div class="fd-kpi-value-row">
 								<div class="fd-kpi-value" id="kpi-orders">-</div>
 								<span class="fd-kpi-trend" id="kpi-orders-trend">
-									<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>+8.2%
+									<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>+0.0%
 								</span>
 							</div>
-							<div class="fd-kpi-caption" id="kpi-orders-cap">${__('Book-to-bill ratio: 1.14')}</div>
+							<div class="fd-kpi-caption" id="kpi-orders-cap">${__('Book-to-bill ratio: 1.0')}</div>
 							<span class="fd-wf-metric-pill" style="position: absolute; bottom: 6px; right: 8px;">[KPI:ORDERS]</span>
 						</div>
 
@@ -362,7 +409,7 @@ class FinancialDashboard {
 								<div class="fd-kpi-value" id="kpi-pending" style="color: #d97706;">-</div>
 								<span style="font-size: 0.72rem; font-weight: 700; color: #b45309; background: #fef3c7; padding: 0.15rem 0.4rem; border-radius: 4px;" id="kpi-pending-value">-</span>
 							</div>
-							<div class="fd-kpi-caption" id="kpi-pending-cap">${__('92% on SLA delivery timeline')}</div>
+							<div class="fd-kpi-caption" id="kpi-pending-cap">${__('SLA delivery timeline')}</div>
 							<span class="fd-wf-metric-pill" style="position: absolute; bottom: 6px; right: 8px;">[KPI:BACKLOG]</span>
 						</div>
 					</div>
@@ -375,15 +422,15 @@ class FinancialDashboard {
 									<span class="fd-item-tag fd-tag-blue">ITEM 1</span>
 									<h2 class="fd-card-title" style="cursor: pointer;" id="title-item1" title="${__('Click to open Profit & Loss Statement')}">${__('Revenue vs Operating Margin')}</h2>
 									<button type="button" class="fd-spec-link" data-spec="item1">[Spec]</button>
-									<span class="fd-wf-metric-pill">[Dual-Axis Combo | Monthly View]</span>
+									<span class="fd-wf-metric-pill">[Dual-Axis Combo | Monthly View in ₹ INR]</span>
 								</div>
-								<p class="fd-card-subtitle">${__('Monthly View • Revenue in Millions (Left Bar) vs Operating Margin % (Right Line)')}</p>
+								<p class="fd-card-subtitle">${__('Monthly View • Revenue in ₹ Crores (Left Bar) vs Operating Margin % (Right Line)')}</p>
 							</div>
 
 							<div style="display: flex; align-items: center; gap: 0.75rem;">
 								<div style="display: flex; align-items: center; gap: 0.75rem; font-size: 0.72rem; font-weight: 600;">
 									<span style="display: inline-flex; align-items: center; gap: 0.35rem;">
-										<span style="width: 10px; height: 10px; border-radius: 2px; background: #0284c7;"></span> ${__('Revenue')}
+										<span style="width: 10px; height: 10px; border-radius: 2px; background: #0284c7;"></span> ${__('Revenue (₹ Cr)')}
 									</span>
 									<span style="display: inline-flex; align-items: center; gap: 0.35rem;">
 										<span style="width: 12px; height: 3px; background: #f59e0b; border-radius: 1px;"></span> ${__('Op. Margin (%)')}
@@ -423,19 +470,19 @@ class FinancialDashboard {
 						</div>
 					</div>
 
-					<!-- ITEM 2 & ITEM 3: Sales & Purchases from Each Unit with Multi-grain Selectors -->
+					<!-- ITEM 2 & ITEM 3: Sales & Purchases from Each Unit (Branch Wise) -->
 					<div class="fd-two-col-grid">
 
-						<!-- Item 2: Sales from each unit -->
+						<!-- Item 2: Sales from Each Unit (Branch Wise Sales) -->
 						<div class="fd-dash-card" id="fd-card-item2">
 							<div class="fd-dash-card-header">
 								<div>
 									<div class="fd-card-title-wrap">
 										<span class="fd-item-tag fd-tag-green">ITEM 2</span>
-										<h2 class="fd-card-title" style="cursor: pointer;" id="title-item2" title="${__('Click to view Sales Invoices')}">${__('Sales from Each Unit')}</h2>
+										<h2 class="fd-card-title" style="cursor: pointer;" id="title-item2" title="${__('Click to view Sales Invoices')}">${__('Sales from Each Unit (Branch Wise Sales)')}</h2>
 										<button type="button" class="fd-spec-link" data-spec="item2">[Spec]</button>
 									</div>
-									<p class="fd-card-subtitle">${__('Granularity: Years / Year-Quarters / Year-Months')}</p>
+									<p class="fd-card-subtitle">${__('Branch Wise Sales Breakdown • Years / Year-Quarters / Year-Months in ₹ INR')}</p>
 								</div>
 
 								<!-- Grain Switcher: Years / Year-Quarters / Year-Months -->
@@ -455,25 +502,25 @@ class FinancialDashboard {
 									</div>
 								</div>
 								<div class="fd-chart-container-md">
-									<canvas id="salesChart" aria-label="${__('Sales from Each Unit Chart')}"></canvas>
+									<canvas id="salesChart" aria-label="${__('Branch Wise Sales Chart')}"></canvas>
 								</div>
 								<div style="margin-top: 0.75rem; padding: 0.4rem 0.65rem; background: #f8fafc; border-radius: 6px; display: flex; justify-content: space-between; font-size: 0.7rem; cursor: pointer;" id="strip-sales-footer" title="${__('Click to view Sales Invoices')}">
-									<span style="color: #64748b;">${__('Top Volume Unit')}: <strong id="salesTopUnit">-</strong></span>
+									<span style="color: #64748b;">${__('Top Branch')}: <strong id="salesTopUnit">-</strong></span>
 									<span style="font-weight: 700; color: #10b981;" id="salesTopShare">-</span>
 								</div>
 							</div>
 						</div>
 
-						<!-- Item 3: Purchases from each unit -->
+						<!-- Item 3: Purchases from Each Unit (Branch Wise Purchase) -->
 						<div class="fd-dash-card" id="fd-card-item3">
 							<div class="fd-dash-card-header">
 								<div>
 									<div class="fd-card-title-wrap">
 										<span class="fd-item-tag fd-tag-amber">ITEM 3</span>
-										<h2 class="fd-card-title" style="cursor: pointer;" id="title-item3" title="${__('Click to view Purchase Invoices')}">${__('Purchases from Each Unit')}</h2>
+										<h2 class="fd-card-title" style="cursor: pointer;" id="title-item3" title="${__('Click to view Purchase Invoices')}">${__('Purchases from Each Unit (Branch Wise Purchase)')}</h2>
 										<button type="button" class="fd-spec-link" data-spec="item3">[Spec]</button>
 									</div>
-									<p class="fd-card-subtitle">${__('Granularity: Years / Year-Quarters / Year-Months')}</p>
+									<p class="fd-card-subtitle">${__('Branch Wise Purchase Breakdown • Years / Year-Quarters / Year-Months in ₹ INR')}</p>
 								</div>
 
 								<!-- Grain Switcher: Years / Year-Quarters / Year-Months -->
@@ -493,10 +540,10 @@ class FinancialDashboard {
 									</div>
 								</div>
 								<div class="fd-chart-container-md">
-									<canvas id="purchasesChart" aria-label="${__('Purchases from Each Unit Chart')}"></canvas>
+									<canvas id="purchasesChart" aria-label="${__('Branch Wise Purchase Chart')}"></canvas>
 								</div>
 								<div style="margin-top: 0.75rem; padding: 0.4rem 0.65rem; background: #f8fafc; border-radius: 6px; display: flex; justify-content: space-between; font-size: 0.7rem; cursor: pointer;" id="strip-purchases-footer" title="${__('Click to view Purchase Invoices')}">
-									<span style="color: #64748b;">${__('Major Cost Center')}: <strong id="purchasesTopUnit">-</strong></span>
+									<span style="color: #64748b;">${__('Major Branch Outflow')}: <strong id="purchasesTopUnit">-</strong></span>
 									<span style="font-weight: 700; color: #f43f5e;" id="purchasesTopCost">-</span>
 								</div>
 							</div>
@@ -559,7 +606,7 @@ class FinancialDashboard {
 										<h2 class="fd-card-title" id="title-item5">${__('Pending Orders Status')}</h2>
 										<button type="button" class="fd-spec-link" data-spec="item5">[Spec]</button>
 									</div>
-									<p class="fd-card-subtitle">${__('Operational order pipeline & backlog')}</p>
+									<p class="fd-card-subtitle">${__('Operational order pipeline & backlog valuation in ₹ INR')}</p>
 								</div>
 								<span style="font-size: 0.72rem; font-weight: 700; background: #f1f5f9; padding: 0.2rem 0.5rem; border-radius: 4px;" id="pendingUnitsBadge">-</span>
 							</div>
@@ -609,7 +656,7 @@ class FinancialDashboard {
 									<thead>
 										<tr>
 											<th>${__('Bucket')}</th>
-											<th>${__('Amount')}</th>
+											<th>${__('Amount (INR)')}</th>
 											<th>${__('Share')}</th>
 											<th>${__('Risk Profile')}</th>
 										</tr>
@@ -645,7 +692,7 @@ class FinancialDashboard {
 									<thead>
 										<tr>
 											<th>${__('Bucket')}</th>
-											<th>${__('Amount')}</th>
+											<th>${__('Amount (INR)')}</th>
 											<th>${__('Share')}</th>
 											<th>${__('Disbursement Action')}</th>
 										</tr>
@@ -668,7 +715,7 @@ class FinancialDashboard {
 										<svg fill="none" stroke="#38bdf8" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
 										${__('Spreadsheet Coverage & Wireframe Specs')}
 									</h3>
-									<p style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px; margin-bottom: 0;">${__('Click any card below to inspect functional data contracts and UI patterns')}</p>
+									<p style="font-size: 0.7rem; color: #94a3b8; margin-top: 2px; margin-bottom: 0;">${__('Click any card below to inspect functional data contracts, branch metrics and UI patterns')}</p>
 								</div>
 								<span style="font-size: 0.7rem; padding: 0.2rem 0.5rem; background: #0369a1; color: #ffffff; border-radius: 4px; font-weight: 600;">7 Modules Ready</span>
 							</div>
@@ -677,15 +724,15 @@ class FinancialDashboard {
 						<div class="fd-dash-card-body" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem; font-size: 0.72rem;">
 							<div class="fd-spec-trigger-card" data-spec="item1" style="background: #1e293b; padding: 0.65rem; border-radius: 8px; border: 1px solid #334155; cursor: pointer;">
 								<strong style="color: #38bdf8; display: block; margin-bottom: 2px;">#1 Revenue vs Margin &rarr;</strong>
-								<span style="color: #94a3b8;">Monthly dual-axis bar & line view</span>
+								<span style="color: #94a3b8;">Monthly dual-axis bar & line view in ₹ Cr</span>
 							</div>
 							<div class="fd-spec-trigger-card" data-spec="item2" style="background: #1e293b; padding: 0.65rem; border-radius: 8px; border: 1px solid #334155; cursor: pointer;">
-								<strong style="color: #4ade80; display: block; margin-bottom: 2px;">#2 Sales from Units &rarr;</strong>
+								<strong style="color: #4ade80; display: block; margin-bottom: 2px;">#2 Branch Wise Sales &rarr;</strong>
 								<span style="color: #94a3b8;">Years / Quarters / Months breakdown</span>
 							</div>
 							<div class="fd-spec-trigger-card" data-spec="item3" style="background: #1e293b; padding: 0.65rem; border-radius: 8px; border: 1px solid #334155; cursor: pointer;">
-								<strong style="color: #fbbf24; display: block; margin-bottom: 2px;">#3 Purchases from Units &rarr;</strong>
-								<span style="color: #94a3b8;">Procurement outflow across units</span>
+								<strong style="color: #fbbf24; display: block; margin-bottom: 2px;">#3 Branch Wise Purchase &rarr;</strong>
+								<span style="color: #94a3b8;">Procurement outflow across branches</span>
 							</div>
 							<div class="fd-spec-trigger-card" data-spec="item4" style="background: #1e293b; padding: 0.65rem; border-radius: 8px; border: 1px solid #334155; cursor: pointer;">
 								<strong style="color: #c084fc; display: block; margin-bottom: 2px;">#4 Orders Booked &rarr;</strong>
@@ -693,7 +740,7 @@ class FinancialDashboard {
 							</div>
 							<div class="fd-spec-trigger-card" data-spec="item5" style="background: #1e293b; padding: 0.65rem; border-radius: 8px; border: 1px solid #334155; cursor: pointer;">
 								<strong style="color: #f87171; display: block; margin-bottom: 2px;">#5 Pending Orders &rarr;</strong>
-								<span style="color: #94a3b8;">Pipeline doughnut lifecycle & backlog</span>
+								<span style="color: #94a3b8;">Pipeline doughnut lifecycle & backlog in ₹</span>
 							</div>
 							<div class="fd-spec-trigger-card" data-spec="item6" style="background: #1e293b; padding: 0.65rem; border-radius: 8px; border: 1px solid #334155; cursor: pointer;">
 								<strong style="color: #2dd4bf; display: block; margin-bottom: 2px;">#6 AR Ageing &rarr;</strong>
@@ -701,7 +748,7 @@ class FinancialDashboard {
 							</div>
 							<div class="fd-spec-trigger-card" data-spec="item7" style="background: #1e293b; padding: 0.65rem; border-radius: 8px; border: 1px solid #334155; cursor: pointer;">
 								<strong style="color: #e879f9; display: block; margin-bottom: 2px;">#7 AP Ageing &rarr;</strong>
-								<span style="color: #94a3b8;">Payable liabilities & schedules</span>
+								<span style="color: #94a3b8;">Payable liabilities & schedules in ₹</span>
 							</div>
 						</div>
 					</div>
@@ -726,7 +773,7 @@ class FinancialDashboard {
 						</div>
 
 						<div style="padding: 1rem 1.25rem; border-top: 1px solid #1e293b; display: flex; align-items: center; justify-content: space-between; font-size: 0.72rem;">
-							<span style="font-family: var(--font-mono); color: #64748b;">FIN-SPEC-v2.6</span>
+							<span style="font-family: var(--font-mono); color: #64748b;">FIN-SPEC-v2.7-INR</span>
 							<button type="button" id="btn-close-modal-footer" style="padding: 0.45rem 1rem; border-radius: 6px; background: #0284c7; color: #ffffff; border: none; font-weight: 600; cursor: pointer;">
 								${__('Close Inspector')}
 							</button>
@@ -805,6 +852,30 @@ class FinancialDashboard {
 			me.unitCache = {};
 			me.refresh();
 			me.showToast(__('Data re-synchronized with ERP ledger'));
+		});
+
+		// FY Selector Dropdown Change
+		this.wrapper.find('#fd-fy-select').on('change', function () {
+			const selectedFY = $(this).val();
+			if (selectedFY && selectedFY !== me.fiscal_year) {
+				me.fiscal_year = selectedFY;
+				const fyObj = (me.availableFYs || []).find(f => f.name === selectedFY);
+				if (fyObj) {
+					me.fy_start = fyObj.year_start_date;
+					me.fy_end = fyObj.year_end_date;
+				}
+				me.unitCache = {};
+				me.refresh();
+				me.showToast(__('Fiscal Year switched to {0}', [selectedFY]));
+			}
+		});
+
+		// Branch Filter Dropdown Change
+		this.wrapper.find('#fd-branch-select').on('change', function () {
+			me.branch = $(this).val() || '';
+			me.unitCache = {};
+			me.refresh();
+			me.showToast(me.branch ? __('Filtered by Branch: {0}', [me.branch]) : __('Showing all branches'));
 		});
 
 		// Item 1 Filter (Full Year / H1 / H2)
@@ -896,49 +967,31 @@ class FinancialDashboard {
 		});
 	}
 
-	render_fy_pills() {
+	populate_filter_dropdowns() {
 		const me = this;
-		const container = this.wrapper.find('#fd-fy-toggle-group').empty();
 
-		if (!this.availableFYs || this.availableFYs.length === 0) {
-			return;
-		}
-
-		this.availableFYs.forEach((fy) => {
-			const isActive = fy.name === me.fiscal_year;
-			let label = fy.name;
-			if (fy.name.includes('-')) {
-				const parts = fy.name.split('-');
-				if (parts.length === 2 && parts[0].length === 4 && parts[1].length === 4) {
-					label = `${parts[0]}-${parts[1].slice(2)}`;
-				}
-			}
-			const btn = $(`<button type="button" class="${isActive ? 'active' : ''}" data-fy="${fy.name}" title="${fy.name} (${fy.year_start_date} to ${fy.year_end_date})">${label}</button>`);
-			
-			btn.on('click', function () {
-				me.wrapper.find('#fd-fy-toggle-group button').removeClass('active');
-				$(this).addClass('active');
-				me.fiscal_year = fy.name;
-				me.fy_start = fy.year_start_date;
-				me.fy_end = fy.year_end_date;
-				me.unitCache = {};
-				me.refresh();
-				me.showToast(__('Switched fiscal year to {0}', [fy.name]));
+		// 1. Populate FY Select Dropdown
+		const fySelect = this.wrapper.find('#fd-fy-select').empty();
+		if (this.availableFYs && this.availableFYs.length > 0) {
+			this.availableFYs.forEach(fy => {
+				const isSelected = fy.name === me.fiscal_year ? 'selected' : '';
+				fySelect.append(`<option value="${fy.name}" ${isSelected}>${fy.name}</option>`);
 			});
-			container.append(btn);
-		});
-	}
-
-	format_compact(num) {
-		const val = flt(num);
-		if (Math.abs(val) >= 10000000) {
-			return `$${(val / 10000000).toFixed(2)}Cr`;
-		} else if (Math.abs(val) >= 1000000) {
-			return `$${(val / 1000000).toFixed(1)}M`;
-		} else if (Math.abs(val) >= 1000) {
-			return `$${(val / 1000).toFixed(0)}K`;
+		} else if (this.fiscal_year) {
+			fySelect.append(`<option value="${this.fiscal_year}" selected>${this.fiscal_year}</option>`);
 		}
-		return `$${val.toLocaleString()}`;
+
+		// 2. Populate Branch Select Dropdown
+		const branchSelect = this.wrapper.find('#fd-branch-select');
+		const currentVal = this.branch || '';
+		branchSelect.empty().append(`<option value="" ${currentVal === '' ? 'selected' : ''}>${__('All Branches')}</option>`);
+		
+		if (this.availableBranches && this.availableBranches.length > 0) {
+			this.availableBranches.forEach(b => {
+				const isSelected = b === currentVal ? 'selected' : '';
+				branchSelect.append(`<option value="${b}" ${isSelected}>${b}</option>`);
+			});
+		}
 	}
 
 	async refresh(silent = false) {
@@ -949,6 +1002,7 @@ class FinancialDashboard {
 				args: {
 					company: this.company,
 					fiscal_year: this.fiscal_year,
+					branch: this.branch || null,
 					unit_dimension: this.unit_dimension,
 				},
 			});
@@ -965,7 +1019,7 @@ class FinancialDashboard {
 				this.render_ar_ageing();
 				this.render_ap_ageing();
 
-				// Load multi-unit series for Items 2 & 3 with the selected fiscal year
+				// Load multi-unit series for Items 2 & 3 with the selected fiscal year and branch
 				await this.load_unit_series('sales', this.salesGrain);
 				await this.load_unit_series('purchases', this.purchasesGrain);
 			}
@@ -978,7 +1032,7 @@ class FinancialDashboard {
 
 	update_meta() {
 		const meta = this.data.meta;
-		this.currency = meta.currency || 'INR';
+		this.currency = 'INR';
 		this.fiscal_year = meta.fiscal_year;
 		this.fy_start = meta.fy_start;
 		this.fy_end = meta.fy_end;
@@ -987,15 +1041,19 @@ class FinancialDashboard {
 			this.availableFYs = meta.all_fiscal_years;
 		}
 
-		// Dynamically render FY pills based on ERPNext records
-		this.render_fy_pills();
+		if (meta.all_branches && meta.all_branches.length > 0) {
+			this.availableBranches = meta.all_branches;
+		}
+
+		// Dynamically render dropdowns
+		this.populate_filter_dropdowns();
 	}
 
 	render_kpis() {
 		const kpi = this.data.kpis;
 
 		// Card 1: Revenue
-		this.wrapper.find('#kpi-revenue').text(this.format_compact(kpi.net_revenue));
+		this.wrapper.find('#kpi-revenue').text(this.format_inr(kpi.net_revenue));
 		const revTrend = this.wrapper.find('#kpi-revenue-trend');
 		revTrend.html(`
 			<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="${kpi.revenue_delta >= 0 ? 'M5 10l7-7m0 0l7 7m-7-7v18' : 'M19 14l-7 7m0 0l-7-7m7 7V3'}"/></svg>
@@ -1004,8 +1062,8 @@ class FinancialDashboard {
 		revTrend.toggleClass('negative', kpi.revenue_delta < 0);
 		this.wrapper.find('#kpi-revenue-cap').text(
 			kpi.revenue_target > 0
-				? `YTD performance vs target (${this.format_compact(kpi.revenue_target)})`
-				: __('YTD performance vs previous year')
+				? `YTD vs target (${this.format_inr(kpi.revenue_target)})`
+				: __('YTD vs previous year')
 		);
 
 		// Card 2: Operating Margin
@@ -1023,18 +1081,18 @@ class FinancialDashboard {
 		);
 
 		// Card 3: Orders Booked
-		this.wrapper.find('#kpi-orders').text(kpi.orders_booked_count.toLocaleString());
+		this.wrapper.find('#kpi-orders').text(kpi.orders_booked_count.toLocaleString('en-IN'));
 		const ordersTrend = this.wrapper.find('#kpi-orders-trend');
 		ordersTrend.html(`
 			<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="${kpi.orders_delta >= 0 ? 'M5 10l7-7m0 0l7 7m-7-7v18' : 'M19 14l-7 7m0 0l-7-7m7 7V3'}"/></svg>
 			${kpi.orders_delta >= 0 ? '+' : ''}${kpi.orders_delta}%
 		`);
 		ordersTrend.toggleClass('negative', kpi.orders_delta < 0);
-		this.wrapper.find('#kpi-orders-cap').text(`Book-to-bill ratio: ${kpi.book_to_bill}`);
+		this.wrapper.find('#kpi-orders-cap').text(`Book-to-bill ratio: ${kpi.book_to_bill} (${this.format_inr(kpi.orders_booked_value)})`);
 
 		// Card 4: Pending Backlog
 		this.wrapper.find('#kpi-pending').text(`${kpi.pending_backlog_count} Units`);
-		this.wrapper.find('#kpi-pending-value').text(`${this.format_compact(kpi.pending_backlog_value)} Value`);
+		this.wrapper.find('#kpi-pending-value').text(`${this.format_inr(kpi.pending_backlog_value)} Value`);
 		this.wrapper.find('#kpi-pending-cap').text(`${kpi.sla_percentage}% on SLA delivery timeline`);
 	}
 
@@ -1044,24 +1102,24 @@ class FinancialDashboard {
 		let rev = rm.revenue_series || [];
 		let margin = rm.margin_series || [];
 
-		// Normalize to millions for display
-		let revMillions = rev.map(v => flt((v / 1000000).toFixed(2)));
+		// Normalize to ₹ Crores (10 Million = 1 Crore) for INR display
+		let revCrores = rev.map(v => flt((v / 10000000).toFixed(2)));
 
 		if (this.item1Filter === 'h1') {
 			labels = labels.slice(0, 6);
-			revMillions = revMillions.slice(0, 6);
+			revCrores = revCrores.slice(0, 6);
 			margin = margin.slice(0, 6);
 		} else if (this.item1Filter === 'h2') {
 			labels = labels.slice(6, 12);
-			revMillions = revMillions.slice(6, 12);
+			revCrores = revCrores.slice(6, 12);
 			margin = margin.slice(6, 12);
 		}
 
 		// Insights tiles
 		const ins = rm.insights || {};
-		this.wrapper.find('#rev-peak').text(`${ins.peak_revenue_month} (${this.format_compact(ins.peak_revenue_value)})`);
+		this.wrapper.find('#rev-peak').text(`${ins.peak_revenue_month} (${this.format_inr(ins.peak_revenue_value)})`);
 		this.wrapper.find('#margin-peak').text(`${ins.best_margin_month} (${ins.best_margin_value}%)`);
-		this.wrapper.find('#rev-run-rate').text(`${this.format_compact(ins.avg_monthly_run_rate)} / Mo`);
+		this.wrapper.find('#rev-run-rate').text(`${this.format_inr(ins.avg_monthly_run_rate)} / Mo`);
 		this.wrapper.find('#margin-spread').text(`${ins.margin_spread}% Spread`);
 
 		const ctx = document.getElementById('revenueMarginChart');
@@ -1069,7 +1127,7 @@ class FinancialDashboard {
 
 		if (this.charts.revMargin) {
 			this.charts.revMargin.data.labels = labels;
-			this.charts.revMargin.data.datasets[0].data = revMillions;
+			this.charts.revMargin.data.datasets[0].data = revCrores;
 			this.charts.revMargin.data.datasets[1].data = margin;
 			this.charts.revMargin.update();
 			return;
@@ -1081,8 +1139,8 @@ class FinancialDashboard {
 				labels: labels,
 				datasets: [
 					{
-						label: 'Revenue ($M)',
-						data: revMillions,
+						label: 'Revenue (₹ Cr)',
+						data: revCrores,
 						backgroundColor: 'rgba(2, 132, 199, 0.75)',
 						borderColor: '#0284c7',
 						borderWidth: 1,
@@ -1115,7 +1173,7 @@ class FinancialDashboard {
 					legend: { display: false },
 					tooltip: {
 						callbacks: {
-							label: (c) => c.dataset.yAxisID === 'yRevenue' ? `Revenue: $${c.raw}M` : `Op. Margin: ${c.raw}%`,
+							label: (c) => c.dataset.yAxisID === 'yRevenue' ? `Revenue: ₹${c.raw} Cr` : `Op. Margin: ${c.raw}%`,
 						},
 					},
 				},
@@ -1124,7 +1182,7 @@ class FinancialDashboard {
 					yRevenue: {
 						type: 'linear',
 						position: 'left',
-						title: { display: true, text: 'Revenue ($ Millions)', font: { size: 10 } },
+						title: { display: true, text: 'Revenue (₹ in Crores)', font: { size: 10 } },
 						min: 0,
 						grid: { color: 'rgba(226, 232, 240, 0.6)' },
 					},
@@ -1140,7 +1198,7 @@ class FinancialDashboard {
 	}
 
 	async load_unit_series(kind, grain) {
-		const cacheKey = `${kind}_${grain}_${this.fiscal_year}_${this.unit_dimension}`;
+		const cacheKey = `${kind}_${grain}_${this.fiscal_year}_${this.branch}_${this.unit_dimension}`;
 		let resData = this.unitCache[cacheKey];
 
 		if (!resData) {
@@ -1150,6 +1208,7 @@ class FinancialDashboard {
 					args: {
 						company: this.company,
 						fiscal_year: this.fiscal_year,
+						branch: this.branch || null,
 						kind: kind,
 						grain: grain,
 						unit_dimension: this.unit_dimension,
@@ -1167,10 +1226,10 @@ class FinancialDashboard {
 
 		if (!resData) return;
 
-		// Normalize numbers to Millions for charting
+		// Normalize numbers to ₹ Crores for charting
 		const formattedDatasets = (resData.datasets || []).map(ds => ({
 			...ds,
-			data: (ds.data || []).map(v => flt((v / 1000000).toFixed(2))),
+			data: (ds.data || []).map(v => flt((v / 10000000).toFixed(2))),
 		}));
 
 		if (kind === 'sales') {
@@ -1211,7 +1270,7 @@ class FinancialDashboard {
 	}
 
 	render_sales_chart(resData, datasets) {
-		this.wrapper.find('#salesTopUnit').text(resData.top_unit || 'Unit Alpha');
+		this.wrapper.find('#salesTopUnit').text(resData.top_unit || 'N/A');
 		this.wrapper.find('#salesTopShare').text(`${resData.top_unit_share}% Share`);
 
 		const formattedDatasets = datasets.map(ds => ({
@@ -1242,13 +1301,13 @@ class FinancialDashboard {
 				maintainAspectRatio: false,
 				plugins: {
 					legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 9.5 } } },
-					tooltip: { callbacks: { label: (c) => `${c.dataset.label}: $${c.raw}M` } },
+					tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ₹${c.raw} Cr` } },
 				},
 				scales: {
 					x: { stacked: this.salesStacked, grid: { display: false } },
 					y: {
 						stacked: this.salesStacked,
-						title: { display: true, text: 'Sales ($M)', font: { size: 9.5 } },
+						title: { display: true, text: 'Sales (₹ in Crores)', font: { size: 9.5 } },
 						grid: { color: 'rgba(226, 232, 240, 0.6)' },
 					},
 				},
@@ -1257,8 +1316,8 @@ class FinancialDashboard {
 	}
 
 	render_purchases_chart(resData, datasets) {
-		this.wrapper.find('#purchasesTopUnit').text(resData.top_unit || 'Unit Gamma');
-		this.wrapper.find('#purchasesTopCost').text(`${this.format_compact(resData.grand_total)} YTD Cost`);
+		this.wrapper.find('#purchasesTopUnit').text(resData.top_unit || 'N/A');
+		this.wrapper.find('#purchasesTopCost').text(`${this.format_inr(resData.grand_total)} YTD`);
 
 		const formattedDatasets = datasets.map(ds => ({
 			...ds,
@@ -1288,13 +1347,13 @@ class FinancialDashboard {
 				maintainAspectRatio: false,
 				plugins: {
 					legend: { position: 'bottom', labels: { boxWidth: 8, font: { size: 9.5 } } },
-					tooltip: { callbacks: { label: (c) => `${c.dataset.label}: $${c.raw}M` } },
+					tooltip: { callbacks: { label: (c) => `${c.dataset.label}: ₹${c.raw} Cr` } },
 				},
 				scales: {
 					x: { stacked: this.purchasesStacked, grid: { display: false } },
 					y: {
 						stacked: this.purchasesStacked,
-						title: { display: true, text: 'Purchases ($M)', font: { size: 9.5 } },
+						title: { display: true, text: 'Purchases (₹ in Crores)', font: { size: 9.5 } },
 						grid: { color: 'rgba(226, 232, 240, 0.6)' },
 					},
 				},
@@ -1380,7 +1439,7 @@ class FinancialDashboard {
 						<span style="width: 8px; height: 8px; border-radius: 50%; background: ${item.color};"></span> ${__(st)}
 					</span>
 					<span style="font-weight: 600; ${st === 'Payment Hold' ? 'color: #ef4444;' : ''}">
-						${item.count} <span style="color: #94a3b8; font-weight: 400;">(${me.format_compact(item.value)})</span>
+						${item.count} <span style="color: #94a3b8; font-weight: 400;">(${me.format_inr(item.value)})</span>
 					</span>
 				</div>
 			`);
@@ -1422,7 +1481,7 @@ class FinancialDashboard {
 	render_ar_ageing() {
 		const ar = this.data.ar_ageing;
 		this.wrapper.find('#arSubtitle').html(
-			`Total Receivables: <strong style="color: #0f172a;">${this.format_compact(ar.total_outstanding)}</strong> • DSO: ${ar.dso_days} Days`
+			`Total Receivables: <strong style="color: #0f172a;">${this.format_inr(ar.total_outstanding)}</strong> • DSO: ${ar.dso_days} Days`
 		);
 		this.wrapper.find('#arCurrentBadge').text(`Current: ${ar.current_share}%`);
 
@@ -1432,7 +1491,7 @@ class FinancialDashboard {
 			const tr = $(`
 				<tr style="cursor: pointer;" title="${__('Click to open Accounts Receivable report')}">
 					<td>${b.bucket}</td>
-					<td class="fd-num-cell" style="${b.risk === 'High Alert' ? 'color: #dc2626;' : ''}">${me.format_compact(b.amount)}</td>
+					<td class="fd-num-cell" style="${b.risk === 'High Alert' ? 'color: #dc2626;' : ''}">${me.format_inr(b.amount)}</td>
 					<td style="${b.risk === 'High Alert' ? 'color: #dc2626; font-weight: 600;' : ''}">${b.share}%</td>
 					<td><span class="fd-risk-badge ${b.risk_class || 'fd-risk-normal'}">${b.risk}</span></td>
 				</tr>
@@ -1443,13 +1502,13 @@ class FinancialDashboard {
 			tbody.append(tr);
 		});
 
-		const chartMillions = (ar.chart_data || []).map(v => flt((v / 1000000).toFixed(2)));
+		const chartCrores = (ar.chart_data || []).map(v => flt((v / 10000000).toFixed(2)));
 
 		const ctx = document.getElementById('arAgeingChart');
 		if (!ctx || !window.Chart) return;
 
 		if (this.charts.ar) {
-			this.charts.ar.data.datasets[0].data = chartMillions;
+			this.charts.ar.data.datasets[0].data = chartCrores;
 			this.charts.ar.update();
 			return;
 		}
@@ -1459,7 +1518,7 @@ class FinancialDashboard {
 			data: {
 				labels: ['< 30d', '31-60d', '61-90d', '> 90d'],
 				datasets: [{
-					data: chartMillions,
+					data: chartCrores,
 					backgroundColor: ['#10b981', '#0284c7', '#f59e0b', '#ef4444'],
 					borderRadius: 4,
 				}],
@@ -1470,7 +1529,7 @@ class FinancialDashboard {
 				maintainAspectRatio: false,
 				plugins: { legend: { display: false } },
 				scales: {
-					x: { title: { display: true, text: '$ Millions', font: { size: 9.5 } }, grid: { color: 'rgba(226, 232, 240, 0.6)' } },
+					x: { title: { display: true, text: '₹ in Crores', font: { size: 9.5 } }, grid: { color: 'rgba(226, 232, 240, 0.6)' } },
 					y: { grid: { display: false } },
 				},
 			},
@@ -1480,7 +1539,7 @@ class FinancialDashboard {
 	render_ap_ageing() {
 		const ap = this.data.ap_ageing;
 		this.wrapper.find('#apSubtitle').html(
-			`Total Payables: <strong style="color: #0f172a;">${this.format_compact(ap.total_outstanding)}</strong> • DPO: ${ap.dpo_days} Days`
+			`Total Payables: <strong style="color: #0f172a;">${this.format_inr(ap.total_outstanding)}</strong> • DPO: ${ap.dpo_days} Days`
 		);
 		this.wrapper.find('#apDueBadge').text(`Due Soon: ${ap.due_soon_share}%`);
 
@@ -1491,7 +1550,7 @@ class FinancialDashboard {
 			const tr = $(`
 				<tr style="cursor: pointer;" title="${__('Click to open Accounts Payable report')}">
 					<td>${b.bucket}</td>
-					<td class="fd-num-cell" style="${isCritical ? 'color: #dc2626;' : ''}">${me.format_compact(b.amount)}</td>
+					<td class="fd-num-cell" style="${isCritical ? 'color: #dc2626;' : ''}">${me.format_inr(b.amount)}</td>
 					<td style="${isCritical ? 'color: #dc2626; font-weight: 600;' : ''}">${b.share}%</td>
 					<td style="${isCritical ? '' : 'color: #64748b;'}">
 						${isCritical ? '<span class="fd-risk-badge fd-risk-high">Audit Dispute</span>' : b.action}
@@ -1504,13 +1563,13 @@ class FinancialDashboard {
 			tbody.append(tr);
 		});
 
-		const chartMillions = (ap.chart_data || []).map(v => flt((v / 1000000).toFixed(2)));
+		const chartCrores = (ap.chart_data || []).map(v => flt((v / 10000000).toFixed(2)));
 
 		const ctx = document.getElementById('apAgeingChart');
 		if (!ctx || !window.Chart) return;
 
 		if (this.charts.ap) {
-			this.charts.ap.data.datasets[0].data = chartMillions;
+			this.charts.ap.data.datasets[0].data = chartCrores;
 			this.charts.ap.update();
 			return;
 		}
@@ -1520,7 +1579,7 @@ class FinancialDashboard {
 			data: {
 				labels: ['< 30d', '31-60d', '61-90d', '> 90d'],
 				datasets: [{
-					data: chartMillions,
+					data: chartCrores,
 					backgroundColor: ['#10b981', '#0284c7', '#f59e0b', '#ef4444'],
 					borderRadius: 4,
 				}],
@@ -1531,7 +1590,7 @@ class FinancialDashboard {
 				maintainAspectRatio: false,
 				plugins: { legend: { display: false } },
 				scales: {
-					x: { title: { display: true, text: '$ Millions', font: { size: 9.5 } }, grid: { color: 'rgba(226, 232, 240, 0.6)' } },
+					x: { title: { display: true, text: '₹ in Crores', font: { size: 9.5 } }, grid: { color: 'rgba(226, 232, 240, 0.6)' } },
 					y: { grid: { display: false } },
 				},
 			},
