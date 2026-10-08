@@ -37,6 +37,21 @@ frappe.query_reports["Serial Number Register"] = {
             },
             "on_change": () => frappe.query_report.refresh()
         },
+        {
+            "fieldname": "purchase_order",
+            "label": __("Purchase Order"),
+            "fieldtype": "Link",
+            "options": "Purchase Order",
+            "width": "150",
+            "get_query": function() {
+                return {
+                    filters: {
+                        docstatus: ["!=", 2]
+                    }
+                };
+            },
+            "on_change": () => frappe.query_report.refresh()
+        },
     
         {
             fieldname: "customer",

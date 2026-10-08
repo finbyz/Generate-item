@@ -85,13 +85,7 @@ def get_columns():
             "options": "Batch",
             "width": 150,
         },
-        {
-            "label": "Stock Entry",
-            "fieldname": "stock_entry",
-            "fieldtype": "Link",
-            "options": "Stock Entry",
-            "width": 150,
-        },
+        
         {
             "label": "Branch",
             "fieldname": "branch",
@@ -125,6 +119,20 @@ def get_columns():
             "fieldname": "description",
             "fieldtype": "Data",
             "width": 250,
+        },
+        {
+            "label": "Stock Entry",
+            "fieldname": "stock_entry",
+            "fieldtype": "Link",
+            "options": "Stock Entry",
+            "width": 150,
+        },
+        {
+            "label": "Purchase Order",
+            "fieldname": "purchase_order",
+            "fieldtype": "Link",
+            "options": "Purchase Order",
+            "width": 150,
         },
 
         {
@@ -272,6 +280,10 @@ def get_data(filters):
         conditions += " AND sn.batch = %(batch)s"
         values["batch"] = filters.get("batch")
 
+    if filters.get("purchase_order"):
+        conditions += " AND sn.purchase_order = %(purchase_order)s"
+        values["purchase_order"] = filters.get("purchase_order")
+
     # ==========================================================
     # MAIN QUERY
     # ==========================================================
@@ -296,6 +308,7 @@ def get_data(filters):
 
             sn.serial_number AS serial_no,
             sn.stock_entry,
+            sn.purchase_order,
             sn.mfg_type,
             sn.api_monogram_req
 

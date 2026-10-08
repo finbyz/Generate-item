@@ -28,10 +28,38 @@ class BomModificationRequest(Document):
         if self.bom:
             self.update_bom_items_using_db_set()  # step 1: apply changes
             self.update_bom_item_revision()        # step 2: stamp + heal zeros
-            self.update_production_plan_bom_modification()
-            create_pp_task_on_bmr_submit(self)
+            if self.has_manufacturing_changes():
+                self.update_production_plan_bom_modification()
+                create_pp_task_on_bmr_submit(self)
 
-    
+    def has_manufacturing_changes(self):
+        """
+        Returns True ONLY if there is a Quantity change or an Item change in this BMR.
+        Only Qty and Item changes are considered for manufacturing update.
+        Changes to rate, drawings, specifications, etc. are ignored.
+        """
+        for row in (self.items or []):
+            if getattr(row, "is_delete", 0):
+                return True
+
+            rev_item = getattr(row, "rev_item", None)
+            item = getattr(row, "item", None)
+            if rev_item and rev_item != item:
+                return True
+
+            if not getattr(row, "bom_item_name", None):
+                effective_item = rev_item or item
+                if effective_item:
+                    return True
+
+            orig_qty = flt(getattr(row, "qty", 0))
+            rev_qty = getattr(row, "rev_qty", None)
+            if rev_qty is not None and rev_qty != "":
+                if flt(rev_qty) != orig_qty:
+                    return True
+
+        return False
+
     def validate_qty_and_rev_qty(self):
         for row in (self.items or []):
             if not self.bom:
@@ -105,22 +133,35 @@ class BomModificationRequest(Document):
                 )
 
     def update_production_plan_bom_modification(self):
-        frappe.db.sql(
+        if not self.bom:
+            return
+
+        if not self.has_manufacturing_changes():
+            return
+
+        plan_names = frappe.db.sql(
             """
-            UPDATE `tabProduction Plan` pp
-            INNER JOIN `tabProduction Plan Item` ppi
-                ON ppi.parent = pp.name
-            SET
-                pp.bom_modification = %s
-            WHERE
-                pp.docstatus in (0,1)
-                AND ppi.bom_no = %s
+            SELECT DISTINCT pp.name
+            FROM `tabProduction Plan` pp
+            LEFT JOIN `tabProduction Plan Item` ppi ON ppi.parent = pp.name
+            LEFT JOIN `tabProduction Plan Sub Assembly Item` ppsai ON ppsai.parent = pp.name
+            WHERE pp.docstatus IN (0, 1)
+              AND (ppi.bom_no = %s OR ppsai.bom_no = %s)
             """,
-            (
-                "YES",     
-                self.bom,
-            ),
+            (self.bom, self.bom),
+            pluck="name",
         )
+
+        for plan_name in plan_names:
+            frappe.db.set_value(
+                "Production Plan",
+                plan_name,
+                {
+                    "bom_modification": "YES",
+                    "production_plan_updated": 0,
+                },
+                update_modified=False,
+            )
 
 
   

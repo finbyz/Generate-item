@@ -9,6 +9,7 @@ from frappe.utils import cint, cstr, flt, get_link_to_form
 
 def validate(doc, method):
     validate_duplicate_po(doc, method)
+    validate_serial_numbers(doc)
     for i in doc.items:
         i.po_line_no = i.idx
         if i.rate == 0:
@@ -600,4 +601,120 @@ def get_valid_batches(doctype, txt, searchfield, start, page_len, filters):
         },
         fields=["name"],
         as_list=1
+    )
+
+
+def validate_serial_numbers(doc):
+    """Validate that serial numbers in PO items remarks exist and are not linked to another PO."""
+    serial_nos = []
+    for row in (doc.items or []):
+        if row.get("remarks"):
+            parsed = [
+                s.strip()
+                for s in row.remarks.replace(",", "\n").splitlines()
+                if s.strip()
+            ]
+            serial_nos.extend(parsed)
+
+    if not serial_nos:
+        return
+
+    serial_nos = list(dict.fromkeys(serial_nos))
+    placeholders = ", ".join(["%s"] * len(serial_nos))
+    conflicts = frappe.db.sql(
+        f"""
+        SELECT name, purchase_order
+        FROM `tabSerial Number`
+        WHERE name IN ({placeholders})
+          AND purchase_order IS NOT NULL
+          AND purchase_order != ''
+          AND purchase_order != %s
+        """,
+        [*serial_nos, doc.name or ""],
+        as_dict=True,
+    )
+    if conflicts:
+        conflict_list = ", ".join([f"{c.name} (linked to PO {c.purchase_order})" for c in conflicts])
+        frappe.throw(
+            _(f"The following Serial Number(s) are already linked to another Purchase Order: {conflict_list}"),
+            title=_("Serial Number Conflict")
+        )
+
+
+def on_submit(doc, method=None):
+    """Link serial numbers in PO item remarks to this Purchase Order upon submission."""
+    serial_nos = []
+    for row in (doc.items or []):
+        if row.get("remarks"):
+            parsed = [
+                s.strip()
+                for s in row.remarks.replace(",", "\n").splitlines()
+                if s.strip()
+            ]
+            serial_nos.extend(parsed)
+
+    if not serial_nos:
+        return
+
+    serial_nos = list(dict.fromkeys(serial_nos))
+
+    placeholders = ", ".join(["%s"] * len(serial_nos))
+    frappe.db.sql(
+        f"""
+        UPDATE `tabSerial Number`
+        SET    purchase_order = %s,
+               modified       = NOW(),
+               modified_by    = %s
+        WHERE  name IN ({placeholders})
+        """,
+        [doc.name, frappe.session.user, *serial_nos],
+    )
+
+    frappe.msgprint(
+        f"{len(serial_nos)} Serial Number(s) linked to Purchase Order <b>{doc.name}</b>.",
+        title="Serial Numbers Linked",
+        indicator="green",
+    )
+
+
+def on_cancel(doc, method=None):
+    """Unlink serial numbers from this Purchase Order upon cancellation."""
+    serial_nos = []
+    for row in (doc.items or []):
+        if row.get("remarks"):
+            parsed = [
+                s.strip()
+                for s in row.remarks.replace(",", "\n").splitlines()
+                if s.strip()
+            ]
+            serial_nos.extend(parsed)
+
+    serial_nos = list(dict.fromkeys(serial_nos))
+
+    if serial_nos:
+        placeholders = ", ".join(["%s"] * len(serial_nos))
+        frappe.db.sql(
+            f"""
+            UPDATE `tabSerial Number`
+            SET    purchase_order = ''
+            WHERE  name IN ({placeholders})
+              AND  purchase_order = %s
+            """,
+            [*serial_nos, doc.name],
+        )
+
+    # Ensure all serial numbers pointing to this PO are unlinked
+    frappe.db.sql(
+        """
+        UPDATE `tabSerial Number`
+        SET    purchase_order = ''
+        WHERE  purchase_order = %s
+        """,
+        [doc.name],
+    )
+
+    frappe.msgprint(
+        f"Serial Number(s) unlinked from Purchase Order <b>{doc.name}</b>.",
+        title="Serial Numbers Unlinked",
+        indicator="orange",
     )

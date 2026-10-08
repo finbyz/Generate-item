@@ -15,13 +15,12 @@ Rules implemented (as agreed with the business owner):
 
 1. A "batch" is identified by the `batch_no` field on the
    `Sales Order Item For OMR` child row.
-2. A batch line is considered CHANGED if ANY of its `rev_*` fields
-   (`rev_item`, `rev_qty`, `rev_description`, `rev_line_status`, and any
-   other `rev_*` field present on the row) carries a value that is
-   actually DIFFERENT from its corresponding original field. A rev_
-   field simply being re-populated with the same value as the original
-   does not count as a change. Only changed lines are shown in the
-   report. See `_check_item_has_changes()`.
+2. A batch line is considered CHANGED for manufacturing update if
+   there is a quantity change (`rev_qty` != `qty`) or an item change
+   (`rev_item` != `item` or `bom_update_request` is linked). Only quantity
+   and item changes are considered for manufacturing updates (Production
+   Plan & Work Order). Changes to non-manufacturing fields (such as
+   description or line status) are ignored. See `_check_item_has_changes()`.
 3. If a Sales Order has more than one OMR raised against it over time,
    each OMR is walked independently - so OMR #1 can contribute 5 changed
    batch rows and a later OMR #2 on the very same Sales Order can
@@ -230,22 +229,22 @@ def _effective_item(item):
 
 
 def _check_item_has_changes(item):
-	"""A batch line is CHANGED if ANY `rev_*` field on it carries a value
-	that is actually different from its corresponding original field
-	(rev_item vs item, rev_qty vs qty, rev_description vs description,
-	rev_line_status vs line_status, and any other rev_* field present on
-	the row). A rev_ field that is merely re-populated with the same value
-	as the original does NOT count as a change."""
-	for key, rev_val in item.items():
-		if not key.startswith("rev_"):
-			continue
-		if rev_val is None or rev_val == "":
-			continue
-		base_key = key[4:]  # len("rev_") is 4
-		base_val = item.get(base_key)
-		if _norm_val(rev_val) != _norm_val(base_val):
-			return True
-	return False
+	"""A batch line is considered CHANGED for manufacturing update ONLY if
+	there is a quantity change (rev_qty > 0 and rev_qty != qty) or an item change (rev_item != item
+	or bom_update_request is linked).
+	Changes to description, line status, or other non-manufacturing fields
+	are NOT considered manufacturing updates."""
+	rev_item = item.get("rev_item")
+	item_code = item.get("item")
+	has_item_replacement = _has_value(item.get("bom_update_request")) or (
+		_has_value(rev_item) and _norm_val(rev_item) != _norm_val(item_code)
+	)
+
+	rev_qty = flt(item.get("rev_qty") or 0)
+	qty = flt(item.get("qty") or 0)
+	has_qty_change = rev_qty > 0 and rev_qty != qty
+
+	return bool(has_item_replacement or has_qty_change)
 
 
 def _line_change_type(item):
@@ -256,9 +255,9 @@ def _line_change_type(item):
 		_has_value(rev_item) and _norm_val(rev_item) != _norm_val(item_code)
 	)
 
-	rev_qty = item.get("rev_qty")
-	qty = item.get("qty")
-	has_qty_change = _has_value(rev_qty) and _norm_val(rev_qty) != _norm_val(qty)
+	rev_qty = flt(item.get("rev_qty") or 0)
+	qty = flt(item.get("qty") or 0)
+	has_qty_change = rev_qty > 0 and rev_qty != qty
 
 	if has_item_replacement:
 		return "Item Replacement"
@@ -516,7 +515,7 @@ def get_row_detail(sales_order, filters=None, batch_no=None, item=None):
 		batch_rows = [
 			r for r in batch_rows 
 			if (r.get("batch_no") or "") == (batch_no or "")
-			and (r.get("item") or "") == (item or "")
+			and (r.get("item") == item or r.get("effective_item") == item)
 		]
 
 	# If not in cache (different filters or cache miss), fall back to fresh compute
@@ -526,7 +525,7 @@ def get_row_detail(sales_order, filters=None, batch_no=None, item=None):
 			batch_rows = [
 				r for r in batch_rows 
 				if (r.get("batch_no") or "") == (batch_no or "")
-				and (r.get("item") or "") == (item or "")
+				and (r.get("item") == item or r.get("effective_item") == item)
 			]
 
 	omrs = maps.get("omr_all", {}).get(sales_order, [])
@@ -1244,9 +1243,10 @@ def _fetch_maps(so_names, filtered_pp=None):
 	return maps
 
 
-def _resolve_pp_for_batch(so_name, effective_item, item_batch_no, maps):
+def _resolve_pp_for_batch(so_name, effective_item, orig_item, item_batch_no, maps):
 	"""Find the Production Plan (if any) that actually applies to this specific batch row."""
-	if not effective_item:
+	target_items = [i for i in [effective_item, orig_item] if i]
+	if not target_items:
 		return None
 
 	candidates = maps.get("pp_all", {}).get(so_name, [])
@@ -1255,15 +1255,27 @@ def _resolve_pp_for_batch(so_name, effective_item, item_batch_no, maps):
 
 	if maps.get("assembly_doctype_found"):
 		pp_assembly_items = maps.get("pp_assembly_items", {})
-		batch_key = "{0}|{1}".format(effective_item, item_batch_no or "")
 
+		# 1st pass: exact batch match if item_batch_no is present
+		if item_batch_no:
+			for pp in candidates:
+				items_in_pp = pp_assembly_items.get(pp["name"])
+				if not items_in_pp:
+					continue
+				for itm in target_items:
+					batch_key = "{0}|{1}".format(itm, item_batch_no)
+					if batch_key in items_in_pp:
+						return pp
+
+		# 2nd pass: item match
 		for pp in candidates:
 			items_in_pp = pp_assembly_items.get(pp["name"])
 			if not items_in_pp:
 				continue
-			# Fast set membership check
-			if batch_key in items_in_pp or effective_item in items_in_pp:
-				return pp
+			for itm in target_items:
+				if itm in items_in_pp:
+					return pp
+
 		return None
 
 	return None
@@ -1298,14 +1310,6 @@ def _pp_update_flags(pp_dict):
 	has_so_mod = sales_order_mod_upper in ("YES", "1", "TRUE")
 	has_bom_mod = bom_mod_upper in ("YES", "1", "TRUE")
 	has_any_mod = has_so_mod or has_bom_mod
-	is_old_pp = not has_any_mod
-
-	prod_plan_updated = (
-		pp_dict.get("production_plan_updated")
-		if isinstance(pp_dict, dict)
-		else getattr(pp_dict, "production_plan_updated", 0)
-	)
-	pp_updated_flag = bool(cint(prod_plan_updated or 0))
 
 	wo_updated = (
 		pp_dict.get("work_order_updated")
@@ -1314,12 +1318,12 @@ def _pp_update_flags(pp_dict):
 	)
 	pp_wo_updated_flag = bool(cint(wo_updated or 0))
 
-	if pp_updated_flag:
-		pp_is_updated = True
-	elif is_old_pp:
-		pp_is_updated = True
-	else:
+	# If there is a pending modification, the plan is NOT updated yet.
+	# Once "Get Update" is applied, modification flags are cleared.
+	if has_any_mod:
 		pp_is_updated = False
+	else:
+		pp_is_updated = True
 
 	return pp_is_updated, pp_wo_updated_flag
 
@@ -1419,7 +1423,8 @@ def _compute_batch_row(so, omr, item, maps, now_dt=None):
 
 	# ---- PP: resolved at BATCH + EFFECTIVE-ITEM + BATCH_NO level ----
 	item_batch_no = item.get("batch_no")
-	pp_dict = _resolve_pp_for_batch(so_name, effective_item, item_batch_no, maps)
+	orig_item = item.get("item")
+	pp_dict = _resolve_pp_for_batch(so_name, effective_item, orig_item, item_batch_no, maps)
 	pp_exists = bool(pp_dict)
 	pp_is_updated, pp_wo_updated_flag = _pp_update_flags(pp_dict)
 
@@ -1444,6 +1449,9 @@ def _compute_batch_row(so, omr, item, maps, now_dt=None):
 	if pp_dict:
 		k = (pp_dict["name"], effective_item)
 		matched_wos = maps.get("wo_by_pp_item", {}).get(k, [])
+		if not matched_wos and orig_item and orig_item != effective_item:
+			k_orig = (pp_dict["name"], orig_item)
+			matched_wos = maps.get("wo_by_pp_item", {}).get(k_orig, [])
 	else:
 		matched_wos = []
 
@@ -1606,6 +1614,8 @@ def _compute_batch_rows_for_so(so, maps, now_dt=None):
 	so_name = so["name"] if isinstance(so, dict) else so.name
 	rows = []
 	for omr in maps["omr_all"].get(so_name, []):
+		if omr.get("modification_type") != "Order Item Change":
+			continue
 		omr_name = omr.get("name") if isinstance(omr, dict) else omr.name
 		for item in maps["omr_items"].get(omr_name, []):
 			if _check_item_has_changes(item):
