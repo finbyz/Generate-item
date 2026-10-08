@@ -1,5 +1,66 @@
+const BRANCH_COMPANY_ADDRESS = {
+    "Sanand": "Steelstrong-Sanand",
+    "Rabale": "Steelstrong-Rabale",
+    "Nandikoor": "Steelstrong-Nandikoor",
+};
+
+
+
+function set_company_address(frm) {
+    const expected = BRANCH_COMPANY_ADDRESS[frm.doc.branch];
+
+    if (!frm.doc.branch) {
+        frm.set_value("company_address", "");
+        return;
+    }
+
+    if (!expected) {
+        frm.set_value("company_address", "");
+        frappe.msgprint({
+            title: __("Branch Not Mapped"),
+            indicator: "orange",
+            message: __("Branch {0} is not mapped to any Company Address.", [frm.doc.branch]),
+        });
+        return;
+    }
+
+    if (frm.doc.company_address !== expected) {
+        // Triggers India Compliance's handler (company_gstin, address display)
+        frm.set_value("company_address", expected);
+    }
+}
+
 frappe.ui.form.on("Sales Invoice", {
+      branch(frm) {
+        set_company_address(frm);
+    },
+    setup(frm) {
+        // Dropdown shows only the mapped address for the selected branch
+        frm.set_query("company_address", () => {
+            const addr = BRANCH_COMPANY_ADDRESS[frm.doc.branch];
+            return { filters: { name: addr || "" } };
+        });
+    },
+
+    validate(frm) {
+        if (!frm.doc.branch) return;
+
+        const expected = BRANCH_COMPANY_ADDRESS[frm.doc.branch];
+
+        if (!expected) {
+            frappe.throw(__("Branch {0} is not mapped to any Company Address.", [frm.doc.branch]));
+        }
+        if (frm.doc.company_address !== expected) {
+            frappe.throw(
+                __("Company Address must be {0} for Branch {1}.", [expected, frm.doc.branch])
+            );
+        }
+    },
     refresh(frm) {
+        // Auto-fill on new/draft invoices when branch is set but address is empty
+        if (frm.doc.docstatus === 0 && frm.doc.branch && !frm.doc.company_address) {
+            set_company_address(frm);
+        }
         if (frm.is_new() && frm.doc.items?.some(d => d.sales_order)) {
             fetch_and_update_taxes(frm);
         }

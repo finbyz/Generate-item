@@ -7,6 +7,44 @@ import frappe
 from frappe.utils import add_days, nowdate
 
 
+
+
+BRANCH_COMPANY_ADDRESS = {
+    "Sanand": "Steelstrong-Sanand",
+    "Rabale": "Steelstrong-Rabale",
+    "Nandikoor": "Steelstrong-Nandikoor",
+}
+
+
+def set_and_validate_company_address(doc):
+    if not doc.branch:
+        return
+
+    expected = BRANCH_COMPANY_ADDRESS.get(doc.branch)
+
+    if not expected:
+        frappe.throw(
+            _("Branch {0} is not mapped to any Company Address. Please contact the administrator.").format(
+                frappe.bold(doc.branch)
+            ),
+            title=_("Branch Not Mapped"),
+        )
+
+    # Auto-fill when empty (API / import / mobile)
+    if not doc.company_address:
+        doc.company_address = expected
+        doc.company_gstin = frappe.db.get_value("Address", expected, "gstin")
+
+    if doc.company_address != expected:
+        frappe.throw(
+            _("Company Address must be {0} for Branch {1}. Currently set: {2}").format(
+                frappe.bold(expected),
+                frappe.bold(doc.branch),
+                frappe.bold(doc.company_address),
+            ),
+            title=_("Branch / Address Mismatch"),
+        )
+
 @frappe.whitelist()
 def set_remaining_actual_taxes(invoice_name):
     """
@@ -464,6 +502,7 @@ def validate(doc, method=None):
     Priority: Check taxes against DN if created from DN, otherwise check against SO.
     This prevents over-billing.
     """
+    set_and_validate_company_address(doc)
     remove_free_items(doc)
     fetch_po_line_no_from_sales_order(doc)
     validate_duplicate_si(doc, method)
