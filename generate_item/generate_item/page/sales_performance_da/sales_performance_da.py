@@ -9,7 +9,7 @@ def get_dashboard_data(from_date, to_date, branch=None):
     data = {}
 
     data["orders_status"] = get_orders_status(from_date, to_date, branch)
-    data["order_approval_delay"] = get_order_approval_delay(branch)
+    data["order_approval_delay"] = get_order_approval_delay(branch, from_date, to_date)
     data["order_booking"] = get_order_booking_value(branch)
     data["invoicing"] = get_invoicing_value(branch)
     data["outstanding_collection"] = get_outstanding_vs_collection(branch)
@@ -61,9 +61,9 @@ def get_orders_status(from_date, to_date, branch):
     result = frappe.db.sql(f"""
         SELECT
             CASE
+                WHEN so.docstatus = 0 AND so.workflow_state IN ('Approval Pending', 'Checking Pending') THEN 'Pending Approval'
                 WHEN so.docstatus = 0 THEN 'Draft'
-                WHEN so.workflow_state = 'Approved' THEN 'Approved'
-                WHEN so.docstatus = 1 THEN 'Booked'
+                WHEN so.docstatus = 1 THEN 'Approved'
                 ELSE COALESCE(so.workflow_state, 'Draft')
             END as status_group,
             COUNT(*) AS total_orders,
@@ -96,11 +96,14 @@ def get_orders_status(from_date, to_date, branch):
 # 2. Order Approval Delay (Bucketed)
 # Sales Orders with docstatus = 0 and pending approval
 # --------------------------------------------------
-def get_order_approval_delay(branch):
+def get_order_approval_delay(branch, from_date=None, to_date=None):
     conditions = [
         "so.docstatus = 0",
-        # "so.workflow_state IN ('Approval Pending', 'Checking Pending')"
+        "so.workflow_state IN ('Approval Pending', 'Checking Pending')"
     ]
+
+    if from_date and to_date:
+        conditions.append("so.transaction_date BETWEEN %(from_date)s AND %(to_date)s")
 
     if branch:
         conditions.append("so.branch = %(branch)s")
@@ -114,7 +117,11 @@ def get_order_approval_delay(branch):
             so.grand_total
         FROM `tabSales Order` so
         WHERE {where}
-    """, {"branch": branch}, as_dict=True)
+    """, {
+        "branch": branch,
+        "from_date": from_date,
+        "to_date": to_date
+    }, as_dict=True)
 
     return get_delay_buckets(rows, "transaction_date")
 

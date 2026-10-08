@@ -307,39 +307,89 @@ class OrderModificationRequest(Document):
                 title=_("Free Item Association Blocked"),
             )
             
+    def has_manufacturing_changes(self):
+        """
+        Returns True if this OMR has at least one row with Quantity change
+        (rev_qty > 0 and rev_qty != qty) or Item change (rev_item != item or bom_update_request).
+        Non-manufacturing changes (description, delivery date, line status, etc.) are ignored.
+        """
+        if self.type != "Sales Order" or self.modification_type != "Order Item Change":
+            return False
+
+        for row in (self.sales_order_item or []):
+            rev_qty = flt(getattr(row, "rev_qty", 0))
+            orig_qty = flt(getattr(row, "qty", 0))
+            has_qty_change = rev_qty > 0 and rev_qty != orig_qty
+
+            rev_item = (getattr(row, "rev_item", None) or "").strip()
+            orig_item = (getattr(row, "item", None) or "").strip()
+            has_item_change = bool(
+                getattr(row, "bom_update_request", None)
+                or (rev_item and rev_item != orig_item)
+            )
+
+            if has_qty_change or has_item_change:
+                return True
+
+        return False
+
     def update_production_plan_sales_order_modification(self):
         """
         Flags every Production Plan (draft or submitted) that has at least
-        one Production Plan Item referencing this Sales Order.
-
-        Refactor: the raw `UPDATE ... INNER JOIN ...` is replaced with a
-        frappe.qb SELECT (safe, parameterised, no hand-written JOIN SQL) to
-        find the matching Production Plan names, followed by
-        frappe.db.set_value() per document. The result is identical: every
-        Production Plan with docstatus in (0, 1) that has a Production Plan
-        Item row for this Sales Order gets sales_order_modification = "YES".
+        one Production Plan Item referencing this Sales Order and the changed items.
+        Only Quantity and Item changes are considered for manufacturing update.
         """
-        if not self.sales_order:
-            # Original SQL used `ppi.sales_order = %s` with a None param,
-            # which never matches any row in MySQL -> effectively a no-op.
-            # Returning early here reproduces that same no-op explicitly.
+        if not self.sales_order or not self.has_manufacturing_changes():
             return
+
+        changed_items = set()
+        changed_so_items = set()
+        for row in (self.sales_order_item or []):
+            rev_qty = flt(getattr(row, "rev_qty", 0))
+            orig_qty = flt(getattr(row, "qty", 0))
+            has_qty_change = rev_qty > 0 and rev_qty != orig_qty
+
+            rev_item = (getattr(row, "rev_item", None) or "").strip()
+            orig_item = (getattr(row, "item", None) or "").strip()
+            has_item_change = bool(
+                getattr(row, "bom_update_request", None)
+                or (rev_item and rev_item != orig_item)
+            )
+
+            if has_qty_change or has_item_change:
+                if orig_item:
+                    changed_items.add(orig_item)
+                if rev_item:
+                    changed_items.add(rev_item)
+                if getattr(row, "sales_order_item_name", None):
+                    changed_so_items.add(row.sales_order_item_name)
 
         ProductionPlan = frappe.qb.DocType("Production Plan")
         ProductionPlanItem = frappe.qb.DocType("Production Plan Item")
 
-        plan_names = (
+        query = (
             frappe.qb.from_(ProductionPlan)
             .inner_join(ProductionPlanItem)
             .on(ProductionPlanItem.parent == ProductionPlan.name)
             .where(ProductionPlan.docstatus.isin([0, 1]))
             .where(ProductionPlanItem.sales_order == self.sales_order)
-            .select(ProductionPlan.name)
-            .distinct()
-        ).run(pluck="name")
+        )
+
+        item_filters = []
+        if changed_so_items:
+            item_filters.append(ProductionPlanItem.sales_order_item.isin(list(changed_so_items)))
+        if changed_items:
+            item_filters.append(ProductionPlanItem.item_code.isin(list(changed_items)))
+
+        if item_filters:
+            if len(item_filters) == 2:
+                query = query.where(item_filters[0] | item_filters[1])
+            else:
+                query = query.where(item_filters[0])
+
+        plan_names = query.select(ProductionPlan.name).distinct().run(pluck="name")
 
         for plan_name in plan_names:
-            # Original SQL never touched modified/modified_by -> update_modified=False
             frappe.db.set_value(
                 "Production Plan",
                 plan_name,

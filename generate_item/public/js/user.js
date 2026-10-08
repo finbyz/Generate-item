@@ -163,8 +163,8 @@ function show_general_employee_dialog(user_name, full_name, info) {
 		const selected_branch = dialog.get_value("branch") || "";
 		return {
 			filters: {
-				branch: selected_branch,
-				is_group: 0,
+				// branch: selected_branch,
+				is_group: 1,
 				disabled: 0,
 			},
 		};

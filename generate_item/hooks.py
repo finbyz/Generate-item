@@ -201,7 +201,9 @@ doc_events = {
     "Purchase Order": {
         "before_insert": "generate_item.utils.purchase_order.before_insert",
         "validate": "generate_item.utils.purchase_order.validate",
-        "before_save": "generate_item.utils.purchase_order.before_save"
+        "before_save": "generate_item.utils.purchase_order.before_save",
+        "on_submit": "generate_item.utils.purchase_order.on_submit",
+        "on_cancel": "generate_item.utils.purchase_order.on_cancel"
     },
     # "Address":{
     #     "validate":"generate_item.utils.address.validate",

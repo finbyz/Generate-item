@@ -11,6 +11,7 @@
   "batch",
   "mfg_type",
   "stock_entry",
+  "purchase_order",
   "mds_status",
   "mds_no",
   "mds_rev",
@@ -104,6 +105,13 @@
    "fieldtype": "Link",
    "label": "Stock Entry",
    "options": "Stock Entry",
+   "read_only": 1
+  },
+  {
+   "fieldname": "purchase_order",
+   "fieldtype": "Link",
+   "label": "Purchase Order",
+   "options": "Purchase Order",
    "read_only": 1
   },
   {

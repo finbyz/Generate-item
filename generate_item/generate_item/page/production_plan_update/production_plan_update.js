@@ -17,7 +17,7 @@ class PPWOControlReport {
 		this.$body.empty().addClass("ppwo-root");
 
 		// NOTE: grid grain is now "one row per CHANGED batch line" (a line
-		// inside an OMR's item table whose rev_* fields carry a value),
+		// inside an OMR's item table whose Qty or Item changed for manufacturing update),
 		// not "one row per Sales Order" any more. `row_id` (sales_order::item_row_name)
 		// is the unique key used for selection/export; `sales_order` is kept
 		// on every row so the drawer can still be opened per Sales Order.
