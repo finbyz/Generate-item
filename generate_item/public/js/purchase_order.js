@@ -6,32 +6,26 @@ function set_supplier_warehouse(frm) {
 		return;
 	}
 
-	// 1. Primary: Use 'warehouse' field configured under Supplier master
-	frappe.db.get_value("Supplier", frm.doc.supplier, "warehouse").then(r => {
-		if (r && r.message && r.message.warehouse) {
-			frm.set_value("supplier_warehouse", r.message.warehouse);
+	if (frm.doc.branch) {
+		// Match warehouse by branch and supplier name
+		frappe.db.get_list("Warehouse", {
+			filters: [
+				["Warehouse", "branch", "=", frm.doc.branch],
+				["Warehouse", "is_group", "=", 0],
+				["Warehouse", "name", "like", `%${frm.doc.supplier}%`]
+			],
+			fields: ["name"],
+			order_by: "name asc",
+			limit: 1
+		}).then(res => {
+			if (res && res.length) {
+				frm.set_value("supplier_warehouse", res[0].name);
+			}
 			render_po_mould_set_info(frm);
-		} else if (frm.doc.branch) {
-			// 2. Fallback: match warehouse by branch and supplier name
-			frappe.db.get_list("Warehouse", {
-				filters: [
-					["Warehouse", "branch", "=", frm.doc.branch],
-					["Warehouse", "is_group", "=", 0],
-					["Warehouse", "name", "like", `%${frm.doc.supplier}%`]
-				],
-				fields: ["name"],
-				order_by: "name asc",
-				limit: 1
-			}).then(res => {
-				if (res.length) {
-					frm.set_value("supplier_warehouse", res[0].name);
-				}
-				render_po_mould_set_info(frm);
-			});
-		} else {
-			render_po_mould_set_info(frm);
-		}
-	});
+		});
+	} else {
+		render_po_mould_set_info(frm);
+	}
 }
 
 function render_po_mould_set_info(frm) {
