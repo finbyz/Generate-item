@@ -71,8 +71,11 @@ async function get_missing_revise_component_items(frm) {
 
     return missing;
 }
+
+
 frappe.ui.form.on("Order Modification Request", {
     refresh: function (frm) {
+      
         toggle_drg_section(frm);
         hide_child_table_delete_buttons(frm);
         make_fields_mandatory_based_on_type(frm);
@@ -80,7 +83,7 @@ frappe.ui.form.on("Order Modification Request", {
         setup_rev_item_tracking(frm);
         // setup_rev_component_of_query(frm); 
     },
-
+ 
       onload: function (frm) {
         handle_ig_return(frm);
     },
@@ -454,13 +457,32 @@ function make_fields_mandatory_based_on_type(frm) {
     }
 }
 
-
+function component_of_mandatory(frm, cdt, cdn) {
+    const row = locals[cdt]?.[cdn];
+    if (!row || !frm.doc.sales_order) return;
+    frappe.db.get_value("Sales Order", frm.doc.sales_order, "order_type").then(r => {
+        const is_free_issue_order = [
+            "Free Issue Domestic",
+            "Free Issue Export"
+        ].includes(r.message?.order_type);
+        const is_free_item = Boolean(row.is_free_item || row.rev_is_free_item);
+        // Required only if item is free AND order is NOT a free issue order
+        const is_reqd = is_free_item && !is_free_issue_order;
+        const grid_row = frm.fields_dict.sales_order_item?.grid?.grid_rows_by_docname?.[cdn];
+        if (grid_row) {
+            grid_row.toggle_reqd("rev_component_of", is_reqd);
+        }
+    });
+}
 // =====================================================================
 // FREE ITEM ASSOCIATION LOGIC  (Spec sections 3 & 4)
 // =====================================================================
 
-frappe.ui.form.on('Sales Order Item For OMR', {
 
+frappe.ui.form.on('Sales Order Item For OMR', {
+    rev_is_free_item:component_of_mandatory,
+
+    form_render: component_of_mandatory,
     // ── Fires when the rev_item Link field resolves (or fails) ──
     rev_item: function (frm, cdt, cdn) {
         const row = locals[cdt][cdn];
