@@ -257,7 +257,8 @@ doc_events = {
        "before_insert":"generate_item.utils.material_request.before_insert",
   "onload": "generate_item.utils.scenario_workflow.set_submit_control_onload",
             "before_submit": "generate_item.utils.scenario_workflow.validate_material_request_submit",
-        "validate":"generate_item.utils.material_request.validate"
+        "validate":"generate_item.utils.material_request.validate",
+        "on_submit":"generate_item.utils.material_request.on_submit",
     },
     "Sales Invoice": {
         "before_insert": "generate_item.utils.sales_invoice.before_insert",
@@ -357,7 +358,8 @@ scheduler_events = {
 	# 	"generate_item.tasks.hourly"
 	# ],
 	"weekly": [
-		"generate_item.scheduler_events.advance_mr_without_batch_weekly.process_advance_mr_without_batch"
+		"generate_item.scheduler_events.advance_mr_without_batch_weekly.process_advance_mr_without_batch",
+		"generate_item.utils.report_email_scheduler.execute_weekly_report_email_scheduler"
 	],
 	
 

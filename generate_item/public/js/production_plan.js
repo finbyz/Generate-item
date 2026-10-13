@@ -128,6 +128,8 @@ function get_update_for_production_plan(frm) {
                     }
                 },
             });
+
+            
         }
     );
 }
@@ -200,36 +202,15 @@ function add_create_material_request_button(frm, group) {
                 __("Create Material Request"),
                 function () {
                     frappe.confirm(
-                        __("This will create a Material Request for {0} pending item(s): {1}", [
+                        __("This will create a Material Request for {0} pending item(s): {1}.<br><br>Do you want to submit the Material Request?", [
                             pending_count,
                             pending_items.join(", "),
                         ]),
                         function () {
-                            frappe.call({
-                                method:
-                                    "generate_item.utils.production_plan.create_material_request_for_pending_items",
-                                args: { docname: frm.doc.name },
-                                freeze: true,
-                                freeze_message: __("Creating Material Request..."),
-                                callback: function (r) {
-                                    if (!r.message) return;
-
-                                    if (r.message.created) {
-                                        frappe.show_alert(
-                                            { message: r.message.message, indicator: "green" },
-                                            5
-                                        );
-                                    } else {
-                                        frappe.msgprint(r.message.message);
-                                    }
-                                    frm.reload_doc();
-                                },
-                                error: function () {
-                                    frappe.msgprint(
-                                        __("Could not create Material Request. Please try again in a moment.")
-                                    );
-                                },
-                            });
+                            create_material_request_for_pending_items(frm, 1);
+                        },
+                        function () {
+                            create_material_request_for_pending_items(frm, 0);
                         }
                     );
                 },
@@ -238,6 +219,39 @@ function add_create_material_request_button(frm, group) {
         },
     });
     frm.remove_custom_button(__("Material Request"), "Create");
+}
+
+function create_material_request_for_pending_items(frm, submit) {
+    frappe.call({
+        method:
+            "generate_item.utils.production_plan.create_material_request_for_pending_items",
+        args: {
+            docname: frm.doc.name,
+            submit_material_request: submit !== undefined ? submit : 1,
+        },
+        freeze: true,
+        freeze_message: submit
+            ? __("Creating and Submitting Material Request...")
+            : __("Creating Material Request..."),
+        callback: function (r) {
+            if (!r.message) return;
+
+            if (r.message.created) {
+                frappe.show_alert(
+                    { message: r.message.message, indicator: "green" },
+                    5
+                );
+            } else {
+                frappe.msgprint(r.message.message);
+            }
+            frm.reload_doc();
+        },
+        error: function () {
+            frappe.msgprint(
+                __("Could not create Material Request. Please try again in a moment.")
+            );
+        },
+    });
 }
 
 // ============================================================
@@ -696,6 +710,8 @@ function update_actual_qty_for_items(frm) {
         }
     });
 }
+
+
 
 
 

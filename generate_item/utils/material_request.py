@@ -4,6 +4,7 @@ from frappe.model.mapper import get_mapped_doc
 from frappe.utils import flt, getdate, nowdate, escape_html
 from erpnext.stock.doctype.item.item import get_item_defaults
 from generate_item.utils.scenario_workflow import validate_material_request_create
+from erpnext.stock.doctype.material_request.material_request import make_stock_entry
 
 
 def validate(doc,method):
@@ -18,9 +19,31 @@ def before_insert(doc, method=None):
     populate_custom_fields(doc)
     validate_material_request_create(doc, method)
 
+def on_submit(doc, method=None):
+    if doc.material_request_type != "Material Transfer":
+        return
 
+    # Avoid duplicates if the hook fires again (e.g. amend/resubmit flows)
+    existing = frappe.db.exists(
+        "Stock Entry Detail",
+        {"material_request": doc.name, "docstatus": ["<", 2]},
+    )
+    if existing:
+        return
 
+    se = make_stock_entry(doc.name)  # maps items, s_warehouse/t_warehouse, MR link
+    se.stock_entry_type = "Material Transfer"
+    se.purpose = "Material Transfer"
+    se.company = doc.company
+    se.insert(ignore_permissions=True)
+    se.submit()
 
+    frappe.msgprint(
+        _("Stock Entry {0} created for Material Transfer").format(
+            frappe.utils.get_link_to_form("Stock Entry", se.name)
+        ),
+        alert=True,
+    )
 
 
 
@@ -581,3 +604,7 @@ def bulk_update_production_plan(material_request, updates):
         "skipped": skipped_count,
         "message": message,
     }
+    
+    
+    
+    

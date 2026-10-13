@@ -176,7 +176,7 @@ from erpnext.manufacturing.doctype.production_plan.production_plan import (
     get_items_for_material_requests,
 )
 from collections import defaultdict
-from frappe.utils import flt
+from frappe.utils import flt, cint
 
 
 def _validate_schema_match(source_doctype, target_doctype):
@@ -629,7 +629,7 @@ def get_pending_mr_items(docname):
     }
 
 @frappe.whitelist()
-def create_material_request_for_pending_items(docname):
+def create_material_request_for_pending_items(docname, submit_material_request=1):
     """
     Explicit button action: check every raw material row in mr_items,
     and create one Material Request covering only the genuinely pending
@@ -645,6 +645,7 @@ def create_material_request_for_pending_items(docname):
     Guarded against double-click / concurrent-request races with a
     short-lived cache lock per Production Plan.
     """
+    submit_material_request = cint(submit_material_request) if submit_material_request is not None else 1
     lock_key = f"pp_mr_create_lock::{docname}"
 
     if frappe.cache().get_value(lock_key):
@@ -676,7 +677,9 @@ def create_material_request_for_pending_items(docname):
             # flow — same one the stock "Create > Material Request" button
             # calls — so it requests exactly the shortfall qty per row.
             pp.set("mr_items", pending_rows)
+            pp.submit_material_request = submit_material_request
             pp.make_material_request()
+            
         except Exception as e:
             frappe.log_error(
                 "Manual MR Creation Error",
@@ -696,12 +699,12 @@ def create_material_request_for_pending_items(docname):
         ]
         # frappe.db.set_value("Production Plan", pp.name, "production_plan_updated", 0, update_modified=False)
 
-
+        action_label = _("created and submitted") if submit_material_request else _("created")
 
         return {
             "created": True,
             "items": created_items,
-            "message": _("Material Request created for: {0}").format(", ".join(created_items)),
+            "message": _("Material Request {0} for: {1}").format(action_label, ", ".join(created_items)),
         }
     finally:
         frappe.cache().delete_value(lock_key)
@@ -959,4 +962,3 @@ def _get_pp_primary_sales_order(pp_names):
             so_map[row.parent] = row.sales_order
 
     return so_map
-
