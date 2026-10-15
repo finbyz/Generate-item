@@ -42,6 +42,20 @@ frappe.query_reports["Batch Wise Report"] = {
 			options: "Sales Order"
 		},
 		{
+			fieldname: "order_status",
+			label: __("Order Status"),
+			fieldtype: "MultiSelectList",
+			options: [
+				"To Deliver and Bill",
+				"To Deliver",
+				"To Bill",
+				"Completed",
+				"Closed",
+				"On Hold",
+				"Cancelled"
+			],
+		},
+		{
 			fieldname: "item_code",
 			label: "Item Code",
 			fieldtype: "Link",

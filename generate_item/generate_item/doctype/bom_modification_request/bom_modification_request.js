@@ -23,6 +23,16 @@ frappe.ui.form.on("Bom Modification Request", {
             };
         };
     },
+    before_workflow_action(frm) {
+        const action = (frm.selected_workflow_action || "").toLowerCase();
+        if (action.includes("reject") || action.includes("cancel")) {
+            return;
+        }
+        return confirm_and_submit_sub_boms(frm);
+    },
+    before_submit(frm) {
+        return confirm_and_submit_sub_boms(frm);
+    },
     setup(frm) {
 
         frm.set_query("bom", function () {
@@ -260,3 +270,70 @@ frappe.ui.form.on('Order Modification Request Detail', {
         });
     }
 });
+
+function confirm_and_submit_sub_boms(frm) {
+    return new Promise((resolve, reject) => {
+        let rows = frm.doc.items || [];
+        let rev_boms = [...new Set(rows.map(r => r.rev_bom_no).filter(Boolean))];
+
+        if (!rev_boms.length) {
+            return resolve();
+        }
+
+        // Check if any referenced sub-assembly BOMs are in Draft (docstatus == 0)
+        frappe.call({
+            method: "frappe.client.get_list",
+            args: {
+                doctype: "BOM",
+                filters: {
+                    name: ["in", rev_boms],
+                    docstatus: 0
+                },
+                fields: ["name"]
+            },
+            callback: function (r) {
+                let draft_boms = (r.message || []).map(b => b.name);
+                if (!draft_boms.length) {
+                    return resolve();
+                }
+
+                try { frappe.dom.unfreeze(); } catch (e) { }
+
+                frappe.confirm(
+                    __("The following Sub Assembly BOM(s) are in Draft status: {0}.<br><br>Do you want to submit them and proceed?", [
+                        draft_boms.join(", ")
+                    ]),
+                    function () {
+                        // User clicked YES: submit the sub-assembly BOMs, then proceed with BMR submission / approval
+                        try { frappe.dom.freeze(__("Submitting Sub-Assembly BOM(s)...")); } catch (e) { }
+                        frappe.call({
+                            method: "generate_item.generate_item.doctype.bom_modification_request.bom_modification_request.submit_sub_assembly_boms",
+                            args: {
+                                bom_names: draft_boms
+                            },
+                            callback: function (res) {
+                                try { frappe.dom.unfreeze(); } catch (e) { }
+                                if (!res.exc) {
+                                    frappe.show_alert({
+                                        message: __("Sub-assembly BOM(s) submitted successfully."),
+                                        indicator: "green"
+                                    });
+                                    resolve();
+                                } else {
+                                    frappe.validated = false;
+                                    reject(res.exc);
+                                }
+                            }
+                        });
+                    },
+                    function () {
+                        // User clicked NO: "if no then no change i want to default one"
+                        try { frappe.dom.unfreeze(); } catch (e) { }
+                        frappe.validated = false;
+                        reject("Sub-Assembly BOM submission cancelled by user.");
+                    }
+                );
+            }
+        });
+    });
+}

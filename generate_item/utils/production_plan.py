@@ -180,20 +180,32 @@ from frappe.utils import flt, cint
 
 
 def _validate_schema_match(source_doctype, target_doctype):
-    """One-time set comparison — cheap, meta is cached by frappe.get_meta."""
-    skip = {"name", "parent", "parentfield", "parenttype", "doctype",
-            "owner", "creation", "modified", "modified_by", "idx"}
+    """Ensure target tracking DocType exists and log warnings if any substantive data fields are missing."""
+    if not frappe.db.exists("DocType", target_doctype):
+        frappe.throw(
+            _("Target tracking DocType '{0}' does not exist.").format(target_doctype)
+        )
 
-    source_fields = {df.fieldname for df in frappe.get_meta(source_doctype).fields
-                      if df.fieldname not in skip}
-    target_fields = {df.fieldname for df in frappe.get_meta(target_doctype).fields
-                      if df.fieldname not in skip}
+    skip = {
+        "name", "parent", "parentfield", "parenttype", "doctype",
+        "owner", "creation", "modified", "modified_by", "idx"
+    }
+
+    no_val_types = getattr(frappe.model, "no_value_fields", ())
+    source_fields = {
+        df.fieldname for df in frappe.get_meta(source_doctype).fields
+        if df.fieldname not in skip and df.fieldtype not in no_val_types
+    }
+    target_fields = {
+        df.fieldname for df in frappe.get_meta(target_doctype).fields
+        if df.fieldname not in skip and df.fieldtype not in no_val_types
+    }
 
     missing = source_fields - target_fields
     if missing:
-        frappe.throw(
-            "Tracking DocType '{0}' is missing field(s) present on source '{1}': {2}."
-            .format(target_doctype, source_doctype, ", ".join(sorted(missing)))
+        frappe.log_error(
+            title=f"Tracking DocType {target_doctype} missing fields",
+            message=f"DocType '{target_doctype}' is missing field(s) present on source '{source_doctype}': {', '.join(sorted(missing))}"
         )
 
 
@@ -203,21 +215,58 @@ def _copy_child_table(pp, source_fieldname, target_fieldname):
         return
 
     parent_meta = frappe.get_meta(pp.doctype)
-    source_doctype = parent_meta.get_field(source_fieldname).options
-    target_doctype = parent_meta.get_field(target_fieldname).options
+    source_field = parent_meta.get_field(source_fieldname)
+    target_field = parent_meta.get_field(target_fieldname)
+
+    if not source_field or not target_field:
+        return
+
+    source_doctype = source_field.options
+    target_doctype = target_field.options
 
     _validate_schema_match(source_doctype, target_doctype)
 
-    system_fields = {"name", "idx", "parent", "parentfield", "parenttype",
-                      "doctype", "owner", "creation", "modified", "modified_by"}
+    system_fields = {
+        "name", "idx", "parent", "parentfield", "parenttype",
+        "doctype", "owner", "creation", "modified", "modified_by"
+    }
+
+    target_meta = frappe.get_meta(target_doctype)
+    no_val_types = getattr(frappe.model, "no_value_fields", ())
+    target_fields = {
+        df.fieldname for df in target_meta.fields
+        if df.fieldname not in system_fields and df.fieldtype not in no_val_types
+    }
 
     # append() only builds in-memory objects — no DB hit per row.
     for row in source_rows:
-        cleaned = {k: v for k, v in row.as_dict().items() if k not in system_fields}
+        row_dict = row.as_dict() if hasattr(row, "as_dict") else dict(row)
+        cleaned = {k: v for k, v in row_dict.items() if k in target_fields}
+        cleaned["doctype"] = target_doctype
         pp.append(target_fieldname, cleaned)
 
 
+def _cleanup_legacy_tracking_rows(pp_name):
+    """Safeguard: permanently purge legacy tracking rows from standard ERPNext child tables."""
+    if not pp_name:
+        return
+    frappe.db.delete("Material Request Plan Item", {
+        "parent": pp_name,
+        "parentfield": "tracking_raw_materials",
+    })
+    frappe.db.delete("Production Plan Item", {
+        "parent": pp_name,
+        "parentfield": "tracking_assembly_items",
+    })
+    frappe.db.delete("Production Plan Sub Assembly Item", {
+        "parent": pp_name,
+        "parentfield": "tracking_sub_assembly_items",
+    })
+
+
 def _capture_original_data_if_needed(pp):
+    _cleanup_legacy_tracking_rows(pp.name)
+
     if pp.get("original_data"):
         return False
 
@@ -366,14 +415,109 @@ def get_update_for_submitted_pp(docname):
 
     # --- Step 11: Set status Re-open ---
     pp.set_status(close=False, update_bin=True)
+    
+    # --- Step 12: Update new mr_items ref in Material Request Items ---
+    relinked = 0
+    try:
+        pp.reload()  # final child row names after save/submit
+        relinked = _update_mri_ref_in_material_requests(pp)
+    except Exception:
+        frappe.log_error(
+            title=f"MRI ref update failed for {pp.name}",
+            message=frappe.get_traceback(),
+        )
 
     # frappe.db.commit()
     return {
         "success": True,
         "planned_qty_updated": changed,
         "original_data_captured_now": captured,
+         "mr_items_relinked": relinked,
     }
 
+
+def _update_mri_ref_in_material_requests(pp):
+    """
+    After the PP update, re-point Material Request Item.material_request_plan_item
+    to the fresh pp.mr_items rows.
+
+    Pass 1: production_plan + item_code + MR type (so Purchase and
+            Material Transfer rows of the same item don't get mixed up).
+    Pass 2: any MR item whose ref is still stale (no matching row in the PP,
+            e.g. the Transfer row no longer exists after the update) falls
+            back to the same item_code, any type, so every ref stays valid
+            and the MR can be cancelled.
+    """
+    updated = 0
+    rows = pp.get("mr_items") or []
+    valid = {r.name: r for r in rows}
+
+    # ---------- Pass 1: item_code + MR type ----------
+    for row in rows:
+        if not row.item_code:
+            continue
+
+        mr_items = frappe.get_all(
+            "Material Request Item",
+            filters={
+                "production_plan": pp.name,
+                "item_code": row.item_code,
+                "docstatus": ["<", 2],
+            },
+            fields=["name", "parent", "material_request_plan_item"],
+        )
+        if not mr_items:
+            continue
+
+        # MR type of each parent MR, to separate Purchase / Transfer rows
+        types = {
+            d.name: d.material_request_type
+            for d in frappe.get_all(
+                "Material Request",
+                filters={"name": ["in", list({m.parent for m in mr_items})]},
+                fields=["name", "material_request_type"],
+            )
+        }
+
+        for m in mr_items:
+            if row.get("material_request_type") and types.get(m.parent) != row.material_request_type:
+                continue
+            if m.material_request_plan_item == row.name:
+                continue  # already correct
+
+            frappe.db.set_value(
+                "Material Request Item",
+                m.name,
+                "material_request_plan_item",
+                row.name,
+                update_modified=False,
+            )
+            updated += 1
+
+    # ---------- Pass 2: stale refs -> same item_code, any type ----------
+    stale = frappe.get_all(
+        "Material Request Item",
+        filters={"production_plan": pp.name, "docstatus": ["<", 2]},
+        fields=["name", "item_code", "material_request_plan_item"],
+    )
+    for m in stale:
+        if m.material_request_plan_item in valid:
+            continue  # already points to a live row
+
+        candidates = [r for r in rows if r.item_code == m.item_code]
+        if not candidates:
+            continue  # item not in the PP anymore, leave as is
+
+        frappe.db.set_value(
+            "Material Request Item",
+            m.name,
+            "material_request_plan_item",
+            candidates[0].name,
+            update_modified=False,
+        )
+        updated += 1
+
+    return updated
 
 # @frappe.whitelist()
 # def get_update_for_submitted_pp(docname):

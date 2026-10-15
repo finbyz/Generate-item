@@ -445,6 +445,21 @@ def _update_single_work_order(wo):
     wo.update_planned_qty()
     wo.update_ordered_qty()
 
+    if wo.docstatus == 1:
+        from erpnext.stock.utils import get_bin
+
+        for d in wo.required_items:
+            if d.item_code and d.source_warehouse:
+                stock_bin = get_bin(d.item_code, d.source_warehouse)
+                stock_bin.update_reserved_qty_for_production()
+
+        if getattr(wo, "reserve_stock", None):
+            wo.update_stock_reservation()
+
+        if wo.production_plan and frappe.db.exists("Production Plan", wo.production_plan):
+            pp = frappe.get_doc("Production Plan", wo.production_plan)
+            pp.update_bin_qty()
+
     wo.db_set("modification_status", "No", update_modified=False)
 
     return {"success": True, "message": _("Work Order {0} updated").format(wo.name)}
