@@ -19,6 +19,7 @@ def get_columns():
 		{"label": "Customer Name", "fieldname": "customer_name", "fieldtype": "Data", "width": 180},
 		{"label": "Customer PO No", "fieldname": "po_no", "fieldtype": "Data", "width": 140},
 		{"label": "Repeat Order Ref.", "fieldname": "repeat_order_ref", "fieldtype": "Data", "width": 160},
+		{"label": "Order Status", "fieldname": "order_status", "fieldtype": "Data", "width": 120},
 		{"label": "Batch No", "fieldname": "custom_batch_no", "fieldtype": "Data", "width": 140},
 		{"label": "Item Code", "fieldname": "item_code", "fieldtype": "Link", "options": "Item", "width": 150},
 		{"label": "Item Description", "fieldname": "description", "fieldtype": "Data", "width": 250},
@@ -40,11 +41,39 @@ def get_columns():
 def get_conditions(filters):
 	conditions = [
 		"so.docstatus = 1",
-		"IFNULL(soi.delivered_qty, 0) < IFNULL(soi.qty, 0)"
-		]
-
-	conditions.append("(soi.line_status IS NULL OR soi.line_status = '')")
+		"(soi.line_status IS NULL OR soi.line_status = '')"
+	]
 	values = {}
+
+	status = filters.get("order_status") or filters.get("status")
+	if status:
+		if isinstance(status, str):
+			try:
+				import json
+				parsed = json.loads(status)
+				if isinstance(parsed, list):
+					status = parsed
+				else:
+					status = [s.strip() for s in status.split(",") if s.strip()]
+			except Exception:
+				status = [s.strip() for s in status.split(",") if s.strip()]
+
+		if isinstance(status, (list, tuple)):
+			status = [s for s in status if s]
+
+		if status:
+			if isinstance(status, (list, tuple)):
+				conditions.append("so.status IN %(status)s")
+				values["status"] = tuple(status)
+			else:
+				conditions.append("so.status = %(status)s")
+				values["status"] = status
+		else:
+			conditions.append("IFNULL(so.status, '') NOT IN ('On Hold', 'Closed', 'Cancelled', 'Completed')")
+			conditions.append("IFNULL(soi.delivered_qty, 0) < IFNULL(soi.qty, 0)")
+	else:
+		conditions.append("IFNULL(so.status, '') NOT IN ('On Hold', 'Closed', 'Cancelled', 'Completed')")
+		conditions.append("IFNULL(soi.delivered_qty, 0) < IFNULL(soi.qty, 0)")
 
 	if filters.get("sales_order"):
 		conditions.append("so.name = %(sales_order)s")
@@ -95,6 +124,7 @@ def get_data(filters):
 			so.transaction_date,
 			(SELECT MAX(modification_time) FROM `tabState Change Items` WHERE parent = so.name AND workflow_state = 'Approved') AS so_approval_date,
 			so.custom_repeat_order_ref AS repeat_order_ref,
+			so.status AS order_status,
 			soi.line_status,
 			soi.tag_no ,
 			so.customer_name,
@@ -180,9 +210,6 @@ def get_data(filters):
 		JOIN `tabItem` i ON i.name = soi.item_code
 		WHERE 
 		IFNULL(i.is_stock_item, 0) = 1
-		AND (soi.line_status IS NULL OR soi.line_status = '')
-		AND IFNULL(soi.delivered_qty, 0) < IFNULL(soi.qty, 0)
-		AND IFNULL(so.status, '') NOT IN ('On Hold', 'Closed', 'Cancelled', 'Completed')
   		AND {conditions_sql}
 		ORDER BY so.transaction_date DESC, so.name DESC, soi.idx ASC
 	"""

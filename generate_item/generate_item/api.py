@@ -1,5 +1,6 @@
-
 import json
+import copy
+import traceback
 from io import BytesIO
 
 import frappe
@@ -14,6 +15,38 @@ from frappe.utils import strip_html
 DATE_FIELDTYPES = {"Date"}
 DATETIME_FIELDTYPES = {"Datetime"}
 NUMERIC_FIELDTYPES = {"Int", "Float", "Currency", "Percent"}
+
+
+class _ReportFilters(frappe._dict):
+    """frappe._dict that is always truthy, even when empty.
+    Supports .get(), .attr, and missing keys -> None."""
+
+    def __bool__(self):
+        return True
+
+
+def _to_report_filters(value):
+    if isinstance(value, dict):
+        return _ReportFilters({k: _to_report_filters(v) for k, v in value.items()})
+    if isinstance(value, (list, tuple)):
+        return [_to_report_filters(v) for v in value]
+    return value
+
+
+def normalize_report_filters(raw):
+    """Return a NEW filters object. Never mutates raw. Raises on invalid input."""
+    if raw is None or raw == "":
+        return _ReportFilters()
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except ValueError as e:
+            frappe.throw(_("Report filters are not valid JSON: {0}").format(e))
+        if raw is None:
+            return _ReportFilters()
+    if not isinstance(raw, dict):
+        frappe.throw(_("Report filters must be an object, got {0}.").format(type(raw).__name__))
+    return _to_report_filters(copy.deepcopy(dict(raw)))
 
 
 @frappe.whitelist()
@@ -35,21 +68,14 @@ def export_query_report(form_params):
     if not report_name:
         frappe.throw(_("report_name is required."))
 
-    filters = form_params.get("filters", {})
-    if isinstance(filters, str):
-        try:
-            filters = json.loads(filters)
-        except Exception:
-            filters = {}
-
-    if not isinstance(filters, dict):
-        filters = {}
+    # CHANGE 1: normalized copy, supports filters.x and filters.get("x")
+    filters = normalize_report_filters(form_params.get("filters"))
 
     # Normalize date_range if passed as a string or if from_date/to_date are passed
     if "date_range" in filters and isinstance(filters["date_range"], str):
         try:
             filters["date_range"] = json.loads(filters["date_range"])
-        except Exception:
+        except ValueError:
             if "," in filters["date_range"]:
                 filters["date_range"] = [d.strip() for d in filters["date_range"].split(",")]
             elif " to " in filters["date_range"]:
@@ -70,8 +96,32 @@ def export_query_report(form_params):
                 "Global Defaults", "default_company"
             )
 
-    data = run(report_name, filters, are_default_filters=False)
+    # CHANGE 2: ignore_prepared_report=True runs the report live with the real filters.
+    # CHANGE 3: errors are logged and shown, not swallowed.
+    try:
+        data = run(
+            report_name,
+            filters,
+            ignore_prepared_report=True,
+            are_default_filters=False,
+        )
+    except (frappe.PermissionError, frappe.ValidationError):
+        raise
+    except Exception as e:
+        frappe.log_error(message=traceback.format_exc(), title=f"Excel export failed: {report_name}")
+        frappe.throw(
+            _("Could not export report {0}: {1}: {2}").format(report_name, type(e).__name__, e),
+            title=_("Excel export failed"),
+        )
     data = frappe._dict(data)
+
+    # CHANGE 3 (cont.): never produce a silent blank sheet
+    if "columns" not in data:
+        frappe.throw(
+            _("Report {0} returned no columns (keys: {1}).").format(
+                report_name, ", ".join(data.keys())
+            )
+        )
 
     columns = data.get("columns") or []
     rows = data.get("result") or []
@@ -96,7 +146,7 @@ def export_query_report(form_params):
     n_cols = max(len(labels), 1)
     last_col_letter = get_column_letter(n_cols)
 
-    # ---------------- header row (row 1, clean no color fill) ----------------
+    # ---------------- header row ----------------
     header_row_idx = 1
     for idx, label in enumerate(labels, start=1):
         cell = ws.cell(row=header_row_idx, column=idx, value=label)
@@ -107,7 +157,7 @@ def export_query_report(form_params):
 
     max_width = [len(str(lbl)) + 4 for lbl in labels]
 
-    # ---------------- data rows (clean raw values, no colors) ----------------
+    # ---------------- data rows ----------------
     start_data_row = header_row_idx + 1
     for r_idx, row in enumerate(rows):
         if isinstance(row, dict):
@@ -173,11 +223,6 @@ def export_query_report(form_params):
     # ---------------- freeze header row ----------------
     ws.freeze_panes = f"A{start_data_row}"
 
-    # ---------------- auto filter ----------------
-    # last_row = start_data_row + len(rows) - 1
-    # if rows and n_cols > 0:
-    #     ws.auto_filter.ref = f"A{header_row_idx}:{last_col_letter}{last_row}"
-
     # ---------------- direct download, no File doc ----------------
     buffer = BytesIO()
     wb.save(buffer)
@@ -190,4 +235,3 @@ def export_query_report(form_params):
     frappe.local.response.content_type = (
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
-
