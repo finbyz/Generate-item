@@ -42,6 +42,34 @@ def export_query_report(form_params):
         except Exception:
             filters = {}
 
+    if not isinstance(filters, dict):
+        filters = {}
+
+    # Normalize date_range if passed as a string or if from_date/to_date are passed
+    if "date_range" in filters and isinstance(filters["date_range"], str):
+        try:
+            filters["date_range"] = json.loads(filters["date_range"])
+        except Exception:
+            if "," in filters["date_range"]:
+                filters["date_range"] = [d.strip() for d in filters["date_range"].split(",")]
+            elif " to " in filters["date_range"]:
+                filters["date_range"] = [d.strip() for d in filters["date_range"].split(" to ")]
+
+    if not filters.get("date_range"):
+        if filters.get("from_date") and filters.get("to_date"):
+            filters["date_range"] = [filters.get("from_date"), filters.get("to_date")]
+        elif report_name in ("GST Sales Register", "GST Purchase Register"):
+            from frappe.utils import add_months, get_first_day, get_last_day, today
+
+            last_month = add_months(today(), -1)
+            filters["date_range"] = [str(get_first_day(last_month)), str(get_last_day(last_month))]
+
+    if report_name in ("GST Sales Register", "GST Purchase Register"):
+        if not filters.get("company"):
+            filters["company"] = frappe.defaults.get_user_default("Company") or frappe.db.get_single_value(
+                "Global Defaults", "default_company"
+            )
+
     data = run(report_name, filters, are_default_filters=False)
     data = frappe._dict(data)
 

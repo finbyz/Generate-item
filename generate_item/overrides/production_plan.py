@@ -2050,11 +2050,12 @@ class ProductionPlan(_ProductionPlan):
         frappe.flags.mute_messages = False
 
         if material_request_list:
-            material_request_list = [
+            action_text = _("created and submitted") if self.get("submit_material_request") else _("created")
+            links = [
                 get_link_to_form("Material Request", m.name)
                 for m in material_request_list
             ]
-            msgprint(_("{0} created").format(comma_and(material_request_list)))
+            msgprint(_("{0} {1}").format(comma_and(links), action_text))
         else:
             msgprint(_("No material request created"))    
 

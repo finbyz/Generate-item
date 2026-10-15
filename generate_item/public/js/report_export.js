@@ -17,14 +17,18 @@
 
         let filters = {};
         if (typeof report.get_filter_values === "function") {
-            filters = report.get_filter_values(true) || {};
+            try {
+                filters = report.get_filter_values(true) || {};
+            } catch (e) {
+                return;
+            }
         } else if (typeof report.get_values === "function") {
             filters = report.get_values() || {};
         }
 
         const params = {
             report_name: report.report_name,
-            // filters: filters || {},
+            filters: filters || {},
             file_format_type: "Excel",
         };
 

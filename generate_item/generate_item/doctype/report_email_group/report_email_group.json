@@ -1,0 +1,42 @@
+{
+ "actions": [],
+ "creation": "2026-10-12 11:00:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "group_name",
+  "count"
+ ],
+ "fields": [
+  {
+   "columns": 6,
+   "fieldname": "group_name",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Group Name",
+   "options": "Report Email Master",
+   "reqd": 1
+  },
+  {
+   "columns": 4,
+   "fieldname": "count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Count",
+   "read_only": 1
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-12 16:47:45.532724",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Report Email Group",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

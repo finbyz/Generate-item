@@ -1,0 +1,160 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "autoname",
+ "creation": "2026-10-12 11:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "type",
+  "column_break_main",
+  "source",
+  "section_source_fields",
+  "report_name",
+  "page_name",
+  "section_group_fields",
+  "group_name",
+  "branch",
+  "section_email_groups",
+  "email_group",
+  "section_cc",
+  "receipts",
+  "cc"
+ ],
+ "fields": [
+  {
+   "default": "Master",
+   "fieldname": "type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Type",
+   "options": "Master\nGroup",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_main",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:doc.type=='Master'",
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Source",
+   "options": "\nReport\nDashboard"
+  },
+  {
+   "depends_on": "eval:doc.type=='Master'",
+   "fieldname": "section_source_fields",
+   "fieldtype": "Section Break",
+   "label": "Source Details"
+  },
+  {
+   "depends_on": "eval:doc.type=='Master' && doc.source=='Report'",
+   "fieldname": "report_name",
+   "fieldtype": "Link",
+   "label": "Report Name",
+   "mandatory_depends_on": "eval:doc.type=='Master' && doc.source=='Report'",
+   "options": "Report"
+  },
+  {
+   "depends_on": "eval:doc.type=='Master' && doc.source=='Dashboard'",
+   "fieldname": "page_name",
+   "fieldtype": "Link",
+   "label": "Dashboard Name",
+   "mandatory_depends_on": "eval:doc.type=='Master' && doc.source=='Dashboard'",
+   "options": "Page"
+  },
+  {
+   "depends_on": "eval:doc.type=='Group'",
+   "fieldname": "section_group_fields",
+   "fieldtype": "Section Break",
+   "label": "Group Configuration"
+  },
+  {
+   "depends_on": "eval:doc.type=='Group'",
+   "fieldname": "group_name",
+   "fieldtype": "Data",
+   "label": "Group Name",
+   "mandatory_depends_on": "eval:doc.type=='Group'"
+  },
+  {
+   "depends_on": "eval:doc.type=='Group'",
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "Branch"
+  },
+  {
+   "depends_on": "eval:doc.type=='Master'",
+   "fieldname": "section_email_groups",
+   "fieldtype": "Section Break",
+   "label": "Email Groups"
+  },
+  {
+   "depends_on": "eval:doc.type=='Master'",
+   "fieldname": "email_group",
+   "fieldtype": "Table",
+   "label": "Email Group",
+   "options": "Report Email Group"
+  },
+  {
+   "depends_on": "eval:doc.type=='Group'",
+   "fieldname": "section_cc",
+   "fieldtype": "Section Break",
+   "label": "Recipients"
+  },
+  {
+   "depends_on": "eval:doc.type=='Group'",
+   "fieldname": "receipts",
+   "fieldtype": "Table",
+   "label": "Receipts",
+   "options": "Email Group User"
+  },
+  {
+   "depends_on": "eval:doc.type=='Group'",
+   "fieldname": "cc",
+   "fieldtype": "Table",
+   "label": "CC",
+   "options": "Report Email CC"
+  }
+ ],
+ "links": [],
+ "modified": "2026-10-12 18:29:06.344658",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Report Email Master",
+ "naming_rule": "By script",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Report Email Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
