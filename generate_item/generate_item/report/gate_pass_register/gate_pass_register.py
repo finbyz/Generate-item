@@ -16,11 +16,7 @@ def execute(filters=None):
     filters = frappe._dict(filters or {})
     columns = get_columns()
     data    = get_data(filters)
-    # Summary rows (totals) appended at the bottom
-    summary = get_summary(data)
-    # Chart data returned as 4th return value (Frappe supports it)
-    chart   = get_chart(data)
-    return columns, data, None, chart
+    return columns, data
 
 
 # ---------------------------------------------------------------------------
@@ -115,9 +111,8 @@ def get_columns():
         {
             "label"    : _("Sub Component"),
             "fieldname": "sub_component",
-            "fieldtype": "Link",
-            "options"  : "Gatepass Component",
-            "width"    : 130,
+            "fieldtype": "Data",
+            "width"    : 140,
         },
         {
             "label"    : _("Description"),
@@ -265,9 +260,18 @@ def get_columns():
 def get_data(filters):
     conditions, values = build_conditions(filters)
 
-    # ── 1. Gate Pass Outward items ─────────────────────────────────────────
-    outward_rows = frappe.db.sql(
-        """
+    # Sub Component / Item condition
+    item_cond = conditions
+    detail_cond = conditions
+    if filters.get("sub_component"):
+        item_cond += " AND gpoi.sub_component = %(sub_component)s"
+        detail_cond += " AND gpod.item = %(sub_component)s"
+        values["sub_component"] = filters.sub_component
+
+    # ── 1. Gate Pass Outward items from BOTH child tables ──────────────────
+    # 1A: Non-stock / Components (Gate Pass Outward Item)
+    outward_item_rows = frappe.db.sql(
+        f"""
         SELECT
             gpo.name           AS outward_no,
             gpo.date,
@@ -283,67 +287,217 @@ def get_data(filters):
             gpo.returnable,
             gpo.remarks        AS outward_remarks,
             gpo.status         AS gpo_doc_status,
-            -- stock entry linked on outward (custom field se_ref; if not present, will be NULL)
-            gpo.stock_entry         AS outward_se_ref,
-            gpoi.sub_component,
+            gpo.docstatus      AS docstatus,
+            gpo.stock_entry    AS outward_se_ref,
+            gpo.is_stock_item,
+            gpoi.name          AS child_row_id,
+            gpoi.sub_component AS sub_component,
             gpoi.description,
             gpoi.rate,
             gpoi.qty           AS sent_qty,
-            gpoi.amount        AS total_amount
+            gpoi.amount        AS total_amount,
+            gpoi.received_qty  AS row_received_qty,
+            gpoi.pending_qty   AS row_pending_qty,
+            'Item'             AS item_table_type
         FROM `tabGate Pass Outward` gpo
         INNER JOIN `tabGate Pass Outward Item` gpoi
-               ON gpoi.parent = gpo.name
+               ON gpoi.parent = gpo.name AND gpoi.parenttype = 'Gate Pass Outward'
         WHERE gpo.docstatus = 1
-          {conditions}
-        ORDER BY gpo.date DESC, gpo.name
-        """.format(conditions=conditions),
+          AND NOT (COALESCE(gpoi.sub_component, '') = '' AND COALESCE(gpoi.qty, 0) = 0)
+          {item_cond}
+        """,
         values,
         as_dict=True,
     )
 
+    # 1B: Stock Items (Gate Pass Outward Detail)
+    outward_detail_rows = frappe.db.sql(
+        f"""
+        SELECT
+            gpo.name           AS outward_no,
+            gpo.date,
+            gpo.branch,
+            gpo.purpose,
+            gpo.party_type,
+            gpo.party_name,
+            gpo.email_by,
+            gpo.transporter_name,
+            gpo.vehicle_no,
+            gpo.lr_no,
+            gpo.road_permit_no,
+            gpo.returnable,
+            gpo.remarks        AS outward_remarks,
+            gpo.status         AS gpo_doc_status,
+            gpo.docstatus      AS docstatus,
+            gpo.stock_entry    AS outward_se_ref,
+            gpo.is_stock_item,
+            gpod.name          AS child_row_id,
+            gpod.item          AS sub_component,
+            gpod.description,
+            gpod.rate,
+            gpod.qty           AS sent_qty,
+            gpod.amount        AS total_amount,
+            gpod.received_qty  AS row_received_qty,
+            gpod.pending_qty   AS row_pending_qty,
+            'Detail'           AS item_table_type
+        FROM `tabGate Pass Outward` gpo
+        INNER JOIN `tabGate Pass Outward Detail` gpod
+               ON gpod.parent = gpo.name AND gpod.parenttype = 'Gate Pass Outward'
+        WHERE gpo.docstatus = 1
+          AND NOT (COALESCE(gpod.item, '') = '' AND COALESCE(gpod.qty, 0) = 0)
+          {detail_cond}
+        """,
+        values,
+        as_dict=True,
+    )
+
+    outward_rows = outward_item_rows + outward_detail_rows
+
+    # Fallback: if an outward has no items in either table, ensure it is still included
+    found_outwards = {r.outward_no for r in outward_rows}
+    if not filters.get("sub_component"):
+        empty_outwards = frappe.db.sql(
+            f"""
+            SELECT
+                gpo.name           AS outward_no,
+                gpo.date,
+                gpo.branch,
+                gpo.purpose,
+                gpo.party_type,
+                gpo.party_name,
+                gpo.email_by,
+                gpo.transporter_name,
+                gpo.vehicle_no,
+                gpo.lr_no,
+                gpo.road_permit_no,
+                gpo.returnable,
+                gpo.remarks        AS outward_remarks,
+                gpo.status         AS gpo_doc_status,
+                gpo.docstatus      AS docstatus,
+                gpo.stock_entry    AS outward_se_ref,
+                gpo.is_stock_item,
+                NULL               AS child_row_id,
+                NULL               AS sub_component,
+                NULL               AS description,
+                0                  AS rate,
+                0                  AS sent_qty,
+                0                  AS total_amount,
+                0                  AS row_received_qty,
+                0                  AS row_pending_qty,
+                'None'             AS item_table_type
+            FROM `tabGate Pass Outward` gpo
+            WHERE gpo.docstatus = 1
+              {conditions}
+            """,
+            values,
+            as_dict=True,
+        )
+        for eo in empty_outwards:
+            if eo.outward_no not in found_outwards:
+                outward_rows.append(eo)
+
     if not outward_rows:
         return []
 
-    outward_names = list({r.outward_no for r in outward_rows})
+    outward_rows.sort(key=lambda r: (str(r.date or ""), str(r.outward_no or "")), reverse=True)
 
-    # ── 2. Gate Pass Inward items aggregated per outward + sub_component ───
-    inward_map = {}
+    outward_names = list({r.outward_no for r in outward_rows if r.outward_no})
+
+    # ── 2. Gate Pass Inward items aggregated per outward + item/component ──
+    inward_by_child_id = {}
+    inward_by_key = {}
+    inward_bill_map = {}
+
     if outward_names:
+        placeholders = ", ".join(["%s"] * len(outward_names))
         inward_rows = frappe.db.sql(
-            """
+            f"""
             SELECT
                 gpi.gate_pass_outward,
-                gpii.sub_component,
-                SUM(gpii.receiving_now)                          AS total_received,
-                MAX(gpi.date)                                    AS last_received_on,
-                GROUP_CONCAT(DISTINCT gpi.name ORDER BY gpi.date SEPARATOR ', ')
-                                                                 AS inward_refs,
-                GROUP_CONCAT(DISTINCT gpii.quality SEPARATOR ', ')
-                                                                 AS received_quality,
-                MAX(gpi.billing_status)                          AS billing_status,
-                SUM(gpi.bill_amount)                             AS bill_amount,
-                -- stock entry on inward (custom field se_ref)
-                GROUP_CONCAT(DISTINCT gpi.stock_entry SEPARATOR ', ') AS inward_se_ref
+                gpii.gate_pass_outward_item                      AS outward_row_id,
+                gpii.sub_component                               AS item_key,
+                COALESCE(NULLIF(gpii.receiving_now, 0), gpii.sent_qty, 0) AS received_qty,
+                gpi.date                                         AS inward_date,
+                gpi.name                                         AS inward_no,
+                gpii.quality                                     AS received_quality,
+                gpi.billing_status                               AS billing_status,
+                gpi.bill_amount                                  AS bill_amount,
+                gpi.stock_entry                                  AS inward_se_ref,
+                gpi.remarks                                      AS inward_remarks
             FROM `tabGate Pass Inward` gpi
             INNER JOIN `tabGate Pass Inward Item` gpii
-                   ON gpii.parent = gpi.name
+                   ON gpii.parent = gpi.name AND gpii.parenttype = 'Gate Pass Inward'
             WHERE gpi.docstatus = 1
               AND gpi.gate_pass_outward IN ({placeholders})
-            GROUP BY gpi.gate_pass_outward, gpii.sub_component
-            """.format(placeholders=", ".join(["%s"] * len(outward_names))),
-            tuple(outward_names),
+
+            UNION ALL
+
+            SELECT
+                gpi.gate_pass_outward,
+                gpid.gate_pass_outward_detail                    AS outward_row_id,
+                gpid.item                                        AS item_key,
+                COALESCE(gpid.qty, 0)                            AS received_qty,
+                gpi.date                                         AS inward_date,
+                gpi.name                                         AS inward_no,
+                NULL                                             AS received_quality,
+                gpi.billing_status                               AS billing_status,
+                gpi.bill_amount                                  AS bill_amount,
+                gpi.stock_entry                                  AS inward_se_ref,
+                gpi.remarks                                      AS inward_remarks
+            FROM `tabGate Pass Inward` gpi
+            INNER JOIN `tabGate Pass Inward Detail` gpid
+                   ON gpid.parent = gpi.name AND gpid.parenttype = 'Gate Pass Inward'
+            WHERE gpi.docstatus = 1
+              AND gpi.gate_pass_outward IN ({placeholders})
+            """,
+            tuple(outward_names) + tuple(outward_names),
             as_dict=True,
         )
-        for row in inward_rows:
-            key = (row.gate_pass_outward, row.sub_component)
-            inward_map[key] = row
+
+        def accumulate(inward_dict, k, r):
+            if k not in inward_dict:
+                inward_dict[k] = {
+                    "total_received": 0.0,
+                    "inward_dates": [],
+                    "inward_refs": set(),
+                    "qualities": set(),
+                    "billing_statuses": set(),
+                    "inward_se_refs": set(),
+                    "inward_remarks": set(),
+                }
+            agg = inward_dict[k]
+            agg["total_received"] += flt(r.received_qty)
+            if r.inward_date:
+                agg["inward_dates"].append(str(r.inward_date))
+            if r.inward_no:
+                agg["inward_refs"].add(r.inward_no)
+            if r.received_quality:
+                agg["qualities"].add(r.received_quality)
+            if r.billing_status:
+                agg["billing_statuses"].add(r.billing_status)
+            if r.inward_se_ref:
+                agg["inward_se_refs"].add(r.inward_se_ref)
+            if r.inward_remarks:
+                agg["inward_remarks"].add(r.inward_remarks)
+
+        for r in inward_rows:
+            if r.inward_no and r.bill_amount:
+                inward_bill_map[r.inward_no] = flt(r.bill_amount)
+            if r.outward_row_id:
+                accumulate(inward_by_child_id, (r.gate_pass_outward, r.outward_row_id), r)
+            if r.item_key:
+                accumulate(inward_by_key, (r.gate_pass_outward, r.item_key), r)
 
     # ── 3. Gatepass Component master data ─────────────────────────────────
-    sub_component_names = list({r.sub_component for r in outward_rows if r.sub_component})
+    sub_component_names = list({
+        r.sub_component for r in outward_rows
+        if r.sub_component and r.get("item_table_type") == "Item"
+    })
     component_map = {}
     if sub_component_names:
+        placeholders = ", ".join(["%s"] * len(sub_component_names))
         comp_rows = frappe.db.sql(
-            """
+            f"""
             SELECT
                 name,
                 status         AS component_status,
@@ -351,57 +505,92 @@ def get_data(filters):
                 remarks        AS component_remarks
             FROM `tabGatepass Component`
             WHERE name IN ({placeholders})
-            """.format(placeholders=", ".join(["%s"] * len(sub_component_names))),
+            """,
             tuple(sub_component_names),
             as_dict=True,
         )
         component_map = {r.name: r for r in comp_rows}
 
-    # ── 4. Stock Entry type lookup (outward SE refs) ───────────────────────
-    se_refs = list(
-        {r.outward_se_ref for r in outward_rows if r.get("outward_se_ref")}
-    )
+    # ── 4. Stock Entry type lookup ────────────────────────────────────────
+    se_refs = list({r.outward_se_ref for r in outward_rows if r.get("outward_se_ref")})
     se_type_map = {}
     if se_refs:
+        placeholders = ", ".join(["%s"] * len(se_refs))
         se_rows = frappe.db.sql(
-            """
+            f"""
             SELECT name, stock_entry_type
             FROM `tabStock Entry`
             WHERE name IN ({placeholders})
-            """.format(placeholders=", ".join(["%s"] * len(se_refs))),
+            """,
             tuple(se_refs),
             as_dict=True,
         )
         se_type_map = {r.name: r.stock_entry_type for r in se_rows}
 
-    # ── 5. Merge everything ────────────────────────────────────────────────
+    # ── 5. User lookup (bulk, avoids N+1 queries) ─────────────────────────
+    user_names = list({r.email_by for r in outward_rows if r.email_by})
+    user_map = {}
+    if user_names:
+        users = frappe.get_all(
+            "User",
+            filters={"name": ["in", user_names]},
+            fields=["name", "full_name"],
+        )
+        user_map = {u.name: (u.full_name or u.name) for u in users}
+
+    # ── 6. Merge everything ────────────────────────────────────────────────
     today = frappe.utils.today()
     result = []
 
     for row in outward_rows:
-        key      = (row.outward_no, row.sub_component)
-        inward   = inward_map.get(key, frappe._dict())
-        comp     = component_map.get(row.sub_component, frappe._dict())
+        # Match inward data by child_row_id first, then (outward_no, sub_component)
+        inward_agg = None
+        if row.child_row_id and (row.outward_no, row.child_row_id) in inward_by_child_id:
+            inward_agg = inward_by_child_id[(row.outward_no, row.child_row_id)]
+        elif row.sub_component and (row.outward_no, row.sub_component) in inward_by_key:
+            inward_agg = inward_by_key[(row.outward_no, row.sub_component)]
 
-        sent_qty       = flt(row.sent_qty)
-        total_received = flt(inward.get("total_received", 0))
-        pending_qty    = max(sent_qty - total_received, 0)
-
-        # ── Derived: GP Status
-        returnable = cstr(row.returnable).strip()
-        if returnable == "No":
-            gp_status = "Non-Returnable"
-        elif total_received == 0:
-            gp_status = "Open"
-        elif pending_qty == 0:
-            gp_status = "Closed"
+        if inward_agg:
+            inward_received = flt(inward_agg["total_received"])
+            total_received  = inward_received if inward_received > 0 else flt(row.get("row_received_qty", 0))
+            dates           = sorted(inward_agg["inward_dates"], reverse=True)
+            last_received_on= dates[0] if dates else None
+            inward_refs     = ", ".join(sorted(inward_agg["inward_refs"])) if inward_agg["inward_refs"] else "—"
+            received_quality= ", ".join(sorted(inward_agg["qualities"])) if inward_agg["qualities"] else "—"
+            billing_status  = ", ".join(sorted(inward_agg["billing_statuses"])) if inward_agg["billing_statuses"] else "—"
+            bill_amount     = sum(inward_bill_map.get(ref, 0) for ref in inward_agg["inward_refs"])
+            inward_se_ref   = ", ".join(sorted(inward_agg["inward_se_refs"])) if inward_agg["inward_se_refs"] else "—"
+            inward_remarks  = "; ".join(sorted(inward_agg["inward_remarks"])) if inward_agg["inward_remarks"] else "—"
         else:
-            gp_status = "Partial"
+            total_received  = flt(row.get("row_received_qty", 0))
+            last_received_on= None
+            inward_refs     = "—"
+            received_quality= "—"
+            billing_status  = "—"
+            bill_amount     = 0.0
+            inward_se_ref   = "—"
+            inward_remarks  = "—"
 
-        # ── Derived: Aging (days outward has been open)
+        sent_qty   = flt(row.sent_qty)
+        returnable = cstr(row.returnable).strip()
+
+        # Derived: GP Status & Pending Qty (Only Returnable items can have pending return qty)
+        if returnable == "No":
+            gp_status   = "Non-Returnable"
+            pending_qty = 0.0
+        else:
+            pending_qty = max(sent_qty - total_received, 0)
+            if total_received == 0:
+                gp_status = "Open"
+            elif pending_qty == 0:
+                gp_status = "Closed"
+            else:
+                gp_status = "Partial"
+
+        # Derived: Aging (days outward has been open)
         aging_days = frappe.utils.date_diff(today, row.date) if row.date else 0
 
-        # ── Stock entry type derivation (fallback when se_ref not stored)
+        # Stock entry type derivation
         outward_se_ref  = row.get("outward_se_ref") or ""
         outward_se_type = se_type_map.get(outward_se_ref, "")
         if not outward_se_type:
@@ -410,13 +599,10 @@ def get_data(filters):
             else:
                 outward_se_type = "Material Issue"
 
-        # Inward SE refs (could be multiple inward docs each with an SE)
-        inward_se_ref  = inward.get("inward_se_ref") or ""
-        inward_se_type = ""
-        if inward_se_ref:
-            inward_se_type = "Material Transfer (Inward Reverse)"
-        
-        email_by = frappe.db.get_value("User", row.email_by, "full_name") or row.email_by
+        inward_se_type = "Material Transfer (Inward Reverse)" if (inward_se_ref and inward_se_ref != "—") else "—"
+
+        comp = component_map.get(row.sub_component, {})
+        email_by = user_map.get(row.email_by) or row.email_by or "—"
 
         result.append(
             frappe._dict(
@@ -434,21 +620,24 @@ def get_data(filters):
                 road_permit_no    = row.road_permit_no,
                 returnable        = returnable,
                 outward_remarks   = row.outward_remarks,
+                docstatus         = row.get("docstatus", 1),
+                is_stock_item     = row.get("is_stock_item", 0),
+                item_table_type   = row.get("item_table_type", ""),
                 # Item
-                sub_component     = row.sub_component,
-                description       = row.description,
+                sub_component     = row.sub_component or "—",
+                description       = row.description or "—",
                 rate              = flt(row.rate),
                 sent_qty          = sent_qty,
                 total_amount      = flt(row.total_amount),
                 # Inward
                 total_received    = total_received,
                 pending_qty       = pending_qty,
-                last_received_on  = inward.get("last_received_on"),
-                inward_refs       = inward.get("inward_refs") or "—",
-                received_quality  = inward.get("received_quality") or "—",
-                billing_status    = inward.get("billing_status") or "—",
-                bill_amount       = flt(inward.get("bill_amount", 0)),
-                inward_remarks    = inward.get("inward_remarks") or "—",
+                last_received_on  = last_received_on,
+                inward_refs       = inward_refs,
+                received_quality  = received_quality,
+                billing_status    = billing_status,
+                bill_amount       = flt(bill_amount),
+                inward_remarks    = inward_remarks,
                 # Component
                 component_status  = comp.get("component_status") or "—",
                 installed_date    = comp.get("installed_date"),
@@ -471,47 +660,6 @@ def get_data(filters):
 # FILTERS  (SQL conditions builder)
 # ---------------------------------------------------------------------------
 
-# def build_conditions(filters):
-#     conditions = []
-#     values     = {}
-
-#     if filters.get("branch"):
-#         conditions.append("gpo.branch = %(branch)s")
-#         values["branch"] = filters.branch
-
-#     if filters.get("from_date"):
-#         conditions.append("gpo.date >= %(from_date)s")
-#         values["from_date"] = filters.from_date
-
-#     if filters.get("to_date"):
-#         conditions.append("gpo.date <= %(to_date)s")
-#         values["to_date"] = filters.to_date
-
-#     if filters.get("party_name"):
-#         conditions.append("gpo.party_name = %(party_name)s")
-#         values["party_name"] = filters.party_name
-
-#     if filters.get("returnable"):
-#         conditions.append("gpo.returnable = %(returnable)s")
-#         values["returnable"] = filters.returnable
-
-#     if filters.get("purpose"):
-#         conditions.append("gpo.purpose = %(purpose)s")
-#         values["purpose"] = filters.purpose
-
-#     if filters.get("sub_component"):
-#         conditions.append("gpoi.sub_component = %(sub_component)s")
-#         values["sub_component"] = filters.sub_component
-
-#     if filters.get("gp_status"):
-#         # This is a derived column; we filter in Python after fetching
-#         pass
-
-#     cond_str = ("AND " + " AND ".join(conditions)) if conditions else ""
-#     return cond_str, values
-
-# In build_conditions function:
-
 def build_conditions(filters):
     conditions = []
     values = {}
@@ -528,17 +676,14 @@ def build_conditions(filters):
         conditions.append("gpo.date <= %(to_date)s")
         values["to_date"] = filters.to_date
 
-    # Updated: Party Type filter
     if filters.get("party_type"):
         conditions.append("gpo.party_type = %(party_type)s")
         values["party_type"] = filters.party_type
 
-    # Updated: Party Name filter (works with Dynamic Link)
     if filters.get("party_name"):
         conditions.append("gpo.party_name = %(party_name)s")
         values["party_name"] = filters.party_name
 
-    # New: Gate Pass Outward filter
     if filters.get("gate_pass_outward"):
         conditions.append("gpo.name = %(gate_pass_outward)s")
         values["gate_pass_outward"] = filters.gate_pass_outward
@@ -547,15 +692,9 @@ def build_conditions(filters):
         conditions.append("gpo.returnable = %(returnable)s")
         values["returnable"] = filters.returnable
 
-    if filters.get("sub_component"):
-        conditions.append("gpoi.sub_component = %(sub_component)s")
-        values["sub_component"] = filters.sub_component
-
-    # New: Status filter from doctype
     if filters.get("status"):
         conditions.append("gpo.status = %(status)s")
         values["status"] = filters.status
-
 
     cond_str = ("AND " + " AND ".join(conditions)) if conditions else ""
     return cond_str, values
@@ -570,7 +709,7 @@ def get_summary(data):
 
     total_sent     = sum(flt(r.sent_qty)       for r in data)
     total_received = sum(flt(r.total_received) for r in data)
-    total_pending  = sum(flt(r.pending_qty)    for r in data)
+    total_pending  = sum(flt(r.pending_qty)    for r in data if r.returnable == "Yes")
     total_amount   = sum(flt(r.total_amount)   for r in data)
 
     open_count     = sum(1 for r in data if r.gp_status == "Open")

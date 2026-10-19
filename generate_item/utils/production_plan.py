@@ -349,6 +349,18 @@ def get_update_for_submitted_pp(docname):
     validate_work_orders_before_update(pp.name)
     was_submitted = pp.docstatus == 1
 
+    # Track all existing bins before update to ensure removed items are recalculated
+    old_bins = set()
+    for d in (pp.mr_items or []):
+        if getattr(d, "item_code", None) and getattr(d, "warehouse", None):
+            old_bins.add((d.item_code, d.warehouse))
+    for d in (pp.sub_assembly_items or []):
+        if getattr(d, "production_item", None) and getattr(d, "fg_warehouse", None):
+            old_bins.add((d.production_item, d.fg_warehouse))
+    for d in (pp.po_items or []):
+        if getattr(d, "item_code", None) and getattr(d, "warehouse", None):
+            old_bins.add((d.item_code, d.warehouse))
+
     # --- Step 2 & 3: Set status Close / Docstatus 0 ---
     if was_submitted:
         pp.set_status(close=True, update_bin=True)
@@ -415,6 +427,30 @@ def get_update_for_submitted_pp(docname):
 
     # --- Step 11: Set status Re-open ---
     pp.set_status(close=False, update_bin=True)
+
+    # Recalculate values for all affected bins (both old and new)
+    from erpnext.stock.utils import get_bin
+    new_bins = set()
+    for d in (pp.mr_items or []):
+        if getattr(d, "item_code", None) and getattr(d, "warehouse", None):
+            new_bins.add((d.item_code, d.warehouse))
+    for d in (pp.sub_assembly_items or []):
+        if getattr(d, "production_item", None) and getattr(d, "fg_warehouse", None):
+            new_bins.add((d.production_item, d.fg_warehouse))
+    for d in (pp.po_items or []):
+        if getattr(d, "item_code", None) and getattr(d, "warehouse", None):
+            new_bins.add((d.item_code, d.warehouse))
+
+    for item_code, warehouse in (old_bins | new_bins):
+        try:
+            stock_bin = get_bin(item_code, warehouse)
+            if stock_bin:
+                stock_bin.recalculate_values()
+        except Exception:
+            frappe.log_error(
+                title=f"Failed to recalculate bin for {item_code} in {warehouse}",
+                message=frappe.get_traceback(),
+            )
     
     # --- Step 12: Update new mr_items ref in Material Request Items ---
     relinked = 0

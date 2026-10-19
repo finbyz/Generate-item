@@ -317,6 +317,7 @@ class PPWOControlReport {
 		.ppwo-cell-link:hover{text-decoration:underline;}
 		.ppwo-dash{color:var(--ppwo-text-dim); opacity:.5;}
 		.ppwo-badge.updated{background:rgba(16,185,129,.12); color:var(--ppwo-green);}
+		.ppwo-badge.completed{background:rgba(16,185,129,.12); color:var(--ppwo-green);}
 		.ppwo-badge.pending{background:rgba(245,158,11,.14); color:var(--ppwo-amber);}
 		.ppwo-badge.critical{background:rgba(239,68,68,.14); color:var(--ppwo-red);}
 		.ppwo-badge.not_required{background:rgba(59,130,246,.12); color:var(--ppwo-blue);}
@@ -551,7 +552,14 @@ class PPWOControlReport {
 		});
 		$bar.on("change", ".date-from, .date-to", () => this.on_filters_changed());
 		$bar.on("click", ".ppwo-toggle-pill", (e) => {
-			$(e.currentTarget).toggleClass("active");
+			const $pill = $(e.currentTarget);
+			$pill.toggleClass("active");
+			if ($pill.data("toggle") === "pending_only" && $pill.hasClass("active")) {
+				if (this.state.kpi_filter && this.state.kpi_filter.value === "completed") {
+					this.state.kpi_filter = null;
+					this.$body.find(".ppwo-kpi").removeClass("active");
+				}
+			}
 			this.on_filters_changed();
 		});
 	}
@@ -646,7 +654,12 @@ class PPWOControlReport {
 		}
 		f.pending_only = this.$body.find('.ppwo-toggle-pill[data-toggle="pending_only"]').hasClass("active") ? 1 : 0;
 		f.critical_only = this.$body.find('.ppwo-toggle-pill[data-toggle="critical_only"]').hasClass("active") ? 1 : 0;
-		if (this.state.kpi_filter) f[this.state.kpi_filter.type] = this.state.kpi_filter.value;
+		if (this.state.kpi_filter) {
+			f[this.state.kpi_filter.type] = this.state.kpi_filter.value;
+			if (this.state.kpi_filter.value === "completed") {
+				f.pending_only = 0;
+			}
+		}
 		return f;
 	}
 
@@ -711,6 +724,9 @@ class PPWOControlReport {
 				this.state.kpi_filter = null;
 			} else {
 				$(e.currentTarget).addClass("active");
+				if (key === "completed") {
+					this.$body.find('.ppwo-toggle-pill[data-toggle="pending_only"]').removeClass("active");
+				}
 				this.apply_kpi_shortcut(key);
 			}
 			this.on_filters_changed();
@@ -718,18 +734,15 @@ class PPWOControlReport {
 	}
 
 	apply_kpi_shortcut(key) {
-		const map = {
-			// pending_pp and critical both narrow to the most urgent severity
-			pending_pp: { type: "priority", value: "Critical" },
-			critical: { type: "priority", value: "Critical" },
-			pending_wo: { type: "priority", value: "High" },
-			// pending_bmr: show all Item Replacement rows that are still pending
-			pending_bmr: { type: "pending_only", value: 1 },
-			// pending_omr: show rows where OMR is not yet approved
-			pending_omr: { type: "status", value: "Waiting on Approval" },
-			completed: { type: "status", value: "Fully Synced" },
+		const label_map = {
+			pending_pp: "Pending PP Updates",
+			pending_wo: "Pending WO Updates",
+			pending_bmr: "Pending BMR",
+			pending_omr: "Pending OMR",
+			completed: "Completed Updates",
+			critical: "Critical Pending",
 		};
-		this.state.kpi_filter = map[key] || null;
+		this.state.kpi_filter = key ? { type: "kpi_filter", value: key, label: label_map[key] || key } : null;
 	}
 
 	animate_count(el, target) {
@@ -764,7 +777,7 @@ class PPWOControlReport {
 		ring_text.text(`${Math.round(pct)}%`);
 		this.$body.find(".ppwo-progress-bar-inner").css("width", `${pct}%`);
 		this.state.total = k.total;
-		const filter_note = this.state.kpi_filter ? ` · filtered by ${this.state.kpi_filter.type}: ${this.state.kpi_filter.value} (click card again to clear)` : "";
+		const filter_note = this.state.kpi_filter ? ` · filtered by ${this.state.kpi_filter.label || this.state.kpi_filter.value} (click card again to clear)` : "";
 		this.$body.find(".ppwo-toolbar-left").text(`${k.total} changed batch lines in scope${filter_note}`);
 
 		const was_clear = this.state.last_kpis && this.state.last_kpis.all_clear;

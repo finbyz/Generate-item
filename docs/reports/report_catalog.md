@@ -170,7 +170,7 @@ Reports engineering and manufacturing status by serial/batch. It provides APIs f
 
 Reference: Gate Pass Outward.
 
-Combines outward and inward stock/component rows with party/component details, pending/received quantities, summaries, and charts. It adds **Export Party Summary (CSV)**.
+Combines outward and inward stock/component rows with party/component details, pending/received quantities, and summaries. Supports **Item Wise Detail**, **Gate Pass Wise** (1 row per gate pass), and **Party-wise Summary** views with CSV exports.
 
 ## Quality reports
 
