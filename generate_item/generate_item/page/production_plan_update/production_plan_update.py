@@ -86,6 +86,7 @@ from frappe.utils import (
 
 BADGES = {
 	"updated": {"key": "updated", "emoji": "", "label": "Updated", "color": "green"},
+	"completed": {"key": "completed", "emoji": "", "label": "Completed", "color": "green"},
 	"pending": {"key": "pending", "emoji": "", "label": "Pending", "color": "amber"},
 	"critical": {"key": "critical", "emoji": "", "label": "Critical", "color": "red"},
 	"not_required": {"key": "not_required", "emoji": "", "label": "Not Required", "color": "blue"},
@@ -105,6 +106,7 @@ SEVERITY_FILL_HEX = {
 }
 BADGE_FILL_HEX = {
 	"updated": "5EBB63",
+	"completed": "5EBB63",
 	"pending": "F5A623",
 	"critical": "E86161",
 	"not_required": "4C9CE2",
@@ -156,6 +158,8 @@ def _status_badge(status, kind):
 	"""Map a computed BMR/PP/WO status string to a badge, mirroring the
 	same visual vocabulary that was used in the Sales-Order level report."""
 	if kind == "bmr":
+		if status == "Completed":
+			return _badge("completed")
 		if status in ("Not Created", "Not Required"):
 			return _badge("not_required")
 		if status in ("Draft", "Pending"):
@@ -166,6 +170,8 @@ def _status_badge(status, kind):
 			return _badge("updated")
 		return _badge("not_required")
 	if kind == "pp":
+		if status == "Completed":
+			return _badge("completed")
 		if status in ("Not Created", "Not Required"):
 			return _badge("not_required")
 		if status == "Pending":
@@ -174,6 +180,8 @@ def _status_badge(status, kind):
 			return _badge("updated")
 		return _badge("not_required")
 	if kind == "wo":
+		if status == "Completed":
+			return _badge("completed")
 		if status in ("Not Created", "Not Started"):
 			return _badge("not_required")
 		if status == "Pending":
@@ -301,18 +309,19 @@ def _compute_dashboard_summary(rows):
 	critical = 0
 
 	for r in rows:
-		if r["pp_status"] in ("Pending", "Not Created"):
-			pending_pp += 1
-		if r["wo_status"] in ("Pending", "Not Created", "Not Started"):
-			pending_wo += 1
-		if r["bmr_status"] in ("Draft", "Pending", "Not Created") and r["change_type"] == "Item Replacement":
-			pending_bmr += 1
-		if r["omr_workflow_state"] != "Approved":
-			pending_omr += 1
 		if not r["is_pending"]:
 			completed += 1
-		if r["severity"] == "Critical":
-			critical += 1
+		else:
+			if r["pp_status"] in ("Pending", "Not Created"):
+				pending_pp += 1
+			if r["wo_status"] in ("Pending", "Not Created", "Not Started"):
+				pending_wo += 1
+			if r["bmr_status"] in ("Draft", "Pending", "Not Created") and r["change_type"] == "Item Replacement":
+				pending_bmr += 1
+			if r["omr_workflow_state"] != "Approved":
+				pending_omr += 1
+			if r["severity"] == "Critical":
+				critical += 1
 
 	trackable = len(rows)
 	sync_pct = round((completed / trackable) * 100, 1) if trackable else 100.0
@@ -377,9 +386,9 @@ def _compute_charts_summary(rows):
 			omr_approved += 1
 		if r["bmr_status"] == "Updated" or r["change_type"] != "Item Replacement":
 			bmr_updated += 1
-		if r["pp_status"] == "Updated":
+		if r["pp_status"] in ("Updated", "Completed"):
 			pp_updated += 1
-		if r["wo_status"] == "Updated":
+		if r["wo_status"] in ("Updated", "Completed"):
 			wo_updated += 1
 		if not r["is_pending"]:
 			completed += 1
@@ -1044,7 +1053,7 @@ def _fetch_maps(so_names, filtered_pp=None):
 			"assembly_doctype_found": False,
 		}
 
-	cache_key = "ppwo_maps:{0}:{1}".format(
+	cache_key = "ppwo_maps_v2:{0}:{1}".format(
 		hashlib.md5(json.dumps(sorted(so_names), sort_keys=True).encode()).hexdigest()[:16],
 		filtered_pp or "none"
 	)
@@ -1428,7 +1437,12 @@ def _compute_batch_row(so, omr, item, maps, now_dt=None):
 	pp_exists = bool(pp_dict)
 	pp_is_updated, pp_wo_updated_flag = _pp_update_flags(pp_dict)
 
-	if change_type == "Item Replacement":
+	pp_status_db = cstr((pp_dict.get("status") if pp_dict else "") or "").strip()
+	pp_is_completed = pp_status_db in ("Completed", "Closed")
+
+	if pp_is_completed:
+		pp_status = "Completed"
+	elif change_type == "Item Replacement":
 		if bmr_status != "Updated":
 			pp_status = "Not Required"
 		elif not pp_exists:
@@ -1455,20 +1469,39 @@ def _compute_batch_row(so, omr, item, maps, now_dt=None):
 	else:
 		matched_wos = []
 
-	if pp_status != "Updated":
+	wo_all_completed = bool(
+		matched_wos and all(cstr(w.get("status") or "").strip() in ("Completed", "Closed") for w in matched_wos)
+	)
+
+	if pp_is_completed:
+		if wo_all_completed or not matched_wos:
+			wo_status = "Completed"
+		else:
+			active_wos = [w for w in matched_wos if cstr(w.get("status") or "").strip() not in ("Completed", "Closed")]
+			wo_pending = any(
+				cstr(w.get("modification_status") or "").strip().upper() in ("YES", "1", "TRUE")
+				for w in active_wos
+			)
+			wo_status = "Pending" if wo_pending else "Completed"
+	elif wo_all_completed:
+		wo_status = "Completed"
+	elif pp_status != "Updated":
 		wo_status = "Not Created" if not matched_wos else "Not Started"
 	elif not matched_wos:
 		wo_status = "Not Created"
 	else:
+		active_wos = [w for w in matched_wos if cstr(w.get("status") or "").strip() not in ("Completed", "Closed")]
 		wo_pending = any(
 			cstr(w.get("modification_status") or "").strip().upper() in ("YES", "1", "TRUE")
-			for w in matched_wos
+			for w in active_wos
 		)
 		wo_status = "Pending" if wo_pending else "Updated"
 
 	# ---- pending / severity ----
 	is_pending = False
-	if bmr_status in ("Draft", "Pending", "Rejected"):
+	if pp_status == "Completed" and wo_status == "Completed":
+		is_pending = False
+	elif bmr_status in ("Draft", "Pending", "Rejected"):
 		is_pending = True
 	elif bmr_status == "Not Created" and change_type == "Item Replacement":
 		is_pending = True
@@ -1520,9 +1553,12 @@ def _compute_batch_row(so, omr, item, maps, now_dt=None):
 	stages.append({"key": "omr", "label": "OMR", "state": omr_state})
 
 	if bmr_status in ("Not Created", "Not Required"):
-		bmr_state = "not_required" if change_type != "Item Replacement" else "pending"
+		if pp_status == "Completed" and wo_status == "Completed":
+			bmr_state = "completed"
+		else:
+			bmr_state = "not_required" if change_type != "Item Replacement" else "pending"
 	elif bmr_status in ("Draft", "Pending"):
-		bmr_state = "pending"
+		bmr_state = "completed" if (pp_status == "Completed" and wo_status == "Completed") else "pending"
 	elif bmr_status == "Rejected":
 		bmr_state = "blocked"
 	elif bmr_status == "Updated":
@@ -1535,17 +1571,17 @@ def _compute_batch_row(so, omr, item, maps, now_dt=None):
 		pp_state = "not_required" if pp_status == "Not Required" else "pending"
 	elif pp_status == "Pending":
 		pp_state = "blocked"
-	elif pp_status == "Updated":
+	elif pp_status in ("Updated", "Completed"):
 		pp_state = "completed"
 	else:
 		pp_state = "not_required"
 	stages.append({"key": "pp", "label": "PP", "state": pp_state})
 
 	if wo_status in ("Not Created", "Not Started"):
-		wo_state = "not_required"
+		wo_state = "pending" if pp_status != "Completed" else "not_required"
 	elif wo_status == "Pending":
 		wo_state = "blocked"
-	elif wo_status == "Updated":
+	elif wo_status in ("Updated", "Completed"):
 		wo_state = "completed"
 	else:
 		wo_state = "not_required"
@@ -1627,13 +1663,16 @@ def _rows_cache_key(filters):
 	"""Stable cache key for a given filter set."""
 	payload = json.dumps(filters or {}, sort_keys=True, default=str)
 	digest = hashlib.md5(payload.encode("utf-8")).hexdigest()
-	return "ppwo_control_report:rows:{0}".format(digest)
+	return "ppwo_control_report:v2:rows:{0}".format(digest)
 
 
 def _bust_rows_cache():
 	"""Invalidate every cached row-set."""
 	try:
 		frappe.cache().delete_keys("ppwo_control_report:rows:*")
+		frappe.cache().delete_keys("ppwo_control_report:v2:rows:*")
+		frappe.cache().delete_keys("ppwo_maps:*")
+		frappe.cache().delete_keys("ppwo_maps_v2:*")
 	except Exception:
 		pass
 	if hasattr(frappe.local, "_ppwo_raw_rows_cache"):
@@ -1677,7 +1716,7 @@ def _get_raw_computed_rows(filters, limit=5000):
 
 def _get_computed_rows(filters, limit=5000):
 	"""Get all changed-batch rows across the filtered Sales Orders, then
-	apply post-filters (pending_only, critical_only, status, priority)."""
+	apply post-filters (pending_only, critical_only, status, priority, kpi_filter)."""
 	rows = _get_raw_computed_rows(filters, limit=limit)
 
 	if cint(filters.get("pending_only")):
@@ -1685,6 +1724,21 @@ def _get_computed_rows(filters, limit=5000):
 
 	if cint(filters.get("critical_only")):
 		rows = [r for r in rows if r["severity"] == "Critical"]
+
+	kpi_filter = filters.get("kpi_filter")
+	if kpi_filter:
+		if kpi_filter == "pending_pp":
+			rows = [r for r in rows if r["is_pending"] and r["pp_status"] in ("Pending", "Not Created")]
+		elif kpi_filter == "pending_wo":
+			rows = [r for r in rows if r["is_pending"] and r["wo_status"] in ("Pending", "Not Created", "Not Started")]
+		elif kpi_filter == "pending_bmr":
+			rows = [r for r in rows if r["is_pending"] and r["bmr_status"] in ("Draft", "Pending", "Not Created") and r["change_type"] == "Item Replacement"]
+		elif kpi_filter == "pending_omr":
+			rows = [r for r in rows if r["omr_workflow_state"] != "Approved"]
+		elif kpi_filter == "completed":
+			rows = [r for r in rows if not r["is_pending"]]
+		elif kpi_filter == "critical":
+			rows = [r for r in rows if r["is_pending"] and r["severity"] == "Critical"]
 
 	status_filter = filters.get("status")
 	if status_filter and status_filter != "Any":

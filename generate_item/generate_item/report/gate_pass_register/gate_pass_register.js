@@ -88,7 +88,7 @@ frappe.query_reports["Gate Pass Register"] = {
         const KEY = "Gate Pass Register";
         frappe.query_reports[KEY]._report = report;
         frappe.query_reports[KEY]._state = {
-            view_mode: "detail",       // "detail" | "party"
+            view_mode: "detail",       // "detail" | "gp_wise" | "party"
             status_filter: "all",      // "all" | "Open" | "Partial" | "Closed" | "Non-Returnable" | "pending" | "critical"
             aging_bucket: "all",       // "all" | "0-30" | "30-60" | "60-90" | "90+"
             search_text: "",
@@ -96,7 +96,8 @@ frappe.query_reports["Gate Pass Register"] = {
         };
 
         // Add Print and Export buttons to the report's page menu
-      
+
+        report.page.add_inner_button(__("Export Gate Pass Wise (CSV)"), () => gp_export_gp_wise_csv());
         report.page.add_inner_button(__("Export Party Summary (CSV)"), () => gp_export_party_csv());
     },
 
@@ -223,8 +224,11 @@ frappe.query_reports["Gate Pass Register"] = {
         }
 
         if (column.fieldname === "pending_qty") {
+            if (data.returnable === "No" || data.gp_status === "Non-Returnable") {
+                return `<span style="color:#aaa;">—</span>`;
+            }
             const qty = flt(data.pending_qty);
-            if (qty > 0 && data.gp_status !== "Non-Returnable") {
+            if (qty > 0) {
                 return `<span style="color:#dc3545;font-weight:700;">${qty}</span>`;
             }
             return `<span style="color:#28a745;font-weight:600;">${qty}</span>`;
@@ -234,6 +238,27 @@ frappe.query_reports["Gate Pass Register"] = {
             return `<a href="/app/gate-pass-outward/${data.outward_no}" target="_blank"
                 style="color:#5e64ff;font-weight:700;text-decoration:none;">
                 ${data.outward_no}</a>`;
+        }
+
+        if (column.fieldname === "sub_component") {
+            const sc = data.sub_component;
+            if (!sc || sc === "—") return `<span style="color:#aaa;">—</span>`;
+            const comps = String(sc).split(",").map(c => c.trim()).filter(Boolean);
+            if (comps.length > 0) {
+                return comps.map(c => {
+                    const isItem = data.item_table_type === "Detail" || (data.is_stock_item && data.item_table_type !== "Item");
+                    const dt = isItem ? "item" : "gatepass-component";
+                    return `<a href="/app/${dt}/${encodeURIComponent(c)}" target="_blank"
+                        style="color:#5e64ff;font-weight:600;text-decoration:none;">${c}</a>`;
+                }).join(", ");
+            }
+            return sc;
+        }
+
+        if (column.fieldname === "rate") {
+            if (data.rate === null || data.rate === undefined || data.rate === "" || data.rate === "—") {
+                return `<span style="color:#aaa;">—</span>`;
+            }
         }
 
         return value;
@@ -268,27 +293,32 @@ function gp_report() {
     return frappe.query_reports["Gate Pass Register"]._report;
 }
 
-/* Apply status_filter + aging_bucket + search_text to the full dataset.
-   This is the SINGLE source of truth for "what rows match right now" —
-   used by both the Detail table and the Party Summary table, so they can
-   never show different result sets. */
-function gp_filtered_data() {
-    const report = gp_report();
-    const state = gp_state();
-    let rows = (report && report.data) || [];
+let _is_refreshing_dt = false;
+function safe_refresh_datatable(report, rows, columns) {
+    if (_is_refreshing_dt || !report || !report.datatable) return;
+    _is_refreshing_dt = true;
+    try {
+        report.datatable.refresh(rows, columns);
+    } finally {
+        _is_refreshing_dt = false;
+    }
+}
+
+function filter_rows(rows, state) {
+    let result = rows || [];
 
     // Status / KPI-card filter
     if (state.status_filter === "pending") {
-        rows = rows.filter(r => flt(r.pending_qty) > 0);
+        result = result.filter(r => r.returnable === "Yes" && flt(r.pending_qty) > 0);
     } else if (state.status_filter === "critical") {
-        rows = rows.filter(r => parseInt(r.aging_days) > 60 && ["Open", "Partial"].includes(r.gp_status));
+        result = result.filter(r => parseInt(r.aging_days) > 60 && ["Open", "Partial"].includes(r.gp_status));
     } else if (state.status_filter !== "all") {
-        rows = rows.filter(r => r.gp_status === state.status_filter);
+        result = result.filter(r => r.gp_status === state.status_filter);
     }
 
     // Aging bucket filter
     if (state.aging_bucket !== "all") {
-        rows = rows.filter(r => {
+        result = result.filter(r => {
             const d = parseInt(r.aging_days) || 0;
             if (state.aging_bucket === "0-30") return d <= 30;
             if (state.aging_bucket === "30-60") return d > 30 && d <= 60;
@@ -301,7 +331,7 @@ function gp_filtered_data() {
     // Search text — matches party name, outward #, description, sub component
     if (state.search_text) {
         const q = state.search_text.toLowerCase();
-        rows = rows.filter(r =>
+        result = result.filter(r =>
             (r.party_name || "").toLowerCase().includes(q) ||
             (r.outward_no || "").toLowerCase().includes(q) ||
             (r.description || "").toLowerCase().includes(q) ||
@@ -311,24 +341,35 @@ function gp_filtered_data() {
         );
     }
 
-    return rows;
+    return result;
+}
+
+/* Single source of truth for filtered raw items */
+function gp_filtered_data() {
+    const report = gp_report();
+    const state = gp_state();
+    return filter_rows((report && report.data) || [], state);
+}
+
+/* Rows to show in datatable depending on current view_mode */
+function get_display_rows() {
+    const report = gp_report();
+    const state = gp_state();
+    const raw_data = (report && report.data) || [];
+
+    if (state.view_mode === "gp_wise") {
+        return filter_rows(build_gate_pass_wise_rows(raw_data), state);
+    }
+    return filter_rows(raw_data, state);
 }
 
 /* THE single render function. Every user action (filter click, view toggle,
    search keystroke, sort click) ends by calling this — nothing else is
-   allowed to touch visibility directly. This is what fixes the "both tables
-   visible at once" bug: there is no code path that can update one table
-   without this function also reconciling the other. */
+   allowed to touch visibility directly. */
 function gp_render() {
     const report = gp_report();
     const state = gp_state();
     if (!report || !report.datatable) return;
-
-    const filtered = gp_filtered_data();
-
-    // Always keep the underlying datatable's row data in sync, even in
-    // party view, so switching back to Detail is instant and correct.
-    report.datatable.refresh(filtered, report.columns);
 
     const dtWrapper = $(report.datatable.wrapper);
     const summaryRoot = document.getElementById("gp-party-summary-root");
@@ -337,13 +378,15 @@ function gp_render() {
         dtWrapper.css("display", "none");
         if (summaryRoot) {
             summaryRoot.style.display = "block";
-            render_party_summary(filtered);
+            render_party_summary(gp_filtered_data());
         }
     } else {
         dtWrapper.css("display", "");
         if (summaryRoot) {
             summaryRoot.style.display = "none";
         }
+        const rows = get_display_rows();
+        safe_refresh_datatable(report, rows, report.columns);
     }
 
     // Sync all toolbar control states (buttons/pills/search box) to match
@@ -377,29 +420,29 @@ function inject_kpi_and_toolbar(datatable) {
     const data = report.data;
     const state = gp_state();
 
-    // ── Compute KPIs off the FULL dataset (not the filtered view) ─────────
+    // ── Compute KPIs and filter button counts ─────────
     const totalSent = data.reduce((s, r) => s + flt(r.sent_qty), 0);
     const totalReceived = data.reduce((s, r) => s + flt(r.total_received), 0);
-    const totalPending = data.reduce((s, r) => s + flt(r.pending_qty), 0);
+    const totalPending = data.reduce((s, r) => s + (r.returnable === "Yes" ? flt(r.pending_qty) : 0), 0);
     const totalAmount = data.reduce((s, r) => s + flt(r.total_amount), 0);
-    const openCount = data.filter(r => r.gp_status === "Open").length;
-    const partialCount = data.filter(r => r.gp_status === "Partial").length;
-    const closedCount = data.filter(r => r.gp_status === "Closed").length;
-    const nrCount = data.filter(r => r.gp_status === "Non-Returnable").length;
-    const criticalCount = data.filter(
+
+    const is_gp_wise = state.view_mode === "gp_wise";
+    const statusData = is_gp_wise ? build_gate_pass_wise_rows(data) : data;
+
+    const allCount = statusData.length;
+    const openCount = statusData.filter(r => r.gp_status === "Open").length;
+    const partialCount = statusData.filter(r => r.gp_status === "Partial").length;
+    const closedCount = statusData.filter(r => r.gp_status === "Closed").length;
+    const nrCount = statusData.filter(r => r.gp_status === "Non-Returnable").length;
+    const criticalCount = statusData.filter(
         r => parseInt(r.aging_days) > 60 && ["Open", "Partial"].includes(r.gp_status)
     ).length;
 
-    // Aging bucket counts (off full dataset, non-returnable excluded from "aging" concept is up to you;
-    // here we count all rows so buttons reflect literal day-range membership)
-    const bucketCount = (lo, hi) => data.filter(r => {
-        const d = parseInt(r.aging_days) || 0;
-        return hi === null ? d > lo : (d > lo && d <= hi) || (lo === 0 && d <= hi);
-    }).length;
-    const b0_30 = data.filter(r => (parseInt(r.aging_days) || 0) <= 30).length;
-    const b30_60 = data.filter(r => { const d = parseInt(r.aging_days) || 0; return d > 30 && d <= 60; }).length;
-    const b60_90 = data.filter(r => { const d = parseInt(r.aging_days) || 0; return d > 60 && d <= 90; }).length;
-    const b90p = data.filter(r => (parseInt(r.aging_days) || 0) > 90).length;
+    // Aging bucket counts (off full dataset)
+    const b0_30 = statusData.filter(r => (parseInt(r.aging_days) || 0) <= 30).length;
+    const b30_60 = statusData.filter(r => { const d = parseInt(r.aging_days) || 0; return d > 30 && d <= 60; }).length;
+    const b60_90 = statusData.filter(r => { const d = parseInt(r.aging_days) || 0; return d > 60 && d <= 90; }).length;
+    const b90p = statusData.filter(r => (parseInt(r.aging_days) || 0) > 90).length;
 
     const fmt_num = n => parseFloat(n.toFixed(2)).toLocaleString();
     const fmt_cur = n => "₹ " + parseFloat(n.toFixed(2)).toLocaleString("en-IN");
@@ -452,7 +495,7 @@ function inject_kpi_and_toolbar(datatable) {
 <div class="gp-toolbar-row">
     <div class="gp-status-toolbar">
         <label>STATUS:</label>
-        <button class="gp-filter-btn" data-status="all" onclick="gp_quick_filter('all')">All (${data.length})</button>
+        <button class="gp-filter-btn" data-status="all" onclick="gp_quick_filter('all')">All (${allCount})</button>
         <button class="gp-filter-btn" data-status="Open" onclick="gp_quick_filter('Open')">Open (${openCount})</button>
         <button class="gp-filter-btn" data-status="Partial" onclick="gp_quick_filter('Partial')">Partial (${partialCount})</button>
         <button class="gp-filter-btn" data-status="Closed" onclick="gp_quick_filter('Closed')">Closed (${closedCount})</button>
@@ -460,7 +503,8 @@ function inject_kpi_and_toolbar(datatable) {
     </div>
     <div class="gp-view-toggle">
         <label>VIEW:</label>
-        <button class="gp-view-btn" data-view="detail" onclick="gp_set_view_mode('detail')">📋 Detail</button>
+        <button class="gp-view-btn" data-view="detail" onclick="gp_set_view_mode('detail')">📋 Item Wise Detail</button>
+        <button class="gp-view-btn" data-view="gp_wise" onclick="gp_set_view_mode('gp_wise')">📦 Gate Pass Wise</button>
         <button class="gp-view-btn" data-view="party" onclick="gp_set_view_mode('party')">👥 Party-wise Summary</button>
     </div>
 </div>
@@ -613,6 +657,7 @@ function inject_kpi_and_toolbar(datatable) {
     } else {
         dtWrapper.css("display", "");
         if (summaryRoot) summaryRoot.style.display = "none";
+        safe_refresh_datatable(report, get_display_rows(), report.columns);
     }
     sync_toolbar_controls();
 }
@@ -627,6 +672,10 @@ window.gp_quick_filter = function (status) {
 
 window.gp_set_view_mode = function (mode) {
     gp_state().view_mode = mode;
+    const report = gp_report();
+    if (report && report.datatable) {
+        inject_kpi_and_toolbar(report.datatable);
+    }
     gp_render();
 };
 
@@ -657,6 +706,10 @@ window.gp_drill_party = function (party_name) {
     gp_state().status_filter = "all";
     gp_state().aging_bucket = "all";
     gp_state().search_text = party_name;
+    const report = gp_report();
+    if (report && report.datatable) {
+        inject_kpi_and_toolbar(report.datatable);
+    }
     gp_render();
 };
 
@@ -670,6 +723,157 @@ window.gp_sort_summary = function (field) {
     }
     render_party_summary(gp_filtered_data());
 };
+
+/* ─────────────────────────────────────────────────────────────────────────
+   GATE PASS WISE — aggregate items into one row per Gate Pass Outward
+───────────────────────────────────────────────────────────────────────── */
+function build_gate_pass_wise_rows(data) {
+    if (!data || !data.length) return [];
+    const map = new Map();
+
+    data.forEach(row => {
+        const key = row.outward_no || `row_${Math.random()}`;
+        if (!map.has(key)) {
+            map.set(key, {
+                outward_no: row.outward_no,
+                date: row.date,
+                branch: row.branch,
+                purpose: row.purpose,
+                party_type: row.party_type,
+                party_name: row.party_name,
+                email_by: row.email_by,
+                transporter_name: row.transporter_name,
+                vehicle_no: row.vehicle_no,
+                lr_no: row.lr_no,
+                road_permit_no: row.road_permit_no,
+                returnable: row.returnable,
+                outward_remarks: row.outward_remarks,
+                docstatus: row.docstatus,
+                outward_se_ref: row.outward_se_ref,
+                outward_se_type: row.outward_se_type,
+                aging_days: row.aging_days,
+
+                items: [],
+                sent_qty: 0,
+                total_amount: 0,
+                total_received: 0,
+                pending_qty: 0,
+                bill_amount: 0,
+                is_stock_item: row.is_stock_item,
+                item_table_type: row.item_table_type,
+            });
+        }
+
+        const entry = map.get(key);
+        entry.items.push(row);
+        entry.sent_qty += flt(row.sent_qty);
+        entry.total_amount += flt(row.total_amount);
+        entry.total_received += flt(row.total_received);
+        if (row.returnable === "Yes") {
+            entry.pending_qty += flt(row.pending_qty);
+        }
+    });
+
+    const result = [];
+    map.forEach(entry => {
+        const items = entry.items;
+
+        const sub_comps = [...new Set(items.map(i => i.sub_component).filter(x => x && x !== "—"))];
+        const descriptions = [...new Set(items.map(i => i.description).filter(x => x && x !== "—"))];
+
+        let sub_component_display = sub_comps.join(", ") || "—";
+        let description_display = descriptions.join("; ") || "—";
+        let rate_display = items.length === 1 ? flt(items[0].rate) : null;
+
+        const inward_refs = [...new Set(items.flatMap(i => (i.inward_refs || "").split(",").map(s => s.trim())).filter(x => x && x !== "—"))];
+        const inward_refs_display = inward_refs.length ? inward_refs.join(", ") : "—";
+
+        const qualities = [...new Set(items.map(i => i.received_quality).filter(x => x && x !== "—"))];
+        const quality_display = qualities.join(", ") || "—";
+
+        const billing_statuses = [...new Set(items.map(i => i.billing_status).filter(x => x && x !== "—"))];
+        const billing_display = billing_statuses.join(", ") || "—";
+
+        const inward_remarks = [...new Set(items.map(i => i.inward_remarks).filter(x => x && x !== "—"))];
+        const remarks_display = inward_remarks.join("; ") || "—";
+
+        const comp_statuses = [...new Set(items.map(i => i.component_status).filter(x => x && x !== "—"))];
+        const comp_status_display = comp_statuses.join(", ") || "—";
+
+        const installed_dates = items.map(i => i.installed_date).filter(x => x && x !== "—").sort().reverse();
+        const installed_date_display = installed_dates[0] || null;
+
+        const inward_se_refs = [...new Set(items.flatMap(i => (i.inward_se_ref || "").split(",").map(s => s.trim())).filter(x => x && x !== "—"))];
+        const inward_se_ref_display = inward_se_refs.length ? inward_se_refs.join(", ") : "—";
+        const inward_se_type_display = items.some(i => i.inward_se_type && i.inward_se_type !== "—") ? "Material Transfer (Inward Reverse)" : "—";
+
+        const received_dates = items.map(i => i.last_received_on).filter(x => x && x !== "—").sort().reverse();
+        const last_received_on = received_dates[0] || null;
+
+        const max_bill_amount = Math.max(...items.map(i => flt(i.bill_amount)), 0);
+
+        let gp_status = "Open";
+        const returnable = (entry.returnable || "").trim();
+        if (returnable === "No") {
+            gp_status = "Non-Returnable";
+            entry.pending_qty = 0;
+        } else if (entry.total_received === 0) {
+            gp_status = "Open";
+        } else if (entry.pending_qty === 0) {
+            gp_status = "Closed";
+        } else {
+            gp_status = "Partial";
+        }
+
+        result.push({
+            outward_no: entry.outward_no,
+            date: entry.date,
+            branch: entry.branch,
+            purpose: entry.purpose,
+            party_type: entry.party_type,
+            party_name: entry.party_name,
+            email_by: entry.email_by,
+            transporter_name: entry.transporter_name,
+            vehicle_no: entry.vehicle_no,
+            lr_no: entry.lr_no,
+            road_permit_no: entry.road_permit_no,
+            returnable: entry.returnable,
+            outward_remarks: entry.outward_remarks,
+
+            sub_component: sub_component_display,
+            description: description_display,
+            rate: rate_display,
+            sent_qty: entry.sent_qty,
+            total_amount: entry.total_amount,
+
+            total_received: entry.total_received,
+            pending_qty: entry.pending_qty,
+            last_received_on: last_received_on,
+            inward_refs: inward_refs_display,
+            received_quality: quality_display,
+            billing_status: billing_display,
+            bill_amount: max_bill_amount,
+            inward_remarks: remarks_display,
+
+            component_status: comp_status_display,
+            installed_date: installed_date_display,
+            component_remarks: "—",
+
+            outward_se_ref: entry.outward_se_ref || "—",
+            outward_se_type: entry.outward_se_type || "—",
+            inward_se_ref: inward_se_ref_display,
+            inward_se_type: inward_se_type_display,
+
+            gp_status: gp_status,
+            aging_days: entry.aging_days,
+            docstatus: entry.docstatus,
+            is_stock_item: entry.is_stock_item,
+            item_table_type: entry.item_table_type,
+        });
+    });
+
+    return result;
+}
 
 /* ─────────────────────────────────────────────────────────────────────────
    PARTY-WISE SUMMARY — aggregate filtered rows by party_name
@@ -698,7 +902,9 @@ function build_party_summary_rows(data) {
         m.gp_count.add(r.outward_no);
         m.sent_qty += flt(r.sent_qty);
         m.received_qty += flt(r.total_received);
-        m.pending_qty += flt(r.pending_qty);
+        if (r.returnable === "Yes") {
+            m.pending_qty += flt(r.pending_qty);
+        }
         m.total_amount += flt(r.total_amount);
         if (r.gp_status === "Open") m.open_count++;
         if (r.gp_status === "Partial") m.partial_count++;
@@ -820,6 +1026,59 @@ function render_party_summary(filteredData) {
         </div>
     `;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   EXPORT — Gate Pass Wise to CSV
+───────────────────────────────────────────────────────────────────────── */
+window.gp_export_gp_wise_csv = function () {
+    const report = gp_report();
+    const state = gp_state();
+    const rows = filter_rows(build_gate_pass_wise_rows((report && report.data) || []), state);
+    if (!rows.length) {
+        frappe.msgprint(__("No data to export for the current filters."));
+        return;
+    }
+
+    const headers = [
+        "Outward #", "Date", "Branch", "Purpose", "Party Type", "Party Name",
+        "Email By", "Transporter", "Vehicle No", "LR No", "Road Permit",
+        "Returnable", "Outward Remarks", "Sub Component(s)", "Description",
+        "Sent Qty", "Total Sent Amount", "Total Received", "Pending Qty",
+        "Last Received On", "Inward Ref(s)", "Received Quality", "Billing Status",
+        "Bill Amount", "Outward SE Ref", "Inward SE Ref", "GP Status", "Aging (Days)"
+    ];
+
+    const escape_csv = (val) => {
+        const s = String(val ?? "");
+        if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+            return `"${s.replace(/"/g, '""')}"`;
+        }
+        return s;
+    };
+
+    const lines = [headers.join(",")];
+    rows.forEach(r => {
+        lines.push([
+            r.outward_no, r.date, r.branch, r.purpose, r.party_type, r.party_name,
+            r.email_by, r.transporter_name, r.vehicle_no, r.lr_no, r.road_permit_no,
+            r.returnable, r.outward_remarks, r.sub_component, r.description,
+            r.sent_qty, r.total_amount, r.total_received, r.pending_qty,
+            r.last_received_on, r.inward_refs, r.received_quality, r.billing_status,
+            r.bill_amount, r.outward_se_ref, r.inward_se_ref, r.gp_status, r.aging_days
+        ].map(escape_csv).join(","));
+    });
+
+    const csv_content = lines.join("\n");
+    const blob = new Blob([csv_content], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Gate_Pass_Wise_${frappe.datetime.get_today()}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+};
 
 /* ─────────────────────────────────────────────────────────────────────────
    EXPORT — Party Summary to CSV

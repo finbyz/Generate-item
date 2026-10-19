@@ -437,6 +437,15 @@ def _update_single_work_order(wo):
         wo.qty = target_qty
         wo.db_set("qty", target_qty, update_modified=False)
 
+    # Track existing bins before BOM sync to ensure removed items are recalculated
+    old_bins = {
+        (d.item_code, d.source_warehouse)
+        for d in (wo.required_items or [])
+        if getattr(d, "item_code", None) and getattr(d, "source_warehouse", None)
+    }
+    if getattr(wo, "production_item", None) and getattr(wo, "fg_warehouse", None):
+        old_bins.add((wo.production_item, wo.fg_warehouse))
+
     _sync_required_items_from_bom(wo, bom)
     wo.reload()
     # stop_unstop(wo.name,"Stopped")
@@ -448,10 +457,24 @@ def _update_single_work_order(wo):
     if wo.docstatus == 1:
         from erpnext.stock.utils import get_bin
 
-        for d in wo.required_items:
-            if d.item_code and d.source_warehouse:
-                stock_bin = get_bin(d.item_code, d.source_warehouse)
-                stock_bin.update_reserved_qty_for_production()
+        new_bins = {
+            (d.item_code, d.source_warehouse)
+            for d in (wo.required_items or [])
+            if getattr(d, "item_code", None) and getattr(d, "source_warehouse", None)
+        }
+        if getattr(wo, "production_item", None) and getattr(wo, "fg_warehouse", None):
+            new_bins.add((wo.production_item, wo.fg_warehouse))
+
+        for item_code, warehouse in (old_bins | new_bins):
+            try:
+                stock_bin = get_bin(item_code, warehouse)
+                if stock_bin:
+                    stock_bin.recalculate_values()
+            except Exception:
+                frappe.log_error(
+                    title=f"Failed to recalculate bin for {item_code} in {warehouse}",
+                    message=frappe.get_traceback()
+                )
 
         if getattr(wo, "reserve_stock", None):
             wo.update_stock_reservation()
