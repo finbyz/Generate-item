@@ -32,6 +32,10 @@ frappe.ui.form.on("Pattern Set", {
 	class(frm) {
 		update_pattern_set_fields(frm);
 	},
+
+	bore(frm) {
+		update_pattern_set_fields(frm);
+	},
 });
 
 frappe.ui.form.on("Pattern Set Component", {
@@ -69,6 +73,7 @@ function update_pattern_set_fields(frm) {
 	if (frm.doc.type_of_valve) parts.push(String(frm.doc.type_of_valve).trim());
 	if (frm.doc.size) parts.push(String(frm.doc.size).trim());
 	if (frm.doc.class) parts.push(String(frm.doc.class).trim());
+	if (frm.doc.bore && String(frm.doc.bore).trim() !== "-") parts.push(String(frm.doc.bore).trim());
 
 	let clean_name = parts.join(" ").trim();
 	frm.set_value("pattern_set_name", clean_name);
@@ -81,6 +86,7 @@ function update_pattern_set_fields(frm) {
 					type_of_valve: frm.doc.type_of_valve,
 					size: frm.doc.size,
 					class_val: frm.doc.class,
+					bore: frm.doc.bore || null,
 					exclude_name: null,
 				},
 				callback: function (r) {
@@ -99,6 +105,7 @@ function load_pattern_set_attribute_options(frm) {
 	load_attribute_options(frm, "type_of_valve", ["WIP-Type Of Valve", "FG-Valve Type", "Type Of Valve"]);
 	load_attribute_options(frm, "size", ["WIP-Size", "FG-Size", "Size"]);
 	load_attribute_options(frm, "class", ["WIP-Class", "FG-Rating", "Class"]);
+	load_attribute_options(frm, "bore", ["FG-Bore", "WIP-Bore", "Bore"]);
 }
 
 function load_attribute_options(frm, fieldname, possible_attr_names) {
@@ -119,7 +126,8 @@ function load_attribute_options(frm, fieldname, possible_attr_names) {
 						let row = rows[i];
 						if (row && row.disabled == 0) {
 							let display = String(row.item_long_description || "").trim();
-							if (display && display !== "-" && options.indexOf(display) === -1) {
+							let allow_dash = fieldname === "bore";
+							if (display && (allow_dash || display !== "-") && options.indexOf(display) === -1) {
 								options.push(display);
 							}
 						}

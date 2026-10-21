@@ -19,31 +19,299 @@ def before_insert(doc, method=None):
     populate_custom_fields(doc)
     validate_material_request_create(doc, method)
 
+from collections import defaultdict
+from frappe.utils import cint
+
+def check_material_transfer_stock_availability(doc):
+    """
+    Check stock availability for items in a Material Transfer request.
+    Returns a list of dicts for items with insufficient stock in their source warehouse:
+    [
+        {
+            "item_code": str,
+            "warehouse": str,
+            "required_qty": float,
+            "available_qty": float
+        },
+        ...
+    ]
+    """
+    from erpnext.stock.stock_ledger import is_negative_stock_allowed
+    from erpnext.stock.utils import get_stock_balance
+
+    required_by_item_wh = defaultdict(float)
+    default_from_wh = getattr(doc, "set_from_warehouse", None)
+
+    for item in doc.items:
+        source_wh = getattr(item, "from_warehouse", None) or default_from_wh
+        if item.item_code and source_wh:
+            qty = flt(getattr(item, "stock_qty", None) or getattr(item, "qty", 0))
+            if qty > 0:
+                required_by_item_wh[(item.item_code, source_wh)] += qty
+
+    insufficient_items = []
+    for (item_code, source_wh), required_qty in required_by_item_wh.items():
+        is_stock_item = frappe.db.get_value("Item", item_code, "is_stock_item")
+        if not is_stock_item:
+            continue
+
+        if is_negative_stock_allowed(item_code=item_code):
+            continue
+
+        available_qty = flt(get_stock_balance(item_code, source_wh))
+        if available_qty < required_qty:
+            insufficient_items.append({
+                "item_code": item_code,
+                "warehouse": source_wh,
+                "required_qty": required_qty,
+                "available_qty": available_qty,
+            })
+
+    return insufficient_items
+
+
+def format_insufficient_stock_message(insufficient_items, se_name=None):
+    """
+    Format a clear, user-facing message detailing the affected item(s),
+    source warehouse, required quantity, and available quantity,
+    along with reference to the Stock Entry created in Draft mode.
+    """
+    if not insufficient_items:
+        return ""
+
+    se_link = frappe.utils.get_link_to_form("Stock Entry", se_name) if se_name else _("Stock Entry")
+
+    if len(insufficient_items) == 1:
+        item = insufficient_items[0]
+        return _(
+            "Stock Entry {0} was created in <b>Draft</b> mode and was not submitted for item <b>{1}</b> "
+            "because of insufficient stock in warehouse <b>{2}</b>.<br><br>"
+            "<b>Required Quantity:</b> {3}, <b>Available Quantity:</b> {4}.<br><br>"
+            "Please arrange the required stock and submit the Stock Entry."
+        ).format(
+            se_link,
+            item["item_code"],
+            item["warehouse"],
+            flt(item["required_qty"]),
+            flt(item["available_qty"]),
+        )
+
+    # Multiple items
+    lines = []
+    for item in insufficient_items:
+        lines.append(
+            _(
+                "• Item <b>{0}</b> in warehouse <b>{1}</b> — Required Quantity: {2}, Available Quantity: {3}"
+            ).format(
+                item["item_code"],
+                item["warehouse"],
+                flt(item["required_qty"]),
+                flt(item["available_qty"]),
+            )
+        )
+    return _(
+        "Stock Entry {0} was created in <b>Draft</b> mode and was not submitted because of "
+        "insufficient stock in source warehouse(s):<br><br>{1}<br><br>"
+        "Please arrange the required stock and submit the Stock Entry."
+    ).format(se_link, "<br>".join(lines))
+
+
+@frappe.whitelist()
+def has_submitted_stock_entry(material_request):
+    """Check if a submitted Stock Entry already exists for this Material Request."""
+    return bool(
+        frappe.db.exists(
+            "Stock Entry Detail",
+            {"material_request": material_request, "docstatus": 1},
+        )
+    )
+
+
+@frappe.whitelist()
+def create_stock_entry_for_material_transfer(material_request, submit=1):
+    """
+    Create Stock Entry for a Material Transfer request.
+    If stock is sufficient, submits the Stock Entry.
+    If stock is insufficient, keeps the Stock Entry in DRAFT mode, provides a clear reference link,
+    creates an Error Log, and informs the user.
+    """
+    if isinstance(material_request, str):
+        doc = frappe.get_doc("Material Request", material_request)
+    else:
+        doc = material_request
+
+    if doc.material_request_type != "Material Transfer":
+        return None
+
+    # 1. Prevent duplicate Stock Entries if an appropriate submitted Stock Entry exists
+    if has_submitted_stock_entry(doc.name):
+        submitted_se = frappe.db.get_value(
+            "Stock Entry Detail",
+            {"material_request": doc.name, "docstatus": 1},
+            "parent",
+        )
+        frappe.msgprint(
+            _("Stock Entry {0} has already been submitted for Material Request {1}.").format(
+                frappe.utils.get_link_to_form("Stock Entry", submitted_se),
+                doc.name,
+            ),
+            alert=True,
+        )
+        return submitted_se
+
+    savepoint_name = f"se_mt_{frappe.generate_hash(length=8)}"
+    frappe.db.savepoint(savepoint_name)
+
+    se = None
+    try:
+        # 2. Check if an existing draft Stock Entry is already linked to avoid duplicate drafts
+        existing_draft = frappe.db.get_value(
+            "Stock Entry Detail",
+            {"material_request": doc.name, "docstatus": 0},
+            "parent",
+        )
+        if existing_draft:
+            se = frappe.get_doc("Stock Entry", existing_draft)
+        else:
+            se = make_stock_entry(doc.name)
+            se.stock_entry_type = "Material Transfer"
+            se.purpose = "Material Transfer"
+            se.company = doc.company
+
+            # Ensure zero-stock / missing valuation rate items allow zero valuation rate so draft can be created
+            for row in se.items:
+                if not flt(row.basic_rate):
+                    rate = (
+                        frappe.db.get_value("Item", row.item_code, "valuation_rate")
+                        or frappe.db.get_value("Item", row.item_code, "standard_rate")
+                        or frappe.db.get_value("Item", row.item_code, "last_purchase_rate")
+                    )
+                    if rate:
+                        row.basic_rate = flt(rate)
+                    else:
+                        row.allow_zero_valuation_rate = 1
+
+            se.insert(ignore_permissions=True)
+
+        # 3. Check stock availability
+        insufficient_items = check_material_transfer_stock_availability(doc)
+        if insufficient_items:
+            frappe.db.release_savepoint(savepoint_name)
+            msg = format_insufficient_stock_message(insufficient_items, se_name=se.name)
+            frappe.log_error(
+                title=_("Insufficient Stock for Stock Entry {0}").format(se.name),
+                message=msg,
+            )
+            frappe.msgprint(msg, title=_("Insufficient Stock (Saved as Draft)"), indicator="orange")
+            return se.name
+
+        if not cint(submit):
+            frappe.db.release_savepoint(savepoint_name)
+            frappe.msgprint(
+                _("Stock Entry {0} created in Draft mode for Material Transfer").format(
+                    frappe.utils.get_link_to_form("Stock Entry", se.name)
+                ),
+                alert=True,
+            )
+            return se.name
+
+        # 4. Attempt submission inside a nested savepoint
+        sub_savepoint = f"se_sub_{frappe.generate_hash(length=8)}"
+        frappe.db.savepoint(sub_savepoint)
+
+        try:
+            se.submit()
+            frappe.db.release_savepoint(sub_savepoint)
+            frappe.db.release_savepoint(savepoint_name)
+
+            frappe.msgprint(
+                _("Stock Entry {0} created and submitted for Material Transfer").format(
+                    frappe.utils.get_link_to_form("Stock Entry", se.name)
+                ),
+                alert=True,
+            )
+            return se.name
+
+        except Exception as submit_err:
+            # Roll back submit attempt only; release outer savepoint so draft SE stays saved
+            frappe.db.rollback(save_point=sub_savepoint)
+            frappe.db.release_savepoint(savepoint_name)
+            raise submit_err
+
+    except Exception as e:
+        frappe.db.rollback(save_point=savepoint_name)
+
+        stock_error_types = ()
+        try:
+            from erpnext.stock.stock_ledger import NegativeStockError
+            stock_error_types += (NegativeStockError,)
+        except ImportError:
+            pass
+
+        try:
+            from erpnext.stock.doctype.serial_and_batch_bundle.serial_and_batch_bundle import (
+                BatchNegativeStockError,
+            )
+            stock_error_types += (BatchNegativeStockError,)
+        except ImportError:
+            pass
+
+        insufficient_after = check_material_transfer_stock_availability(doc)
+        error_str = str(e).lower()
+        is_stock_error = (
+            (stock_error_types and isinstance(e, stock_error_types))
+            or bool(insufficient_after)
+            or "insufficient stock" in error_str
+            or "not available" in error_str
+            or "negative stock" in error_str
+        )
+
+        se_name = se.name if se and hasattr(se, "name") else None
+
+        if is_stock_error:
+            if not insufficient_after:
+                insufficient_after = check_material_transfer_stock_availability(doc)
+
+            if insufficient_after:
+                msg = format_insufficient_stock_message(insufficient_after, se_name=se_name)
+            else:
+                se_link = frappe.utils.get_link_to_form("Stock Entry", se_name) if se_name else _("Stock Entry")
+                msg = _(
+                    "Stock Entry {0} was created in <b>Draft</b> mode and was not submitted because of "
+                    "insufficient stock in source warehouse. Please arrange the required stock and submit the Stock Entry."
+                ).format(se_link)
+
+            frappe.log_error(
+                title=_("Insufficient Stock for Stock Entry {0}").format(se_name or doc.name),
+                message=f"{msg}\n\nTechnical details:\n{frappe.get_traceback() or str(e)}",
+            )
+            frappe.msgprint(msg, title=_("Insufficient Stock (Saved as Draft)"), indicator="orange")
+        else:
+            frappe.log_error(
+                title=_("Stock Entry Submission Failed - {0}").format(se_name or doc.name),
+                message=frappe.get_traceback() or str(e),
+            )
+            se_link = frappe.utils.get_link_to_form("Stock Entry", se_name) if se_name else ""
+            if se_link:
+                general_msg = _(
+                    "Stock Entry {0} was created in <b>Draft</b> mode, but could not be submitted due to an error: {1}. "
+                    "Please review the document or check the system Error Log for details."
+                ).format(se_link, str(e))
+            else:
+                general_msg = _(
+                    "Stock Entry could not be created for Material Request {0} due to an error: {1}. "
+                    "Please check the system Error Log for details."
+                ).format(doc.name, str(e))
+            frappe.msgprint(general_msg, title=_("Submission Failed"), indicator="red")
+
+        return se_name
+
+
 def on_submit(doc, method=None):
     if doc.material_request_type != "Material Transfer":
         return
 
-    # Avoid duplicates if the hook fires again (e.g. amend/resubmit flows)
-    existing = frappe.db.exists(
-        "Stock Entry Detail",
-        {"material_request": doc.name, "docstatus": ["<", 2]},
-    )
-    if existing:
-        return
-
-    se = make_stock_entry(doc.name)  # maps items, s_warehouse/t_warehouse, MR link
-    se.stock_entry_type = "Material Transfer"
-    se.purpose = "Material Transfer"
-    se.company = doc.company
-    se.insert(ignore_permissions=True)
-    se.submit()
-
-    frappe.msgprint(
-        _("Stock Entry {0} created for Material Transfer").format(
-            frappe.utils.get_link_to_form("Stock Entry", se.name)
-        ),
-        alert=True,
-    )
+    create_stock_entry_for_material_transfer(doc, submit=1)
 
 
 

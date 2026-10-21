@@ -1142,3 +1142,203 @@ def _get_pp_primary_sales_order(pp_names):
             so_map[row.parent] = row.sales_order
 
     return so_map
+
+
+def on_submit(doc, method=None):
+    """
+    Hooked to Production Plan on_submit.
+    Automatically creates and submits required Work Orders on initial submission.
+    """
+    auto_create_and_submit_work_orders(doc)
+
+
+def auto_create_and_submit_work_orders(doc):
+    """
+    Creates Work Orders for finished goods and sub-assemblies via core make_work_order,
+    then automatically submits each newly created Work Order.
+    If any creation or submission fails, provides a clear error identifying the affected
+    item/Work Order, logs the error, and raises frappe.throw to roll back the entire transaction.
+    """
+    if not (getattr(doc, "po_items", None) or getattr(doc, "sub_assembly_items", None)):
+        return
+
+    # 1. Pre-validation: check that BOM exists and is active for all planned items
+    for row in (doc.po_items or []):
+        if not getattr(row, "item_code", None):
+            continue
+        if not getattr(row, "bom_no", None):
+            frappe.throw(
+                _("Work Order could not be created because required BOM is missing for item {0}.").format(
+                    frappe.bold(row.item_code)
+                ),
+                title=_("Missing BOM")
+            )
+        bom_active = frappe.db.get_value("BOM", row.bom_no, "is_active")
+        if not bom_active:
+            frappe.throw(
+                _("Work Order could not be created because BOM {0} for item {1} is inactive.").format(
+                    frappe.bold(row.bom_no),
+                    frappe.bold(row.item_code)
+                ),
+                title=_("Inactive BOM")
+            )
+
+    for row in (doc.sub_assembly_items or []):
+        if not getattr(row, "production_item", None):
+            continue
+        mfg_type = getattr(row, "type_of_manufacturing", None) or "In House"
+        if mfg_type not in ("Subcontract", "Material Request"):
+            if not getattr(row, "bom_no", None):
+                frappe.throw(
+                    _("Work Order could not be created because required BOM is missing for sub-assembly item {0}.").format(
+                        frappe.bold(row.production_item)
+                    ),
+                    title=_("Missing BOM")
+                )
+            bom_active = frappe.db.get_value("BOM", row.bom_no, "is_active")
+            if not bom_active:
+                frappe.throw(
+                    _("Work Order could not be created because BOM {0} for sub-assembly item {1} is inactive.").format(
+                        frappe.bold(row.bom_no),
+                        frappe.bold(row.production_item)
+                    ),
+                    title=_("Inactive BOM")
+                )
+
+    # 2. Check if all required Work Orders already exist
+    existing_wos = frappe.get_all(
+        "Work Order",
+        filters={"production_plan": doc.name, "docstatus": ["in", [0, 1]]},
+        fields=["name", "docstatus", "production_plan_item", "production_plan_sub_assembly_item"]
+    )
+    existing_fg_refs = {wo.production_plan_item for wo in existing_wos if wo.production_plan_item}
+    existing_sa_refs = {wo.production_plan_sub_assembly_item for wo in existing_wos if wo.production_plan_sub_assembly_item}
+
+    fg_covered = all(
+        getattr(item, "name", None) in existing_fg_refs
+        for item in (doc.po_items or [])
+    )
+    sa_covered = all(
+        getattr(item, "name", None) in existing_sa_refs
+        for item in (doc.sub_assembly_items or [])
+    )
+
+    # If all items already have Work Orders and all are submitted, nothing to do
+    if fg_covered and sa_covered and all(w.docstatus == 1 for w in existing_wos):
+        return
+
+    # Ensure doc is the full ProductionPlan instance
+    if not hasattr(doc, "make_work_order"):
+        doc = frappe.get_doc("Production Plan", doc.name)
+
+    # 3. Create missing Work Orders using existing core method (if not already fully covered)
+    if not (fg_covered and sa_covered):
+        try:
+            doc.make_work_order()
+        except Exception as e:
+            err_msg = str(e)
+            if "All Work Orders already exist" in err_msg:
+                pass
+            else:
+                frappe.log_error(
+                    title=f"Work Order Creation Failed: PP {doc.name}",
+                    message=frappe.get_traceback()
+                )
+                reason = _extract_clean_error(e)
+                frappe.throw(
+                    _("Work Order creation failed for Production Plan {0}. Reason: {1}").format(
+                        frappe.bold(doc.name),
+                        reason
+                    ),
+                    title=_("Work Order Creation Failed")
+                )
+
+    # 4. Fetch all Work Orders in draft for this Production Plan
+    draft_wos = frappe.get_all(
+        "Work Order",
+        filters={
+            "production_plan": doc.name,
+            "docstatus": 0
+        },
+        fields=["name", "production_item", "production_plan_sub_assembly_item"],
+        order_by="creation asc"
+    )
+
+    if not draft_wos:
+        return
+
+    # Sort sub-assembly work orders before finished goods so components submit first
+    draft_wos.sort(key=lambda w: 0 if w.production_plan_sub_assembly_item else 1)
+
+    # 5. Automatically submit each draft Work Order
+    submitted_wos = []
+    for wo_info in draft_wos:
+        wo_name = wo_info.name
+        prod_item = wo_info.production_item or _("Unknown Item")
+        try:
+            wo = frappe.get_doc("Work Order", wo_name)
+            if not getattr(wo, "wip_warehouse", None) or not getattr(wo, "fg_warehouse", None) or not getattr(wo, "source_warehouse", None):
+                from generate_item.utils.work_order import set_work_order_warehouses_by_branch
+                set_work_order_warehouses_by_branch(wo)
+                wo.save()
+            wo.submit()
+            submitted_wos.append(wo_name)
+        except Exception as e:
+            frappe.log_error(
+                title=f"Work Order Submission Failed: {wo_name} (PP {doc.name})",
+                message=frappe.get_traceback()
+            )
+            reason = _extract_clean_error(e)
+            frappe.throw(
+                _("Work Order {0} could not be submitted for item {1}. Reason: {2}").format(
+                    frappe.bold(wo_name),
+                    frappe.bold(prod_item),
+                    reason
+                ),
+                title=_("Work Order Submission Failed")
+            )
+
+    # 6. Inform user of successful creation and submission
+    if submitted_wos:
+        frappe.msgprint(
+            _("Work Orders created and submitted successfully: {0}").format(
+                ", ".join([frappe.bold(w) for w in submitted_wos])
+            ),
+            indicator="green",
+            alert=True
+        )
+
+
+def _extract_clean_error(e):
+    """
+    Extract a user-friendly error reason from an exception and frappe.message_log.
+    Clears message_log to prevent duplicate message dialogs.
+    """
+    import json
+    from frappe.utils import strip_html
+
+    msg_text = None
+    if getattr(frappe, "message_log", None):
+        try:
+            last_msg = frappe.message_log[-1]
+            if isinstance(last_msg, dict):
+                msg_text = last_msg.get("message")
+            elif isinstance(last_msg, str):
+                try:
+                    parsed = json.loads(last_msg)
+                    if isinstance(parsed, dict) and "message" in parsed:
+                        msg_text = parsed.get("message")
+                    else:
+                        msg_text = last_msg
+                except Exception:
+                    msg_text = last_msg
+            frappe.message_log.clear()
+        except Exception:
+            pass
+
+    if not msg_text:
+        msg_text = str(e)
+
+    if msg_text:
+        return strip_html(str(msg_text)).strip()
+    return _("An unexpected validation error occurred.")

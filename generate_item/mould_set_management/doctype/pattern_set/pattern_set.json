@@ -3,7 +3,7 @@
  "allow_bulk_edit": 1,
  "allow_rename": 1,
  "autoname": "autoname",
- "creation": "2026-09-14 16:32:59.228279",
+ "creation": "2026-10-19 15:35:01.688728",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -12,10 +12,13 @@
   "type_of_valve",
   "size",
   "class",
+  "bore",
   "column_break_main",
   "disable",
   "type_of_pattern",
+  "pattern_length",
   "pattern_set_name",
+  "remark",
   "amended_from",
   "section_break_components",
   "items"
@@ -62,13 +65,12 @@
    "reqd": 1
   },
   {
-   "fieldname": "pattern_set_name",
-   "fieldtype": "Data",
+   "fieldname": "bore",
+   "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
-   "label": "Pattern Set Name",
-   "no_copy": 1,
-   "read_only": 1
+   "label": "Bore",
+   "no_copy": 1
   },
   {
    "fieldname": "column_break_main",
@@ -92,6 +94,23 @@
    "reqd": 1
   },
   {
+   "fieldname": "pattern_length",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Pattern Length",
+   "options": "\nShort\nLong"
+  },
+  {
+   "fieldname": "pattern_set_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Pattern Set Name",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
    "fieldname": "amended_from",
    "fieldtype": "Link",
    "label": "Amended From",
@@ -113,6 +132,11 @@
    "no_copy": 1,
    "options": "Pattern Set Component",
    "reqd": 1
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Remark"
   }
  ],
  "grid_page_length": 50,
@@ -125,7 +149,7 @@
    "link_fieldname": "mould_set"
   }
  ],
- "modified": "2026-09-30 17:49:28.888799",
+ "modified": "2026-10-21 10:27:18.415075",
  "modified_by": "Administrator",
  "module": "Mould Set Management",
  "name": "Pattern Set",

@@ -40,25 +40,15 @@ function set_wo_warehouses(frm) {
         let item_group = r.message && r.message.item_group;
         if (!item_group) return;
 
-        if (item_group === "Sub Assembly") {
+        if (item_group === "Sub Assembly" || item_group === "Sub Assemblies") {
             apply_mapping(frm, frm.doc.branch, "Sub Assembly");
         } else {
-            // Check if item_group is "Finished Goods" itself or nested under it
-            frappe.call({
-                method: "frappe.client.get_list",
-                args: {
-                    doctype: "Item Group",
-                    filters: { name: item_group },
-                    fields: ["name", "parent_item_group"]
-                },
-                callback: function() {
-                    is_under_finished_goods(item_group).then((is_fg) => {
-                        if (is_fg) {
-                            apply_mapping(frm, frm.doc.branch, "Finished Goods");
-                        } else {
-                            frappe.msgprint(__("No warehouse mapping found for this Branch / Item combination."));
-                        }
-                    });
+            // Check if item_group is "Finished Goods" itself or nested under it, or "Products"
+            is_under_finished_goods(item_group).then((is_fg) => {
+                if (is_fg || item_group === "Products") {
+                    apply_mapping(frm, frm.doc.branch, "Finished Goods");
+                } else {
+                    apply_mapping(frm, frm.doc.branch, "Finished Goods");
                 }
             });
         }
@@ -69,7 +59,7 @@ function set_wo_warehouses(frm) {
 function is_under_finished_goods(item_group) {
     return new Promise((resolve) => {
         function check(group) {
-            if (group === "Finished Goods") {
+            if (group === "Finished Goods" || group === "Products") {
                 resolve(true);
                 return;
             }

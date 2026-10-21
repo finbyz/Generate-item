@@ -6,8 +6,78 @@ from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.worksheet.table import Table, TableStyleInfo
 
+def set_work_order_warehouses_by_branch(doc):
+    """
+    Sets source_warehouse, fg_warehouse, and wip_warehouse based on branch and item_group
+    matching public/js/work_order.js logic.
+    """
+    branch = getattr(doc, "branch", None)
+    if not branch:
+        naming_series = getattr(doc, "naming_series", "") or ""
+        if naming_series.startswith("WOFS") or naming_series.startswith("WOAS"):
+            if "S" in naming_series[:4]:
+                branch = "Sanand"
+            elif "R" in naming_series[:4]:
+                branch = "Rabale"
+            elif "N" in naming_series[:4]:
+                branch = "Nandikoor"
+        if not branch and getattr(doc, "production_plan", None):
+            branch = frappe.db.get_value("Production Plan", doc.production_plan, "branch")
+        if branch:
+            doc.branch = branch
+
+    if not branch or not getattr(doc, "production_item", None):
+        return
+
+    WAREHOUSE_MAP = {
+        "Sanand|Sub Assembly": {
+            "source_warehouse": "Sanand Order Allocated - SVIPL",
+            "fg_warehouse": "Sanand Semi Finished - SVIPL",
+            "wip_warehouse": "Sanand WIP - SVIPL"
+        },
+        "Sanand|Finished Goods": {
+            "source_warehouse": "Sanand Order Allocated - SVIPL",
+            "fg_warehouse": "Sanand Finished Goods - SVIPL",
+            "wip_warehouse": "Sanand WIP - SVIPL"
+        },
+        "Rabale|Sub Assembly": {
+            "source_warehouse": "Rabale Order Allocated - SVIPL",
+            "fg_warehouse": "Rabale Semi Finished - SVIPL",
+            "wip_warehouse": "Rabale WIP - SVIPL"
+        },
+        "Rabale|Finished Goods": {
+            "source_warehouse": "Rabale Order Allocated - SVIPL",
+            "fg_warehouse": "Rabale Finished Goods - SVIPL",
+            "wip_warehouse": "Rabale WIP - SVIPL"
+        },
+        "Nandikoor|Sub Assembly": {
+            "source_warehouse": "Nandikoor Order Allocated - SVIPL",
+            "fg_warehouse": "Nandikoor Semi Finished - SVIPL",
+            "wip_warehouse": "Nandikoor WIP - SVIPL"
+        },
+        "Nandikoor|Finished Goods": {
+            "source_warehouse": "Nandikoor Order Allocated - SVIPL",
+            "fg_warehouse": "Nandikoor Finished Goods - SVIPL",
+            "wip_warehouse": "Nandikoor WIP - SVIPL"
+        }
+    }
+
+    item_group = frappe.db.get_value("Item", doc.production_item, "item_group")
+    category = "Sub Assembly" if item_group in ("Sub Assembly", "Sub Assemblies") else "Finished Goods"
+    key = f"{branch}|{category}"
+    mapping = WAREHOUSE_MAP.get(key)
+    if mapping:
+        if not getattr(doc, "wip_warehouse", None) and mapping.get("wip_warehouse"):
+            doc.wip_warehouse = mapping["wip_warehouse"]
+        if not getattr(doc, "fg_warehouse", None) and mapping.get("fg_warehouse"):
+            doc.fg_warehouse = mapping["fg_warehouse"]
+        if not getattr(doc, "source_warehouse", None) and mapping.get("source_warehouse"):
+            doc.source_warehouse = mapping["source_warehouse"]
+
+
 def before_save(doc, method=None):
     """Update current_qty before saving Work Order."""
+    set_work_order_warehouses_by_branch(doc)
     branch_warehouses = get_branch_raw_store_warehouses(doc.branch)
 
     for row in doc.required_items:
@@ -159,6 +229,8 @@ def before_insert(doc, method=None):
                 child.custom_pattern_drawing_rev_no = getattr(bom_item, 'custom_pattern_drawing_rev_no', None)
                 child.custom_purchase_specification_rev_no = getattr(bom_item, 'custom_purchase_specification_rev_no', None)
                 child.custom_batch_no = getattr(bom_item, 'custom_batch_no', None) or getattr(child, 'custom_batch_no', None)
+
+        set_work_order_warehouses_by_branch(doc)
 
     except Exception as e:
         logger.error(f"Error in work_order.before_insert: {e}")
