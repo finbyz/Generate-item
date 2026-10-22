@@ -587,8 +587,11 @@ def get_data(filters):
             else:
                 gp_status = "Partial"
 
-        # Derived: Aging (days outward has been open)
-        aging_days = frappe.utils.date_diff(today, row.date) if row.date else 0
+        # Derived: Aging (days outward has been open - Returnable only)
+        if returnable == "Yes":
+            aging_days = frappe.utils.date_diff(today, row.date) if row.date else 0
+        else:
+            aging_days = 0
 
         # Stock entry type derivation
         outward_se_ref  = row.get("outward_se_ref") or ""
@@ -657,12 +660,62 @@ def get_data(filters):
 
 
 # ---------------------------------------------------------------------------
+def resolve_period(period):
+    import datetime
+    from frappe.utils import add_days, add_months, getdate, nowdate
+
+    today = getdate(nowdate())
+    if not period or period == "Custom":
+        return None, None
+
+    if period == "Today":
+        return today, today
+    elif period == "This Week":
+        start = today - datetime.timedelta(days=today.weekday())
+        return start, today
+    elif period == "Last Week":
+        start = today - datetime.timedelta(days=today.weekday() + 7)
+        end = start + datetime.timedelta(days=6)
+        return start, end
+    elif period == "This Month":
+        start = today.replace(day=1)
+        return start, today
+    elif period == "Last Month":
+        last_day_prev_month = today.replace(day=1) - datetime.timedelta(days=1)
+        start = last_day_prev_month.replace(day=1)
+        return start, last_day_prev_month
+    elif period == "This Quarter":
+        start = add_months(today, -3)
+        return start, today
+    elif period == "Last Quarter":
+        this_q_start = add_months(today, -3)
+        last_q_end = add_days(this_q_start, -1)
+        last_q_start = add_months(this_q_start, -3)
+        return last_q_start, last_q_end
+    elif period == "This Year":
+        start = today.replace(month=1, day=1)
+        return start, today
+    elif period == "Last Year":
+        start = today.replace(year=today.year - 1, month=1, day=1)
+        end = today.replace(year=today.year - 1, month=12, day=31)
+        return start, end
+    return None, None
+
+
+# ---------------------------------------------------------------------------
 # FILTERS  (SQL conditions builder)
 # ---------------------------------------------------------------------------
 
 def build_conditions(filters):
     conditions = []
     values = {}
+
+    if filters.get("period") and filters.get("period") != "Custom":
+        p_from, p_to = resolve_period(filters.get("period"))
+        if p_from and not filters.get("from_date"):
+            filters["from_date"] = p_from
+        if p_to and not filters.get("to_date"):
+            filters["to_date"] = p_to
 
     if filters.get("branch"):
         conditions.append("gpo.branch = %(branch)s")
@@ -707,25 +760,17 @@ def get_summary(data):
     if not data:
         return []
 
-    total_sent     = sum(flt(r.sent_qty)       for r in data)
-    total_received = sum(flt(r.total_received) for r in data)
-    total_pending  = sum(flt(r.pending_qty)    for r in data if r.returnable == "Yes")
-    total_amount   = sum(flt(r.total_amount)   for r in data)
-
-    open_count     = sum(1 for r in data if r.gp_status == "Open")
-    partial_count  = sum(1 for r in data if r.gp_status == "Partial")
-    closed_count   = sum(1 for r in data if r.gp_status == "Closed")
-    nr_count       = sum(1 for r in data if r.gp_status == "Non-Returnable")
+    unique_gps = {r.outward_no for r in data if r.get("outward_no")}
+    total_gate_pass = len(unique_gps)
+    returnable_gps = {r.outward_no for r in data if r.get("outward_no") and r.get("returnable") == "Yes"}
+    open_gps = {r.outward_no for r in data if r.get("outward_no") and r.get("gp_status") == "Open"}
+    closed_gps = {r.outward_no for r in data if r.get("outward_no") and r.get("gp_status") == "Closed"}
 
     return [
-        {"value": total_sent,     "label": _("Total Sent Qty"),     "datatype": "Float",    "color": "blue"},
-        {"value": total_received, "label": _("Total Received Qty"),  "datatype": "Float",    "color": "green"},
-        {"value": total_pending,  "label": _("Total Pending Qty"),   "datatype": "Float",    "color": "orange"},
-        {"value": total_amount,   "label": _("Total Sent Amount"),   "datatype": "Currency", "color": "blue"},
-        {"value": open_count,     "label": _("Open"),                "datatype": "Int",      "color": "orange"},
-        {"value": partial_count,  "label": _("Partial"),             "datatype": "Int",      "color": "yellow"},
-        {"value": closed_count,   "label": _("Closed"),              "datatype": "Int",      "color": "green"},
-        {"value": nr_count,       "label": _("Non-Returnable"),      "datatype": "Int",      "color": "red"},
+        {"value": total_gate_pass,     "label": _("Total Gate Pass"), "datatype": "Int", "color": "blue"},
+        {"value": len(returnable_gps), "label": _("Total Returnable"),"datatype": "Int", "color": "blue"},
+        {"value": len(open_gps),       "label": _("Open"),            "datatype": "Int", "color": "orange"},
+        {"value": len(closed_gps),     "label": _("Closed"),          "datatype": "Int", "color": "green"},
     ]
 
 

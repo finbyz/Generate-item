@@ -523,6 +523,25 @@ class PPWOControlReport {
 			});
 			ctrl.$input.addClass("form-control");
 			ctrl.df.onchange = () => this.on_filters_changed();
+			if (fieldname === "sales_order") {
+				const so_query = () => {
+					const filters = {
+						status: ["not in", ["Cancelled", "Closed", "Completed"]]
+					};
+					if (this.link_controls && this.link_controls.company && this.link_controls.company.get_value()) {
+						filters.company = this.link_controls.company.get_value();
+					}
+					if (this.link_controls && this.link_controls.branch && this.link_controls.branch.get_value()) {
+						filters.branch = this.link_controls.branch.get_value();
+					}
+					if (this.link_controls && this.link_controls.customer && this.link_controls.customer.get_value()) {
+						filters.customer = this.link_controls.customer.get_value();
+					}
+					return { filters };
+				};
+				ctrl.get_query = so_query;
+				ctrl.df.get_query = so_query;
+			}
 			this.link_controls[fieldname] = ctrl;
 		});
 

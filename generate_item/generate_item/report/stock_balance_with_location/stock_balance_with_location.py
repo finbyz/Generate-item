@@ -101,7 +101,7 @@ class StockBalanceReport:
 			return
 
 		self.start_from = add_days(closing_balance[0].to_date, 1)
-		res = frappe.get_doc("Closing Stock Balance", closing_balance[0].name).get_prepared_data()
+		res = frappe.get_doc("Stock Closing Entry", closing_balance[0].name).get_prepared_data()
 
 		for entry in res.data:
 			entry = frappe._dict(entry)
@@ -111,6 +111,7 @@ class StockBalanceReport:
 				self.opening_data.setdefault(group_by_key, entry)
 
 	def prepare_new_data(self):
+		branch_cache = {}
 		self.item_warehouse_map = self.get_item_warehouse_map()
 
 		if self.filters.get("show_stock_ageing_data"):
@@ -129,12 +130,9 @@ class StockBalanceReport:
 
 		for _key, report_data in self.item_warehouse_map.items():
 			# 🔹 ADD LOCATION HERE
-			report_data.update({
-				"location": get_item_location(
-					report_data.item_code,
-					report_data.warehouse
-				)
-			})
+			report_data.update(
+				{"location": get_item_location(report_data.item_code, report_data.warehouse, branch_cache)}
+			)
 
 			if variant_data := variant_values.get(report_data.item_code):
 				report_data.update(variant_data)
@@ -176,10 +174,11 @@ class StockBalanceReport:
 				continue
 
 			self.data.append(report_data)
-			item_descriptions = self.get_item_descriptions()
+			
+		item_descriptions = self.get_item_descriptions()
 
-			for row in self.data:
-				row["description"] = item_descriptions.get(row.item_code, "")
+		for row in self.data:
+			row["description"] = item_descriptions.get(row.item_code, "")
 
 	def get_item_warehouse_map(self):
 		item_warehouse_map = {}
@@ -301,7 +300,7 @@ class StockBalanceReport:
 		if self.filters.get("ignore_closing_balance"):
 			return []
 
-		table = frappe.qb.DocType("Closing Stock Balance")
+		table = frappe.qb.DocType("Stock Closing Entry")
 
 		query = (
 			frappe.qb.from_(table)
@@ -318,6 +317,9 @@ class StockBalanceReport:
 
 		for fieldname in ["warehouse", "item_code", "item_group", "warehouse_type"]:
 			if value := self.filters.get(fieldname):
+				if not frappe.db.has_column("Stock Closing Entry", fieldname):
+					return []
+
 				if isinstance(value, list | tuple):
 					query = query.where(table[fieldname].isin(value))
 				else:
@@ -697,51 +699,46 @@ def get_variants_attributes() -> list[str]:
 	return frappe.get_all("Item Attribute", pluck="name")
 
 
-
-def get_item_location(item_code, warehouse):
-	"""
-	Returns location (string) or empty string
-	"""
-
+def get_item_location(item_code, warehouse, branch_cache=None):
+	"""Returns location (string) or empty string. Never raises."""
 	if not item_code or not warehouse:
 		return ""
 
+	if branch_cache is None:
+		branch_cache = {}
 
-	branch = None
-	# if warehouse.startswith("Rabale"):
-	#     branch = "Rabale"
-	# elif warehouse.startswith("Nandikoor"):
-	#     branch = "Nandikoor"
-	# elif warehouse.startswith("Sanand"):
-	#     branch = "Sanand"
-	if warehouse:
-		
-		branch = frappe.db.get_value("Warehouse", warehouse, "branch")
+	try:
+		if not frappe.db.table_exists("Item Location"):
+			return ""
 
+		if warehouse not in branch_cache:
+			branch_cache[warehouse] = (
+				frappe.db.get_value("Warehouse", warehouse, "branch")
+				if frappe.db.has_column("Warehouse", "branch")
+				else None
+			)
+		branch = branch_cache[warehouse]
 
-	conditions = [
-		"item = %(item)s",
-		"(warehouse_1 = %(warehouse)s OR warehouse_2 = %(warehouse)s)",
-	]
+		conditions = [
+			"item = %(item)s",
+			"(warehouse_1 = %(warehouse)s OR warehouse_2 = %(warehouse)s)",
+		]
+		params = {"item": item_code, "warehouse": warehouse}
 
-	params = {
-		"item": item_code,
-		"warehouse": warehouse,
-	}
+		if branch and frappe.db.has_column("Item Location", "branch"):
+			conditions.append("branch = %(branch)s")
+			params["branch"] = branch
 
-	if branch:
-		conditions.append("branch = %(branch)s")
-		params["branch"] = branch
-
-	result = frappe.db.sql(
-		f"""
-		SELECT location
-		FROM `tabItem Location`
-		WHERE {' AND '.join(conditions)}
-		LIMIT 1
-		""",
-		params,
-		as_dict=True,
-	)
-
-	return result[0].location if result else ""
+		result = frappe.db.sql(
+			f"""
+			SELECT location
+			FROM `tabItem Location`
+			WHERE {' AND '.join(conditions)}
+			LIMIT 1
+			""",
+			params,
+			as_dict=True,
+		)
+		return result[0].location if result else ""
+	except Exception:
+		return ""

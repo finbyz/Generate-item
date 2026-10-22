@@ -153,4 +153,4 @@ frappe.query_reports["Stock Balance With Location"] = {
 	},
 };
 
-erpnext.utils.add_inventory_dimensions("Stock Balance", 8);
+erpnext.utils.add_inventory_dimensions("Stock Balance With Location", 8);
