@@ -90,6 +90,7 @@ BADGES = {
 	"pending": {"key": "pending", "emoji": "", "label": "Pending", "color": "amber"},
 	"critical": {"key": "critical", "emoji": "", "label": "Critical", "color": "red"},
 	"not_required": {"key": "not_required", "emoji": "", "label": "Not Required", "color": "blue"},
+	"not_created": {"key": "not_created", "emoji": "", "label": "Not Created", "color": "yellow"},
 	"waiting": {"key": "waiting", "emoji": "", "label": "Waiting", "color": "grey"},
 }
 
@@ -109,6 +110,7 @@ BADGE_FILL_HEX = {
 	"completed": "5EBB63",
 	"pending": "F5A623",
 	"critical": "E86161",
+	"not_created": "98A6BF",
 	"not_required": "4C9CE2",
 	"waiting": "98A6BF",
 }
@@ -130,6 +132,8 @@ PERIOD_OPTIONS = [
 	{"value": "last_week", "label": "Last Week"},
 	{"value": "this_month", "label": "This Month"},
 	{"value": "last_month", "label": "Last Month"},
+	{"value": "this_quarter", "label": "This Quarter"},
+	{"value": "last_quarter", "label": "Last Quarter"},
 	{"value": "this_year", "label": "This Year"},
 	{"value": "last_year", "label": "Last Year"},
 	{"value": "custom", "label": "Custom…"},
@@ -160,8 +164,8 @@ def _status_badge(status, kind):
 	if kind == "bmr":
 		if status == "Completed":
 			return _badge("completed")
-		if status in ("Not Created", "Not Required"):
-			return _badge("not_required")
+		if status in ("Not Created"):
+			return _badge("not_created")
 		if status in ("Draft", "Pending"):
 			return _badge("pending")
 		if status == "Rejected":
@@ -172,8 +176,8 @@ def _status_badge(status, kind):
 	if kind == "pp":
 		if status == "Completed":
 			return _badge("completed")
-		if status in ("Not Created", "Not Required"):
-			return _badge("not_required")
+		if status in ("Not Created"):
+			return _badge("not_created")
 		if status == "Pending":
 			return _badge("pending")
 		if status == "Updated":
@@ -183,6 +187,8 @@ def _status_badge(status, kind):
 		if status == "Completed":
 			return _badge("completed")
 		if status in ("Not Created", "Not Started"):
+			return _badge("not_created")
+		if status == "Not Required":
 			return _badge("not_required")
 		if status == "Pending":
 			return _badge("pending")
@@ -290,12 +296,14 @@ def get_filter_options():
 			"Sales Order", pluck="branch", distinct=True, filters={"branch": ["is", "set"]}
 		)
 
+	today = getdate(nowdate())
 	return {
 		"companies": companies,
 		"branches": [b for b in branches if b],
 		"period_options": PERIOD_OPTIONS,
-		"default_from": add_days(nowdate(), -90),
-		"default_to": nowdate(),
+		"default_period": "this_month",
+		"default_from": get_first_day(today),
+		"default_to": today,
 	}
 
 
@@ -316,7 +324,7 @@ def _compute_dashboard_summary(rows):
 				pending_pp += 1
 			if r["wo_status"] in ("Pending", "Not Created", "Not Started"):
 				pending_wo += 1
-			if r["bmr_status"] in ("Draft", "Pending", "Not Created") and r["change_type"] == "Item Replacement":
+			if r["bmr_status"] in ("Draft", "Pending") and r["change_type"] == "Item Replacement":
 				pending_bmr += 1
 			if r["omr_workflow_state"] != "Approved":
 				pending_omr += 1
@@ -384,7 +392,7 @@ def _compute_charts_summary(rows):
 		# Manufacturing Funnel
 		if r["omr_workflow_state"] == "Approved":
 			omr_approved += 1
-		if r["bmr_status"] == "Updated" or r["change_type"] != "Item Replacement":
+		if r["bmr_status"] in ("Updated", "Not Required") or r["change_type"] != "Item Replacement":
 			bmr_updated += 1
 		if r["pp_status"] in ("Updated", "Completed"):
 			pp_updated += 1
@@ -529,7 +537,7 @@ def get_row_detail(sales_order, filters=None, batch_no=None, item=None):
 
 	# If not in cache (different filters or cache miss), fall back to fresh compute
 	if not batch_rows:
-		batch_rows = _compute_batch_rows_for_so(so, maps)
+		batch_rows = _compute_batch_rows_for_so(so, maps, period_range=_resolve_period_range(filters))
 		if batch_no and item:
 			batch_rows = [
 				r for r in batch_rows 
@@ -632,7 +640,7 @@ def refresh_row(sales_order, filters=None):
 	if so.get("status") in ("Cancelled", "Closed", "Completed"):
 		return {"rows": []}
 
-	return {"rows": _compute_batch_rows_for_so(so, maps)}
+	return {"rows": _compute_batch_rows_for_so(so, maps, period_range=_resolve_period_range(filters))}
 
 
 def _bust_maps_cache(so_names, filtered_pp=None):
@@ -821,10 +829,25 @@ def _parse_filters(filters):
 
 
 def _resolve_period_range(filters):
-	"""Turn the client's named `period` into an actual (from_date, to_date) pair."""
-	period = (filters.get("period") or "").strip().lower()
-	if not period or period in ("all", "any", "all_time"):
+	"""Turn the client's named `period` or explicit from_date/to_date into an actual (from_date, to_date) pair.
+	Matches date resolution logic of Sales Team KPI Dashboard.
+	"""
+	if not filters:
 		return None
+
+	period = (filters.get("period") or "").strip().lower()
+	if period in ("all", "any", "all_time"):
+		return None
+
+	from_date = filters.get("from_date")
+	to_date = filters.get("to_date")
+
+	# If explicit from_date and to_date are provided (like in Sales Team KPI Dashboard), use them directly
+	if from_date and to_date:
+		try:
+			return getdate(from_date), getdate(to_date)
+		except Exception:
+			pass
 
 	today = getdate(nowdate())
 
@@ -832,29 +855,38 @@ def _resolve_period_range(filters):
 		return today, today
 	if period == "this_week":
 		start = add_days(today, -today.weekday())
-		return start, add_days(start, 6)
+		return start, today
 	if period == "last_week":
 		this_week_start = add_days(today, -today.weekday())
 		start = add_days(this_week_start, -7)
 		return start, add_days(start, 6)
 	if period == "this_month":
-		return get_first_day(today), get_last_day(today)
+		return get_first_day(today), today
 	if period == "last_month":
 		prev = add_months(today, -1)
 		return get_first_day(prev), get_last_day(prev)
+	if period in ("this_quarter", "quarter"):
+		return getdate(add_months(today, -3)), today
+	if period == "last_quarter":
+		this_q_start = getdate(add_months(today, -3))
+		last_q_end = add_days(this_q_start, -1)
+		last_q_start = getdate(add_months(this_q_start, -3))
+		return last_q_start, last_q_end
 	if period == "this_year":
-		return getdate(f"{today.year}-01-01"), getdate(f"{today.year}-12-31")
+		return getdate(f"{today.year}-01-01"), today
 	if period == "last_year":
 		y = today.year - 1
 		return getdate(f"{y}-01-01"), getdate(f"{y}-12-31")
-	if period == "custom":
-		f = filters.get("from_date")
-		t = filters.get("to_date")
-		if f and t:
-			return getdate(f), getdate(t)
-		return None
 
-	return None
+	if from_date:
+		try:
+			fd = getdate(from_date)
+			return fd, fd
+		except Exception:
+			pass
+
+	# Default to This Month (first day of this month to today)
+	return get_first_day(today), today
 
 
 def _resolve_link_filters(filters):
@@ -969,7 +1001,13 @@ def _get_filtered_sales_orders(filters):
 
 	period_range = _resolve_period_range(filters)
 	if period_range:
-		query = query.where(so.transaction_date[cstr(period_range[0]):cstr(period_range[1])])
+		# Scoped to Order Modification Request creation date [from_date 00:00:00, to_date 23:59:59],
+		# matching Sales Team KPI Dashboard behavior.
+		from_dt_str = f"{period_range[0]} 00:00:00"
+		to_dt_str = f"{period_range[1]} 23:59:59"
+		query = query.where(
+			(omr.creation >= from_dt_str) & (omr.creation <= to_dt_str)
+		)
 
 	if restrict is not None:
 		query = query.where(so.name.isin(list(restrict)))
@@ -1057,7 +1095,7 @@ def _fetch_maps(so_names, filtered_pp=None):
 			"assembly_doctype_found": False,
 		}
 
-	cache_key = "ppwo_maps_v2:{0}:{1}".format(
+	cache_key = "ppwo_maps_v3:{0}:{1}".format(
 		hashlib.md5(json.dumps(sorted(so_names), sort_keys=True).encode()).hexdigest()[:16],
 		filtered_pp or "none"
 	)
@@ -1169,8 +1207,9 @@ def _fetch_maps(so_names, filtered_pp=None):
 				"work_order_updated", "bom_modification", "branch", "modified",
 				"modified_by", "creation", "docstatus"
 			],
+			additional_filters={"docstatus": ["!=", 2]}
 		)
-		pps_by_name = {p.name: p for p in pps}
+		pps_by_name = {p.name: p for p in pps if cint(p.docstatus) != 2}
 
 	for link in pp_links:
 		if link.parent in pps_by_name:
@@ -1178,13 +1217,16 @@ def _fetch_maps(so_names, filtered_pp=None):
 
 	pp_to_sos = {}
 	for link in pp_links:
-		pp_to_sos.setdefault(link.parent, []).append(link.sales_order)
+		if link.parent in pps_by_name:
+			pp_to_sos.setdefault(link.parent, []).append(link.sales_order)
+
+	active_pp_names = sorted(pps_by_name.keys())
 
 	# ---- Assembly Item child table ----
 	assembly_doctype = _get_pp_assembly_item_doctype()
 	maps["assembly_doctype_found"] = bool(assembly_doctype)
 
-	if pp_names_all and assembly_doctype:
+	if active_pp_names and assembly_doctype:
 		child_meta = frappe.get_meta(assembly_doctype)
 		child_fields = ["parent"]
 
@@ -1208,7 +1250,7 @@ def _fetch_maps(so_names, filtered_pp=None):
 		assembly_rows = _chunked_get_all(
 			assembly_doctype,
 			"parent",
-			pp_names_all,
+			active_pp_names,
 			fields=child_fields,
 		)
 		for row in assembly_rows:
@@ -1223,11 +1265,11 @@ def _fetch_maps(so_names, filtered_pp=None):
 				items_in_pp.add(row.get("rev_item"))
 
 	# ---- Work Orders linked to ANY of the Production Plans ----
-	if pp_names_all:
+	if active_pp_names:
 		wos = _chunked_get_all(
 			"Work Order",
 			"production_plan",
-			pp_names_all,
+			active_pp_names,
 			fields=[
 				"name", "sales_order", "production_plan", "status",
 				"modification_status",
@@ -1416,7 +1458,7 @@ def _compute_batch_row(so, omr, item, maps, now_dt=None):
 	bmr_name = item.get("bom_update_request")
 	bmr = dict(maps["bmr"][bmr_name]) if bmr_name and bmr_name in maps["bmr"] else None
 
-	if change_type != "Item Replacement":
+	if change_type != "Item Replacement" or not bmr_name:
 		bmr_status = "Not Required"
 	elif not bmr:
 		bmr_status = "Not Created"
@@ -1444,24 +1486,16 @@ def _compute_batch_row(so, omr, item, maps, now_dt=None):
 	pp_status_db = cstr((pp_dict.get("status") if pp_dict else "") or "").strip()
 	pp_is_completed = pp_status_db in ("Completed", "Closed")
 
-	if pp_is_completed:
+	if not pp_exists:
+		pp_status = "Not Created"
+	elif pp_is_completed:
 		pp_status = "Completed"
-	elif change_type == "Item Replacement":
-		if bmr_status != "Updated":
-			pp_status = "Not Required"
-		elif not pp_exists:
-			pp_status = "Not Created"
-		elif pp_is_updated:
-			pp_status = "Updated"
-		else:
-			pp_status = "Pending"
+	elif change_type == "Item Replacement" and bmr_status in ("Draft", "Pending", "Rejected"):
+		pp_status = "Not Required"
+	elif pp_is_updated:
+		pp_status = "Updated"
 	else:
-		if not pp_exists:
-			pp_status = "Not Created"
-		elif pp_is_updated:
-			pp_status = "Updated"
-		else:
-			pp_status = "Pending"
+		pp_status = "Pending"
 
 	# ---- WO: resolved via the batch's OWN resolved PP + effective item ----
 	if pp_dict:
@@ -1477,8 +1511,12 @@ def _compute_batch_row(so, omr, item, maps, now_dt=None):
 		matched_wos and all(cstr(w.get("status") or "").strip() in ("Completed", "Closed") for w in matched_wos)
 	)
 
-	if pp_is_completed:
-		if wo_all_completed or not matched_wos:
+	if not pp_exists:
+		wo_status = "Not Created"
+	elif not matched_wos:
+		wo_status = "Not Created"
+	elif pp_is_completed:
+		if wo_all_completed:
 			wo_status = "Completed"
 		else:
 			active_wos = [w for w in matched_wos if cstr(w.get("status") or "").strip() not in ("Completed", "Closed")]
@@ -1490,9 +1528,7 @@ def _compute_batch_row(so, omr, item, maps, now_dt=None):
 	elif wo_all_completed:
 		wo_status = "Completed"
 	elif pp_status != "Updated":
-		wo_status = "Not Created" if not matched_wos else "Not Started"
-	elif not matched_wos:
-		wo_status = "Not Created"
+		wo_status = "Not Started"
 	else:
 		active_wos = [w for w in matched_wos if cstr(w.get("status") or "").strip() not in ("Completed", "Closed")]
 		wo_pending = any(
@@ -1506,8 +1542,6 @@ def _compute_batch_row(so, omr, item, maps, now_dt=None):
 	if pp_status == "Completed" or wo_status == "Completed":
 		is_pending = False
 	elif bmr_status in ("Draft", "Pending", "Rejected"):
-		is_pending = True
-	elif bmr_status == "Not Created" and change_type == "Item Replacement":
 		is_pending = True
 	elif pp_status in ("Pending", "Not Created"):
 		is_pending = True
@@ -1556,11 +1590,10 @@ def _compute_batch_row(so, omr, item, maps, now_dt=None):
 	omr_state = "completed" if omr_workflow_state == "Approved" else "pending"
 	stages.append({"key": "omr", "label": "OMR", "state": omr_state})
 
-	if bmr_status in ("Not Created", "Not Required"):
-		if pp_status == "Completed" or wo_status == "Completed":
-			bmr_state = "completed"
-		else:
-			bmr_state = "not_required" if change_type != "Item Replacement" else "pending"
+	if bmr_status == "Not Required":
+		bmr_state = "not_required"
+	elif bmr_status == "Not Created":
+		bmr_state = "pending" if (pp_status != "Completed" and wo_status != "Completed") else "completed"
 	elif bmr_status in ("Draft", "Pending"):
 		bmr_state = "completed" if (pp_status == "Completed" or wo_status == "Completed") else "pending"
 	elif bmr_status == "Rejected":
@@ -1649,13 +1682,19 @@ def _compute_batch_row(so, omr, item, maps, now_dt=None):
 	}
 
 
-def _compute_batch_rows_for_so(so, maps, now_dt=None):
+def _compute_batch_rows_for_so(so, maps, now_dt=None, period_range=None):
 	"""All changed batch rows (across every OMR) for a single Sales Order."""
 	so_name = so["name"] if isinstance(so, dict) else so.name
 	rows = []
 	for omr in maps["omr_all"].get(so_name, []):
 		if omr.get("modification_type") != "Order Item Change":
 			continue
+		if period_range:
+			omr_c = omr.get("creation") if isinstance(omr, dict) else getattr(omr, "creation", None)
+			if omr_c:
+				omr_d = getdate(omr_c)
+				if not (period_range[0] <= omr_d <= period_range[1]):
+					continue
 		omr_name = omr.get("name") if isinstance(omr, dict) else omr.name
 		for item in maps["omr_items"].get(omr_name, []):
 			if _check_item_has_changes(item):
@@ -1667,7 +1706,7 @@ def _rows_cache_key(filters):
 	"""Stable cache key for a given filter set."""
 	payload = json.dumps(filters or {}, sort_keys=True, default=str)
 	digest = hashlib.md5(payload.encode("utf-8")).hexdigest()
-	return "ppwo_control_report:v3:rows:{0}".format(digest)
+	return "ppwo_control_report:v6:rows:{0}".format(digest)
 
 
 def _bust_rows_cache():
@@ -1676,8 +1715,12 @@ def _bust_rows_cache():
 		frappe.cache().delete_keys("ppwo_control_report:rows:*")
 		frappe.cache().delete_keys("ppwo_control_report:v2:rows:*")
 		frappe.cache().delete_keys("ppwo_control_report:v3:rows:*")
+		frappe.cache().delete_keys("ppwo_control_report:v4:rows:*")
+		frappe.cache().delete_keys("ppwo_control_report:v5:rows:*")
+		frappe.cache().delete_keys("ppwo_control_report:v6:rows:*")
 		frappe.cache().delete_keys("ppwo_maps:*")
 		frappe.cache().delete_keys("ppwo_maps_v2:*")
+		frappe.cache().delete_keys("ppwo_maps_v3:*")
 	except Exception:
 		pass
 	if hasattr(frappe.local, "_ppwo_raw_rows_cache"):
@@ -1705,10 +1748,11 @@ def _get_raw_computed_rows(filters, limit=5000):
 			filtered_pp = filters.get("production_plan")
 			maps = _fetch_maps(so_names, filtered_pp=filtered_pp)
 			now_dt = now_datetime()
+			period_range = _resolve_period_range(filters)
 
 			rows = []
 			for s in sos:
-				rows.extend(_compute_batch_rows_for_so(s, maps, now_dt=now_dt))
+				rows.extend(_compute_batch_rows_for_so(s, maps, now_dt=now_dt, period_range=period_range))
 
 		frappe.cache().set_value(cache_key, rows, expires_in_sec=ROWS_CACHE_TTL)
 
@@ -1737,7 +1781,7 @@ def _get_computed_rows(filters, limit=5000):
 		elif kpi_filter == "pending_wo":
 			rows = [r for r in rows if r["is_pending"] and r["wo_status"] in ("Pending", "Not Created", "Not Started")]
 		elif kpi_filter == "pending_bmr":
-			rows = [r for r in rows if r["is_pending"] and r["bmr_status"] in ("Draft", "Pending", "Not Created") and r["change_type"] == "Item Replacement"]
+			rows = [r for r in rows if r["is_pending"] and r["bmr_status"] in ("Draft", "Pending") and r["change_type"] == "Item Replacement"]
 		elif kpi_filter == "pending_omr":
 			rows = [r for r in rows if r["omr_workflow_state"] != "Approved"]
 		elif kpi_filter == "completed":
