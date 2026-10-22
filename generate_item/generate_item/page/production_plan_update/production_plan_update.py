@@ -629,6 +629,9 @@ def refresh_row(sales_order, filters=None):
 	if not so:
 		frappe.throw(_("Sales Order {0} not found").format(sales_order))
 
+	if so.get("status") in ("Cancelled", "Closed", "Completed"):
+		return {"rows": []}
+
 	return {"rows": _compute_batch_rows_for_so(so, maps)}
 
 
@@ -952,6 +955,7 @@ def _get_filtered_sales_orders(filters):
 		)
 		.distinct()
 		.where(so.docstatus == 1)
+		.where(so.status.notin(["Cancelled", "Closed", "Completed"]))
 	)
 
 	if filters.get("company"):
@@ -1499,7 +1503,7 @@ def _compute_batch_row(so, omr, item, maps, now_dt=None):
 
 	# ---- pending / severity ----
 	is_pending = False
-	if pp_status == "Completed" and wo_status == "Completed":
+	if pp_status == "Completed" or wo_status == "Completed":
 		is_pending = False
 	elif bmr_status in ("Draft", "Pending", "Rejected"):
 		is_pending = True
@@ -1553,12 +1557,12 @@ def _compute_batch_row(so, omr, item, maps, now_dt=None):
 	stages.append({"key": "omr", "label": "OMR", "state": omr_state})
 
 	if bmr_status in ("Not Created", "Not Required"):
-		if pp_status == "Completed" and wo_status == "Completed":
+		if pp_status == "Completed" or wo_status == "Completed":
 			bmr_state = "completed"
 		else:
 			bmr_state = "not_required" if change_type != "Item Replacement" else "pending"
 	elif bmr_status in ("Draft", "Pending"):
-		bmr_state = "completed" if (pp_status == "Completed" and wo_status == "Completed") else "pending"
+		bmr_state = "completed" if (pp_status == "Completed" or wo_status == "Completed") else "pending"
 	elif bmr_status == "Rejected":
 		bmr_state = "blocked"
 	elif bmr_status == "Updated":
@@ -1568,9 +1572,9 @@ def _compute_batch_row(so, omr, item, maps, now_dt=None):
 	stages.append({"key": "bmr", "label": "BMR", "state": bmr_state})
 
 	if pp_status in ("Not Created", "Not Required"):
-		pp_state = "not_required" if pp_status == "Not Required" else "pending"
+		pp_state = "completed" if wo_status == "Completed" else ("not_required" if pp_status == "Not Required" else "pending")
 	elif pp_status == "Pending":
-		pp_state = "blocked"
+		pp_state = "completed" if wo_status == "Completed" else "blocked"
 	elif pp_status in ("Updated", "Completed"):
 		pp_state = "completed"
 	else:
@@ -1578,9 +1582,9 @@ def _compute_batch_row(so, omr, item, maps, now_dt=None):
 	stages.append({"key": "pp", "label": "PP", "state": pp_state})
 
 	if wo_status in ("Not Created", "Not Started"):
-		wo_state = "pending" if pp_status != "Completed" else "not_required"
+		wo_state = "completed" if pp_status == "Completed" else "pending"
 	elif wo_status == "Pending":
-		wo_state = "blocked"
+		wo_state = "completed" if pp_status == "Completed" else "blocked"
 	elif wo_status in ("Updated", "Completed"):
 		wo_state = "completed"
 	else:
@@ -1663,7 +1667,7 @@ def _rows_cache_key(filters):
 	"""Stable cache key for a given filter set."""
 	payload = json.dumps(filters or {}, sort_keys=True, default=str)
 	digest = hashlib.md5(payload.encode("utf-8")).hexdigest()
-	return "ppwo_control_report:v2:rows:{0}".format(digest)
+	return "ppwo_control_report:v3:rows:{0}".format(digest)
 
 
 def _bust_rows_cache():
@@ -1671,6 +1675,7 @@ def _bust_rows_cache():
 	try:
 		frappe.cache().delete_keys("ppwo_control_report:rows:*")
 		frappe.cache().delete_keys("ppwo_control_report:v2:rows:*")
+		frappe.cache().delete_keys("ppwo_control_report:v3:rows:*")
 		frappe.cache().delete_keys("ppwo_maps:*")
 		frappe.cache().delete_keys("ppwo_maps_v2:*")
 	except Exception:

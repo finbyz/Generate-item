@@ -35,7 +35,7 @@ app_include_js = [
     "/assets/generate_item/js/report_export.js?v=6.2",
     "/assets/generate_item/js/login_redirect.js?v=1.4",
     "/assets/generate_item/js/hide_title.js",
-    "/assets/generate_item/js/hide_grid_upload.js?v=1.0",
+    "/assets/generate_item/js/hide_grid_upload.js?v=1.1",
 ]
 # --- Login Redirect feature --------------------------------------------------
 
@@ -268,7 +268,8 @@ doc_events = {
     
     },
     "Production Plan":{
-        "before_save": "generate_item.utils.production_plan.before_save"
+        "before_save": "generate_item.utils.production_plan.before_save",
+        "on_submit": "generate_item.utils.production_plan.on_submit"
     },
     "Work Order":{
         "before_save":"generate_item.utils.work_order.before_save",

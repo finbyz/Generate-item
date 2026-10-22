@@ -11,15 +11,21 @@ class PatternSet(Document):
 		valve_type = (getattr(self, "type_of_valve", None) or "").strip()
 		size = (getattr(self, "size", None) or "").strip()
 		class_val = (self.get("class") or getattr(self, "class", None) or "").strip()
+		bore = (getattr(self, "bore", None) or "").strip()
+		if bore == "-":
+			bore = ""
 
 		if not (valve_type and size and class_val):
 			frappe.throw(_("Type of Valve, Size, and Class are required to generate Naming Series."))
 
 		self.name = get_next_pattern_set_name(
-			valve_type, size, class_val, exclude_name=self.name if not self.is_new() else None
+			valve_type, size, class_val, bore=bore, exclude_name=self.name if not self.is_new() else None
 		)
 		self.naming_series = self.name
-		self.pattern_set_name = f"{valve_type} {size} {class_val}"
+		parts = [valve_type, size, class_val]
+		if bore:
+			parts.append(bore)
+		self.pattern_set_name = " ".join(parts)
 
 	def validate(self):
 		self.set_pattern_set_name()
@@ -30,8 +36,15 @@ class PatternSet(Document):
 		valve_type = (getattr(self, "type_of_valve", None) or "").strip()
 		size = (getattr(self, "size", None) or "").strip()
 		class_val = (self.get("class") or getattr(self, "class", None) or "").strip()
+		bore = (getattr(self, "bore", None) or "").strip()
+		if bore == "-":
+			bore = ""
+
 		if valve_type and size and class_val:
-			self.pattern_set_name = f"{valve_type} {size} {class_val}"
+			parts = [valve_type, size, class_val]
+			if bore:
+				parts.append(bore)
+			self.pattern_set_name = " ".join(parts)
 		if not getattr(self, "naming_series", None) and self.name:
 			self.naming_series = self.name
 
@@ -98,15 +111,22 @@ class PatternSet(Document):
 
 
 @frappe.whitelist()
-def get_next_pattern_set_name(type_of_valve, size, class_val, exclude_name=None):
+def get_next_pattern_set_name(type_of_valve, size, class_val, bore=None, exclude_name=None):
 	valve_type = (type_of_valve or "").strip()
 	size = (size or "").strip()
 	class_val = (class_val or "").strip()
+	bore_val = (bore or "").strip()
+	if bore_val == "-":
+		bore_val = ""
 
 	if not (valve_type and size and class_val):
 		return ""
 
-	prefix = f"{valve_type} {size} {class_val}-"
+	parts = [valve_type, size, class_val]
+	if bore_val:
+		parts.append(bore_val)
+
+	prefix = f"{' '.join(parts)}-"
 
 	existing_names = frappe.get_all(
 		"Pattern Set",

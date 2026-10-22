@@ -1,5 +1,57 @@
-// Copyright (c) 2026, Finbyz and contributors
-// For license information, please see license.txt
+function resolve_gp_period(preset) {
+    const today = frappe.datetime.get_today();
+    const todayDate = frappe.datetime.str_to_obj(today);
+
+    const fmt = (d) => frappe.datetime.obj_to_str(d);
+    const add = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+    const subMonths = (d, n) => { const x = new Date(d); x.setMonth(x.getMonth() - n); return x; };
+    const dow = todayDate.getDay();
+    const daysToMon = (dow === 0 ? -6 : 1 - dow);
+
+    switch (preset) {
+        case "Today":
+            return { from_date: today, to_date: today };
+        case "This Week": {
+            const mon = add(todayDate, daysToMon);
+            return { from_date: fmt(mon), to_date: today };
+        }
+        case "Last Week": {
+            const lastMon = add(todayDate, daysToMon - 7);
+            const lastSun = add(lastMon, 6);
+            return { from_date: fmt(lastMon), to_date: fmt(lastSun) };
+        }
+        case "This Month": {
+            const first = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+            return { from_date: fmt(first), to_date: today };
+        }
+        case "Last Month": {
+            const first = new Date(todayDate.getFullYear(), todayDate.getMonth() - 1, 1);
+            const last = new Date(todayDate.getFullYear(), todayDate.getMonth(), 0);
+            return { from_date: fmt(first), to_date: fmt(last) };
+        }
+        case "This Quarter": {
+            const start = subMonths(todayDate, 3);
+            return { from_date: fmt(start), to_date: today };
+        }
+        case "Last Quarter": {
+            const thisQStart = subMonths(todayDate, 3);
+            const lastQEnd = add(thisQStart, -1);
+            const lastQStart = subMonths(thisQStart, 3);
+            return { from_date: fmt(lastQStart), to_date: fmt(lastQEnd) };
+        }
+        case "This Year": {
+            const first = new Date(todayDate.getFullYear(), 0, 1);
+            return { from_date: fmt(first), to_date: today };
+        }
+        case "Last Year": {
+            const first = new Date(todayDate.getFullYear() - 1, 0, 1);
+            const last = new Date(todayDate.getFullYear() - 1, 11, 31);
+            return { from_date: fmt(first), to_date: fmt(last) };
+        }
+        default:
+            return { from_date: today, to_date: today };
+    }
+}
 
 frappe.query_reports["Gate Pass Register"] = {
 
@@ -8,18 +60,64 @@ frappe.query_reports["Gate Pass Register"] = {
     ─────────────────────────────────────────────────────────────────────── */
     filters: [
         {
+            fieldname: "period",
+            label: __("Period"),
+            fieldtype: "Select",
+            options: [
+                "Today",
+                "This Week",
+                "Last Week",
+                "This Month",
+                "Last Month",
+                "This Quarter",
+                "Last Quarter",
+                "This Year",
+                "Last Year",
+                "Custom",
+            ],
+            default: "This Quarter",
+            on_change: function () {
+                let period = frappe.query_report.get_filter_value("period");
+                if (period && period !== "Custom") {
+                    let dates = resolve_gp_period(period);
+                    if (dates) {
+                        frappe.query_report.set_filter_value("from_date", dates.from_date);
+                        frappe.query_report.set_filter_value("to_date", dates.to_date);
+                    }
+                }
+            },
+        },
+        {
             fieldname: "from_date",
             label: __("From Date"),
             fieldtype: "Date",
-            default: frappe.datetime.add_months(frappe.datetime.get_today(), -1),
+            default: resolve_gp_period("This Quarter").from_date,
             reqd: 0,
+            on_change: function () {
+                let period = frappe.query_report.get_filter_value("period");
+                if (period && period !== "Custom") {
+                    let expected = resolve_gp_period(period);
+                    if (expected && expected.from_date !== frappe.query_report.get_filter_value("from_date")) {
+                        frappe.query_report.set_filter_value("period", "Custom");
+                    }
+                }
+            },
         },
         {
             fieldname: "to_date",
             label: __("To Date"),
             fieldtype: "Date",
-            default: frappe.datetime.get_today(),
+            default: resolve_gp_period("This Quarter").to_date,
             reqd: 0,
+            on_change: function () {
+                let period = frappe.query_report.get_filter_value("period");
+                if (period && period !== "Custom") {
+                    let expected = resolve_gp_period(period);
+                    if (expected && expected.to_date !== frappe.query_report.get_filter_value("to_date")) {
+                        frappe.query_report.set_filter_value("period", "Custom");
+                    }
+                }
+            },
         },
         {
             fieldname: "branch",
@@ -173,6 +271,9 @@ frappe.query_reports["Gate Pass Register"] = {
         }
 
         if (column.fieldname === "aging_days") {
+            if (data.returnable !== "Yes") {
+                return `<span style="color:#aaa;">—</span>`;
+            }
             const days = parseInt(data.aging_days) || 0;
             let color = "#155724", bg = "#d4edda";
             if (days > 60) { color = "#721c24"; bg = "#f8d7da"; }
@@ -310,15 +411,18 @@ function filter_rows(rows, state) {
     // Status / KPI-card filter
     if (state.status_filter === "pending") {
         result = result.filter(r => r.returnable === "Yes" && flt(r.pending_qty) > 0);
+    } else if (state.status_filter === "returnable") {
+        result = result.filter(r => r.returnable === "Yes");
     } else if (state.status_filter === "critical") {
-        result = result.filter(r => parseInt(r.aging_days) > 60 && ["Open", "Partial"].includes(r.gp_status));
+        result = result.filter(r => r.returnable === "Yes" && parseInt(r.aging_days) > 60 && ["Open", "Partial"].includes(r.gp_status));
     } else if (state.status_filter !== "all") {
         result = result.filter(r => r.gp_status === state.status_filter);
     }
 
-    // Aging bucket filter
+    // Aging bucket filter (Returnable only)
     if (state.aging_bucket !== "all") {
         result = result.filter(r => {
+            if (r.returnable !== "Yes") return false;
             const d = parseInt(r.aging_days) || 0;
             if (state.aging_bucket === "0-30") return d <= 30;
             if (state.aging_bucket === "30-60") return d > 30 && d <= 60;
@@ -398,6 +502,9 @@ function sync_toolbar_controls() {
     document.querySelectorAll(".gp-filter-btn").forEach(el => {
         el.classList.toggle("active", el.dataset.status === state.status_filter);
     });
+    document.querySelectorAll(".gp-kpi-card").forEach(el => {
+        el.classList.toggle("active", el.dataset.status === state.status_filter);
+    });
     document.querySelectorAll(".gp-view-btn").forEach(el => {
         el.classList.toggle("active", el.dataset.view === state.view_mode);
     });
@@ -421,83 +528,60 @@ function inject_kpi_and_toolbar(datatable) {
     const state = gp_state();
 
     // ── Compute KPIs and filter button counts ─────────
-    const totalSent = data.reduce((s, r) => s + flt(r.sent_qty), 0);
-    const totalReceived = data.reduce((s, r) => s + flt(r.total_received), 0);
-    const totalPending = data.reduce((s, r) => s + (r.returnable === "Yes" ? flt(r.pending_qty) : 0), 0);
-    const totalAmount = data.reduce((s, r) => s + flt(r.total_amount), 0);
+    const gpRows = build_gate_pass_wise_rows(data);
+    const totalGatePasses = gpRows.length;
+    const totalReturnable = gpRows.filter(r => r.returnable === "Yes").length;
+    const totalOpen = gpRows.filter(r => r.gp_status === "Open").length;
+    const totalClosed = gpRows.filter(r => r.gp_status === "Closed").length;
 
     const is_gp_wise = state.view_mode === "gp_wise";
-    const statusData = is_gp_wise ? build_gate_pass_wise_rows(data) : data;
+    const statusData = is_gp_wise ? gpRows : data;
 
     const allCount = statusData.length;
+    const returnableCount = statusData.filter(r => r.returnable === "Yes").length;
     const openCount = statusData.filter(r => r.gp_status === "Open").length;
     const partialCount = statusData.filter(r => r.gp_status === "Partial").length;
     const closedCount = statusData.filter(r => r.gp_status === "Closed").length;
     const nrCount = statusData.filter(r => r.gp_status === "Non-Returnable").length;
-    const criticalCount = statusData.filter(
-        r => parseInt(r.aging_days) > 60 && ["Open", "Partial"].includes(r.gp_status)
-    ).length;
 
-    // Aging bucket counts (off full dataset)
-    const b0_30 = statusData.filter(r => (parseInt(r.aging_days) || 0) <= 30).length;
-    const b30_60 = statusData.filter(r => { const d = parseInt(r.aging_days) || 0; return d > 30 && d <= 60; }).length;
-    const b60_90 = statusData.filter(r => { const d = parseInt(r.aging_days) || 0; return d > 60 && d <= 90; }).length;
-    const b90p = statusData.filter(r => (parseInt(r.aging_days) || 0) > 90).length;
-
-    const fmt_num = n => parseFloat(n.toFixed(2)).toLocaleString();
-    const fmt_cur = n => "₹ " + parseFloat(n.toFixed(2)).toLocaleString("en-IN");
+    // Aging bucket counts (off full dataset - Returnable only)
+    const returnableStatusData = statusData.filter(r => r.returnable === "Yes");
+    const b0_30 = returnableStatusData.filter(r => (parseInt(r.aging_days) || 0) <= 30).length;
+    const b30_60 = returnableStatusData.filter(r => { const d = parseInt(r.aging_days) || 0; return d > 30 && d <= 60; }).length;
+    const b60_90 = returnableStatusData.filter(r => { const d = parseInt(r.aging_days) || 0; return d > 60 && d <= 90; }).length;
+    const b90p = returnableStatusData.filter(r => (parseInt(r.aging_days) || 0) > 90).length;
 
     const inner_html = `
 <div class="gp-kpi-wrapper">
     <div class="gp-kpi-card gp-kpi-clickable" data-status="all" onclick="gp_quick_filter('all')">
-        <div class="gp-kpi-label">Total Sent</div>
-        <div class="gp-kpi-value" style="color:#5e64ff;">${fmt_num(totalSent)}</div>
-        <div class="gp-kpi-sub">units dispatched</div>
+        <div class="gp-kpi-label">Total Gate pass</div>
+        <div class="gp-kpi-value" style="color:#5e64ff;">${totalGatePasses}</div>
+        <div class="gp-kpi-sub">all gate passes</div>
     </div>
-    <div class="gp-kpi-card gp-kpi-clickable" data-status="all" onclick="gp_quick_filter('all')">
-        <div class="gp-kpi-label">Total Received</div>
-        <div class="gp-kpi-value" style="color:#2ecc71;">${fmt_num(totalReceived)}</div>
-        <div class="gp-kpi-sub">units returned</div>
-    </div>
-    <div class="gp-kpi-card gp-kpi-clickable" data-status="pending" onclick="gp_quick_filter('pending')">
-        <div class="gp-kpi-label">Pending</div>
-        <div class="gp-kpi-value" style="color:${totalPending > 0 ? "#e74c3c" : "#2ecc71"};">${fmt_num(totalPending)}</div>
-        <div class="gp-kpi-sub">units still out</div>
-    </div>
-    <div class="gp-kpi-card gp-kpi-clickable" data-status="all" onclick="gp_quick_filter('all')">
-        <div class="gp-kpi-label">Total Value</div>
-        <div class="gp-kpi-value" style="color:#f39c12;font-size:17px;">${fmt_cur(totalAmount)}</div>
-        <div class="gp-kpi-sub">sent amount</div>
+    <div class="gp-kpi-card gp-kpi-clickable" data-status="returnable" onclick="gp_quick_filter('returnable')">
+        <div class="gp-kpi-label">Total Returnable</div>
+        <div class="gp-kpi-value" style="color:#17a2b8;">${totalReturnable}</div>
+        <div class="gp-kpi-sub">returnable passes</div>
     </div>
     <div class="gp-kpi-card gp-kpi-clickable" data-status="Open" onclick="gp_quick_filter('Open')">
-        <div class="gp-kpi-label">Open GPs</div>
-        <div class="gp-kpi-value" style="color:#f39c12;">${openCount}</div>
+        <div class="gp-kpi-label">Open</div>
+        <div class="gp-kpi-value" style="color:#f39c12;">${totalOpen}</div>
         <div class="gp-kpi-sub">awaiting return</div>
-    </div>
-    <div class="gp-kpi-card gp-kpi-clickable" data-status="Partial" onclick="gp_quick_filter('Partial')">
-        <div class="gp-kpi-label">Partial</div>
-        <div class="gp-kpi-value" style="color:#3498db;">${partialCount}</div>
-        <div class="gp-kpi-sub">partially returned</div>
     </div>
     <div class="gp-kpi-card gp-kpi-clickable" data-status="Closed" onclick="gp_quick_filter('Closed')">
         <div class="gp-kpi-label">Closed</div>
-        <div class="gp-kpi-value" style="color:#27ae60;">${closedCount}</div>
+        <div class="gp-kpi-value" style="color:#27ae60;">${totalClosed}</div>
         <div class="gp-kpi-sub">fully returned</div>
     </div>
-    ${criticalCount > 0 ? `
-    <div class="gp-kpi-card gp-kpi-clickable" style="border-color:#e74c3c;background:#fff5f5;" data-status="critical" onclick="gp_quick_filter('critical')">
-        <div class="gp-kpi-label" style="color:#e74c3c;">&#9888; Critical &gt;60d</div>
-        <div class="gp-kpi-value" style="color:#e74c3c;">${criticalCount}</div>
-        <div class="gp-kpi-sub">overdue gate passes</div>
-    </div>` : ""}
 </div>
 
 <div class="gp-toolbar-row">
     <div class="gp-status-toolbar">
         <label>STATUS:</label>
         <button class="gp-filter-btn" data-status="all" onclick="gp_quick_filter('all')">All (${allCount})</button>
+        <button class="gp-filter-btn" data-status="returnable" onclick="gp_quick_filter('returnable')">Returnable (${returnableCount})</button>
         <button class="gp-filter-btn" data-status="Open" onclick="gp_quick_filter('Open')">Open (${openCount})</button>
-        <button class="gp-filter-btn" data-status="Partial" onclick="gp_quick_filter('Partial')">Partial (${partialCount})</button>
+       
         <button class="gp-filter-btn" data-status="Closed" onclick="gp_quick_filter('Closed')">Closed (${closedCount})</button>
         <button class="gp-filter-btn" data-status="Non-Returnable" onclick="gp_quick_filter('Non-Returnable')">Non-Returnable (${nrCount})</button>
     </div>
@@ -520,7 +604,7 @@ function inject_kpi_and_toolbar(datatable) {
     </div>
     <div class="gp-search-box">
         <span class="gp-search-icon">🔍</span>
-        <input id="gp-search-input" type="text" placeholder="Search party, outward #, description, vehicle..." oninput="gp_set_search(this.value)" />
+        <input id="gp-search-input" type="text" placeholder="Search party, outward #, description..." oninput="gp_set_search(this.value)" />
     </div>
 </div>
 
@@ -554,37 +638,41 @@ function inject_kpi_and_toolbar(datatable) {
     gap:10px;padding:6px 0;
 }
 .gp-status-toolbar, .gp-view-toggle, .gp-aging-toolbar {
-    display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+    display:flex;flex-wrap:wrap;gap:8px;align-items:center;
 }
 .gp-status-toolbar label, .gp-view-toggle label, .gp-aging-toolbar label {
-    font-size:12px;color:#888;font-weight:600;margin-right:4px;
+    font-size:12px;color:#8c8c8c;font-weight:600;margin-right:4px;letter-spacing:.3px;
 }
 .gp-filter-btn, .gp-view-btn, .gp-aging-btn {
-    padding:4px 14px;border-radius:20px;font-size:12px;font-weight:600;
-    cursor:pointer;border:2px solid transparent;
-    transition:all .15s;background:#f1f1f1;color:#555;
+    padding:5px 15px;border-radius:20px;font-size:12px;font-weight:500;
+    cursor:pointer;border:none;outline:none;
+    transition:all .15s ease;background:#f2f3f5;color:#333;
 }
 .gp-filter-btn:hover, .gp-view-btn:hover, .gp-aging-btn:hover {
-    transform:translateY(-1px);box-shadow:0 2px 8px rgba(0,0,0,.15);
+    background:#e5e7eb;color:#111;
 }
-.gp-filter-btn[data-status="all"].active { background:#5e64ff;color:#fff; }
-.gp-filter-btn[data-status="Open"].active { background:#fff3cd;color:#856404;border-color:#ffc107; }
-.gp-filter-btn[data-status="Partial"].active { background:#cce5ff;color:#004085;border-color:#b8daff; }
-.gp-filter-btn[data-status="Closed"].active { background:#d4edda;color:#155724;border-color:#c3e6cb; }
-.gp-filter-btn[data-status="Non-Returnable"].active { background:#f8d7da;color:#721c24;border-color:#f5c6cb; }
-.gp-view-btn.active { background:#2c3e50;color:#fff; }
-.gp-aging-btn.active { background:#34495e;color:#fff; }
+.gp-filter-btn.active, .gp-filter-btn[data-status="all"].active {
+    background:#4f46e5;color:#fff;font-weight:600;
+}
+.gp-filter-btn[data-status="Open"].active { background:#eab308;color:#fff;font-weight:600; }
+.gp-filter-btn[data-status="Partial"].active { background:#3b82f6;color:#fff;font-weight:600; }
+.gp-filter-btn[data-status="Closed"].active { background:#16a34a;color:#fff;font-weight:600; }
+.gp-filter-btn[data-status="Non-Returnable"].active { background:#dc2626;color:#fff;font-weight:600; }
+.gp-view-btn.active { background:#2b3947;color:#fff;font-weight:600; }
+.gp-aging-btn.active { background:#2b3947;color:#fff;font-weight:600; }
 .aging-critical { background:#fff5f5 !important; }
+.gp-kpi-card.active { border-color:#4f46e5;box-shadow:0 0 0 2px rgba(79,70,229,0.25);background:#f8f9ff; }
 
 .gp-search-box {
     display:flex;align-items:center;gap:6px;
-    background:#fff;border:1px solid #ddd;border-radius:20px;
-    padding:4px 12px;min-width:280px;
+    background:#fff;border:1px solid #d1d5db;border-radius:20px;
+    padding:4px 14px;min-width:280px;box-shadow:0 1px 2px rgba(0,0,0,.03);
 }
 .gp-search-icon { font-size:12px;opacity:.6; }
 .gp-search-box input {
-    border:none;outline:none;font-size:13px;flex:1;background:transparent;
+    border:none;outline:none;font-size:12px;flex:1;background:transparent;color:#374151;
 }
+.gp-search-box input::placeholder { color:#9ca3af; }
 
 /* Party-wise summary table */
 .gp-party-summary {
@@ -666,7 +754,11 @@ function inject_kpi_and_toolbar(datatable) {
    USER ACTIONS — all funnel into gp_render()
 ───────────────────────────────────────────────────────────────────────── */
 window.gp_quick_filter = function (status) {
-    gp_state().status_filter = status;
+    if (gp_state().status_filter === status && status !== "all") {
+        gp_state().status_filter = "all";
+    } else {
+        gp_state().status_filter = status;
+    }
     gp_render();
 };
 
@@ -771,6 +863,7 @@ function build_gate_pass_wise_rows(data) {
         entry.total_received += flt(row.total_received);
         if (row.returnable === "Yes") {
             entry.pending_qty += flt(row.pending_qty);
+            entry.aging_days = Math.max(parseInt(entry.aging_days) || 0, parseInt(row.aging_days) || 0);
         }
     });
 
@@ -909,7 +1002,7 @@ function build_party_summary_rows(data) {
         if (r.gp_status === "Open") m.open_count++;
         if (r.gp_status === "Partial") m.partial_count++;
         if (r.gp_status === "Closed") m.closed_count++;
-        if (r.gp_status !== "Non-Returnable") {
+        if (r.returnable === "Yes") {
             m.max_aging = Math.max(m.max_aging, parseInt(r.aging_days) || 0);
         }
     });

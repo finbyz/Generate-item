@@ -135,17 +135,83 @@ function get_update_for_production_plan(frm) {
 }
 
 
-function add_update_work_orders_button(frm, group) {
-    if (frm.doc.docstatus !== 1 || !frm.doc.work_order_updated) {
+function add_update_and_create_work_orders_button(frm, group) {
+    if (frm.doc.docstatus !== 1) {
+        return;
+    }
+
+    // Hide when OMR or BOM modification is pending — user must click "Get Update" first
+    if (frm.doc.bom_modification || frm.doc.sales_order_modification) {
         return;
     }
 
     frm.add_custom_button(
-        __("Update Work Orders"),
-        () => get_update_for_production_plan(frm),
+        __("Update / Create Work Order"),
+        () => update_and_create_work_orders(frm),
         group
     );
 }
+function update_and_create_work_orders(frm) {
+    frappe.confirm(
+        __("This will update existing Work Orders (if applicable) and create any missing Work Orders. Continue?"),
+        () => {
+            frappe.dom.freeze(__("Updating / Creating Work Orders..."));
+
+            // Step 1: update existing Work Orders if flagged
+            const update_promise = frm.doc.work_order_updated
+                ? new Promise((resolve, reject) => {
+                      frappe.call({
+                          method: "generate_item.utils.work_order.get_update_for_production_plan",
+                          args: { docname: frm.doc.name },
+                          callback: function (r) {
+                              if (r.exc) return reject(new Error("Work Order update failed"));
+                              frappe.call({
+                                  method: "generate_item.utils.work_order.clear_work_order_updated",
+                                  args: { docname: frm.doc.name },
+                                  callback: () => resolve(),
+                                  error: (err) => reject(err)
+                              });
+                          },
+                          error: (err) => reject(err)
+                      });
+                  })
+                : Promise.resolve();
+
+            // Step 2: always call core make_work_order. It only creates
+            // Work Orders for pending qty, so existing ones are not duplicated.
+            update_promise
+                .then(
+                    () =>
+                        new Promise((resolve, reject) => {
+                            frappe.call({
+                                method: "run_doc_method",
+                                args: {
+                                    dt: frm.doctype,
+                                    dn: frm.doc.name,
+                                    method: "make_work_order",
+                                },
+                                callback: (r) => {
+                                    if (r.exc) return reject(new Error("Make Work Order failed"));
+                                    resolve(r);
+                                },
+                                error: (err) => reject(err)
+                            });
+                        })
+                )
+                .then(() => {
+                    frappe.show_alert({ message: __("Work Orders processed"), indicator: "green" });
+                })
+                .catch((err) => {
+                    console.error(err);
+                })
+                .finally(() => {
+                    frappe.dom.unfreeze();
+                    frm.reload_doc();
+                });
+        }
+    );
+}
+
 
 function add_get_update_button(frm, group) {
     if (!frm.doc.bom_modification && !frm.doc.sales_order_modification) {
@@ -158,22 +224,18 @@ function add_get_update_button(frm, group) {
             frappe.confirm(
                 __("This will sync planned qty from the Sales Order, regenerate sub-assembly items and material request items. Continue?"),
                 () => {
-                    frappe.call({
-                        method: "generate_item.utils.production_plan.get_update_for_submitted_pp",
-                        args: { docname: frm.doc.name },
-                        freeze: true,
-                        freeze_message: __("Updating Production Plan..."),
-                        callback: function (r) {
-                            if (!r.exc) {
-                                frappe.show_alert({
-                                    message: __("Production Plan updated"),
-                                    indicator: "green",
-                                });
-                                frm.reload_doc();
-                            }
-                        },
-                    });
-                }
+                        frappe.dom.freeze(__("Updating Production Plan..."));
+                        frappe.call({
+                            method: "generate_item.utils.production_plan.get_update_for_submitted_pp",
+                            args: { docname: frm.doc.name },
+                            callback: function (r) {
+                                if (r.exc) return frappe.dom.unfreeze();
+                                frappe.show_alert({ message: __("Production Plan updated"), indicator: "green" });
+                                Promise.resolve(frm.reload_doc()).finally(() => frappe.dom.unfreeze());
+                            },
+                            error: () => frappe.dom.unfreeze(),
+                        });
+                    }
             );
         },
         group
@@ -183,6 +245,11 @@ function add_get_update_button(frm, group) {
 function add_create_material_request_button(frm, group) {
     // Only relevant for submitted plans that actually have raw material rows
     if (frm.doc.docstatus !== 1 || !(frm.doc.mr_items || []).length || !frm.doc.production_plan_updated) {
+        return;
+    }
+
+    // Hide when OMR or BOM modification is pending — user must click "Get Update" first
+    if (frm.doc.bom_modification || frm.doc.sales_order_modification) {
         return;
     }
 
@@ -419,7 +486,7 @@ frappe.ui.form.on('Production Plan', {
         const UPDATE_GROUP = __("Update");
         if (frm.doc.docstatus === 1) {
 
-            add_update_work_orders_button(frm, UPDATE_GROUP);
+            add_update_and_create_work_orders_button(frm, UPDATE_GROUP);
             add_get_update_button(frm, UPDATE_GROUP);
             add_create_material_request_button(frm, UPDATE_GROUP);
 

@@ -173,11 +173,15 @@ def get_filter_options():
 		["WIP-Class", "FG-Rating", "Class", "Rating"],
 		pattern_set_field="class",
 	)
+	bores = get_attribute_values(
+		["FG-Bore", "WIP-Bore", "Bore"],
+	)
 
 	return {
 		"types_of_valve": types_of_valve,
 		"sizes": sizes,
 		"classes": classes,
+		"bores": bores,
 	}
 
 

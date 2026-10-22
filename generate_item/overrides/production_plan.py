@@ -28,7 +28,7 @@ class ProductionPlan(_ProductionPlan):
             except Exception as e:
                 frappe.log_error("Production Plan Init Cleanup", f"Cleanup error in __init__: {str(e)}")
 
-    def _get_warehouse_mapping_for_work_order(self, branch, production_item):
+    def _get_warehouse_mapping_for_work_order(self, branch, production_item, category=None):
         """Get warehouse mapping for Work Order creation - Same logic as JS set_wo_warehouses"""
         WAREHOUSE_MAP = {
             "Sanand|Sub Assembly": {
@@ -63,32 +63,49 @@ class ProductionPlan(_ProductionPlan):
             }
         }
         
-        if not branch or not production_item:
+        if not branch:
+            naming_series = getattr(self, "naming_series", "") or ""
+            if naming_series.startswith("PPOS"):
+                branch = "Sanand"
+            elif naming_series.startswith("PPOR"):
+                branch = "Rabale"
+            elif naming_series.startswith("PPON"):
+                branch = "Nandikoor"
+
+        if not branch:
             return {}
+
+        if category:
+            key = f"{branch}|{category}"
+            if key in WAREHOUSE_MAP:
+                return WAREHOUSE_MAP[key]
         
-        item_group = frappe.db.get_value("Item", production_item, "item_group")
-        if not item_group:
-            return {}
+        item_group = frappe.db.get_value("Item", production_item, "item_group") if production_item else None
         
-        if item_group == "Sub Assembly":
+        if item_group in ("Sub Assembly", "Sub Assemblies"):
             key = f"{branch}|Sub Assembly"
             if key in WAREHOUSE_MAP:
                 return WAREHOUSE_MAP[key]
         else:
-            is_fg = self._is_under_finished_goods(item_group)
-            if is_fg:
-                key = f"{branch}|Finished Goods"
-                if key in WAREHOUSE_MAP:
-                    return WAREHOUSE_MAP[key]
+            # Finished Goods, Products, or any standard production item
+            key = f"{branch}|Finished Goods"
+            if key in WAREHOUSE_MAP:
+                return WAREHOUSE_MAP[key]
         
         return {}
 
     def _is_under_finished_goods(self, item_group):
-        """Check if item group is under 'Finished Goods' - Same logic as JS"""
+        """Check if item group is under 'Finished Goods' or 'Products' - Same logic as JS"""
         try:
+            if not item_group:
+                return False
+
+            if item_group in ("Finished Goods", "Products"):
+                return True
+
             item_group_doc = frappe.get_doc("Item Group", item_group)
             
-            if item_group_doc.name == "Finished Goods":
+            if item_group_doc.name in ("Finished Goods", "Products"):
                 return True
             
             parent_group = item_group_doc.parent_item_group
@@ -96,7 +113,7 @@ class ProductionPlan(_ProductionPlan):
             depth = 0
             
             while parent_group and depth < max_depth:
-                if parent_group == "Finished Goods":
+                if parent_group in ("Finished Goods", "Products"):
                     return True
                 
                 parent_doc = frappe.get_doc("Item Group", parent_group)
@@ -109,7 +126,7 @@ class ProductionPlan(_ProductionPlan):
             frappe.log_error("Item Group Check Error", f"Error checking item group {item_group}: {str(e)}")
             return False
 
-    def _apply_warehouse_mapping(self, work_order_data, production_item):
+    def _apply_warehouse_mapping(self, work_order_data, production_item, category=None):
         """Apply warehouse mapping to work order data - Same logic as JS apply_mapping"""
         branch = work_order_data.get("branch") or getattr(self, "branch", None)
         
@@ -120,9 +137,20 @@ class ProductionPlan(_ProductionPlan):
                     break
         
         if not branch:
+            naming_series = getattr(self, "naming_series", "") or ""
+            if naming_series.startswith("PPOS"):
+                branch = "Sanand"
+            elif naming_series.startswith("PPOR"):
+                branch = "Rabale"
+            elif naming_series.startswith("PPON"):
+                branch = "Nandikoor"
+
+        if branch:
+            work_order_data["branch"] = branch
+        else:
             return work_order_data
         
-        warehouse_mapping = self._get_warehouse_mapping_for_work_order(branch, production_item)
+        warehouse_mapping = self._get_warehouse_mapping_for_work_order(branch, production_item, category=category)
         
         if warehouse_mapping:
             if warehouse_mapping.get("source_warehouse"):
@@ -521,6 +549,8 @@ class ProductionPlan(_ProductionPlan):
         if not wo_list:
             frappe.msgprint(_("No Work Orders were created"))
 
+        return wo_list
+
     def make_work_order_for_finished_goods(self, wo_list, default_warehouses):
         """Override to add naming series for finished goods work orders"""
         
@@ -548,9 +578,33 @@ class ProductionPlan(_ProductionPlan):
             if self.sub_assembly_items:
                 item["use_multi_level_bom"] = 0
 
-            # set_default_warehouses_local(item, default_warehouses)
-            # Apply warehouse mapping based on item group and branch - Same as JS
-            item = self._apply_warehouse_mapping(item, item.get("production_item"))
+            # 1. Set Branch (try header, then po_items, then naming_series)
+            branch_value = getattr(self, "branch", None)
+            if not branch_value and getattr(self, "po_items", None):
+                try:
+                    po_item_match = next((pi for pi in self.po_items if pi.item_code == item.get("production_item") and pi.warehouse == item.get("fg_warehouse")), None)
+                    if po_item_match and getattr(po_item_match, "branch", None):
+                        branch_value = po_item_match.branch
+                    
+                    if not branch_value:
+                        branch_value = next((pi.branch for pi in self.po_items if getattr(pi, "branch", None)), None)
+                except Exception:
+                    branch_value = None
+
+            if not branch_value:
+                naming_series = getattr(self, "naming_series", "") or ""
+                if naming_series.startswith("PPOS"):
+                    branch_value = "Sanand"
+                elif naming_series.startswith("PPOR"):
+                    branch_value = "Rabale"
+                elif naming_series.startswith("PPON"):
+                    branch_value = "Nandikoor"
+
+            if branch_value:
+                item["branch"] = branch_value
+
+            # 2. Apply warehouse mapping based on item group and branch - Same as JS
+            item = self._apply_warehouse_mapping(item, item.get("production_item"), category="Finished Goods")
 
             # Fallback to default if mapping not applied
             if not item.get("wip_warehouse"):
@@ -560,53 +614,30 @@ class ProductionPlan(_ProductionPlan):
             
             # --- Custom Logic Injection ---
             
-            # 1. Set Naming Series
+            # 3. Set Naming Series
             item["naming_series"] = work_order_naming_series
-            
-            # 2. Set Branch (try to get from po_items if not on header)
-            branch_value = getattr(self, "branch", None)
-            if not branch_value and getattr(self, "po_items", None):
-                try:
-                    # Try to find matching po_item for this item
-                    po_item_match = next((pi for pi in self.po_items if pi.item_code == item.get("production_item") and pi.warehouse == item.get("fg_warehouse")), None)
-                    if po_item_match and getattr(po_item_match, "branch", None):
-                         branch_value = po_item_match.branch
-                    
-                    if not branch_value:
-                         # Fallback to any branch found
-                         branch_value = next((pi.branch for pi in self.po_items if getattr(pi, "branch", None)), None)
-                except Exception:
-                    branch_value = None
-            
-            if branch_value:
-                item["branch"] = branch_value
                 
-            # 3. Set Custom Batch No
-            # The item dict here is constructed from po_items in get_production_items
-            # Check if custom_batch_no is available on the po_item source
-            # We can try to look it up again from po_items if missing
+            # 4. Set Custom Batch No
             if not item.get("custom_batch_no"):
-                 # Find original po_item
-                 po_item_ref = item.get("production_plan_item")
-                 if po_item_ref:
-                     po_source = next((pi for pi in self.po_items if pi.name == po_item_ref), None)
-                     if po_source:
-                         if getattr(po_source, "custom_batch_no", None):
-                             item["custom_batch_no"] = po_source.custom_batch_no
-                         if getattr(po_source, "branch", None) and not item.get("branch"):
-                             item["branch"] = po_source.branch
+                po_item_ref = item.get("production_plan_item")
+                if po_item_ref:
+                    po_source = next((pi for pi in self.po_items if pi.name == po_item_ref), None)
+                    if po_source:
+                        if getattr(po_source, "custom_batch_no", None):
+                            item["custom_batch_no"] = po_source.custom_batch_no
+                        if getattr(po_source, "branch", None) and not item.get("branch"):
+                            item["branch"] = po_source.branch
 
-            # 4. Set GA Drawing fields (if available on po_item)
-            # Similar lookup
+            # 5. Set GA Drawing fields (if available on po_item)
             if not item.get("custom_ga_drawing_no") or not item.get("custom_ga_drawing_rev_no"):
                 po_item_ref = item.get("production_plan_item")
                 if po_item_ref:
                     po_source = next((pi for pi in self.po_items if pi.name == po_item_ref), None)
                     if po_source:
-                         if getattr(po_source, "custom_drawing_no", None):
-                             item["custom_ga_drawing_no"] = po_source.custom_drawing_no
-                         if getattr(po_source, "custom_drawing_rev_no", None):
-                             item["custom_ga_drawing_rev_no"] = po_source.custom_drawing_rev_no
+                        if getattr(po_source, "custom_drawing_no", None):
+                            item["custom_ga_drawing_no"] = po_source.custom_drawing_no
+                        if getattr(po_source, "custom_drawing_rev_no", None):
+                            item["custom_ga_drawing_rev_no"] = po_source.custom_drawing_rev_no
 
             # --- End Custom Logic Injection ---
             
@@ -622,13 +653,24 @@ class ProductionPlan(_ProductionPlan):
             if work_order:
                 wo_list.append(work_order)
                 
-                # Double check naming series on created doc
+                # Double check naming series and warehouses on created doc
                 try:
                     wo_doc = frappe.get_doc("Work Order", work_order)
+                    updates = {}
                     if wo_doc.naming_series != work_order_naming_series:
-                         # This shouldn't happen now, but as a safety net
-                         wo_doc.db_set("naming_series", work_order_naming_series, update_modified=False)
-                         frappe.log_error("Work Order Naming Series Logic Failed", f"Had to force update naming series for {work_order}")
+                        updates["naming_series"] = work_order_naming_series
+
+                    if item.get("branch") and not getattr(wo_doc, "branch", None):
+                        updates["branch"] = item["branch"]
+                    if item.get("wip_warehouse") and not getattr(wo_doc, "wip_warehouse", None):
+                        updates["wip_warehouse"] = item["wip_warehouse"]
+                    if item.get("fg_warehouse") and not getattr(wo_doc, "fg_warehouse", None):
+                        updates["fg_warehouse"] = item["fg_warehouse"]
+                    if item.get("source_warehouse") and not getattr(wo_doc, "source_warehouse", None):
+                        updates["source_warehouse"] = item["source_warehouse"]
+
+                    if updates:
+                        wo_doc.db_set(updates, update_modified=False)
                          
                     # Backfill required_items child table fields
                     updates_needed = False
@@ -638,12 +680,14 @@ class ProductionPlan(_ProductionPlan):
                             req_updates["branch"] = item["branch"]
                         if item.get("custom_batch_no") and not req.custom_batch_no:
                             req_updates["custom_batch_no"] = item["custom_batch_no"]
+                        if item.get("source_warehouse") and not req.source_warehouse:
+                            req_updates["source_warehouse"] = item["source_warehouse"]
                         
                         if req_updates:
                             req.db_set(req_updates, update_modified=False)
 
                 except Exception as e:
-                     frappe.log_error("Work Order Post-Create Check Error", str(e))      
+                    frappe.log_error("Work Order Post-Create Check Error", str(e))      
 
 
     @frappe.whitelist()
@@ -1216,6 +1260,15 @@ class ProductionPlan(_ProductionPlan):
                 frappe.log_error("Production Plan Item Check Error", f"Error checking Production Plan Item existence for {sub_item_name}: {str(e)}")
                 row.production_plan_item = None
 
+            # Apply warehouse mapping based on sub-assembly and branch
+            work_order_data = self._apply_warehouse_mapping(work_order_data, getattr(row, "production_item", None), category="Sub Assembly")
+
+            # Fallback to default if mapping not applied
+            if not work_order_data.get("wip_warehouse"):
+                work_order_data["wip_warehouse"] = default_warehouses.get("wip_warehouse")
+            if not work_order_data.get("fg_warehouse"):
+                work_order_data["fg_warehouse"] = default_warehouses.get("fg_warehouse")
+
             self.safe_prepare_data_for_sub_assembly_items(row, work_order_data)
 
             if work_order_data.get("qty") <= 0:
@@ -1253,6 +1306,13 @@ class ProductionPlan(_ProductionPlan):
                     # Branch
                     if work_order_data.get("branch") and hasattr(wo_doc, "branch") and not getattr(wo_doc, "branch", None):
                         updates["branch"] = work_order_data.get("branch")
+                    # Warehouses
+                    if work_order_data.get("wip_warehouse") and not getattr(wo_doc, "wip_warehouse", None):
+                        updates["wip_warehouse"] = work_order_data["wip_warehouse"]
+                    if work_order_data.get("fg_warehouse") and not getattr(wo_doc, "fg_warehouse", None):
+                        updates["fg_warehouse"] = work_order_data["fg_warehouse"]
+                    if work_order_data.get("source_warehouse") and not getattr(wo_doc, "source_warehouse", None):
+                        updates["source_warehouse"] = work_order_data["source_warehouse"]
                     # Sales Order
                     if work_order_data.get("sales_order") and hasattr(wo_doc, "sales_order") and not getattr(wo_doc, "sales_order", None):
                         updates["sales_order"] = work_order_data.get("sales_order")
