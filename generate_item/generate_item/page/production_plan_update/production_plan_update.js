@@ -320,6 +320,7 @@ class PPWOControlReport {
 		.ppwo-badge.completed{background:rgba(16,185,129,.12); color:var(--ppwo-green);}
 		.ppwo-badge.pending{background:rgba(245,158,11,.14); color:var(--ppwo-amber);}
 		.ppwo-badge.critical{background:rgba(239,68,68,.14); color:var(--ppwo-red);}
+		.ppwo-badge.not_created{background:rgba(138,143,156,.14); color:var(--ppwo-grey);}
 		.ppwo-badge.not_required{background:rgba(59,130,246,.12); color:var(--ppwo-blue);}
 		.ppwo-badge.waiting{background:rgba(138,143,156,.14); color:var(--ppwo-grey);}
 		.ppwo-sev{font-weight:700; font-size:10px; padding:2px 8px; border-radius:999px;}
@@ -484,13 +485,16 @@ class PPWOControlReport {
 				<label>Date Period</label>
 				<select class="form-control period-select">
 
-					<option value="today" selected >Today</option>
-						<option value="this_week">This Week</option>
+					<option value="today">Today</option>
+					<option value="this_week">This Week</option>
 					<option value="last_week">Last Week</option>
-					<option value="this_month">This Month</option>
+					<option value="this_month" selected>This Month</option>
 					<option value="last_month">Last Month</option>
+					<option value="this_quarter">This Quarter</option>
+					<option value="last_quarter">Last Quarter</option>
 					<option value="this_year">This Year</option>
 					<option value="last_year">Last Year</option>
+					<option value="all">All Time</option>
 					<option value="custom">Custom…</option>
 				</select>
 			</div>
@@ -545,12 +549,27 @@ class PPWOControlReport {
 			this.link_controls[fieldname] = ctrl;
 		});
 
+		// Read URL parameters if frappe.route_options is empty
+		if (!frappe.route_options || !Object.keys(frappe.route_options).length) {
+			const urlParams = new URLSearchParams(window.location.search);
+			if (urlParams.toString()) {
+				frappe.route_options = {};
+				urlParams.forEach((v, k) => { frappe.route_options[k] = v; });
+			}
+		}
+
 		if (frappe.route_options) {
 			Object.keys(frappe.route_options).forEach(k => {
 				if (this.link_controls[k]) {
 					this.link_controls[k].set_value(frappe.route_options[k]);
 				} else if (k === "period") {
 					$bar.find(".period-select").val(frappe.route_options[k]);
+				} else if (k === "from_date") {
+					$bar.find(".date-from").val(frappe.route_options[k]);
+					$bar.find(".period-select").val("custom");
+				} else if (k === "to_date") {
+					$bar.find(".date-to").val(frappe.route_options[k]);
+					$bar.find(".period-select").val("custom");
 				} else if (k === "pending_only") {
 					if (cint(frappe.route_options[k])) {
 						$bar.find('.ppwo-toggle-pill[data-toggle="pending_only"]').addClass("active");
@@ -569,7 +588,11 @@ class PPWOControlReport {
 			this.update_date_fields();
 			this.on_filters_changed();
 		});
-		$bar.on("change", ".date-from, .date-to", () => this.on_filters_changed());
+		$bar.on("change", ".date-from, .date-to", () => {
+			$bar.find(".period-select").val("custom");
+			this.update_date_fields();
+			this.on_filters_changed();
+		});
 		$bar.on("click", ".ppwo-toggle-pill", (e) => {
 			const $pill = $(e.currentTarget);
 			$pill.toggleClass("active");
@@ -581,6 +604,84 @@ class PPWOControlReport {
 			}
 			this.on_filters_changed();
 		});
+	}
+
+	resolve_preset(preset) {
+		const today = (window.frappe && frappe.datetime && frappe.datetime.get_today) 
+			? frappe.datetime.get_today() 
+			: (() => {
+				const d = new Date();
+				return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+			})();
+		const todayDate = (window.frappe && frappe.datetime && frappe.datetime.str_to_obj)
+			? frappe.datetime.str_to_obj(today)
+			: new Date();
+
+		const fmt = (d) => {
+			if (!d) return "";
+			if (typeof d === "string") return d;
+			if (window.frappe && frappe.datetime && frappe.datetime.obj_to_str) {
+				return frappe.datetime.obj_to_str(d);
+			}
+			const y = d.getFullYear();
+			const m = String(d.getMonth() + 1).padStart(2, "0");
+			const day = String(d.getDate()).padStart(2, "0");
+			return `${y}-${m}-${day}`;
+		};
+
+		const add = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+		const subMonths = (d, n) => { const x = new Date(d); x.setMonth(x.getMonth() - n); return x; };
+		const dow = todayDate.getDay();
+		const daysToMon = (dow === 0 ? -6 : 1 - dow);
+
+		const p = (preset || "").toLowerCase().replace(/[-_ ]/g, "");
+
+		switch (p) {
+			case "today":
+				return { from_date: today, to_date: today };
+			case "thisweek": {
+				const mon = add(todayDate, daysToMon);
+				return { from_date: fmt(mon), to_date: today };
+			}
+			case "lastweek": {
+				const lastMon = add(todayDate, daysToMon - 7);
+				const lastSun = add(lastMon, 6);
+				return { from_date: fmt(lastMon), to_date: fmt(lastSun) };
+			}
+			case "thismonth": {
+				const first = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+				return { from_date: fmt(first), to_date: today };
+			}
+			case "lastmonth": {
+				const first = new Date(todayDate.getFullYear(), todayDate.getMonth() - 1, 1);
+				const last = new Date(todayDate.getFullYear(), todayDate.getMonth(), 0);
+				return { from_date: fmt(first), to_date: fmt(last) };
+			}
+			case "thisquarter": {
+				const start = subMonths(todayDate, 3);
+				return { from_date: fmt(start), to_date: today };
+			}
+			case "lastquarter": {
+				const thisQStart = subMonths(todayDate, 3);
+				const lastQEnd = add(thisQStart, -1);
+				const lastQStart = subMonths(thisQStart, 3);
+				return { from_date: fmt(lastQStart), to_date: fmt(lastQEnd) };
+			}
+			case "thisyear": {
+				const first = new Date(todayDate.getFullYear(), 0, 1);
+				return { from_date: fmt(first), to_date: today };
+			}
+			case "lastyear": {
+				const first = new Date(todayDate.getFullYear() - 1, 0, 1);
+				const last = new Date(todayDate.getFullYear() - 1, 11, 31);
+				return { from_date: fmt(first), to_date: fmt(last) };
+			}
+			case "all":
+			case "alltime":
+				return { from_date: "", to_date: "" };
+			default:
+				return { from_date: today, to_date: today };
+		}
 	}
 
 	update_date_fields() {
@@ -595,52 +696,9 @@ class PPWOControlReport {
 			$from.prop("readonly", true);
 			$to.prop("readonly", true);
 
-			const today = new Date();
-			let from = null, to = null;
-
-			switch(period) {
-				case "today":
-					from = to = today;
-					break;
-				case "this_week":
-					from = new Date(today);
-					// Use (getDay() || 7) so Sunday (0) becomes 7, giving correct Mon start
-					from.setDate(today.getDate() - (today.getDay() || 7) + 1);
-					to = new Date(from);
-					to.setDate(from.getDate() + 6);
-					break;
-				case "last_week":
-					from = new Date(today);
-					// Step back to this Monday, then subtract 7 to reach last Monday
-					from.setDate(today.getDate() - (today.getDay() || 7) + 1 - 7);
-					to = new Date(from);
-					to.setDate(from.getDate() + 6);
-					break;
-				case "this_month":
-					from = new Date(today.getFullYear(), today.getMonth(), 1);
-					to = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-					break;
-				case "last_month":
-					from = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-					to = new Date(today.getFullYear(), today.getMonth(), 0);
-					break;
-				case "this_year":
-					from = new Date(today.getFullYear(), 0, 1);
-					to = new Date(today.getFullYear(), 11, 31);
-					break;
-				case "last_year":
-					from = new Date(today.getFullYear() - 1, 0, 1);
-					to = new Date(today.getFullYear() - 1, 11, 31);
-					break;
-			}
-
-			if (from) {
-				$from.val(from.toISOString().split('T')[0]);
-				$to.val(to.toISOString().split('T')[0]);
-			} else {
-				$from.val("");
-				$to.val("");
-			}
+			const { from_date, to_date } = this.resolve_preset(period);
+			$from.val(from_date || "");
+			$to.val(to_date || "");
 		}
 	}
 
@@ -667,7 +725,7 @@ class PPWOControlReport {
 		});
 		const period = this.$body.find(".period-select").val();
 		if (period) {
-			f.period = this.$body.find(".period-select").val() || "today";
+			f.period = this.$body.find(".period-select").val() || "this_month";
 			f.from_date = this.$body.find(".date-from").val();
 			f.to_date = this.$body.find(".date-to").val();
 		}

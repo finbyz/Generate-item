@@ -12,6 +12,7 @@
   "customer_section",
   "column_break0",
   "title",
+  "branch",
   "naming_series",
   "customer",
   "customer_name",
@@ -184,8 +185,9 @@
    "no_copy": 1,
    "oldfieldname": "naming_series",
    "oldfieldtype": "Select",
-   "options": "PRO-INV-.YYYY.-",
+   "options": "PINS.fiscal.#####\nPINN.fiscal.#####\nPINR.fiscal.#####",
    "print_hide": 1,
+   "read_only": 1,
    "reqd": 1,
    "set_only_once": 1
   },
@@ -1311,6 +1313,13 @@
    "fieldtype": "Data",
    "hidden": 1,
    "label": "Company Series"
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "options": "Branch",
+   "reqd": 1
   }
  ],
  "grid_page_length": 50,
@@ -1318,10 +1327,11 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-02 18:39:58.610576",
+ "modified": "2026-10-26 14:01:11.701840",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Proforma Invoice",
+ "naming_rule": "By \"Naming Series\" field",
  "owner": "Administrator",
  "permissions": [
   {

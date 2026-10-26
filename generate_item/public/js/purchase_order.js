@@ -57,6 +57,10 @@ function render_po_mould_set_info(frm) {
 frappe.ui.form.on('Purchase Order', {
 
 	onload: function (frm) {
+		if (!frappe.user.has_role('System Manager')) {
+			frm.doc.__onload = frm.doc.__onload || {};
+			frm.doc.__onload.can_update_items = false;
+		}
 		// Handle case when purchase order is loaded with production plan already set (backend creation)
 		if (frm.doc.production_plan && !frm.doc.custom_batch_no) {
 			set_batch_no_from_production_plan(frm);
@@ -127,6 +131,11 @@ frappe.ui.form.on('Purchase Order', {
 	},
 
 	refresh: function (frm) {
+		if (!frappe.user.has_role('System Manager')) {
+			frm.doc.__onload = frm.doc.__onload || {};
+			frm.doc.__onload.can_update_items = false;
+			frm.remove_custom_button(__('Update Items'));
+		}
 		// Make qty field read-only for Purchase User role only if Material Request exists in items
 		// if (frappe.user_roles.includes('Purchase User')) {
 		// 	let hasMaterialRequest = false;
@@ -150,6 +159,7 @@ frappe.ui.form.on('Purchase Order', {
 
 		set_po_defaults(frm);
 		render_po_mould_set_info(frm);
+		add_get_update_button(frm);
 
 		if (frm.doc.docstatus !== 0) {
 			frm.fields_dict.items?.grid?.wrapper?.find('.fetch-serial-btn-wrapper').remove();
@@ -964,4 +974,36 @@ function _random_sample_po(arr, k) {
 		pool[j] = tmp;
 	}
 	return pool.slice(0, k);
+}
+
+function add_get_update_button(frm) {
+	if (!frm.doc.bom_modification || frm.doc.docstatus >= 2) {
+		return;
+	}
+
+	frm.add_custom_button(__("Get Update"), function () {
+		frappe.confirm(
+			__("This will fetch the latest drawing and specification details from linked Material Requests. Continue?"),
+			function () {
+				frappe.dom.freeze(__("Updating Purchase Order..."));
+				frappe.call({
+					method: "generate_item.utils.purchase_order.get_update_for_purchase_order",
+					args: { docname: frm.doc.name },
+					callback: function (r) {
+						frappe.dom.unfreeze();
+						if (!r.exc && r.message) {
+							frappe.show_alert({
+								message: __("Purchase Order updated successfully"),
+								indicator: "green",
+							});
+							frm.reload_doc();
+						}
+					},
+					error: function () {
+						frappe.dom.unfreeze();
+					},
+				});
+			}
+		);
+	});
 }

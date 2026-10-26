@@ -14,7 +14,10 @@ frappe.ui.form.on('Proforma Invoice', {
 					frm.set_value("bank_account",r.name);
 				})
 			}
-        }
+		}
+		if (frm.is_new() && frm.doc.branch) {
+			set_proforma_naming_series(frm);
+		}
 	},
 	refresh: function(frm){
 		// if(!["Paid", "Closed"].includes(frm.doc.status) && frm.doc.docstatus==1) {
@@ -24,6 +27,12 @@ frappe.ui.form.on('Proforma Invoice', {
 		// 	frm.add_custom_button(__('Sales Invoice'), () => frm.trigger('make_sales_invoice'), __('Create'));
 		// }
 		frm.trigger('show_open_close_buttons');
+		if (frm.is_new() && frm.doc.branch) {
+			set_proforma_naming_series(frm);
+		}
+	},
+	branch: function(frm) {
+		set_proforma_naming_series(frm);
 	},
 	show_open_close_buttons: function(frm){
 		if (frm.doc.docstatus == 1){
@@ -137,6 +146,24 @@ erpnext.selling.SalesOrderController = class SalesOrderController extends erpnex
 		this._super();
 		let allow_delivery = false;
 	}
-
 };
+
 $.extend(cur_frm.cscript, new erpnext.selling.SalesOrderController({frm: cur_frm}));
+
+function set_proforma_naming_series(frm) {
+	if (!frm.is_new() || !frm.doc.branch) {
+		return;
+	}
+
+	const series_map = {
+		"Sanand": "PINS.fiscal.#####",
+		"Nandikoor": "PINN.fiscal.#####",
+		"Rabale": "PINR.fiscal.#####"
+	};
+
+	const naming_series = series_map[frm.doc.branch];
+	if (naming_series && frm.doc.naming_series !== naming_series) {
+		frm.set_value("naming_series", naming_series);
+		frm.refresh_field("naming_series");
+	}
+}

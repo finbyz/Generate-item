@@ -49,11 +49,24 @@ The BMR copies current BOM component context and supports revised components, qu
 On submit it:
 
 1. applies component changes;
-2. updates BOM item revision data;
-3. synchronizes batch and Sales Order context;
-4. handles removed sub-assembly references;
-5. flags linked Production Plans through `bom_modification`;
-6. creates Production Plan Update tasks.
+2. propagates changed `custom_drawing_no` values to safely matched draft and
+   submitted Production Plan, Work Order, Material Request, Purchase Order, and
+   Purchase Receipt child rows;
+3. excludes cancelled documents and reports ambiguous records without changing
+   them;
+4. updates BOM item revision data;
+5. synchronizes batch and Sales Order context;
+6. handles removed sub-assembly references;
+7. flags linked Production Plans through `bom_modification` for item or
+   quantity changes only;
+8. creates Production Plan Update tasks for those manufacturing changes.
+
+Drawing propagation follows BOM component identity plus transaction-row links;
+it does not use item code alone. When repeated components or BOM-derived planning rows cannot be disambiguated,
+downstream rows are left unchanged and reported. Drawing-only changes do not
+invoke the Production Plan or Work Order quantity synchronization flow.
+Propagation changes only the child-row drawing field; it does not rerun
+submitted-document lifecycle hooks.
 
 The shipped active `BOM Modification` workflow is:
 
@@ -124,4 +137,3 @@ Work Order operations are not synchronized by the current implementation.
 ## Detailed reference
 
 See [Production Plan Modification Workflow](../production_plan_modification_workflow.md) for button visibility, server endpoints, state fields, task propagation, concurrency behavior, and developer tests.
-

@@ -291,6 +291,21 @@ def clear_batch_and_so_from_child_boms(bom_name, visited=None):
 def on_submit(self, method=None):
     if self.sales_order and self.custom_batch_no and getattr(self, "name", None):
         propagate_batch_and_so_to_child_boms(self.name, self.sales_order, self.custom_batch_no)
+
+    # Auto-create Draft Production Plan using native flow
+    try:
+        create_draft_production_plan_from_bom(self)
+    except Exception as e:
+        error_msg = f"Failed to auto-create Production Plan for BOM {getattr(self, 'name', '')}: {str(e)}"
+        frappe.msgprint(
+            _(error_msg) + "<br><br>" + _("Please check Error Log for the complete traceback."),
+            title=_("Production Plan Creation Failed"),
+            indicator="red",
+        )
+        frappe.log_error(
+            title=f"Production Plan Auto Create Error ({getattr(self, 'name', '')})",
+            message=f"{error_msg}\n\n{frappe.get_traceback()}",
+        )
  
 
 
@@ -624,3 +639,308 @@ def get_sub_assembly_boms(doctype, txt, searchfield, start, page_len, filters):
         "start": start,
         "page_len": page_len
     })                
+    
+    
+
+import frappe
+from frappe import _
+from frappe.utils import flt, get_link_to_form, now_datetime, nowdate
+from erpnext.manufacturing.doctype.production_plan.production_plan import (
+    get_items_for_material_requests,
+)
+
+SAVEPOINT = "pp_from_bom"
+
+BRANCH_CONFIG = {
+    "Rabale": {
+        "series": "PPOR.fiscal.####",
+        "semi": "Rabale Semi Finished - SVIPL",
+        "alloc": "Rabale Order Allocated - SVIPL",
+    },
+    "Nandikoor": {
+        "series": "PPON.fiscal.####",
+        "semi": "Nandikoor Semi Finished - SVIPL",
+        "alloc": "Nandikoor Order Allocated - SVIPL",
+    },
+    "Sanand": {
+        "series": "PPOS.fiscal.####",
+        "semi": "Sanand Semi Finished - SVIPL",
+        "alloc": "Sanand Order Allocated - SVIPL",
+    },
+}
+DEFAULT_SERIES = "PPOS.fiscal.####"
+
+
+def _branch_config(branch):
+    for key, cfg in BRANCH_CONFIG.items():
+        if branch and key in branch:
+            return cfg
+    return {}
+
+
+def _notify(bom_name, title, msg, indicator="orange", log=None):
+    """Show a message to the user; write an Error Log only when `log` is given."""
+    frappe.msgprint(msg, title=_(title), indicator=indicator)
+    if log:
+        frappe.log_error(
+            title=f"{title}: {bom_name}"[:140],
+            message=log,
+            reference_doctype="BOM",
+            reference_name=bom_name,
+        )
+
+
+def get_default_transfer_warehouses(branch):
+    if not branch:
+        return []
+    store_wh = frappe.db.get_value(
+        "Warehouse",
+        {"branch": branch, "store_warehouse": 1, "disabled": 0, "is_group": 0},
+        "name",
+    )
+    return [{"warehouse": store_wh}] if store_wh else []
+
+AUTO_PP_FIELD = "auto_create_production_plan_on_bom_submit"
+
+def create_draft_production_plan_from_bom(bom_doc):
+    """Triggered on BOM submit. Never blocks the BOM submit."""
+    # Automation switch in Manufacturing Settings
+    if not frappe.db.get_single_value("Manufacturing Settings", AUTO_PP_FIELD):
+        return  # unchecked -> do nothing (no message, no Error Log)
+    frappe.db.savepoint(SAVEPOINT)
+    try:
+        _create_pp(bom_doc)
+    except Exception as e:
+        frappe.db.rollback(save_point=SAVEPOINT)
+        _notify(
+            bom_doc.name,
+            "Production Plan Error",
+            _("Production Plan was NOT created for BOM <b>{0}</b> because of an unexpected error:<br>{1}").format(
+                bom_doc.name, frappe.utils.escape_html(str(e))
+            ),
+            indicator="red",
+            log=f"BOM: {bom_doc.name}\n\n{frappe.get_traceback()}",
+        )
+
+
+def _create_pp(bom_doc):
+    bom_name = bom_doc.name
+    sales_order = getattr(bom_doc, "sales_order", None)
+    batch_no = getattr(bom_doc, "custom_batch_no", None)
+    item_code = getattr(bom_doc, "item", None)
+
+    # 1. Required fields
+    if not sales_order or not batch_no:
+        return _notify(
+            bom_name,
+            "Production Plan Skipped",
+            _("Production Plan was NOT created for BOM <b>{0}</b>: Sales Order or Batch No is missing.<br><br>"
+              "<b>Sales Order:</b> {1}<br><b>Batch No:</b> {2}").format(
+                bom_name, sales_order or _("Not Set"), batch_no or _("Not Set")
+            ),
+            log=f"BOM: {bom_name}\nItem: {item_code}\nSales Order: {sales_order}\nBatch No: {batch_no}",
+        )
+
+    # 2. Duplicate check (expected case: message only, no Error Log)
+    existing = frappe.db.sql(
+        """
+        SELECT pp.name, pp.docstatus
+        FROM `tabProduction Plan` pp
+        INNER JOIN `tabProduction Plan Item` ppi ON ppi.parent = pp.name
+        WHERE pp.docstatus IN (0, 1) AND ppi.bom_no = %s
+        LIMIT 1
+        """,
+        (bom_name,),
+        as_dict=True,
+    )
+    if existing:
+        return _notify(
+            bom_name,
+            "Production Plan Already Exists",
+            _("Production Plan already exists for BOM <b>{0}</b>: {1} (Status: <b>{2}</b>).<br>"
+              "A duplicate will not be created.").format(
+                bom_name,
+                get_link_to_form("Production Plan", existing[0].name),
+                _("Draft") if existing[0].docstatus == 0 else _("Submitted"),
+            ),
+            indicator="blue",
+        )
+
+    # 3. Sales Order
+    so = frappe.db.get_value(
+        "Sales Order",
+        sales_order,
+        ["docstatus", "company", "branch", "transaction_date", "customer", "base_grand_total"],
+        as_dict=True,
+    )
+    if not so:
+        return _notify(
+            bom_name, "Sales Order Not Found",
+            _("Linked Sales Order <b>{0}</b> does not exist.").format(sales_order),
+            indicator="red", log=f"BOM: {bom_name}\nSales Order {sales_order} not found.",
+        )
+    if so.docstatus != 1:
+        label = _("Draft") if so.docstatus == 0 else _("Cancelled")
+        return _notify(
+            bom_name, "Sales Order Not Submitted",
+            _("Sales Order {0} is <b>{1}</b>. Please submit it first.").format(
+                get_link_to_form("Sales Order", sales_order), label
+            ),
+        )
+
+    # 4. Sales Order Item (item + batch)
+    so_item = frappe.db.get_value(
+        "Sales Order Item",
+        {"parent": sales_order, "item_code": item_code, "custom_batch_no": batch_no, "docstatus": 1},
+        ["name", "qty", "work_order_qty", "warehouse", "description", "stock_uom", "branch"],
+        as_dict=True,
+    )
+    if not so_item:
+        batches = ", ".join(
+            frappe.get_all(
+                "Sales Order Item",
+                filters={"parent": sales_order, "item_code": item_code, "docstatus": 1},
+                pluck="custom_batch_no",
+            )
+        ) or _("None")
+        return _notify(
+            bom_name, "Sales Order Line Not Found",
+            _("No line in Sales Order <b>{0}</b> for Item <b>{1}</b> and Batch <b>{2}</b>.<br><br>"
+              "<b>Batches present:</b> {3}").format(sales_order, item_code, batch_no, batches),
+            log=f"BOM: {bom_name}\nItem: {item_code}\nBOM Batch: {batch_no}\nSO: {sales_order}\nSO Batches: {batches}",
+        )
+
+    pending_qty = flt(so_item.qty) - flt(so_item.work_order_qty)
+    if pending_qty <= 0:
+        return _notify(
+            bom_name, "Quantity Already Planned",
+            _("Item <b>{0}</b> (Batch <b>{1}</b>) is already fully planned or produced.<br><br>"
+              "<b>Ordered Qty:</b> {2}<br><b>Work Order Qty:</b> {3}").format(
+                item_code, batch_no, so_item.qty, so_item.work_order_qty
+            ),
+        )
+
+    # 5. Branch / warehouses / naming series
+    branch = bom_doc.branch or so_item.branch or so.branch
+    company = bom_doc.company or so.company
+    cfg = _branch_config(branch)
+    for_warehouse = cfg.get("alloc")
+    if not for_warehouse and branch:
+        for_warehouse = frappe.db.get_value(
+            "Warehouse",
+            {"branch": branch, "store_warehouse": 1, "disabled": 0, "is_group": 0},
+            "name",
+        )
+
+    # 6. Build Production Plan
+    pp = frappe.new_doc("Production Plan")
+    pp.company = company
+    pp.branch = branch
+    pp.naming_series = cfg.get("series", DEFAULT_SERIES)
+    pp.posting_date = nowdate()
+    pp.for_warehouse = for_warehouse
+    pp.sub_assembly_warehouse = cfg.get("semi")
+    pp.get_items_from = "Sales Order"
+    pp.item_code = item_code
+    pp.include_non_stock_items = 1
+    pp.include_subcontracted_items = 1
+
+   
+    pp.append("sales_orders", {
+        "sales_order": sales_order,
+        "sales_order_date": so.transaction_date,
+        "customer": so.customer,
+        "grand_total": so.base_grand_total,
+        "branch": branch,
+    })
+
+    warnings = []
+
+    def _warn(step):
+        warnings.append(step)
+        frappe.log_error(
+            title=f"PP {step} error: {bom_name}"[:140],
+            message=f"BOM: {bom_name}\nStep: {step}\n\n{frappe.get_traceback()}",
+            reference_doctype="BOM",
+            reference_name=bom_name,
+        )
+
+    # Step 1: Finished goods
+    try:
+        pp.get_items()
+    except Exception:
+        _warn("get_items")
+
+    matched = [r for r in (pp.po_items or []) if r.custom_batch_no == batch_no]
+    if matched:
+        for row in matched:
+            row.bom_no = bom_name
+            row.branch = row.get("branch") or branch
+        pp.po_items = matched
+    else:
+        # Fallback: build the row straight from the verified SO line
+        pp.set("po_items", [])
+        pp.append("po_items", {
+            "warehouse": so_item.warehouse,
+            "item_code": item_code,
+            "description": so_item.description or "",
+            "stock_uom": so_item.stock_uom or "",
+            "bom_no": bom_name,
+            "planned_qty": pending_qty,
+            "pending_qty": pending_qty,
+            "actual_qty": pending_qty,
+            "planned_start_date": now_datetime(),
+            "sales_order": sales_order,
+            "sales_order_item": so_item.name,
+            "custom_batch_no": batch_no,
+            "branch": branch,
+        })
+
+    # Steps 2 & 3 run with the projected-qty options relaxed, then restored
+    saved = {
+        "skip_available_sub_assembly_item": pp.get("skip_available_sub_assembly_item"),
+        "ignore_existing_ordered_qty": pp.get("ignore_existing_ordered_qty"),
+    }
+    pp.skip_available_sub_assembly_item = 0
+    pp.ignore_existing_ordered_qty = 1
+    try:
+        try:
+            pp.get_sub_assembly_items()
+        except Exception:
+            _warn("sub-assembly")
+
+        try:
+            items = get_items_for_material_requests(
+                pp.as_json(), warehouses=get_default_transfer_warehouses(branch) or None
+            )
+            pp.set("mr_items", [])
+            for d in items or []:
+                row = dict(d)
+                row.pop("name", None)
+                row.setdefault("sales_order", sales_order)
+                if not row.get("batch_no"):
+                    row["batch_no"] = batch_no
+                pp.append("mr_items", row)
+        except Exception:
+            _warn("raw material")
+    finally:
+        pp.update(saved)
+
+    # 7. Save as Draft
+    pp.calculate_total_planned_qty()
+    pp.calculate_total_produced_qty()
+    pp.flags.ignore_permissions = True
+    pp.insert()
+
+    msg = _("Draft Production Plan <b>{0}</b> created for BOM <b>{1}</b> (Batch: <b>{2}</b>).").format(
+        get_link_to_form("Production Plan", pp.name), bom_name, batch_no
+    )
+    if warnings:
+        msg += "<br><br><b>{0}</b> {1}".format(
+            _("Warning: these steps failed and need a manual check:"), ", ".join(warnings)
+        )
+    frappe.msgprint(
+        msg,
+        title=_("Production Plan Created"),
+        indicator="orange" if warnings else "green",
+    )

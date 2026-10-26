@@ -40,3 +40,8 @@ class CustomPurchaseOrder(PurchaseOrder):
             )
         else:
             self.db_set("per_received", 0, update_modified=False)
+
+    def can_update_items(self) -> bool:
+        if frappe.session.user != "Administrator" and "System Manager" not in frappe.get_roles():
+            return False
+        return super().can_update_items()

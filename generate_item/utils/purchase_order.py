@@ -718,3 +718,163 @@ def on_cancel(doc, method=None):
         title="Serial Numbers Unlinked",
         indicator="orange",
     )
+
+
+@frappe.whitelist()
+def get_update_for_purchase_order(docname):
+    """
+    Fetches the latest drawing/specification values from linked Material Request Items
+    into this Purchase Order's items, clears the bom_modification flag, and propagates
+    the updated drawings to any existing linked Purchase Receipts.
+    """
+    if not docname:
+        frappe.throw(_("Purchase Order name is required."))
+
+    po = frappe.get_doc("Purchase Order", docname)
+    if po.docstatus == 2:
+        frappe.throw(_("Cannot update a cancelled Purchase Order."))
+
+    po.check_permission("write")
+
+    DRAWING_FIELDS = (
+        "custom_drawing_no",
+        "custom_drawing_rev_no",
+        "custom_pattern_drawing_no",
+        "custom_pattern_drawing_rev_no",
+        "custom_purchase_specification_no",
+        "custom_purchase_specification_rev_no",
+    )
+
+    mri_ids = [row.material_request_item for row in (po.items or []) if row.material_request_item]
+    if not mri_ids:
+        frappe.db.set_value("Purchase Order", po.name, "bom_modification", 0, update_modified=False)
+        return {
+            "success": True,
+            "message": _("No linked Material Request items found on this Purchase Order."),
+            "updated_items": 0,
+            "updated_receipts": 0,
+        }
+
+    mr_items = {
+        r.name: r
+        for r in frappe.get_all(
+            "Material Request Item",
+            filters={"name": ["in", mri_ids]},
+            fields=["name", "item_code", *DRAWING_FIELDS],
+        )
+    }
+
+    updated_poi_names = []
+    skipped_items = []
+
+    for row in po.items:
+        if not row.material_request_item:
+            skipped_items.append(f"Row {row.idx} ({row.item_code}): no linked Material Request Item")
+            continue
+
+        mri = mr_items.get(row.material_request_item)
+        if not mri:
+            skipped_items.append(f"Row {row.idx} ({row.item_code}): linked MR item {row.material_request_item} not found")
+            continue
+
+        updates = {}
+        for f in DRAWING_FIELDS:
+            mri_val = mri.get(f)
+            curr_val = row.get(f)
+            if mri_val is not None and (curr_val or "") != (mri_val or ""):
+                updates[f] = mri_val
+
+        if updates:
+            frappe.db.set_value("Purchase Order Item", row.name, updates, update_modified=False)
+            for f, val in updates.items():
+                setattr(row, f, val)
+            updated_poi_names.append(row.name)
+
+    # Clear bom_modification flag
+    frappe.db.set_value(
+        "Purchase Order",
+        po.name,
+        {
+            "bom_modification": 0,
+            "modified": frappe.utils.now(),
+        },
+        update_modified=False,
+    )
+
+    if updated_poi_names:
+        try:
+            po.add_comment(
+                "Info",
+                _("Drawing and specification fields updated from linked Material Request for {0} item(s).").format(len(updated_poi_names)),
+            )
+        except Exception:
+            pass
+
+    # Stage E: Propagate updated drawings to linked Purchase Receipts
+    updated_receipts = _propagate_drawings_from_po_to_pr(po, updated_poi_names, DRAWING_FIELDS)
+
+    message = _("Purchase Order {0}: updated drawing fields for {1} item(s).").format(po.name, len(updated_poi_names))
+    if updated_receipts:
+        message += " " + _("Also updated {0} linked Purchase Receipt(s).").format(len(updated_receipts))
+    if skipped_items:
+        message += "<br><br>" + "<br>".join(skipped_items[:10])
+
+    return {
+        "success": True,
+        "message": message,
+        "updated_items": len(updated_poi_names),
+        "updated_receipts": len(updated_receipts),
+    }
+
+
+def _propagate_drawings_from_po_to_pr(po, updated_poi_names, drawing_fields):
+    """
+    Propagate drawing/specification updates from Purchase Order Items to linked
+    Purchase Receipt Items (both Draft and Submitted), and log an audit comment.
+    """
+    if not updated_poi_names:
+        return set()
+
+    pr_items = frappe.get_all(
+        "Purchase Receipt Item",
+        filters={
+            "purchase_order": po.name,
+            "purchase_order_item": ["in", updated_poi_names],
+            "docstatus": ["<", 2],
+        },
+        fields=["name", "parent", "purchase_order_item", *drawing_fields],
+    )
+    if not pr_items:
+        return set()
+
+    poi_map = {row.name: row for row in po.items}
+    touched_prs = set()
+
+    for pri in pr_items:
+        poi = poi_map.get(pri.purchase_order_item)
+        if not poi:
+            continue
+
+        pr_updates = {}
+        for f in drawing_fields:
+            new_val = poi.get(f)
+            curr_val = pri.get(f)
+            if new_val is not None and (curr_val or "") != (new_val or ""):
+                pr_updates[f] = new_val
+
+        if pr_updates:
+            frappe.db.set_value("Purchase Receipt Item", pri.name, pr_updates, update_modified=False)
+            touched_prs.add(pri.parent)
+
+    for pr_name in touched_prs:
+        frappe.db.set_value("Purchase Receipt", pr_name, "modified", frappe.utils.now(), update_modified=False)
+        try:
+            pr_doc = frappe.get_doc("Purchase Receipt", pr_name)
+            pr_doc.add_comment(
+                "Info",
+                _("Drawing and specification fields updated from Purchase Order {0}.").format(po.name),
+            )
+        except Exception:
+            pass
+
+    return touched_prs
