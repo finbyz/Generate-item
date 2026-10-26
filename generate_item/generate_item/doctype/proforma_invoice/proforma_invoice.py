@@ -13,9 +13,18 @@ from erpnext.controllers.status_updater import StatusUpdater
 
 
 class ProformaInvoice(Document):
-	# def __init__(self, *args, **kwargs):
-	# 	super(SalesOrder, self).__init__(*args, **kwargs)
-		
+	def before_insert(self):
+		self.set_naming_series_by_branch()
+
+	def set_naming_series_by_branch(self):
+		series_map = {
+			"Sanand": "PINS.fiscal.#####",
+			"Nandikoor": "PINN.fiscal.#####",
+			"Rabale": "PINR.fiscal.#####",
+		}
+		if self.branch and self.branch in series_map:
+			self.naming_series = series_map[self.branch]
+
 	def validate(self):
 		if self.payment_percentage:
 			self.payment_due_amount = flt(self.rounded_total) * self.payment_percentage / 100
@@ -56,12 +65,14 @@ def create_proforma_invoice(source_name, target_doc=None):
 	def set_missing_value(source, target):
 		target.run_method('set_missing_values')
 		target.run_method('calculate_taxes_and_totals')
+		target.set_naming_series_by_branch()
 		
 	fields = {
 		"Sales Order": {
 			"doctype": "Proforma Invoice",
 			"field_map": {
 				"company": "company",
+				"branch": "branch",
 				"customer": "customer",
 				"customer_name": "customer_name",
 				"customer_group": "customer_group",

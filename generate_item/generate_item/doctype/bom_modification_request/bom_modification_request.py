@@ -27,8 +27,11 @@ class BomModificationRequest(Document):
         if self.bom:
             self.update_bom_items_using_db_set()  # step 1: apply changes
             self.update_bom_item_revision()        # step 2: stamp + heal zeros
-            if self.has_manufacturing_changes():
+            has_mfg = self.has_manufacturing_changes()
+            has_drg = self.has_drawing_changes()
+            if has_mfg or has_drg:
                 self.update_production_plan_bom_modification()
+            if has_mfg:
                 create_pp_task_on_bmr_submit(self)
 
     def has_manufacturing_changes(self):
@@ -59,6 +62,34 @@ class BomModificationRequest(Document):
 
         return False
 
+    def has_drawing_changes(self):
+        """
+        Returns True if any drawing or specification field changed in this BMR:
+        - rev_drawing_no vs drawing_no
+        - rev_drawing_rev_no vs drawing_rev_no
+        - rev_pattern_drawing_no vs pattern_drawing_no
+        - rev_pattern_drawing_rev_no vs pattern_drawing_rev_no
+        - rev_purchase_specification_no vs purchase_specification_no
+        - rev_purchase_specification_rev_no vs purchase_specification_rev_no
+        """
+        drawing_field_pairs = [
+            ("rev_drawing_no", "drawing_no"),
+            ("rev_drawing_rev_no", "drawing_rev_no"),
+            ("rev_pattern_drawing_no", "pattern_drawing_no"),
+            ("rev_pattern_drawing_rev_no", "pattern_drawing_rev_no"),
+            ("rev_purchase_specification_no", "purchase_specification_no"),
+            ("rev_purchase_specification_rev_no", "purchase_specification_rev_no"),
+        ]
+        for row in (self.items or []):
+            if getattr(row, "is_delete", 0):
+                continue
+            for rev_field, orig_field in drawing_field_pairs:
+                rev_val = (getattr(row, rev_field, None) or "").strip()
+                orig_val = (getattr(row, orig_field, None) or "").strip()
+                if rev_val and rev_val != orig_val:
+                    return True
+        return False
+
     def validate_qty_and_rev_qty(self):
         for row in (self.items or []):
             if not self.bom:
@@ -86,7 +117,7 @@ class BomModificationRequest(Document):
         if not self.bom:
             return
 
-        if not self.has_manufacturing_changes():
+        if not self.has_manufacturing_changes() and not self.has_drawing_changes():
             return
 
         plan_names = frappe.db.sql(

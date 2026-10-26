@@ -615,6 +615,35 @@ def _sync_required_items_from_bom(wo, bom):
                 "custom_batch_no": wo.get("custom_batch_no"),
             }))
 
+    # Sync drawing and specification fields from BOM Item to required_items
+    drawing_fields = (
+        "custom_drawing_no",
+        "custom_drawing_rev_no",
+        "custom_pattern_drawing_no",
+        "custom_pattern_drawing_rev_no",
+        "custom_purchase_specification_no",
+        "custom_purchase_specification_rev_no",
+    )
+    bom_items_drawing = {
+        d.item_code: d
+        for d in frappe.get_all(
+            "BOM Item",
+            filters={"parent": bom.name},
+            fields=["item_code", *drawing_fields],
+        )
+        if d.item_code
+    }
+    for r in rows_to_keep:
+        b_item = bom_items_drawing.get(r.get("item_code"))
+        if b_item:
+            for f in drawing_fields:
+                val = b_item.get(f)
+                if val is not None:
+                    if isinstance(r, dict) or hasattr(r, "__setitem__"):
+                        r[f] = val
+                    if hasattr(r, f):
+                        setattr(r, f, val)
+
     wo.set("required_items", rows_to_keep)
     wo.flags.ignore_validate_update_after_submit = True
     wo.save(ignore_permissions=True)

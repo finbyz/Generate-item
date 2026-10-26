@@ -463,12 +463,21 @@ def get_update_for_submitted_pp(docname):
             message=frappe.get_traceback(),
         )
 
+    # --- Step 13: Propagate drawing updates to Material Requests and flag POs ---
+    try:
+        _propagate_drawings_from_pp_to_mr_and_po(pp)
+    except Exception:
+        frappe.log_error(
+            title=f"Drawing propagation to MR and PO failed for {pp.name}",
+            message=frappe.get_traceback(),
+        )
+
     # frappe.db.commit()
     return {
         "success": True,
         "planned_qty_updated": changed,
         "original_data_captured_now": captured,
-         "mr_items_relinked": relinked,
+        "mr_items_relinked": relinked,
     }
 
 
@@ -554,6 +563,97 @@ def _update_mri_ref_in_material_requests(pp):
         updated += 1
 
     return updated
+
+
+def _propagate_drawings_from_pp_to_mr_and_po(pp):
+    """
+    Propagate the 6 drawing/specification fields from updated Production Plan mr_items
+    to linked Material Request Items, and flag downstream Purchase Orders (bom_modification = 1).
+    """
+    DRAWING_FIELDS = (
+        "custom_drawing_no",
+        "custom_drawing_rev_no",
+        "custom_pattern_drawing_no",
+        "custom_pattern_drawing_rev_no",
+        "custom_purchase_specification_no",
+        "custom_purchase_specification_rev_no",
+    )
+    rows = pp.get("mr_items") or []
+    if not rows:
+        return
+
+    # Map fresh PP mr_items by name and by item_code
+    pp_rows_by_name = {r.name: r for r in rows}
+    pp_rows_by_item = {}
+    for r in rows:
+        if r.item_code and r.item_code not in pp_rows_by_item:
+            pp_rows_by_item[r.item_code] = r
+
+    # Fetch all active Material Request Items linked to this Production Plan
+    mr_items = frappe.get_all(
+        "Material Request Item",
+        filters={
+            "production_plan": pp.name,
+            "docstatus": ["<", 2],
+        },
+        fields=["name", "parent", "item_code", "material_request_plan_item", *DRAWING_FIELDS],
+    )
+    if not mr_items:
+        return
+
+    updated_mri_names = []
+    touched_mr_parents = set()
+
+    for m in mr_items:
+        # Match by material_request_plan_item if possible, fallback to item_code
+        source_row = pp_rows_by_name.get(m.material_request_plan_item) or pp_rows_by_item.get(m.item_code)
+        if not source_row:
+            continue
+
+        updates = {}
+        for f in DRAWING_FIELDS:
+            new_val = source_row.get(f)
+            curr_val = m.get(f)
+            if new_val is not None and (curr_val or "") != (new_val or ""):
+                updates[f] = new_val
+
+        if updates:
+            frappe.db.set_value("Material Request Item", m.name, updates, update_modified=False)
+            updated_mri_names.append(m.name)
+            touched_mr_parents.add(m.parent)
+
+    # For touched MR parents, add timeline comment and bump modified
+    for mr_name in touched_mr_parents:
+        frappe.db.set_value("Material Request", mr_name, "modified", frappe.utils.now(), update_modified=False)
+        try:
+            mr_doc = frappe.get_doc("Material Request", mr_name)
+            mr_doc.add_comment("Info", _("Drawing and specification fields updated from Production Plan {0}").format(pp.name))
+        except Exception:
+            pass
+
+    # Flag downstream Purchase Orders linked to these updated Material Request Items
+    if updated_mri_names:
+        po_items = frappe.get_all(
+            "Purchase Order Item",
+            filters={
+                "material_request_item": ["in", updated_mri_names],
+                "docstatus": ["<", 2],
+            },
+            fields=["parent"],
+            distinct=True,
+        )
+        for poi in po_items:
+            po_name = poi.parent
+            frappe.db.set_value("Purchase Order", po_name, "bom_modification", 1, update_modified=False)
+            frappe.db.set_value("Purchase Order", po_name, "modified", frappe.utils.now(), update_modified=False)
+            try:
+                po_doc = frappe.get_doc("Purchase Order", po_name)
+                po_doc.add_comment(
+                    "Info",
+                    _("Flagged for BOM drawing update (Get Update) following Production Plan {0} update.").format(pp.name)
+                )
+            except Exception:
+                pass
 
 # @frappe.whitelist()
 # def get_update_for_submitted_pp(docname):
