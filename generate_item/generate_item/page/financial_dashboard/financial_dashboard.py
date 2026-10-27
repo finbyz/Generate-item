@@ -7,9 +7,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import frappe
 from frappe import _
-from frappe.query_builder import Criterion
-from frappe.query_builder.functions import Date, Sum
 from frappe.utils import add_days, add_months, cint, flt, getdate, nowdate
+from frappe.utils.data import get_timespan_date_range
 
 
 def _check_access(company: str) -> None:
@@ -57,106 +56,372 @@ def get_previous_fiscal_year(fiscal_year: str) -> Optional[str]:
 	return prev_fy
 
 
+def resolve_date_range(
+	date_filter: Optional[str] = None,
+	from_date: Optional[str] = None,
+	to_date: Optional[str] = None,
+	fiscal_year: Optional[str] = None,
+	company: Optional[str] = None,
+) -> Tuple[datetime.date, datetime.date, str]:
+	"""
+	Resolves user-selected date filter into concrete start and end dates.
+	Supported date_filters:
+	- this_month
+	- last_month
+	- this_quarter
+	- last_quarter
+	- this_year
+	- last_year
+	- this_fy
+	- last_fy
+	- custom
+	"""
+	today = getdate(nowdate())
+	df = (date_filter or "").lower().strip().replace(" ", "_")
+
+	if not fiscal_year:
+		from erpnext.accounts.utils import get_fiscal_year
+		try:
+			fiscal_year = get_fiscal_year(today, company=company)[0]
+		except Exception:
+			fiscal_year = frappe.db.get_value("Fiscal Year", {"disabled": 0}, "name", order_by="year_start_date desc")
+
+	current_fy = fiscal_year
+
+	if df in ("this_month", "thismonth"):
+		rng = get_timespan_date_range("this month")
+		return getdate(rng[0]), getdate(rng[1]), "this_month"
+	elif df in ("last_month", "lastmonth"):
+		rng = get_timespan_date_range("last month")
+		return getdate(rng[0]), getdate(rng[1]), "last_month"
+	elif df in ("this_quarter", "thisquarter"):
+		rng = get_timespan_date_range("this quarter")
+		return getdate(rng[0]), getdate(rng[1]), "this_quarter"
+	elif df in ("last_quarter", "lastquarter"):
+		rng = get_timespan_date_range("last quarter")
+		return getdate(rng[0]), getdate(rng[1]), "last_quarter"
+	elif df in ("this_year", "thisyear"):
+		rng = get_timespan_date_range("this year")
+		return getdate(rng[0]), getdate(rng[1]), "this_year"
+	elif df in ("last_year", "lastyear"):
+		rng = get_timespan_date_range("last year")
+		return getdate(rng[0]), getdate(rng[1]), "last_year"
+	elif df in ("this_fy", "thisfy", "current_fy"):
+		s, e = get_fy_dates(current_fy)
+		return s, e, "this_fy"
+	elif df in ("last_fy", "lastfy", "prev_fy", "previous_fy"):
+		prev_fy = get_previous_fiscal_year(current_fy)
+		if prev_fy:
+			s, e = get_fy_dates(prev_fy)
+			return s, e, "last_fy"
+		s, e = get_fy_dates(current_fy)
+		return add_months(s, -12), add_months(e, -12), "last_fy"
+	elif df in ("today",):
+		return today, today, "today"
+	elif df in ("yesterday",):
+		yest = add_days(today, -1)
+		return yest, yest, "yesterday"
+	elif df in ("last_week", "lastweek"):
+		rng = get_timespan_date_range("last week")
+		return getdate(rng[0]), getdate(rng[1]), "last_week"
+	elif df in ("this_week", "thisweek"):
+		rng = get_timespan_date_range("this week")
+		return getdate(rng[0]), getdate(rng[1]), "this_week"
+	elif df in ("custom", "custom_date"):
+		if from_date and to_date:
+			return getdate(from_date), getdate(to_date), "custom"
+		elif from_date:
+			return getdate(from_date), today, "custom"
+		elif to_date:
+			return getdate(to_date), getdate(to_date), "custom"
+		s, e = get_fy_dates(current_fy)
+		return s, e, "custom"
+	elif from_date and to_date:
+		return getdate(from_date), getdate(to_date), "custom"
+	elif fiscal_year:
+		s, e = get_fy_dates(fiscal_year)
+		return s, e, "this_fy"
+	else:
+		s, e = get_fy_dates(current_fy)
+		return s, e, "this_fy"
+
+
+def get_total_stock_balance(
+	company: str,
+	as_of_date: datetime.date,
+	branch: Optional[str] = None,
+) -> float:
+	"""
+	Card 1: Total Stock Balance as of the selected period's end date.
+	Calculated from Stock Ledger Entry where posting_date <= as_of_date.
+	"""
+	as_of_date = getdate(as_of_date)
+	join_wh = "INNER JOIN `tabWarehouse` wh ON sle.warehouse = wh.name" if branch else ""
+	branch_cond = "AND wh.branch = %s" if branch else ""
+	params = [company, as_of_date]
+	if branch:
+		params.append(branch)
+
+	sql = f"""
+		SELECT COALESCE(SUM(sle.stock_value_difference), 0.0)
+		FROM `tabStock Ledger Entry` sle
+		{join_wh}
+		WHERE sle.company = %s
+		  AND sle.is_cancelled = 0
+		  AND sle.posting_date <= %s
+		  {branch_cond}
+	"""
+	res = frappe.db.sql(sql, tuple(params))
+	return flt(res[0][0]) if res and res[0][0] is not None else 0.0
+
+
+def get_total_purchases_stock(
+	company: str,
+	start_date: datetime.date,
+	end_date: datetime.date,
+	branch: Optional[str] = None,
+) -> float:
+	"""
+	Card 2: Total Purchase for the selected period, limited to stock items.
+	Returns are deducted based on parent.is_return = 1.
+	"""
+	start_date = getdate(start_date)
+	end_date = getdate(end_date)
+	branch_cond = "AND parent.branch = %s" if branch else ""
+	params = [company, start_date, end_date]
+	if branch:
+		params.append(branch)
+
+	sql = f"""
+		SELECT COALESCE(SUM(CASE WHEN parent.is_return = 1 THEN -pii.base_net_amount ELSE pii.base_net_amount END), 0.0)
+		FROM `tabPurchase Invoice Item` pii
+		INNER JOIN `tabPurchase Invoice` parent ON pii.parent = parent.name
+		INNER JOIN `tabItem` item ON pii.item_code = item.name
+		WHERE parent.company = %s
+		  AND parent.docstatus = 1
+		  AND item.is_stock_item = 1
+		  AND parent.posting_date >= %s
+		  AND parent.posting_date <= %s
+		  {branch_cond}
+	"""
+	res = frappe.db.sql(sql, tuple(params))
+	return flt(res[0][0]) if res and res[0][0] is not None else 0.0
+
+
+def get_total_sales_stock(
+	company: str,
+	start_date: datetime.date,
+	end_date: datetime.date,
+	branch: Optional[str] = None,
+) -> float:
+	"""
+	Card 3: Total Sales for the selected period, limited to stock items.
+	Returns are deducted based on parent.is_return = 1.
+	"""
+	start_date = getdate(start_date)
+	end_date = getdate(end_date)
+	branch_cond = "AND parent.branch = %s" if branch else ""
+	params = [company, start_date, end_date]
+	if branch:
+		params.append(branch)
+
+	sql = f"""
+		SELECT COALESCE(SUM(CASE WHEN parent.is_return = 1 THEN -sii.base_net_amount ELSE sii.base_net_amount END), 0.0)
+		FROM `tabSales Invoice Item` sii
+		INNER JOIN `tabSales Invoice` parent ON sii.parent = parent.name
+		INNER JOIN `tabItem` item ON sii.item_code = item.name
+		WHERE parent.company = %s
+		  AND parent.docstatus = 1
+		  AND item.is_stock_item = 1
+		  AND parent.posting_date >= %s
+		  AND parent.posting_date <= %s
+		  {branch_cond}
+	"""
+	res = frappe.db.sql(sql, tuple(params))
+	return flt(res[0][0]) if res and res[0][0] is not None else 0.0
+
+
 @frappe.whitelist()
 def get_overview(
 	company: Optional[str] = None,
-	fiscal_year: Optional[str] = None,
+	from_date: Optional[str] = None,
+	to_date: Optional[str] = None,
+	date_filter: Optional[str] = None,
 	branch: Optional[str] = None,
+	fiscal_year: Optional[str] = None,
 	unit_dimension: Optional[str] = "Branch",
 ) -> Dict[str, Any]:
 	"""
-	Main overview endpoint for Financial Dashboard:
-	Returns: KPIs, Item 1 (Monthly Revenue & Operating Margin), Item 4 (Orders Booked),
-	Item 5 (Pending Backlog Breakdown), Item 6 (AR Ageing), Item 7 (AP Ageing), and Meta info.
+	Main overview endpoint for Financial Dashboard.
+	Returns:
+	- Meta information (company, date_filter, from_date, to_date, branch, currency)
+	- Cards:
+	    1. Total Stock Balance (as of end date)
+	    2. Total Purchase (stock items for period)
+	    3. Total Sales (stock items for period)
+	- Accounts Receivable (AR) Ageing
+	- Accounts Payable (AP) Ageing
 	"""
-	if not company:
+	if not company or company in ("undefined", "null", "None"):
 		company = (
 			frappe.defaults.get_user_default("Company")
-			or frappe.defaults.get_default("Company")
 			or frappe.db.get_single_value("Global Defaults", "default_company")
 			or frappe.db.get_value("Company", {}, "name")
 		)
 
 	_check_access(company)
 
+	start_date, end_date, resolved_filter = resolve_date_range(
+		date_filter=date_filter,
+		from_date=from_date,
+		to_date=to_date,
+		fiscal_year=fiscal_year,
+		company=company,
+	)
+
 	if not fiscal_year:
 		from erpnext.accounts.utils import get_fiscal_year
 		try:
-			fiscal_year = get_fiscal_year(nowdate(), company=company)[0]
+			fiscal_year = get_fiscal_year(end_date, company=company)[0]
 		except Exception:
 			fiscal_year = frappe.db.get_value("Fiscal Year", {"disabled": 0}, "name", order_by="year_start_date desc")
 
 	if not unit_dimension:
 		unit_dimension = "Branch"
 
-	fy_start, fy_end = get_fy_dates(fiscal_year)
 	currency = "INR"
 
-	# Previous Fiscal Year for YoY comparisons
-	prev_fy = get_previous_fiscal_year(fiscal_year)
-	prev_fy_start, prev_fy_end = (get_fy_dates(prev_fy) if prev_fy else (None, None))
+	# Determine comparison period for delta calculations
+	if resolved_filter == "this_month":
+		prev_start, prev_end = get_timespan_date_range("last month")
+		prev_caption = _("vs last month")
+	elif resolved_filter == "last_month":
+		prev_start = add_months(start_date, -1)
+		prev_end = add_days(start_date, -1)
+		prev_caption = _("vs previous month")
+	elif resolved_filter == "this_quarter":
+		prev_start, prev_end = get_timespan_date_range("last quarter")
+		prev_caption = _("vs last quarter")
+	elif resolved_filter == "last_quarter":
+		prev_start = add_months(start_date, -3)
+		prev_end = add_days(start_date, -1)
+		prev_caption = _("vs previous quarter")
+	elif resolved_filter == "this_year":
+		prev_start, prev_end = get_timespan_date_range("last year")
+		prev_caption = _("vs last year")
+	elif resolved_filter == "last_year":
+		prev_start = add_months(start_date, -12)
+		prev_end = add_days(start_date, -1)
+		prev_caption = _("vs previous year")
+	elif resolved_filter == "this_fy":
+		prev_fy = get_previous_fiscal_year(fiscal_year)
+		if prev_fy:
+			prev_start, prev_end = get_fy_dates(prev_fy)
+		else:
+			prev_start, prev_end = add_months(start_date, -12), add_months(end_date, -12)
+		prev_caption = _("YTD vs previous year")
+	elif resolved_filter == "last_fy":
+		prev_fy = get_previous_fiscal_year(fiscal_year)
+		prev_prev_fy = get_previous_fiscal_year(prev_fy) if prev_fy else None
+		if prev_prev_fy:
+			prev_start, prev_end = get_fy_dates(prev_prev_fy)
+		else:
+			prev_start, prev_end = add_months(start_date, -12), add_months(end_date, -12)
+		prev_caption = _("vs previous fiscal year")
+	else:
+		days = max(1, (end_date - start_date).days + 1)
+		prev_end = add_days(start_date, -1)
+		prev_start = add_days(prev_end, -days + 1)
+		prev_caption = _("vs previous period")
 
-	# 1. Monthly Revenue and Operating Margin (Current FY)
-	rev_margin_data = get_monthly_revenue_and_margin(company, fy_start, fy_end, branch=branch)
+	# Revenue vs Operating Margin for selected period
+	revenue_margin_data = get_monthly_revenue_and_margin(company, start_date, end_date, branch=branch)
 
-	# Previous FY for delta comparison
+	# Previous comparison period
 	prev_rev_margin = (
-		get_monthly_revenue_and_margin(company, prev_fy_start, prev_fy_end, branch=branch)
-		if prev_fy_start and prev_fy_end
+		get_monthly_revenue_and_margin(company, prev_start, prev_end, branch=branch)
+		if prev_start and prev_end
 		else {"total_revenue": 0.0, "total_expense": 0.0, "operating_margin": 0.0}
 	)
 
-	# 2. Orders Booked (Monthly)
-	orders_data = get_monthly_orders_booked(company, fy_start, fy_end, branch=branch)
+	# Orders Booked for selected period
+	orders_monthly_data = get_monthly_orders_booked(company, start_date, end_date, branch=branch)
 
-	# 3. Pending Orders Pipeline & SLA (bounded by selected Fiscal Year)
-	pending_orders = get_pending_orders_status(company, fy_start, fy_end, branch=branch)
-
-	# 4. AR Ageing
-	ar_ageing = get_ar_ageing(company, fy_start, fy_end, rev_margin_data["total_revenue"], branch=branch)
-
-	# 5. AP Ageing
-	total_purchases = get_ytd_purchases(company, fy_start, fy_end, branch=branch)
-	ap_ageing = get_ap_ageing(company, fy_start, fy_end, total_purchases, branch=branch)
-
-	# 6. Book-to-Bill
-	sales_invoice_net = get_sales_invoice_net_total(company, fy_start, fy_end, branch=branch)
+	# Book-to-bill calculation
+	sales_invoice_net = get_sales_invoice_net_total(company, start_date, end_date, branch=branch)
 	book_to_bill = (
-		round(orders_data["total_orders_value"] / sales_invoice_net, 2)
+		round(orders_monthly_data["total_orders_value"] / sales_invoice_net, 2)
 		if sales_invoice_net > 0
-		else (1.0 if orders_data["total_orders_value"] > 0 else 0.0)
+		else (1.0 if orders_monthly_data["total_orders_value"] > 0 else 0.0)
 	)
 
 	# KPI Deltas
 	rev_delta = 0.0
 	if prev_rev_margin["total_revenue"] > 0:
 		rev_delta = round(
-			((rev_margin_data["total_revenue"] - prev_rev_margin["total_revenue"]) / prev_rev_margin["total_revenue"]) * 100,
-			1
+			((revenue_margin_data["total_revenue"] - prev_rev_margin["total_revenue"]) / prev_rev_margin["total_revenue"]) * 100,
+			1,
 		)
 
-	margin_delta = round(rev_margin_data["operating_margin"] - prev_rev_margin["operating_margin"], 1)
+	margin_delta = round(revenue_margin_data["operating_margin"] - prev_rev_margin["operating_margin"], 1)
 
 	orders_delta = 0.0
-	if prev_fy_start and prev_fy_end:
-		prev_orders_count = get_orders_count_for_period(company, prev_fy_start, prev_fy_end, branch=branch)
+	if prev_start and prev_end:
+		prev_orders_count = get_orders_count_for_period(company, prev_start, prev_end, branch=branch)
 		if prev_orders_count > 0:
-			orders_delta = round(((orders_data["total_orders_count"] - prev_orders_count) / prev_orders_count) * 100, 1)
+			orders_delta = round(
+				((orders_monthly_data["total_orders_count"] - prev_orders_count) / prev_orders_count) * 100,
+				1,
+			)
 
-	kpis = {
-		"net_revenue": rev_margin_data["total_revenue"],
-		"revenue_target": prev_rev_margin["total_revenue"],
+	# Row 2: 3 New Cards
+	stock_balance = get_total_stock_balance(company, end_date, branch=branch)
+	total_purchases = get_total_purchases_stock(company, start_date, end_date, branch=branch)
+	total_sales = get_total_sales_stock(company, start_date, end_date, branch=branch)
+
+	# AR & AP Ageing (calculated as of period end date)
+	ar_ageing = get_ar_ageing(company, start_date, end_date, total_sales, branch=branch)
+	ap_ageing = get_ap_ageing(company, start_date, end_date, total_purchases, branch=branch)
+
+	cards = {
+		# Original 3 Cards
+		"net_revenue": revenue_margin_data["total_revenue"],
 		"revenue_delta": rev_delta,
-		"operating_margin": rev_margin_data["operating_margin"],
-		"margin_target": prev_rev_margin["operating_margin"],
+		"revenue_caption": prev_caption,
+		"operating_margin": revenue_margin_data["operating_margin"],
 		"margin_delta": margin_delta,
-		"orders_booked_count": orders_data["total_orders_count"],
-		"orders_booked_value": orders_data["total_orders_value"],
+		"orders_booked_count": orders_monthly_data["total_orders_count"],
+		"orders_booked_value": orders_monthly_data["total_orders_value"],
 		"orders_delta": orders_delta,
 		"book_to_bill": book_to_bill,
-		"pending_backlog_count": pending_orders["total_count"],
-		"pending_backlog_value": pending_orders["total_value"],
-		"sla_percentage": pending_orders["sla_percentage"],
+
+		# 3 New Cards
+		"stock_balance": round(stock_balance, 2),
+		"total_purchases": round(total_purchases, 2),
+		"total_sales": round(total_sales, 2),
+		"as_of_date": str(end_date),
+		"from_date": str(start_date),
+		"to_date": str(end_date),
+	}
+
+	# Backward-compatibility kpis dictionary
+	kpis = {
+		"net_revenue": revenue_margin_data["total_revenue"],
+		"revenue_target": prev_rev_margin["total_revenue"],
+		"revenue_delta": rev_delta,
+		"revenue_caption": prev_caption,
+		"operating_margin": revenue_margin_data["operating_margin"],
+		"margin_target": prev_rev_margin["operating_margin"],
+		"margin_delta": margin_delta,
+		"orders_booked_count": orders_monthly_data["total_orders_count"],
+		"orders_booked_value": orders_monthly_data["total_orders_value"],
+		"orders_delta": orders_delta,
+		"book_to_bill": book_to_bill,
+		"stock_balance": round(stock_balance, 2),
+		"total_purchases": round(total_purchases, 2),
+		"total_sales": round(total_sales, 2),
+		"total_stock_balance": round(stock_balance, 2),
+		"pending_backlog_count": 0,
 	}
 
 	all_fys = frappe.db.get_all(
@@ -178,20 +443,431 @@ def get_overview(
 			"company": company,
 			"fiscal_year": fiscal_year,
 			"branch": branch or "",
-			"fy_start": str(fy_start),
-			"fy_end": str(fy_end),
-			"currency": "INR",
+			"date_filter": resolved_filter,
+			"from_date": str(start_date),
+			"to_date": str(end_date),
+			"currency": currency,
 			"unit_dimension": unit_dimension,
 			"all_fiscal_years": all_fys,
 			"all_branches": all_branches,
 			"generated_at": frappe.utils.now_datetime().strftime("%H:%M"),
 		},
+		"cards": cards,
 		"kpis": kpis,
-		"revenue_margin": rev_margin_data,
-		"orders_monthly": orders_data,
-		"pending_orders": pending_orders,
+		"revenue_margin": revenue_margin_data,
+		"orders_monthly": orders_monthly_data,
+		"pending_orders": {"total_count": 0, "total_value": 0.0, "sla_percentage": 100.0, "stages": {}},
 		"ar_ageing": ar_ageing,
 		"ap_ageing": ap_ageing,
+	}
+
+
+def get_ar_ageing(
+	company: str,
+	start_date: datetime.date,
+	end_date: datetime.date,
+	period_revenue: float,
+	branch: Optional[str] = None,
+) -> Dict[str, Any]:
+	"""Executes ERPNext Accounts Receivable report and builds bucket summary and DSO as of end_date."""
+	from erpnext.accounts.report.accounts_receivable.accounts_receivable import execute as ar_execute
+
+	start_date = getdate(start_date)
+	end_date = getdate(end_date)
+	report_date = str(end_date)
+	filters = {
+		"company": company,
+		"report_date": report_date,
+		"ageing_based_on": "Due Date",
+		"range1": 30,
+		"range2": 60,
+		"range3": 90,
+		"range4": 120,
+	}
+	if branch:
+		filters["branch"] = branch
+
+	try:
+		columns, data, _, _, report_summary, _ = ar_execute(filters)
+	except Exception:
+		try:
+			res = ar_execute(filters)
+			data = res[1] if len(res) > 1 else []
+		except Exception:
+			data = []
+
+	b1, b2, b3, b4 = 0.0, 0.0, 0.0, 0.0
+	total_outstanding = 0.0
+
+	for row in data:
+		if isinstance(row, dict):
+			# Skip bold/total subtotal rows to avoid double counting
+			if row.get("bold") or row.get("party") == "Total":
+				continue
+			if branch and row.get("branch") and row.get("branch") != branch:
+				continue
+			r1 = flt(row.get("range1"))
+			r2 = flt(row.get("range2"))
+			r3 = flt(row.get("range3"))
+			r4 = flt(row.get("range4")) + flt(row.get("range5"))
+			out = flt(row.get("outstanding"))
+			b1 += r1
+			b2 += r2
+			b3 += r3
+			b4 += r4
+			total_outstanding += out
+
+	calculated_sum = b1 + b2 + b3 + b4
+	if total_outstanding == 0.0 and calculated_sum > 0:
+		total_outstanding = calculated_sum
+
+	# DSO: (AR Outstanding / Period Net Revenue) * Days in period
+	days_in_period = max(1, (end_date - start_date).days + 1)
+	dso = round((total_outstanding / period_revenue) * days_in_period, 0) if period_revenue > 0 else 0
+
+	p1 = round((b1 / total_outstanding * 100), 1) if total_outstanding > 0 else 0.0
+	p2 = round((b2 / total_outstanding * 100), 1) if total_outstanding > 0 else 0.0
+	p3 = round((b3 / total_outstanding * 100), 1) if total_outstanding > 0 else 0.0
+	p4 = round((b4 / total_outstanding * 100), 1) if total_outstanding > 0 else 0.0
+
+	buckets = [
+		{"bucket": "< 30 Days (Current)", "amount": round(b1, 2), "share": p1, "risk": "Normal", "risk_class": "risk-normal"},
+		{"bucket": "31 - 60 Days", "amount": round(b2, 2), "share": p2, "risk": "Low", "risk_class": "risk-low"},
+		{"bucket": "61 - 90 Days", "amount": round(b3, 2), "share": p3, "risk": "Medium", "risk_class": "risk-medium"},
+		{"bucket": "> 90 Days (Overdue)", "amount": round(b4, 2), "share": p4, "risk": "High Alert", "risk_class": "risk-high"},
+	]
+
+	return {
+		"total_outstanding": round(total_outstanding, 2),
+		"dso_days": int(dso),
+		"current_share": p1,
+		"buckets": buckets,
+		"chart_data": [round(b1, 2), round(b2, 2), round(b3, 2), round(b4, 2)],
+	}
+
+
+def get_ap_ageing(
+	company: str,
+	start_date: datetime.date,
+	end_date: datetime.date,
+	period_purchases: float,
+	branch: Optional[str] = None,
+) -> Dict[str, Any]:
+	"""Executes ERPNext Accounts Payable report and builds bucket summary and DPO as of end_date."""
+	from erpnext.accounts.report.accounts_payable.accounts_payable import execute as ap_execute
+
+	start_date = getdate(start_date)
+	end_date = getdate(end_date)
+	report_date = str(end_date)
+	filters = {
+		"company": company,
+		"report_date": report_date,
+		"ageing_based_on": "Due Date",
+		"range1": 30,
+		"range2": 60,
+		"range3": 90,
+		"range4": 120,
+	}
+	if branch:
+		filters["branch"] = branch
+
+	try:
+		columns, data, _, _, report_summary, _ = ap_execute(filters)
+	except Exception:
+		try:
+			res = ap_execute(filters)
+			data = res[1] if len(res) > 1 else []
+		except Exception:
+			data = []
+
+	b1, b2, b3, b4 = 0.0, 0.0, 0.0, 0.0
+	total_outstanding = 0.0
+
+	for row in data:
+		if isinstance(row, dict):
+			if row.get("bold") or row.get("party") == "Total":
+				continue
+			if branch and row.get("branch") and row.get("branch") != branch:
+				continue
+			r1 = flt(row.get("range1"))
+			r2 = flt(row.get("range2"))
+			r3 = flt(row.get("range3"))
+			r4 = flt(row.get("range4")) + flt(row.get("range5"))
+			out = flt(row.get("outstanding"))
+			b1 += r1
+			b2 += r2
+			b3 += r3
+			b4 += r4
+			total_outstanding += out
+
+	calculated_sum = b1 + b2 + b3 + b4
+	if total_outstanding == 0.0 and calculated_sum > 0:
+		total_outstanding = calculated_sum
+
+	days_in_period = max(1, (end_date - start_date).days + 1)
+	dpo = round((total_outstanding / period_purchases) * days_in_period, 0) if period_purchases > 0 else 0
+
+	p1 = round((b1 / total_outstanding * 100), 1) if total_outstanding > 0 else 0.0
+	p2 = round((b2 / total_outstanding * 100), 1) if total_outstanding > 0 else 0.0
+	p3 = round((b3 / total_outstanding * 100), 1) if total_outstanding > 0 else 0.0
+	p4 = round((b4 / total_outstanding * 100), 1) if total_outstanding > 0 else 0.0
+
+	buckets = [
+		{"bucket": "< 30 Days (Current)", "amount": round(b1, 2), "share": p1, "action": "Scheduled batch next week"},
+		{"bucket": "31 - 60 Days", "amount": round(b2, 2), "share": p2, "action": "Under invoice 3-way match"},
+		{"bucket": "61 - 90 Days", "amount": round(b3, 2), "share": p3, "action": "Vendor terms extension"},
+		{"bucket": "> 90 Days (Critical)", "amount": round(b4, 2), "share": p4, "action": "Audit Dispute / Escalated"},
+	]
+
+	return {
+		"total_outstanding": round(total_outstanding, 2),
+		"dpo_days": int(dpo),
+		"due_soon_share": p2,
+		"buckets": buckets,
+		"chart_data": [round(b1, 2), round(b2, 2), round(b3, 2), round(b4, 2)],
+	}
+
+
+@frappe.whitelist()
+def get_unit_series(
+	company: Optional[str] = None,
+	from_date: Optional[str] = None,
+	to_date: Optional[str] = None,
+	date_filter: Optional[str] = None,
+	kind: str = "sales",
+	grain: str = "auto",
+	unit_dimension: str = "Branch",
+	branch: Optional[str] = None,
+	fiscal_year: Optional[str] = None,
+) -> Dict[str, Any]:
+	"""
+	Returns multi-unit time-series data for Sales (Branch Wise Sales), limited to stock items.
+	Supports dynamic periods based on the date filter and time grain.
+	kind: "sales" | "purchases"
+	grain: "auto" | "days" | "weeks" | "months" | "quarters" | "years"
+	unit_dimension: "Branch" | "Cost Center" | "Company"
+	"""
+	if not company or company in ("undefined", "null", "None"):
+		company = (
+			frappe.defaults.get_user_default("Company")
+			or frappe.db.get_single_value("Global Defaults", "default_company")
+			or frappe.db.get_value("Company", {}, "name")
+		)
+
+	_check_access(company)
+
+	if not unit_dimension:
+		unit_dimension = "Branch"
+
+	start_date, end_date, _ = resolve_date_range(
+		date_filter=date_filter,
+		from_date=from_date,
+		to_date=to_date,
+		fiscal_year=fiscal_year,
+		company=company,
+	)
+
+	num_days = (end_date - start_date).days + 1
+
+	# Determine grain and available grains based on period length
+	if num_days <= 14:
+		available_grains = ["days"]
+		selected_grain = "days" if grain in ("auto", "days", "quarters", "months", "years") else grain
+	elif num_days <= 65:
+		available_grains = ["days", "weeks"]
+		selected_grain = "weeks" if grain in ("auto", "months", "quarters", "years") else grain
+	elif num_days <= 300:
+		available_grains = ["weeks", "months", "quarters"]
+		selected_grain = "months" if grain in ("auto", "years") else grain
+	else:
+		available_grains = ["months", "quarters", "years"]
+		selected_grain = "months" if grain in ("auto", "days", "weeks") else grain
+
+	# If caller explicitly asked for a specific grain (e.g. quarters or years)
+	if grain in ("quarters", "years", "months", "weeks", "days"):
+		selected_grain = grain
+		if selected_grain not in available_grains:
+			available_grains.append(selected_grain)
+
+	labels = []
+	periods = []
+
+	if selected_grain == "days":
+		cur = start_date
+		while cur <= end_date:
+			labels.append(cur.strftime("%d %b"))
+			periods.append((cur, cur))
+			cur = add_days(cur, 1)
+
+	elif selected_grain == "weeks":
+		w_start = start_date
+		idx = 1
+		while w_start <= end_date:
+			w_end = min(end_date, add_days(w_start, 6))
+			labels.append(f"W{idx} ({w_start.strftime('%d %b')} - {w_end.strftime('%d %b')})")
+			periods.append((w_start, w_end))
+			w_start = add_days(w_end, 1)
+			idx += 1
+
+	elif selected_grain == "quarters":
+		cur = start_date
+		idx = 1
+		while cur <= end_date:
+			q_end = min(end_date, add_days(add_months(cur, 3), -1))
+			labels.append(f"Q{idx}")
+			periods.append((cur, q_end))
+			cur = add_days(q_end, 1)
+			idx += 1
+
+	elif selected_grain == "years":
+		fys = frappe.db.get_all(
+			"Fiscal Year",
+			filters={"year_end_date": ("<=", end_date), "disabled": 0},
+			fields=["name", "year_start_date", "year_end_date"],
+			order_by="year_start_date desc",
+			limit=3,
+		)
+		fys.reverse()
+		for fy in fys:
+			labels.append(fy.name)
+			periods.append((getdate(fy.year_start_date), getdate(fy.year_end_date)))
+		if not periods:
+			labels.append(str(start_date.year))
+			periods.append((start_date, end_date))
+
+	else:  # "months"
+		cur = datetime.date(start_date.year, start_date.month, 1)
+		end = datetime.date(end_date.year, end_date.month, 1)
+		while cur <= end:
+			m_start = max(start_date, cur)
+			next_m = add_months(datetime.date(cur.year, cur.month, 1), 1)
+			m_end = min(end_date, add_days(next_m, -1))
+			labels.append(cur.strftime("%b %y"))
+			periods.append((m_start, m_end))
+			cur = next_m
+
+	parent_dt = "Sales Invoice" if kind == "sales" else "Purchase Invoice"
+	item_dt = "Sales Invoice Item" if kind == "sales" else "Purchase Invoice Item"
+
+	if unit_dimension == "Branch":
+		dim_expr = "COALESCE(NULLIF(parent.branch, ''), 'Unassigned')"
+	elif unit_dimension == "Company":
+		dim_expr = "COALESCE(parent.company, 'Unassigned')"
+	else:
+		dim_expr = "COALESCE(item.cost_center, parent.cost_center, 'Main')"
+
+	branch_filter = ""
+	params = [company]
+	if branch:
+		branch_filter = "AND parent.branch = %s"
+		params.append(branch)
+
+	query_start = periods[0][0] if periods else start_date
+	query_end = periods[-1][1] if periods else end_date
+	params.extend([query_start, query_end])
+
+	query = f"""
+		SELECT
+			{dim_expr} AS unit_name,
+			parent.posting_date AS posting_date,
+			SUM(CASE WHEN parent.is_return = 1 THEN -item.base_net_amount ELSE item.base_net_amount END) AS net_amount
+		FROM `tab{item_dt}` item
+		INNER JOIN `tab{parent_dt}` parent ON item.parent = parent.name
+		INNER JOIN `tabItem` i ON item.item_code = i.name
+		WHERE parent.company = %s
+			AND parent.docstatus = 1
+			AND i.is_stock_item = 1
+			{branch_filter}
+			AND parent.posting_date >= %s
+			AND parent.posting_date <= %s
+		GROUP BY unit_name, parent.posting_date
+	"""
+	records = frappe.db.sql(query, tuple(params), as_dict=True)
+
+	unit_totals = defaultdict(float)
+	unit_period_matrix = defaultdict(lambda: [0.0] * len(periods))
+
+	for r in records:
+		u = r.unit_name or "Unassigned"
+		u_clean = u.split(" - ")[0] if " - " in u else u
+		amt = flt(r.net_amount)
+		p_date = getdate(r.posting_date)
+
+		for idx, (p_start, p_end) in enumerate(periods):
+			if p_start <= p_date <= p_end:
+				unit_period_matrix[u_clean][idx] += amt
+				unit_totals[u_clean] += amt
+				break
+
+	sorted_units = sorted(unit_totals.keys(), key=lambda k: unit_totals[k], reverse=True)
+	top_units = sorted_units[:5]
+	other_units = sorted_units[5:]
+
+	palette = (
+		["#2563eb", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899"]
+		if kind == "sales"
+		else ["#3b82f6", "#ec4899", "#f97316", "#6366f1", "#14b8a6"]
+	)
+
+	datasets = []
+	grand_total = sum(unit_totals.values())
+
+	for i, u_name in enumerate(top_units):
+		color = palette[i % len(palette)]
+		data_points = [round(max(0.0, val), 2) for val in unit_period_matrix[u_name]]
+		datasets.append({
+			"label": u_name,
+			"data": data_points,
+			"backgroundColor": color,
+			"borderColor": color,
+			"borderRadius": 4,
+			"total": round(unit_totals[u_name], 2),
+		})
+
+	if other_units:
+		other_points = [0.0] * len(periods)
+		other_total = 0.0
+		for u_name in other_units:
+			other_total += unit_totals[u_name]
+			for idx in range(len(periods)):
+				other_points[idx] += unit_period_matrix[u_name][idx]
+		datasets.append({
+			"label": "Other Branches",
+			"data": [round(max(0.0, val), 2) for val in other_points],
+			"backgroundColor": "#94a3b8",
+			"borderColor": "#94a3b8",
+			"borderRadius": 4,
+			"total": round(other_total, 2),
+		})
+
+	if not datasets:
+		datasets.append({
+			"label": "No Data",
+			"data": [0.0] * len(periods),
+			"backgroundColor": palette[0],
+			"borderColor": palette[0],
+			"borderRadius": 4,
+			"total": 0.0,
+		})
+
+	top_unit_label = top_units[0] if top_units else "N/A"
+	top_unit_share = (
+		round((unit_totals[top_units[0]] / grand_total) * 100, 1)
+		if (top_units and grand_total > 0)
+		else 0.0
+	)
+
+	return {
+		"labels": labels,
+		"datasets": datasets,
+		"grand_total": round(grand_total, 2),
+		"top_unit": top_unit_label,
+		"top_unit_share": top_unit_share,
+		"unit_dimension": unit_dimension,
+		"grain": selected_grain,
+		"available_grains": available_grains,
+		"from_date": str(start_date),
+		"to_date": str(end_date),
 	}
 
 
@@ -210,7 +886,6 @@ def get_monthly_revenue_and_margin(
 	start_date = getdate(start_date)
 	end_date = getdate(end_date)
 
-	# Generate all months between start_date and end_date
 	months = []
 	cur = datetime.date(start_date.year, start_date.month, 1)
 	end = datetime.date(end_date.year, end_date.month, 1)
@@ -279,7 +954,6 @@ def get_monthly_revenue_and_margin(
 
 	overall_margin = round(((total_rev - total_exp) / total_rev * 100), 1) if total_rev > 0 else 0.0
 
-	# Calculate summary insight tiles
 	peak_rev_val = 0.0
 	peak_rev_month = "N/A"
 	best_margin_val = -999.0
@@ -466,7 +1140,7 @@ def get_sales_invoice_net_total(
 		""",
 		tuple(params),
 	)
-	return flt(res[0][0]) if res and res[0][0] else 0.0
+	return flt(res[0][0]) if res and res[0] else 0.0
 
 
 def get_ytd_purchases(
@@ -497,7 +1171,7 @@ def get_ytd_purchases(
 		""",
 		tuple(params),
 	)
-	return flt(res[0][0]) if res and res[0][0] else 0.0
+	return flt(res[0][0]) if res and res[0] else 0.0
 
 
 def get_pending_orders_status(
@@ -507,495 +1181,9 @@ def get_pending_orders_status(
 	branch: Optional[str] = None,
 	grace_days: int = 0,
 ) -> Dict[str, Any]:
-	"""
-	Classifies active pending Sales Orders within the selected Fiscal Year:
-	- Payment Hold: status = 'On Hold' or open Payment Request
-	- In Transit: linked submitted Delivery Note with delivery in progress
-	- QA Inspection: linked open Quality Inspection or pending inspection
-	- Production: linked open Work Order (Not Started / In Process)
-	- Open / Unscheduled: remaining pending SOs
-	"""
-	start_date = getdate(start_date)
-	end_date = getdate(end_date)
-
-	branch_cond = ""
-	params = [company, start_date, end_date]
-	if branch:
-		branch_cond = "AND branch = %s"
-		params.append(branch)
-
-	pending_sos = frappe.db.sql(
-		f"""
-		SELECT
-			name, status, delivery_date, base_grand_total, per_delivered, per_billed
-		FROM `tabSales Order`
-		WHERE company = %s
-			AND docstatus = 1
-			AND status IN ('To Deliver and Bill', 'To Deliver', 'To Bill', 'On Hold')
-			AND transaction_date >= %s
-			AND transaction_date <= %s
-			{branch_cond}
-		""",
-		tuple(params),
-		as_dict=True,
-	)
-
-	if not pending_sos:
-		return {
-			"total_count": 0,
-			"total_value": 0.0,
-			"sla_percentage": 100.0,
-			"stages": {
-				"Production": {"count": 0, "value": 0.0, "color": "#f59e0b"},
-				"QA Inspection": {"count": 0, "value": 0.0, "color": "#0284c7"},
-				"In Transit": {"count": 0, "value": 0.0, "color": "#6366f1"},
-				"Payment Hold": {"count": 0, "value": 0.0, "color": "#ef4444"},
-				"Open": {"count": 0, "value": 0.0, "color": "#10b981"},
-			},
-		}
-
-	so_names = [so.name for so in pending_sos]
-
-	# Fetch Work Orders linked to these Sales Orders
-	work_orders = set(
-		frappe.db.get_all(
-			"Work Order",
-			filters={"sales_order": ("in", so_names), "docstatus": 1, "status": ("in", ["Not Started", "In Process"])},
-			pluck="sales_order",
-		)
-	)
-
-	# Fetch linked open Quality Inspection
-	qa_sos = set()
-	if frappe.db.table_exists("Quality Inspection"):
-		qa_records = frappe.db.sql(
-			"""
-			SELECT DISTINCT reference_name
-			FROM `tabQuality Inspection`
-			WHERE docstatus = 0 AND reference_type = 'Sales Order' AND reference_name IN %s
-			""",
-			(tuple(so_names),),
-		)
-		qa_sos = {r[0] for r in qa_records}
-
-	# Fetch linked Delivery Notes
-	transit_sos = set()
-	if frappe.db.table_exists("Delivery Note Item"):
-		dn_records = frappe.db.sql(
-			"""
-			SELECT DISTINCT dni.against_sales_order
-			FROM `tabDelivery Note Item` dni
-			INNER JOIN `tabDelivery Note` dn ON dni.parent = dn.name
-			WHERE dn.docstatus = 1 AND dn.status NOT IN ('Cancelled', 'Closed')
-				AND dni.against_sales_order IN %s
-			""",
-			(tuple(so_names),),
-		)
-		transit_sos = {r[0] for r in dn_records if r[0]}
-
-	today = getdate(nowdate())
-	cutoff_date = add_days(today, -grace_days) if grace_days else today
-
-	stages = {
-		"Production": {"count": 0, "value": 0.0, "color": "#f59e0b"},
-		"QA Inspection": {"count": 0, "value": 0.0, "color": "#0284c7"},
-		"In Transit": {"count": 0, "value": 0.0, "color": "#6366f1"},
-		"Payment Hold": {"count": 0, "value": 0.0, "color": "#ef4444"},
-		"Open": {"count": 0, "value": 0.0, "color": "#10b981"},
-	}
-
-	total_count = len(pending_sos)
-	total_val = 0.0
-	on_sla_count = 0
-
-	for so in pending_sos:
-		pending_pct = max(0.0, 100.0 - flt(so.per_delivered))
-		val = flt(so.base_grand_total) * (pending_pct / 100.0)
-		total_val += val
-
-		if so.delivery_date and getdate(so.delivery_date) >= cutoff_date:
-			on_sla_count += 1
-
-		# Classify stage
-		if so.status == "On Hold":
-			stage = "Payment Hold"
-		elif so.name in transit_sos:
-			stage = "In Transit"
-		elif so.name in qa_sos:
-			stage = "QA Inspection"
-		elif so.name in work_orders:
-			stage = "Production"
-		else:
-			stage = "Open"
-
-		stages[stage]["count"] += 1
-		stages[stage]["value"] += round(val, 2)
-
-	sla_pct = round((on_sla_count / total_count) * 100, 1) if total_count > 0 else 100.0
-
 	return {
-		"total_count": total_count,
-		"total_value": round(total_val, 2),
-		"sla_percentage": sla_pct,
-		"stages": stages,
-	}
-
-
-def get_ar_ageing(
-	company: str,
-	start_date: datetime.date,
-	end_date: datetime.date,
-	ytd_revenue: float,
-	branch: Optional[str] = None,
-) -> Dict[str, Any]:
-	"""Executes ERPNext Accounts Receivable report and builds bucket summary and DSO."""
-	from erpnext.accounts.report.accounts_receivable.accounts_receivable import execute as ar_execute
-
-	start_date = getdate(start_date)
-	end_date = getdate(end_date)
-	report_date = nowdate() if getdate(nowdate()) <= end_date else str(end_date)
-	filters = {
-		"company": company,
-		"report_date": report_date,
-		"ageing_based_on": "Due Date",
-		"range1": 30,
-		"range2": 60,
-		"range3": 90,
-		"range4": 120,
-	}
-	if branch:
-		filters["branch"] = branch
-
-	try:
-		columns, data, _, _, report_summary, _ = ar_execute(filters)
-	except Exception:
-		try:
-			res = ar_execute(filters)
-			data = res[1] if len(res) > 1 else []
-		except Exception:
-			data = []
-
-	b1, b2, b3, b4 = 0.0, 0.0, 0.0, 0.0
-	total_outstanding = 0.0
-
-	for row in data:
-		if isinstance(row, dict):
-			# Skip bold/total subtotal rows to avoid double counting
-			if row.get("bold") or row.get("party") == "Total":
-				continue
-			if branch and row.get("branch") and row.get("branch") != branch:
-				continue
-			r1 = flt(row.get("range1"))
-			r2 = flt(row.get("range2"))
-			r3 = flt(row.get("range3"))
-			r4 = flt(row.get("range4")) + flt(row.get("range5"))
-			out = flt(row.get("outstanding"))
-			b1 += r1
-			b2 += r2
-			b3 += r3
-			b4 += r4
-			total_outstanding += out
-
-	calculated_sum = b1 + b2 + b3 + b4
-	if total_outstanding == 0.0 and calculated_sum > 0:
-		total_outstanding = calculated_sum
-
-	# DSO: (AR Outstanding / YTD Net Revenue) * Days in period
-	days_in_period = max(1, (getdate(report_date) - start_date).days + 1)
-	dso = round((total_outstanding / ytd_revenue) * days_in_period, 0) if ytd_revenue > 0 else 0
-
-	p1 = round((b1 / total_outstanding * 100), 1) if total_outstanding > 0 else 0.0
-	p2 = round((b2 / total_outstanding * 100), 1) if total_outstanding > 0 else 0.0
-	p3 = round((b3 / total_outstanding * 100), 1) if total_outstanding > 0 else 0.0
-	p4 = round((b4 / total_outstanding * 100), 1) if total_outstanding > 0 else 0.0
-
-	buckets = [
-		{"bucket": "< 30 Days (Current)", "amount": round(b1, 2), "share": p1, "risk": "Normal", "risk_class": "risk-normal"},
-		{"bucket": "31 - 60 Days", "amount": round(b2, 2), "share": p2, "risk": "Low", "risk_class": "risk-low"},
-		{"bucket": "61 - 90 Days", "amount": round(b3, 2), "share": p3, "risk": "Medium", "risk_class": "risk-medium"},
-		{"bucket": "> 90 Days (Overdue)", "amount": round(b4, 2), "share": p4, "risk": "High Alert", "risk_class": "risk-high"},
-	]
-
-	return {
-		"total_outstanding": round(total_outstanding, 2),
-		"dso_days": int(dso),
-		"current_share": p1,
-		"buckets": buckets,
-		"chart_data": [round(b1, 2), round(b2, 2), round(b3, 2), round(b4, 2)],
-	}
-
-
-def get_ap_ageing(
-	company: str,
-	start_date: datetime.date,
-	end_date: datetime.date,
-	ytd_purchases: float,
-	branch: Optional[str] = None,
-) -> Dict[str, Any]:
-	"""Executes ERPNext Accounts Payable report and builds bucket summary and DPO."""
-	from erpnext.accounts.report.accounts_payable.accounts_payable import execute as ap_execute
-
-	start_date = getdate(start_date)
-	end_date = getdate(end_date)
-	report_date = nowdate() if getdate(nowdate()) <= end_date else str(end_date)
-	filters = {
-		"company": company,
-		"report_date": report_date,
-		"ageing_based_on": "Due Date",
-		"range1": 30,
-		"range2": 60,
-		"range3": 90,
-		"range4": 120,
-	}
-	if branch:
-		filters["branch"] = branch
-
-	try:
-		columns, data, _, _, report_summary, _ = ap_execute(filters)
-	except Exception:
-		try:
-			res = ap_execute(filters)
-			data = res[1] if len(res) > 1 else []
-		except Exception:
-			data = []
-
-	b1, b2, b3, b4 = 0.0, 0.0, 0.0, 0.0
-	total_outstanding = 0.0
-
-	for row in data:
-		if isinstance(row, dict):
-			if row.get("bold") or row.get("party") == "Total":
-				continue
-			if branch and row.get("branch") and row.get("branch") != branch:
-				continue
-			r1 = flt(row.get("range1"))
-			r2 = flt(row.get("range2"))
-			r3 = flt(row.get("range3"))
-			r4 = flt(row.get("range4")) + flt(row.get("range5"))
-			out = flt(row.get("outstanding"))
-			b1 += r1
-			b2 += r2
-			b3 += r3
-			b4 += r4
-			total_outstanding += out
-
-	calculated_sum = b1 + b2 + b3 + b4
-	if total_outstanding == 0.0 and calculated_sum > 0:
-		total_outstanding = calculated_sum
-
-	days_in_period = max(1, (getdate(report_date) - start_date).days + 1)
-	dpo = round((total_outstanding / ytd_purchases) * days_in_period, 0) if ytd_purchases > 0 else 0
-
-	p1 = round((b1 / total_outstanding * 100), 1) if total_outstanding > 0 else 0.0
-	p2 = round((b2 / total_outstanding * 100), 1) if total_outstanding > 0 else 0.0
-	p3 = round((b3 / total_outstanding * 100), 1) if total_outstanding > 0 else 0.0
-	p4 = round((b4 / total_outstanding * 100), 1) if total_outstanding > 0 else 0.0
-
-	buckets = [
-		{"bucket": "< 30 Days (Current)", "amount": round(b1, 2), "share": p1, "action": "Scheduled batch next week"},
-		{"bucket": "31 - 60 Days", "amount": round(b2, 2), "share": p2, "action": "Under invoice 3-way match"},
-		{"bucket": "61 - 90 Days", "amount": round(b3, 2), "share": p3, "action": "Vendor terms extension"},
-		{"bucket": "> 90 Days (Critical)", "amount": round(b4, 2), "share": p4, "action": "Audit Dispute / Escalated"},
-	]
-
-	return {
-		"total_outstanding": round(total_outstanding, 2),
-		"dpo_days": int(dpo),
-		"due_soon_share": p2,
-		"buckets": buckets,
-		"chart_data": [round(b1, 2), round(b2, 2), round(b3, 2), round(b4, 2)],
-	}
-
-
-@frappe.whitelist()
-def get_unit_series(
-	company: Optional[str] = None,
-	fiscal_year: Optional[str] = None,
-	kind: str = "sales",
-	grain: str = "quarters",
-	unit_dimension: str = "Branch",
-	branch: Optional[str] = None,
-) -> Dict[str, Any]:
-	"""
-	Returns multi-unit time-series data for Sales (Item 2) or Purchases (Item 3).
-	kind: "sales" | "purchases"
-	grain: "years" | "quarters" | "months"
-	unit_dimension: "Branch" | "Cost Center" | "Company"
-	"""
-	if not company:
-		company = (
-			frappe.defaults.get_user_default("Company")
-			or frappe.defaults.get_default("Company")
-			or frappe.db.get_single_value("Global Defaults", "default_company")
-			or frappe.db.get_value("Company", {}, "name")
-		)
-
-	_check_access(company)
-
-	if not unit_dimension:
-		unit_dimension = "Branch"
-
-	fy_start, fy_end = get_fy_dates(fiscal_year)
-
-	# Determine time intervals and labels
-	labels = []
-	periods = []
-
-	if grain == "years":
-		# Selected FY + 2 preceding FYs
-		fys = frappe.db.get_all(
-			"Fiscal Year",
-			filters={"year_end_date": ("<=", fy_end), "disabled": 0},
-			fields=["name", "year_start_date", "year_end_date"],
-			order_by="year_start_date desc",
-			limit=3,
-		)
-		fys.reverse()
-		for fy in fys:
-			labels.append(fy.name)
-			periods.append((getdate(fy.year_start_date), getdate(fy.year_end_date)))
-	elif grain == "quarters":
-		# Q1 to Q4 from fy_start
-		for q in range(4):
-			q_start = add_months(fy_start, q * 3)
-			q_end = add_days(add_months(q_start, 3), -1)
-			if q_end > fy_end:
-				q_end = fy_end
-			labels.append(f"Q{q + 1}")
-			periods.append((q_start, q_end))
-	else:  # "months"
-		cur = datetime.date(fy_start.year, fy_start.month, 1)
-		end = datetime.date(fy_end.year, fy_end.month, 1)
-		while cur <= end:
-			m_start = cur
-			m_end = add_days(add_months(m_start, 1), -1)
-			if m_end > fy_end:
-				m_end = fy_end
-			labels.append(cur.strftime("%b %y"))
-			periods.append((m_start, m_end))
-			cur = add_months(cur, 1)
-
-	# Build Table & Query
-	parent_dt = "Sales Invoice" if kind == "sales" else "Purchase Invoice"
-	item_dt = "Sales Invoice Item" if kind == "sales" else "Purchase Invoice Item"
-
-	# Dimension selection field
-	if unit_dimension == "Branch":
-		dim_expr = "COALESCE(NULLIF(parent.branch, ''), 'Unassigned')"
-	elif unit_dimension == "Company":
-		dim_expr = "COALESCE(parent.company, 'Unassigned')"
-	else:  # Cost Center
-		dim_expr = "COALESCE(item.cost_center, parent.cost_center, 'Main')"
-
-	# Filter by branch if specific branch selected
-	branch_filter = ""
-	params = [company]
-	if branch:
-		branch_filter = "AND parent.branch = %s"
-		params.append(branch)
-
-	overall_start = periods[0][0] if periods else fy_start
-	overall_end = periods[-1][1] if periods else fy_end
-	params.extend([overall_start, overall_end])
-
-	query = f"""
-		SELECT
-			{dim_expr} AS unit_name,
-			parent.posting_date AS posting_date,
-			SUM(CASE WHEN parent.is_return = 1 THEN -item.base_net_amount ELSE item.base_net_amount END) AS net_amount
-		FROM `tab{item_dt}` item
-		INNER JOIN `tab{parent_dt}` parent ON item.parent = parent.name
-		WHERE parent.company = %s
-			AND parent.docstatus = 1
-			{branch_filter}
-			AND parent.posting_date >= %s
-			AND parent.posting_date <= %s
-		GROUP BY unit_name, parent.posting_date
-	"""
-	records = frappe.db.sql(query, tuple(params), as_dict=True)
-
-	# Group data by unit and period
-	unit_totals = defaultdict(float)
-	unit_period_matrix = defaultdict(lambda: [0.0] * len(periods))
-
-	for r in records:
-		u = r.unit_name or "Unassigned"
-		# Strip company suffix if present (e.g. "Main - ST" -> "Main")
-		u_clean = u.split(" - ")[0] if " - " in u else u
-		amt = flt(r.net_amount)
-		p_date = getdate(r.posting_date)
-
-		for idx, (p_start, p_end) in enumerate(periods):
-			if p_start <= p_date <= p_end:
-				unit_period_matrix[u_clean][idx] += amt
-				unit_totals[u_clean] += amt
-				break
-
-	# Pick top 5 units + group others
-	sorted_units = sorted(unit_totals.keys(), key=lambda k: unit_totals[k], reverse=True)
-	top_units = sorted_units[:5]
-	other_units = sorted_units[5:]
-
-	palette = (
-		["#0284c7", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899"]
-		if kind == "sales"
-		else ["#3b82f6", "#ec4899", "#f97316", "#6366f1", "#14b8a6"]
-	)
-
-	datasets = []
-	grand_total = sum(unit_totals.values())
-
-	for i, u_name in enumerate(top_units):
-		color = palette[i % len(palette)]
-		data_points = [round(max(0.0, val), 2) for val in unit_period_matrix[u_name]]
-		datasets.append({
-			"label": u_name,
-			"data": data_points,
-			"backgroundColor": color,
-			"borderColor": color,
-			"borderRadius": 4,
-			"total": round(unit_totals[u_name], 2),
-		})
-
-	if other_units:
-		other_points = [0.0] * len(periods)
-		other_total = 0.0
-		for u_name in other_units:
-			other_total += unit_totals[u_name]
-			for idx in range(len(periods)):
-				other_points[idx] += unit_period_matrix[u_name][idx]
-		datasets.append({
-			"label": "Other Branches/Units",
-			"data": [round(max(0.0, val), 2) for val in other_points],
-			"backgroundColor": "#94a3b8",
-			"borderColor": "#94a3b8",
-			"borderRadius": 4,
-			"total": round(other_total, 2),
-		})
-
-	# If no datasets found, add an empty placeholder dataset
-	if not datasets:
-		datasets.append({
-			"label": "No Data",
-			"data": [0.0] * len(periods),
-			"backgroundColor": palette[0],
-			"borderColor": palette[0],
-			"borderRadius": 4,
-			"total": 0.0,
-		})
-
-	top_unit_label = top_units[0] if top_units else "N/A"
-	top_unit_share = (
-		round((unit_totals[top_units[0]] / grand_total) * 100, 1)
-		if (top_units and grand_total > 0)
-		else 0.0
-	)
-
-	return {
-		"labels": labels,
-		"datasets": datasets,
-		"grand_total": round(grand_total, 2),
-		"top_unit": top_unit_label,
-		"top_unit_share": top_unit_share,
-		"unit_dimension": unit_dimension,
+		"total_count": 0,
+		"total_value": 0.0,
+		"sla_percentage": 100.0,
+		"stages": {},
 	}

@@ -1336,7 +1336,9 @@ def get_change(self):
 
     updated, updated_boms = update_sales_order_items(self, mismatched_rows)
 
-    created_requests = create_order_modification_requests(updated_boms, self.branch)
+    created_requests = create_order_modification_requests(
+        updated_boms, self.branch, self.reason_for_change
+    )
 
     update_child_rows_with_omr(self, created_requests)
 
@@ -1527,7 +1529,7 @@ def update_finish_item_bom(custom_batch_no, new_item, old_item):
     return bom_name
 
 
-def create_order_modification_requests(updated_boms, branch):
+def create_order_modification_requests(updated_boms, branch, reason_for_change=None):
 
     created_docs = []
 
@@ -1568,12 +1570,14 @@ def create_order_modification_requests(updated_boms, branch):
             "name"
         )
 
+        change_reason = reason_for_change or "Sales Order Modification"
+
         if existing_draft:
             action = "Updated"
             # ── Draft exists → Update it, do NOT create new ──
             doc = frappe.get_doc("Bom Modification Request", existing_draft)
             doc.branch = branch
-            doc.reason_for_change = "Sales Order Modification"
+            doc.reason_for_change = change_reason
 
         else:
             action = "Created"
@@ -1581,7 +1585,7 @@ def create_order_modification_requests(updated_boms, branch):
             # doc.type = "BOM"
             doc.bom = bom_name
             doc.branch = branch
-            doc.reason_for_change = "Sales Order Modification"
+            doc.reason_for_change = change_reason
 
             doc.insert(ignore_permissions=True)
 
