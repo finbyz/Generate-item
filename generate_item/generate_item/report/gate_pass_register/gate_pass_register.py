@@ -745,10 +745,6 @@ def build_conditions(filters):
         conditions.append("gpo.returnable = %(returnable)s")
         values["returnable"] = filters.returnable
 
-    if filters.get("status"):
-        conditions.append("gpo.status = %(status)s")
-        values["status"] = filters.status
-
     cond_str = ("AND " + " AND ".join(conditions)) if conditions else ""
     return cond_str, values
 

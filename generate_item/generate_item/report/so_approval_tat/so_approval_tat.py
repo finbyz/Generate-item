@@ -3,7 +3,7 @@
 
 import frappe
 from frappe import _
-from frappe.utils import getdate, date_diff, today, now_datetime
+from frappe.utils import add_days, add_months, date_diff, getdate, now_datetime, nowdate, today
 
 REMARK_CHILD_DT = "SO Approval Remark History"
 
@@ -150,8 +150,57 @@ def get_latest_remarks(order_names):
 	return result
 
 
+def resolve_period(period):
+	import datetime
+
+	today_date = getdate(nowdate())
+	if not period or period == "Custom":
+		return None, None
+
+	if period == "Today":
+		return today_date, today_date
+	elif period == "This Week":
+		start = today_date - datetime.timedelta(days=today_date.weekday())
+		return start, today_date
+	elif period == "Last Week":
+		start = today_date - datetime.timedelta(days=today_date.weekday() + 7)
+		end = start + datetime.timedelta(days=6)
+		return start, end
+	elif period == "This Month":
+		start = today_date.replace(day=1)
+		return start, today_date
+	elif period == "Last Month":
+		last_day_prev_month = today_date.replace(day=1) - datetime.timedelta(days=1)
+		start = last_day_prev_month.replace(day=1)
+		return start, last_day_prev_month
+	elif period == "This Quarter":
+		start = add_months(today_date, -3)
+		return start, today_date
+	elif period == "Last Quarter":
+		this_q_start = add_months(today_date, -3)
+		last_q_end = add_days(this_q_start, -1)
+		last_q_start = add_months(this_q_start, -3)
+		return last_q_start, last_q_end
+	elif period == "This Year":
+		start = today_date.replace(month=1, day=1)
+		return start, today_date
+	elif period == "Last Year":
+		start = today_date.replace(year=today_date.year - 1, month=1, day=1)
+		end = today_date.replace(year=today_date.year - 1, month=12, day=31)
+		return start, end
+	return None, None
+
+
 def get_conditions(filters):
 	conditions, values = [], {}
+
+	period = filters.get("period")
+	if period and period != "Custom":
+		p_from, p_to = resolve_period(period)
+		if p_from and not filters.get("from_date"):
+			filters["from_date"] = p_from
+		if p_to and not filters.get("to_date"):
+			filters["to_date"] = p_to
 
 	if filters.get("from_date"):
 		conditions.append("AND so.transaction_date >= %(from_date)s")
@@ -169,7 +218,7 @@ def get_conditions(filters):
 		conditions.append("AND so.branch = %(branch)s")
 		values["branch"] = filters.branch
 
-	# Same behaviour as Sales Order Register: status filter, else hide Closed/Completed
+	# Status filter: default to Draft using py side if not provided
 	status = filters.get("status")
 	if isinstance(status, str):
 		status = frappe.parse_json(status) if status.startswith("[") else [s.strip() for s in status.split(",") if s.strip()]
@@ -177,7 +226,7 @@ def get_conditions(filters):
 		conditions.append("AND so.status IN %(status)s")
 		values["status"] = tuple(status)
 	else:
-		conditions.append("AND so.status NOT IN ('Closed', 'Completed')")
+		conditions.append("AND so.status = 'Draft'")
 
 	return " " + " ".join(conditions), values
 

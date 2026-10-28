@@ -1,23 +1,143 @@
 // Copyright (c) 2026, Finbyz and contributors
 // For license information, please see license.txt
 
+function resolve_period_dates(preset) {
+	const today = frappe.datetime.get_today();
+	const todayDate = frappe.datetime.str_to_obj(today);
+
+	const fmt = (d) => frappe.datetime.obj_to_str(d);
+	const add = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+	const subMonths = (d, n) => { const x = new Date(d); x.setMonth(x.getMonth() - n); return x; };
+	const dow = todayDate.getDay();
+	const daysToMon = (dow === 0 ? -6 : 1 - dow);
+
+	switch (preset) {
+		case "Today":
+			return { from_date: today, to_date: today };
+		case "This Week": {
+			const mon = add(todayDate, daysToMon);
+			return { from_date: fmt(mon), to_date: today };
+		}
+		case "Last Week": {
+			const lastMon = add(todayDate, daysToMon - 7);
+			const lastSun = add(lastMon, 6);
+			return { from_date: fmt(lastMon), to_date: fmt(lastSun) };
+		}
+		case "This Month": {
+			const first = new Date(todayDate.getFullYear(), todayDate.getMonth(), 1);
+			return { from_date: fmt(first), to_date: today };
+		}
+		case "Last Month": {
+			const first = new Date(todayDate.getFullYear(), todayDate.getMonth() - 1, 1);
+			const last = new Date(todayDate.getFullYear(), todayDate.getMonth(), 0);
+			return { from_date: fmt(first), to_date: fmt(last) };
+		}
+		case "This Quarter": {
+			const start = subMonths(todayDate, 3);
+			return { from_date: fmt(start), to_date: today };
+		}
+		case "Last Quarter": {
+			const thisQStart = subMonths(todayDate, 3);
+			const lastQEnd = add(thisQStart, -1);
+			const lastQStart = subMonths(thisQStart, 3);
+			return { from_date: fmt(lastQStart), to_date: fmt(lastQEnd) };
+		}
+		case "This Year": {
+			const first = new Date(todayDate.getFullYear(), 0, 1);
+			return { from_date: fmt(first), to_date: today };
+		}
+		case "Last Year": {
+			const first = new Date(todayDate.getFullYear() - 1, 0, 1);
+			const last = new Date(todayDate.getFullYear() - 1, 11, 31);
+			return { from_date: fmt(first), to_date: fmt(last) };
+		}
+		default:
+			return null;
+	}
+}
+
 frappe.query_reports["SO Approval TAT"] = {
 	filters: [
+		{
+			fieldname: "period",
+			label: __("Period"),
+			fieldtype: "Select",
+			options: [
+				"",
+				"Today",
+				"This Week",
+				"Last Week",
+				"This Month",
+				"Last Month",
+				"This Quarter",
+				"Last Quarter",
+				"This Year",
+				"Last Year",
+				"Custom",
+			],
+			default: "",
+			on_change: function () {
+				let period = frappe.query_report.get_filter_value("period");
+				if (period && period !== "Custom") {
+					let dates = resolve_period_dates(period);
+					if (dates) {
+						frappe.query_report.set_filter_value("from_date", dates.from_date);
+						frappe.query_report.set_filter_value("to_date", dates.to_date);
+					}
+				} else if (!period) {
+					frappe.query_report.set_filter_value("from_date", "");
+					frappe.query_report.set_filter_value("to_date", "");
+				}
+				frappe.query_report.refresh();
+			},
+		},
 		{
 			fieldname: "from_date",
 			label: __("From Date"),
 			fieldtype: "Date",
-			default: frappe.datetime.add_days(frappe.datetime.get_today(), -7),
 			width: "100",
-			on_change: () => frappe.query_report.refresh(),
+			on_change: function () {
+				let period = frappe.query_report.get_filter_value("period");
+				let from_date = frappe.query_report.get_filter_value("from_date");
+				let to_date = frappe.query_report.get_filter_value("to_date");
+				if (!from_date && !to_date) {
+					if (period === "Custom") {
+						frappe.query_report.set_filter_value("period", "");
+					}
+				} else if (period && period !== "Custom") {
+					let expected = resolve_period_dates(period);
+					if (expected && expected.from_date !== from_date) {
+						frappe.query_report.set_filter_value("period", "Custom");
+					}
+				} else if (!period && (from_date || to_date)) {
+					frappe.query_report.set_filter_value("period", "Custom");
+				}
+				frappe.query_report.refresh();
+			},
 		},
 		{
 			fieldname: "to_date",
 			label: __("To Date"),
 			fieldtype: "Date",
-			default: frappe.datetime.get_today(),
 			width: "100",
-			on_change: () => frappe.query_report.refresh(),
+			on_change: function () {
+				let period = frappe.query_report.get_filter_value("period");
+				let from_date = frappe.query_report.get_filter_value("from_date");
+				let to_date = frappe.query_report.get_filter_value("to_date");
+				if (!from_date && !to_date) {
+					if (period === "Custom") {
+						frappe.query_report.set_filter_value("period", "");
+					}
+				} else if (period && period !== "Custom") {
+					let expected = resolve_period_dates(period);
+					if (expected && expected.to_date !== to_date) {
+						frappe.query_report.set_filter_value("period", "Custom");
+					}
+				} else if (!period && (from_date || to_date)) {
+					frappe.query_report.set_filter_value("period", "Custom");
+				}
+				frappe.query_report.refresh();
+			},
 		},
 		{
 			fieldname: "sales_order",

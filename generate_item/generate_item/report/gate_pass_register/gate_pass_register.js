@@ -170,13 +170,6 @@ frappe.query_reports["Gate Pass Register"] = {
             options: "Gatepass Component",
             reqd: 0,
         },
-        {
-            fieldname: "status",
-            label: __("Status"),
-            fieldtype: "Select",
-            options: "\nDraft\nOpen\nPartially Received\nCompleted\nClosed\nCancelled",
-            reqd: 0,
-        },
     ],
 
     /* ───────────────────────────────────────────────────────────────────────
@@ -187,7 +180,7 @@ frappe.query_reports["Gate Pass Register"] = {
         frappe.query_reports[KEY]._report = report;
         frappe.query_reports[KEY]._state = {
             view_mode: "detail",       // "detail" | "gp_wise" | "party"
-            status_filter: "all",      // "all" | "Open" | "Partial" | "Closed" | "Non-Returnable" | "pending" | "critical"
+            status_filter: "Open",     // "all" | "Open" | "Partial" | "Closed" | "Non-Returnable" | "pending" | "critical"
             aging_bucket: "all",       // "all" | "0-30" | "30-60" | "60-90" | "90+"
             search_text: "",
             sort: { field: "pending_qty", dir: "desc" },
@@ -581,7 +574,6 @@ function inject_kpi_and_toolbar(datatable) {
         <button class="gp-filter-btn" data-status="all" onclick="gp_quick_filter('all')">All (${allCount})</button>
         <button class="gp-filter-btn" data-status="returnable" onclick="gp_quick_filter('returnable')">Returnable (${returnableCount})</button>
         <button class="gp-filter-btn" data-status="Open" onclick="gp_quick_filter('Open')">Open (${openCount})</button>
-       
         <button class="gp-filter-btn" data-status="Closed" onclick="gp_quick_filter('Closed')">Closed (${closedCount})</button>
         <button class="gp-filter-btn" data-status="Non-Returnable" onclick="gp_quick_filter('Non-Returnable')">Non-Returnable (${nrCount})</button>
     </div>
@@ -595,7 +587,7 @@ function inject_kpi_and_toolbar(datatable) {
 
 <div class="gp-toolbar-row">
     <div class="gp-aging-toolbar">
-        <label>AGING:</label>
+        <label>AGING:(Returnable)</label>
         <button class="gp-aging-btn" data-bucket="all" onclick="gp_set_aging_bucket('all')">All</button>
         <button class="gp-aging-btn" data-bucket="0-30" onclick="gp_set_aging_bucket('0-30')">0–30d (${b0_30})</button>
         <button class="gp-aging-btn" data-bucket="30-60" onclick="gp_set_aging_bucket('30-60')">30–60d (${b30_60})</button>
