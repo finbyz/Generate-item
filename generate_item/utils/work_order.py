@@ -492,18 +492,18 @@ def _update_single_work_order(wo):
     # Sync WO qty from the linked Production Plan Item or Sub Assembly Item
     target_qty = flt(wo.qty)
     if wo.production_plan:
-        if wo.production_plan_item:
-            pp_planned_qty = frappe.db.get_value(
-                "Production Plan Item", wo.production_plan_item, "planned_qty"
-            )
-            if pp_planned_qty:
-                target_qty = flt(pp_planned_qty)
-        elif wo.production_plan_sub_assembly_item:
+        if wo.production_plan_sub_assembly_item:
             pp_sub_qty = frappe.db.get_value(
                 "Production Plan Sub Assembly Item", wo.production_plan_sub_assembly_item, "qty"
             )
             if pp_sub_qty:
                 target_qty = flt(pp_sub_qty)
+        elif wo.production_plan_item:
+            pp_planned_qty = frappe.db.get_value(
+                "Production Plan Item", wo.production_plan_item, "planned_qty"
+            )
+            if pp_planned_qty:
+                target_qty = flt(pp_planned_qty)
 
     if target_qty != flt(wo.qty):
         wo.qty = target_qty

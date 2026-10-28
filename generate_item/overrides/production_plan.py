@@ -510,7 +510,7 @@ class ProductionPlan(_ProductionPlan):
         )
 
         # Collect existing references for both finished goods and sub-assemblies
-        existing_fg_refs = {wo['production_plan_item'] for wo in existing_wo if wo.get('production_plan_item')}
+        existing_fg_refs = {wo['production_plan_item'] for wo in existing_wo if wo.get('production_plan_item') and not wo.get('production_plan_sub_assembly_item')}
         existing_sa_refs = {wo['production_plan_sub_assembly_item'] for wo in existing_wo if wo.get('production_plan_sub_assembly_item')}
 
         # Check each po_item (finished goods)
@@ -1402,7 +1402,6 @@ class ProductionPlan(_ProductionPlan):
                     "sales_order": getattr(production_plan_item, "sales_order", None),
                     "sales_order_item": getattr(production_plan_item, "sales_order_item", None),
                     "project": getattr(production_plan_item, "project", None),
-                    "production_plan_item": getattr(production_plan_item, "name", None),
                 })
             
             if not work_order_data.get("wip_warehouse"):

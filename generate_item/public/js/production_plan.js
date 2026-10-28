@@ -136,12 +136,19 @@ function get_update_for_production_plan(frm) {
 
 
 function add_update_and_create_work_orders_button(frm, group) {
+    frm.page.remove_inner_button(__("Update / Create Work Order"), group);
+
     if (frm.doc.docstatus !== 1) {
         return;
     }
 
     // Hide when OMR or BOM modification is pending — user must click "Get Update" first
     if (frm.doc.bom_modification || frm.doc.sales_order_modification) {
+        return;
+    }
+
+    // Only show if work orders are flagged as needing update
+    if (!cint(frm.doc.work_order_updated)) {
         return;
     }
 
@@ -214,6 +221,8 @@ function update_and_create_work_orders(frm) {
 
 
 function add_get_update_button(frm, group) {
+    frm.page.remove_inner_button(__("Get Update"), group);
+
     if (!frm.doc.bom_modification && !frm.doc.sales_order_modification) {
         return;
     }
@@ -243,8 +252,10 @@ function add_get_update_button(frm, group) {
 }
 
 function add_create_material_request_button(frm, group) {
-    // Only relevant for submitted plans that actually have raw material rows
-    if (frm.doc.docstatus !== 1 || !(frm.doc.mr_items || []).length || !frm.doc.production_plan_updated) {
+    frm.page.remove_inner_button(__("Create Material Request"), group);
+
+    // Only relevant for submitted plans that actually have raw material rows and are flagged as updated
+    if (frm.doc.docstatus !== 1 || !(frm.doc.mr_items || []).length || !cint(frm.doc.production_plan_updated)) {
         return;
     }
 
@@ -257,8 +268,8 @@ function add_create_material_request_button(frm, group) {
         method: "generate_item.utils.production_plan.get_pending_mr_items",
         args: { docname: frm.doc.name },
         callback: function (r) {
-            // re-check production_plan_updated in case it changed by the time this resolves
             if (!r.message || !r.message.pending_count) {
+                frm.page.remove_inner_button(__("Create Material Request"), group);
                 return;
             }
 
@@ -283,9 +294,9 @@ function add_create_material_request_button(frm, group) {
                 },
                 group
             );
+            frm.remove_custom_button(__("Material Request"), "Create");
         },
     });
-    frm.remove_custom_button(__("Material Request"), "Create");
 }
 
 function create_material_request_for_pending_items(frm, submit) {
@@ -485,11 +496,13 @@ frappe.ui.form.on('Production Plan', {
         render_bom_exploded_table(frm);
         const UPDATE_GROUP = __("Update");
         if (frm.doc.docstatus === 1) {
-
-            add_update_and_create_work_orders_button(frm, UPDATE_GROUP);
             add_get_update_button(frm, UPDATE_GROUP);
+            add_update_and_create_work_orders_button(frm, UPDATE_GROUP);
             add_create_material_request_button(frm, UPDATE_GROUP);
-
+        } else {
+            frm.page.remove_inner_button(__("Get Update"), UPDATE_GROUP);
+            frm.page.remove_inner_button(__("Update / Create Work Order"), UPDATE_GROUP);
+            frm.page.remove_inner_button(__("Create Material Request"), UPDATE_GROUP);
         }
 
         custom_transfer_materials(frm)

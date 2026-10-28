@@ -977,7 +977,10 @@ def create_material_request_for_pending_items(docname, submit_material_request=1
         created_items = [
             f"{d.item_code} ({d.quantity})" for d in pending_rows if d.item_code
         ]
-        # frappe.db.set_value("Production Plan", pp.name, "production_plan_updated", 0, update_modified=False)
+        # Check if all pending MR rows have been fulfilled; if so, clear production_plan_updated flag
+        remaining_pending = _get_pending_mr_rows(pp)
+        if not remaining_pending:
+            frappe.db.set_value("Production Plan", pp.name, "production_plan_updated", 0, update_modified=False)
 
         action_label = _("created and submitted") if submit_material_request else _("created")
 
@@ -1311,7 +1314,7 @@ def auto_create_and_submit_work_orders(doc):
         filters={"production_plan": doc.name, "docstatus": ["in", [0, 1]]},
         fields=["name", "docstatus", "production_plan_item", "production_plan_sub_assembly_item"]
     )
-    existing_fg_refs = {wo.production_plan_item for wo in existing_wos if wo.production_plan_item}
+    existing_fg_refs = {wo.production_plan_item for wo in existing_wos if wo.production_plan_item and not wo.production_plan_sub_assembly_item}
     existing_sa_refs = {wo.production_plan_sub_assembly_item for wo in existing_wos if wo.production_plan_sub_assembly_item}
 
     fg_covered = all(
@@ -1377,6 +1380,10 @@ def auto_create_and_submit_work_orders(doc):
         prod_item = wo_info.production_item or _("Unknown Item")
         try:
             wo = frappe.get_doc("Work Order", wo_name)
+            # Ensure sub-assembly work orders do NOT have production_plan_item set
+            if getattr(wo, "production_plan_sub_assembly_item", None) and getattr(wo, "production_plan_item", None):
+                wo.production_plan_item = None
+                wo.db_set("production_plan_item", None, update_modified=False)
             if not getattr(wo, "wip_warehouse", None) or not getattr(wo, "fg_warehouse", None) or not getattr(wo, "source_warehouse", None):
                 from generate_item.utils.work_order import set_work_order_warehouses_by_branch
                 set_work_order_warehouses_by_branch(wo)
