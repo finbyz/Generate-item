@@ -52,7 +52,7 @@ def run_verification():
 		"custom_pattern_drawing_no": "PAT-001",
 		"custom_pattern_drawing_rev_no": "PR1",
 	})
-	frappe.db.commit()
+
 
 	# 2. Test Pattern Set Creation and Validation
 	test_ps_name = f"TEST-PS-{frappe.generate_hash(length=5)}"

@@ -91,7 +91,7 @@ frappe.query_reports["Job Card Report"] = {
 				let range = query_report.get_filter_value("date_range");
 				if (range && range !== "Custom") {
 					let expected = calculate_date_range(range);
-					if (expected && expected[0] !== query_report.get_filter_value("from_date")) {
+					if (expected && expected[0] !== (query_report.get_filter_value("from_date") || "")) {
 						query_report.set_filter_value("date_range", "Custom");
 					}
 				}
@@ -106,7 +106,7 @@ frappe.query_reports["Job Card Report"] = {
 				let range = query_report.get_filter_value("date_range");
 				if (range && range !== "Custom") {
 					let expected = calculate_date_range(range);
-					if (expected && expected[1] !== query_report.get_filter_value("to_date")) {
+					if (expected && expected[1] !== (query_report.get_filter_value("to_date") || "")) {
 						query_report.set_filter_value("date_range", "Custom");
 					}
 				}

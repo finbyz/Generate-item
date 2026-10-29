@@ -527,17 +527,11 @@ class ReportEmailScheduled(Document):
     # ---------- Safe database update with retries and lock handling ----------
     def _safe_set_value(self, *args, retries=5, delay=0.5):
         """
-        Wraps frappe.db.set_value with automatic commit, retry, and lock wait handling.
+        Wraps frappe.db.set_value with retry and lock wait handling.
         Accepts the same arguments as frappe.db.set_value.
         """
         if len(args) < 2:
             raise ValueError("At least dt and dn are required")
-
-        # Commit any pending transaction to release locks before attempting update
-        try:
-            frappe.db.commit()
-        except Exception:
-            pass
 
         # Set a longer lock wait timeout for this session (60 seconds)
         try:
@@ -979,21 +973,11 @@ class ReportEmailScheduled(Document):
         execution_time = now_datetime()
         next_execution = self.get_next_execution(execution_time)
 
-        try:
-            frappe.db.commit()
-        except Exception:
-            pass
-
         self._safe_set_value(
             self.doctype,
             self.name,
             {"last_execution": execution_time, "next_execution": next_execution},
         )
-
-        try:
-            frappe.db.commit()
-        except Exception:
-            pass
 
         logger.info(
             f"Execution information updated | name={self.name} | "
@@ -1031,22 +1015,12 @@ class ReportEmailScheduled(Document):
         logger.info(f"Manual email sent successfully | name={self.name}")
 
         execution_time = now_datetime()
-        try:
-            frappe.db.commit()
-        except Exception:
-            pass
-
         self._safe_set_value(
             self.doctype,
             self.name,
             "last_execution",
             execution_time,
         )
-
-        try:
-            frappe.db.commit()
-        except Exception:
-            pass
 
         return {
             "status": "success",
@@ -1107,7 +1081,6 @@ class ReportEmailScheduled(Document):
                 eq.flags.ignore_permissions = True
                 eq.flags.ignore_validate_update_after_submit = True
                 eq.save(ignore_permissions=True)
-                frappe.db.commit()
                 logger.info(
                     f"Stripped {removed} CC row(s) from Email Queue {eq_name} | "
                     f"remaining={len(eq.recipients)}"

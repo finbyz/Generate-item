@@ -1,0 +1,52 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-10-29 10:29:39.440985",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "modified_by1",
+  "modified_on",
+  "mtc_status"
+ ],
+ "fields": [
+  {
+   "fieldname": "modified_by1",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Modified By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "modified_on",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Modified On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "mtc_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "MTC Status",
+   "options": "\nRT PENDING\nRECEIVED IN MTC FOLDER\nMTC NOT RECEIVED\nMTC CORRCTION\nTRIM PART MTC PENDING IGC PENDING\nUPLOADED IN DMS",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-29 11:51:10.838203",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "MTC Status History",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

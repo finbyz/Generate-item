@@ -26,7 +26,7 @@ class TestPatternSetComponentAvailability(IntegrationTestCase):
 					doc.delete(ignore_permissions=True)
 				except Exception:
 					pass
-		frappe.db.commit()
+
 
 	def test_is_common_warehouse(self):
 		# Test naming convention

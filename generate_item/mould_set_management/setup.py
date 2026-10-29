@@ -50,14 +50,12 @@ def setup_mould_set_management():
 	try:
 		if frappe.db.table_exists("tabMould Set") and not frappe.db.table_exists("tabPattern Set"):
 			frappe.db.sql("RENAME TABLE `tabMould Set` TO `tabPattern Set`")
-			frappe.db.commit()
 	except Exception:
 		pass
 
 	try:
 		if frappe.db.table_exists("tabMould Set Component") and not frappe.db.table_exists("tabPattern Set Component"):
 			frappe.db.sql("RENAME TABLE `tabMould Set Component` TO `tabPattern Set Component`")
-			frappe.db.commit()
 	except Exception:
 		pass
 
@@ -72,7 +70,6 @@ def setup_mould_set_management():
 	try:
 		if frappe.db.table_exists("tabComponent Transfer") and not frappe.db.table_exists("tabPattern Movement"):
 			frappe.db.sql("RENAME TABLE `tabComponent Transfer` TO `tabPattern Movement`")
-			frappe.db.commit()
 	except Exception:
 		pass
 
@@ -87,7 +84,6 @@ def setup_mould_set_management():
 	try:
 		if frappe.db.table_exists("tabComponent Transfer Item") and not frappe.db.table_exists("tabPattern Movement Item"):
 			frappe.db.sql("RENAME TABLE `tabComponent Transfer Item` TO `tabPattern Movement Item`")
-			frappe.db.commit()
 	except Exception:
 		pass
 
@@ -103,7 +99,6 @@ def setup_mould_set_management():
 					AND mould_set_name IS NOT NULL
 					"""
 				)
-				frappe.db.commit()
 			elif frappe.db.has_column("Pattern Set", "module_set_name") and frappe.db.has_column("Pattern Set", "pattern_set_name"):
 				frappe.db.sql(
 					"""
@@ -113,7 +108,6 @@ def setup_mould_set_management():
 					AND module_set_name IS NOT NULL
 					"""
 				)
-				frappe.db.commit()
 	except Exception:
 		pass
 

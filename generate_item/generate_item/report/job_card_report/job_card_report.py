@@ -342,7 +342,7 @@ def get_data(filters: dict) -> list[dict]:
 		actual_end = at.actual_end_time if at and at.actual_end_time else (r.actual_end_date if at else None)
 		actual_time = flt(at.actual_time_in_mins) if at and at.actual_time_in_mins is not None else flt(r.total_time_in_mins)
 
-		time_variance = round(actual_time - planned_time, 2)
+		time_variance = round(actual_time - planned_time, 2) if actual_start and actual_end else 0
 
 		# 3. Quality Control (QC) - Resolved first so rejections and results are available
 		qi = qi_map.get(jc_id)
