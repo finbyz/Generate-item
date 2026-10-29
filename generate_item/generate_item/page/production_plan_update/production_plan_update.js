@@ -55,7 +55,6 @@ class PPWOControlReport {
 		const handle_resize = () => {
 			clearTimeout(resize_timeout);
 			resize_timeout = setTimeout(() => {
-				this.update_chart_dimensions();
 				this.adjust_grid_columns();
 			}, 250);
 		};
@@ -73,27 +72,11 @@ class PPWOControlReport {
 			this.resize_observer = new ResizeObserver(() => {
 				clearTimeout(resize_timeout);
 				resize_timeout = setTimeout(() => {
-					this.update_chart_dimensions();
+					this.adjust_grid_columns();
 				}, 300);
 			});
 			this.resize_observer.observe(this.$body[0]);
 		}
-	}
-
-	update_chart_dimensions() {
-		const width = this.$body.width();
-		const is_mobile = width < 768;
-		const is_tablet = width >= 768 && width < 1024;
-
-		$('.ppwo-chart-card').each((i, el) => {
-			const $card = $(el);
-			const canvas = $card.find('canvas');
-			if (canvas.length) {
-				const height = is_mobile ? 150 : is_tablet ? 180 : 200;
-				canvas.attr('height', height);
-				canvas.css('height', height + 'px');
-			}
-		});
 	}
 
 	// Column layout (0-indexed, including the leading checkbox column):
@@ -101,33 +84,10 @@ class PPWOControlReport {
 	// 6 BMR | 7 BMR Status | 8 Production Plan | 9 PP Status | 10 Work Order | 11 WO Status |
 	// 12 Stage | 13 Severity | 14 Remarks | 15 Updated By | 16 Updated Time
 	adjust_grid_columns() {
-		const width = this.$body.width();
+		// Keep all table columns persistent and visible across all views/screen sizes
 		const $table = this.$body.find('table.ppwo-grid');
-
-		const MOBILE_HIDE = [6, 8, 9, 10, 11, 12, 15, 16];
-		const TABLET_HIDE = [6, 8, 9, 10, 11, 15, 16];
-
-		const apply_hide = (hide_list) => {
-			$table.find('thead th').each((i, th) => {
-				const $th = $(th);
-				if (hide_list.includes(i)) {
-					$th.css('display', 'none');
-					$table.find(`tbody tr td:nth-child(${i + 1})`).css('display', 'none');
-				} else {
-					$th.css('display', '');
-					$table.find(`tbody tr td:nth-child(${i + 1})`).css('display', '');
-				}
-			});
-		};
-
-		if (width < 640) {
-			apply_hide(MOBILE_HIDE);
-		} else if (width < 1024) {
-			apply_hide(TABLET_HIDE);
-		} else {
-			$table.find('thead th').css('display', '');
-			$table.find('tbody tr td').css('display', '');
-		}
+		$table.find('thead th').css('display', '');
+		$table.find('tbody tr td').css('display', '');
 	}
 
 	// ------------------------------------------------------------------ //
@@ -169,8 +129,9 @@ class PPWOControlReport {
 
 		.ppwo-filterbar{
 			top:0;
-			display:grid; grid-template-columns:repeat(4, 1fr);
-			gap:10px; align-items:end;
+			display:flex;
+			flex-direction:column;
+			gap:12px;
 			padding:14px 16px; margin:14px 0 18px;
 			background:var(--ppwo-surface);
 			backdrop-filter:blur(16px) saturate(140%);
@@ -193,22 +154,32 @@ class PPWOControlReport {
 			z-index:10000 !important;
 		}
 
+		.ppwo-filterbar .ppwo-filter-row{
+			display:grid;
+			gap:10px;
+			align-items:end;
+			width:100%;
+		}
+		.ppwo-filterbar .ppwo-filter-row-1{
+			grid-template-columns: minmax(140px, 1.2fr) minmax(130px, 1fr) minmax(130px, 1fr) auto auto;
+		}
+		.ppwo-filterbar .ppwo-filter-row-2{
+			grid-template-columns: repeat(4, 1fr);
+		}
+
 		.ppwo-filterbar .ppwo-field{min-width:0; width:100%; overflow:visible;}
 		.ppwo-filterbar .ppwo-field label{font-size:11px; text-transform:uppercase; letter-spacing:.05em;
 			color:var(--ppwo-text-dim); font-weight:600; margin-bottom:3px; display:block;}
 		.ppwo-filterbar .ppwo-field .form-control{width:100%;}
 
-		.ppwo-filterbar .ppwo-date-range-wrap{grid-column:span 2;}
-
-		.ppwo-filterbar .ppwo-toggle-pills-wrap{
-			display:flex; gap:6px; align-items:center;
-			justify-content:flex-start; flex-wrap:wrap;
-			grid-column:span 1;
-			padding-top:4px;
+		.ppwo-filterbar .ppwo-toggle-wrap{
+			width:auto;
+			display:flex;
+			flex-direction:column;
+			justify-content:flex-end;
 		}
-
-		.ppwo-filterbar .ppwo-toggle-pills-wrap label{
-			display:none;
+		.ppwo-filterbar .ppwo-toggle-wrap label{
+			visibility:hidden;
 		}
 
 		.ppwo-toggle-pill{display:inline-flex; align-items:center; gap:6px;
@@ -222,22 +193,14 @@ class PPWOControlReport {
 			color:#fff; border-color:transparent;
 			box-shadow:0 4px 14px rgba(36,144,239,.35);}
 
-		@media (max-width:1200px){
-			.ppwo-filterbar{grid-template-columns:repeat(4, 1fr);}
-		}
 		@media (max-width:992px){
-			.ppwo-filterbar{grid-template-columns:repeat(3, 1fr);}
-			.ppwo-filterbar .ppwo-date-range-wrap{grid-column:span 2;}
+			.ppwo-filterbar .ppwo-filter-row-1{grid-template-columns: 1fr 1fr 1fr; gap:8px;}
+			.ppwo-filterbar .ppwo-filter-row-2{grid-template-columns: repeat(2, 1fr); gap:8px;}
 		}
-		@media (max-width:768px){
-			.ppwo-filterbar{grid-template-columns:repeat(2, 1fr); gap:8px; padding:12px 14px;}
-			.ppwo-filterbar .ppwo-date-range-wrap{grid-column:span 2;}
-			.ppwo-filterbar .ppwo-toggle-pills-wrap{grid-column:span 2; justify-content:center;}
-		}
-		@media (max-width:480px){
-			.ppwo-filterbar{grid-template-columns:1fr; gap:6px; padding:10px 12px;}
-			.ppwo-filterbar .ppwo-date-range-wrap{grid-column:span 1;}
-			.ppwo-filterbar .ppwo-toggle-pills-wrap{grid-column:span 1; justify-content:center;}
+		@media (max-width:640px){
+			.ppwo-filterbar .ppwo-filter-row-1{grid-template-columns: 1fr; gap:6px;}
+			.ppwo-filterbar .ppwo-filter-row-2{grid-template-columns: 1fr; gap:6px;}
+			.ppwo-filterbar .ppwo-toggle-wrap label{display:none;}
 		}
 
 		.ppwo-kpi-row{display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:10px; margin-bottom:18px; min-height:82px;}
@@ -271,40 +234,6 @@ class PPWOControlReport {
 			border-bottom:2px solid var(--ppwo-border); white-space:nowrap; box-shadow:0 1px 0 rgba(36,144,239,.15);}
 		table.ppwo-grid td{padding:7px 10px; border-bottom:1px solid var(--ppwo-border); white-space:nowrap; vertical-align:middle;
 			max-width:180px; overflow:hidden; text-overflow:ellipsis;}
-
-		.ppwo-charts-row{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:16px;}
-		.ppwo-chart-card{padding:14px 16px; min-height:220px;}
-		.ppwo-chart-card h4{font-family:var(--ppwo-font-display); font-size:13px; margin:0 0 10px; font-weight:600;}
-		.ppwo-chart-card canvas{width:100% !important; height:auto !important; max-height:200px;}
-
-		.ppwo-chart-card.full-width{grid-column:1/-1;}
-
-		@media (max-width:1024px){
-			.ppwo-charts-row{grid-template-columns:1fr 1fr; gap:12px;}
-		}
-		@media (max-width:768px){
-			.ppwo-charts-row{grid-template-columns:1fr 1fr; gap:10px;}
-			.ppwo-chart-card{min-height:200px; padding:12px 14px;}
-		}
-		@media (max-width:480px){
-			.ppwo-charts-row{grid-template-columns:1fr; gap:10px;}
-			.ppwo-chart-card{min-height:180px; padding:10px 12px;}
-			.ppwo-chart-card.full-width{grid-column:1;}
-		}
-
-		.ppwo-branch-perf-item{display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:11.5px;}
-		.ppwo-branch-perf-item .branch-name{width:100px; flex-shrink:0; overflow:hidden; text-overflow:ellipsis; font-weight:500;}
-		.ppwo-branch-perf-item .branch-bar{flex:1; height:6px; border-radius:6px; background:var(--ppwo-border); overflow:hidden;}
-		.ppwo-branch-perf-item .branch-bar-inner{height:100%; border-radius:6px; background:linear-gradient(90deg,var(--ppwo-primary),var(--ppwo-primary-2));
-			transition:width 1s cubic-bezier(.22,1,.36,1);}
-		.ppwo-branch-perf-item .branch-pct{width:55px; text-align:right; font-family:var(--ppwo-font-mono); font-size:11px; flex-shrink:0; font-weight:600;}
-		.ppwo-branch-perf-item .branch-count{width:80px; color:var(--ppwo-text-dim); font-size:10px; flex-shrink:0; text-align:right;}
-
-		@media (max-width:480px){
-			.ppwo-branch-perf-item .branch-name{width:70px; font-size:10px;}
-			.ppwo-branch-perf-item .branch-pct{width:45px; font-size:10px;}
-			.ppwo-branch-perf-item .branch-count{width:60px; font-size:9px;}
-		}
 
 		.ppwo-mono{font-family:var(--ppwo-font-mono); font-size:11px;}
 		.ppwo-badge{display:inline-flex; align-items:center; gap:3px; padding:2px 7px; border-radius:999px; font-size:10px; font-weight:600; white-space:nowrap;}
@@ -431,13 +360,6 @@ class PPWOControlReport {
 			</div>
 			<div class="ppwo-grid-wrap ppwo-glass"><table class="ppwo-grid"><thead></thead><tbody></tbody></table></div>
 			<div id="ppwo-load-more" style="text-align:center;padding:14px;font-size:12px;color:var(--ppwo-text-dim);cursor:pointer;">Load more rows</div>
-			<div class="ppwo-charts-row">
-				<div class="ppwo-chart-card ppwo-glass"><h4>Pending Batches by Branch</h4><div class="c-branch"></div></div>
-				<div class="ppwo-chart-card ppwo-glass"><h4>Status Distribution</h4><div class="c-status"></div></div>
-				<div class="ppwo-chart-card ppwo-glass"><h4>Manufacturing Funnel</h4><div class="c-funnel"></div></div>
-				<div class="ppwo-chart-card ppwo-glass"><h4>30-Day Pending Trend</h4><div class="c-trend"></div></div>
-				<div class="ppwo-chart-card ppwo-glass full-width"><h4>Branch Performance</h4><div class="c-branch-perf"></div></div>
-			</div>
 			<div class="ppwo-drawer-overlay"></div>
 			<div class="ppwo-drawer ppwo-glass"><span class="close-btn">&times;</span><div class="ppwo-drawer-content"></div></div>
 		`);
@@ -472,46 +394,45 @@ class PPWOControlReport {
 			</div>`;
 
 		$bar.html(`
-			${link_field("Company", "company", "Company")}
-			${link_field("Branch", "branch", "Branch")}
-			${link_field("Sales Order", "sales_order", "Sales Order")}
-			${link_field("OMR", "omr", "Order Modification Request")}
-			${link_field("BMR", "bmr", "Bom Modification Request")}
-			${link_field("Work Order", "work_order", "Work Order")}
-			${link_field("Production Plan", "production_plan", "Production Plan")}
-
-			${link_field("Customer", "customer", "Customer")}
-			<div class="ppwo-field">
-				<label>Date Period</label>
-				<select class="form-control period-select">
-
-					<option value="today">Today</option>
-					<option value="this_week">This Week</option>
-					<option value="last_week">Last Week</option>
-					<option value="this_month" selected>This Month</option>
-					<option value="last_month">Last Month</option>
-					<option value="this_quarter">This Quarter</option>
-					<option value="last_quarter">Last Quarter</option>
-					<option value="this_year">This Year</option>
-					<option value="last_year">Last Year</option>
-					<option value="all">All Time</option>
-					<option value="custom">Custom…</option>
-				</select>
-			</div>
-			<div class="ppwo-field ppwo-date-range-wrap">
-				<label>From - To</label>
-				<div style="display:flex; gap:6px; align-items:center;">
-					<input type="date" class="form-control date-from" style="flex:1;" readonly>
-					<span style="color:var(--ppwo-text-dim); font-size:11px; flex:0 0 auto;">→</span>
-					<input type="date" class="form-control date-to" style="flex:1;" readonly>
+			<div class="ppwo-filter-row ppwo-filter-row-1">
+				<div class="ppwo-field">
+					<label>Date Period</label>
+					<select class="form-control period-select">
+						<option value="today">Today</option>
+						<option value="this_week">This Week</option>
+						<option value="last_week">Last Week</option>
+						<option value="this_month">This Month</option>
+						<option value="last_month">Last Month</option>
+						<option value="this_quarter">This Quarter</option>
+						<option value="last_quarter">Last Quarter</option>
+						<option value="this_year">This Year</option>
+						<option value="last_year">Last Year</option>
+						<option value="all" selected>All Time</option>
+						<option value="custom">Custom…</option>
+					</select>
 				</div>
-			</div>
-			<div class="ppwo-field ppwo-toggle-pills-wrap">
-				<label>&nbsp;</label>
-				<div style="display:flex;gap:6px;flex-wrap:wrap;">
-					<div class="ppwo-toggle-pill" data-toggle="pending_only">🟡 Pending Only</div>
+				<div class="ppwo-field">
+					<label>From Date</label>
+					<input type="date" class="form-control date-from" readonly>
+				</div>
+				<div class="ppwo-field">
+					<label>To Date</label>
+					<input type="date" class="form-control date-to" readonly>
+				</div>
+				<div class="ppwo-field ppwo-toggle-wrap">
+					<label>&nbsp;</label>
+					<div class="ppwo-toggle-pill" data-toggle="show_completed">🟢 Show Completed</div>
+				</div>
+				<div class="ppwo-field ppwo-toggle-wrap">
+					<label>&nbsp;</label>
 					<div class="ppwo-toggle-pill" data-toggle="critical_only">🔴 Critical Only</div>
 				</div>
+			</div>
+			<div class="ppwo-filter-row ppwo-filter-row-2">
+				${link_field("Branch", "branch", "Branch")}
+				${link_field("Sales Order", "sales_order", "Sales Order")}
+				${link_field("Batch No", "batch_no", "Batch")}
+				${link_field("OMR", "omr", "Order Modification Request")}
 			</div>
 		`);
 
@@ -532,19 +453,24 @@ class PPWOControlReport {
 					const filters = {
 						status: ["not in", ["Cancelled", "Closed", "Completed"]]
 					};
-					if (this.link_controls && this.link_controls.company && this.link_controls.company.get_value()) {
-						filters.company = this.link_controls.company.get_value();
-					}
 					if (this.link_controls && this.link_controls.branch && this.link_controls.branch.get_value()) {
 						filters.branch = this.link_controls.branch.get_value();
-					}
-					if (this.link_controls && this.link_controls.customer && this.link_controls.customer.get_value()) {
-						filters.customer = this.link_controls.customer.get_value();
 					}
 					return { filters };
 				};
 				ctrl.get_query = so_query;
 				ctrl.df.get_query = so_query;
+			}
+			if (fieldname === "batch_no") {
+				const batch_query = () => {
+					const filters = {};
+					if (this.link_controls && this.link_controls.sales_order && this.link_controls.sales_order.get_value()) {
+						filters.reference_name = this.link_controls.sales_order.get_value();
+					}
+					return { filters };
+				};
+				ctrl.get_query = batch_query;
+				ctrl.df.get_query = batch_query;
 			}
 			this.link_controls[fieldname] = ctrl;
 		});
@@ -570,9 +496,13 @@ class PPWOControlReport {
 				} else if (k === "to_date") {
 					$bar.find(".date-to").val(frappe.route_options[k]);
 					$bar.find(".period-select").val("custom");
-				} else if (k === "pending_only") {
+				} else if (k === "show_completed") {
 					if (cint(frappe.route_options[k])) {
-						$bar.find('.ppwo-toggle-pill[data-toggle="pending_only"]').addClass("active");
+						$bar.find('.ppwo-toggle-pill[data-toggle="show_completed"]').addClass("active");
+					}
+				} else if (k === "pending_only") {
+					if (!cint(frappe.route_options[k])) {
+						$bar.find('.ppwo-toggle-pill[data-toggle="show_completed"]').addClass("active");
 					}
 				} else if (k === "critical_only") {
 					if (cint(frappe.route_options[k])) {
@@ -596,7 +526,22 @@ class PPWOControlReport {
 		$bar.on("click", ".ppwo-toggle-pill", (e) => {
 			const $pill = $(e.currentTarget);
 			$pill.toggleClass("active");
-			if ($pill.data("toggle") === "pending_only" && $pill.hasClass("active")) {
+			const toggle_name = $pill.data("toggle");
+			if (toggle_name === "show_completed") {
+				if ($pill.hasClass("active")) {
+					$bar.find('.ppwo-toggle-pill[data-toggle="critical_only"]').removeClass("active");
+					if (this.state.kpi_filter && this.state.kpi_filter.value !== "completed") {
+						this.state.kpi_filter = null;
+						this.$body.find(".ppwo-kpi").removeClass("active");
+					}
+				} else {
+					if (this.state.kpi_filter && this.state.kpi_filter.value === "completed") {
+						this.state.kpi_filter = null;
+						this.$body.find(".ppwo-kpi").removeClass("active");
+					}
+				}
+			} else if (toggle_name === "critical_only" && $pill.hasClass("active")) {
+				$bar.find('.ppwo-toggle-pill[data-toggle="show_completed"]').removeClass("active");
 				if (this.state.kpi_filter && this.state.kpi_filter.value === "completed") {
 					this.state.kpi_filter = null;
 					this.$body.find(".ppwo-kpi").removeClass("active");
@@ -725,16 +670,22 @@ class PPWOControlReport {
 		});
 		const period = this.$body.find(".period-select").val();
 		if (period) {
-			f.period = this.$body.find(".period-select").val() || "this_month";
+			f.period = period || "all";
 			f.from_date = this.$body.find(".date-from").val();
 			f.to_date = this.$body.find(".date-to").val();
 		}
-		f.pending_only = this.$body.find('.ppwo-toggle-pill[data-toggle="pending_only"]').hasClass("active") ? 1 : 0;
+		const show_completed = this.$body.find('.ppwo-toggle-pill[data-toggle="show_completed"]').hasClass("active") ? 1 : 0;
+		f.show_completed = show_completed;
+		f.pending_only = show_completed ? 0 : 1;
 		f.critical_only = this.$body.find('.ppwo-toggle-pill[data-toggle="critical_only"]').hasClass("active") ? 1 : 0;
 		if (this.state.kpi_filter) {
 			f[this.state.kpi_filter.type] = this.state.kpi_filter.value;
 			if (this.state.kpi_filter.value === "completed") {
+				f.show_completed = 1;
 				f.pending_only = 0;
+			} else {
+				f.show_completed = 0;
+				f.pending_only = 1;
 			}
 		}
 		return f;
@@ -802,7 +753,13 @@ class PPWOControlReport {
 			} else {
 				$(e.currentTarget).addClass("active");
 				if (key === "completed") {
-					this.$body.find('.ppwo-toggle-pill[data-toggle="pending_only"]').removeClass("active");
+					this.$body.find('.ppwo-toggle-pill[data-toggle="show_completed"]').addClass("active");
+					this.$body.find('.ppwo-toggle-pill[data-toggle="critical_only"]').removeClass("active");
+				} else {
+					this.$body.find('.ppwo-toggle-pill[data-toggle="show_completed"]').removeClass("active");
+					if (key === "critical") {
+						this.$body.find('.ppwo-toggle-pill[data-toggle="critical_only"]').addClass("active");
+					}
 				}
 				this.apply_kpi_shortcut(key);
 			}
@@ -1129,13 +1086,6 @@ class PPWOControlReport {
 			});
 	}
 
-	fetch_charts() {
-		return frappe
-			.call({ method: `${PPWO_API}.get_charts_data`, args: { filters: JSON.stringify(this.state.filters) } })
-			.then((r) => this.render_charts(r.message || {}))
-			.catch((e) => console.error("PPWO get_charts_data failed:", e));
-	}
-
 	refresh_all(user_triggered) {
 		if (user_triggered) frappe.show_alert({ message: __("Refreshing…"), indicator: "blue" });
 		this.state.start = 0;
@@ -1155,7 +1105,6 @@ class PPWOControlReport {
 			.then((r) => {
 				const d = r.message || {};
 				if (d.dashboard) this.render_kpis(d.dashboard);
-				if (d.charts) this.render_charts(d.charts);
 				if (d.grid) {
 					const data = d.grid;
 					this.state.total = data.total;
@@ -1174,73 +1123,8 @@ class PPWOControlReport {
 			.catch((e) => {
 				this.state.loading = false;
 				console.error("PPWO get_all_data failed, falling back to separate calls:", e);
-				return Promise.all([this.fetch_dashboard(), this.fetch_grid(false), this.fetch_charts()]);
+				return Promise.all([this.fetch_dashboard(), this.fetch_grid(false)]);
 			});
-	}
-
-	// ------------------------------------------------------------------ //
-	// Charts (unchanged)
-	// ------------------------------------------------------------------ //
-	render_charts(d) {
-		this.render_chart_compact(".c-branch", { type: "bar" }, d.branch && {
-			labels: d.branch.labels,
-			datasets: [{ name: "Pending", values: d.branch.pending }, { name: "Total", values: d.branch.total }],
-		}, ["#E86161", "#2490EF"]);
-
-		this.render_chart_compact(".c-status", { type: "donut" }, d.status_distribution && {
-			labels: d.status_distribution.labels,
-			datasets: [{ values: d.status_distribution.values }],
-		}, ["#E86161", "#F5A623", "#4C9CE2", "#98A6BF", "#5EBB63"]);
-
-		if (d.funnel) {
-			const labels = Object.keys(d.funnel);
-			const values = Object.values(d.funnel);
-			this.render_chart_compact(".c-funnel", { type: "bar" }, { labels, datasets: [{ name: "Count", values }] }, ["#7CB9F0"]);
-		}
-
-		this.render_chart_compact(".c-trend", { type: "line" }, d.trend && {
-			labels: d.trend.labels,
-			datasets: [{ name: "Pending opened", values: d.trend.values }],
-		}, ["#2490EF"]);
-
-		const $perf = this.$body.find(".c-branch-perf").empty();
-		(d.branch_performance || []).forEach((b) => {
-			$perf.append(`
-				<div class="ppwo-branch-perf-item">
-					<div class="branch-name" title="${frappe.utils.escape_html(b.branch)}">${frappe.utils.escape_html(b.branch)}</div>
-					<div class="branch-bar">
-						<div class="branch-bar-inner" style="width:${b.sync_pct}%;"></div>
-					</div>
-					<div class="branch-pct">${b.sync_pct}%</div>
-					<div class="branch-count">${b.synced}/${b.total}</div>
-				</div>`);
-		});
-	}
-
-	render_chart_compact(sel, opts, data, colors) {
-		const el = this.$body.find(sel)[0];
-		if (!el || !data) return;
-		el.innerHTML = "";
-		if (!window.frappe || !frappe.Chart) return;
-
-		const width = this.$body.width();
-		const height = width < 480 ? 150 : width < 768 ? 170 : 200;
-
-		try {
-			new frappe.Chart(el, {
-				data,
-				type: opts.type,
-				height: height,
-				colors: colors,
-				axisOptions: { xAxisMode: "tick" },
-				chartOptions: {
-					responsive: true,
-					maintainAspectRatio: false
-				}
-			});
-		} catch (e) {
-			// Chart library not available
-		}
 	}
 
 	// ------------------------------------------------------------------ //

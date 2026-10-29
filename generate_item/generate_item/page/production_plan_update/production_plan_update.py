@@ -301,7 +301,7 @@ def get_filter_options():
 		"companies": companies,
 		"branches": [b for b in branches if b],
 		"period_options": PERIOD_OPTIONS,
-		"default_period": "this_month",
+		"default_period": "all",
 		"default_from": get_first_day(today),
 		"default_to": today,
 	}
@@ -901,6 +901,23 @@ def _resolve_link_filters(filters):
 	if filters.get("omr"):
 		so = frappe.db.get_value("Order Modification Request", filters["omr"], "sales_order")
 		_intersect([so] if so else [])
+
+	if filters.get("batch_no"):
+		parents = frappe.get_all(
+			"Sales Order Item For OMR",
+			filters={"batch_no": filters["batch_no"]},
+			pluck="parent",
+		)
+		sos = []
+		if parents:
+			sos = _chunked_get_all(
+				"Order Modification Request",
+				"name",
+				parents,
+				fields=["sales_order"],
+			)
+			sos = [s.sales_order for s in sos if s.sales_order]
+		_intersect(sos)
 
 	if filters.get("bmr"):
 		parents = frappe.get_all(
@@ -1706,7 +1723,7 @@ def _rows_cache_key(filters):
 	"""Stable cache key for a given filter set."""
 	payload = json.dumps(filters or {}, sort_keys=True, default=str)
 	digest = hashlib.md5(payload.encode("utf-8")).hexdigest()
-	return "ppwo_control_report:v6:rows:{0}".format(digest)
+	return "ppwo_control_report:v7:rows:{0}".format(digest)
 
 
 def _bust_rows_cache():
@@ -1718,6 +1735,7 @@ def _bust_rows_cache():
 		frappe.cache().delete_keys("ppwo_control_report:v4:rows:*")
 		frappe.cache().delete_keys("ppwo_control_report:v5:rows:*")
 		frappe.cache().delete_keys("ppwo_control_report:v6:rows:*")
+		frappe.cache().delete_keys("ppwo_control_report:v7:rows:*")
 		frappe.cache().delete_keys("ppwo_maps:*")
 		frappe.cache().delete_keys("ppwo_maps_v2:*")
 		frappe.cache().delete_keys("ppwo_maps_v3:*")
@@ -1765,14 +1783,19 @@ def _get_raw_computed_rows(filters, limit=5000):
 
 def _get_computed_rows(filters, limit=5000):
 	"""Get all changed-batch rows across the filtered Sales Orders, then
-	apply post-filters (pending_only, critical_only, status, priority, kpi_filter)."""
+	apply post-filters (show_completed, pending_only, critical_only, batch_no, status, priority, kpi_filter)."""
 	rows = _get_raw_computed_rows(filters, limit=limit)
 
-	if cint(filters.get("pending_only")):
+	if cint(filters.get("show_completed")):
+		rows = [r for r in rows if not r["is_pending"]]
+	elif cint(filters.get("pending_only")):
 		rows = [r for r in rows if r["is_pending"]]
 
 	if cint(filters.get("critical_only")):
 		rows = [r for r in rows if r["severity"] == "Critical"]
+
+	if filters.get("batch_no"):
+		rows = [r for r in rows if r.get("batch_no") == filters["batch_no"]]
 
 	kpi_filter = filters.get("kpi_filter")
 	if kpi_filter:
