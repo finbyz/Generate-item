@@ -1,6 +1,8 @@
 # Copyright (c) 2026, Finbyz and contributors
 # For license information, please see license.txt
 
+import re
+
 import frappe
 from frappe import _
 from frappe.utils import add_days, add_months, date_diff, getdate, now_datetime, nowdate, today
@@ -217,6 +219,9 @@ def get_conditions(filters):
 	if filters.get("branch"):
 		conditions.append("AND so.branch = %(branch)s")
 		values["branch"] = filters.branch
+	if filters.get("owner"):
+		conditions.append("AND so.owner = %(owner)s")
+		values["owner"] = filters.owner
 
 	# Status filter: default to Draft using py side if not provided
 	status = filters.get("status")
@@ -339,3 +344,176 @@ def update_remark(sales_order, remark):
 	frappe.clear_document_cache("Sales Order", sales_order)
 
 	return {"changed": True, "remark": remark}
+
+
+SO_APPROVAL_TAT_BRANCH_RECIPIENTS = {
+	"Sanand": "dhanvant.marathe@finbyz.tech",
+	"Nandikoor": ["dhanvant.marathe@finbyz.tech", "ritik.patwa@finbyz.tech"],
+	"Rabale": ["dhanvant.marathe@finbyz.tech", "ritik.patwa@finbyz.tech"],
+}
+
+
+def normalize_email_recipients(recipients):
+	"""Normalize a single address or list of addresses for frappe.sendmail."""
+	if isinstance(recipients, str):
+		recipients = [recipients]
+	elif not isinstance(recipients, (list, tuple, set)):
+		return []
+
+	normalized = []
+	seen = set()
+	for recipient in recipients:
+		for email in re.split(r"[,;]", str(recipient or "")):
+			email = email.strip()
+			if email and email.lower() not in seen:
+				normalized.append(email)
+				seen.add(email.lower())
+	return normalized
+
+
+def send_so_approval_tat_email(branch=None, filters=None):
+	"""Send SO Approval TAT Draft data separately to creators and branch recipients."""
+	logger = frappe.logger("report_email_scheduler")
+	base_filters = dict(filters or {})
+	base_filters["status"] = ["Draft"]
+	target_branch = branch or base_filters.get("branch")
+	base_filters.pop("branch", None)
+	base_filters.pop("owner", None)
+
+	result = {
+		"status": "completed",
+		"user_sent": [],
+		"branch_sent": [],
+		"sent": [],
+		"skipped": [],
+		"failed": [],
+	}
+	_send_creator_reports(base_filters, target_branch, result, logger)
+
+	branches = [target_branch] if target_branch else _get_active_branches()
+	_send_full_report(base_filters, result, logger)
+
+	if result["failed"]:
+		result["status"] = "completed_with_errors"
+	return result
+
+
+def _get_active_branches():
+	if not frappe.db.table_exists("Branch"):
+		return []
+
+	meta = frappe.get_meta("Branch")
+	filters = {}
+	if meta.has_field("disabled"):
+		filters["disabled"] = 0
+	elif meta.has_field("enabled"):
+		filters["enabled"] = 1
+
+	return frappe.get_all("Branch", filters=filters, pluck="name", order_by="name asc")
+
+
+def _send_creator_reports(base_filters, target_branch, result, logger):
+	owners = sorted({
+		owner
+		for owner in frappe.get_all("Sales Order", filters={"status": "Draft"}, pluck="owner")
+		if owner
+	})
+	# owners = ['dhanvant.marathe@finbyz.tech']
+	for owner in owners:
+		try:
+			recipients = normalize_email_recipients(frappe.db.get_value("User", owner, "email"))
+			if not recipients:
+				logger.warning(f"SO Approval TAT skipped creator '{owner}': no email address is configured.")
+				result["skipped"].append({"owner": owner, "reason": "no_email"})
+				continue
+
+			user_filters = dict(base_filters, owner=owner)
+			if target_branch:
+				user_filters["branch"] = target_branch
+			columns, data = execute(filters=frappe._dict(user_filters))
+			if not data:
+				result["skipped"].append({"owner": owner, "reason": "no_draft_data"})
+				continue
+			_send_email(columns, data, recipients, owner=owner)
+			result["user_sent"].append({"owner": owner, "recipients": recipients, "record_count": len(data)})
+		except Exception as error:
+			logger.error(f"SO Approval TAT user email failed for '{owner}': {error}")
+			frappe.log_error(frappe.get_traceback(), f"SO Approval TAT email failed for creator {owner}")
+			result["failed"].append({"owner": owner, "error": str(error)})
+
+
+# def _send_branch_reports(base_filters, branches, result, logger):
+# 	for branch_name in branches:
+# 		branch_filters = dict(base_filters, branch=branch_name)
+# 		try:
+# 			columns, data = execute(filters=frappe._dict(branch_filters))
+# 			if not data:
+# 				result["skipped"].append({"branch": branch_name, "reason": "no_draft_data"})
+# 				continue
+# 			recipients = normalize_email_recipients(SO_APPROVAL_TAT_BRANCH_RECIPIENTS.get(branch_name))
+# 			if not recipients:
+# 				logger.warning(f"SO Approval TAT skipped branch '{branch_name}': no recipients are mapped.")
+# 				result["skipped"].append({"branch": branch_name, "reason": "no_recipients"})
+# 				continue
+# 			_send_email(columns, data, recipients, branch=branch_name)
+# 			result["branch_sent"].append({
+# 				"branch": branch_name,
+# 				"recipients": recipients,
+# 				"record_count": len(data),
+# 			})
+# 		except Exception as error:
+# 			logger.error(f"SO Approval TAT branch email failed for '{branch_name}': {error}")
+# 			frappe.log_error(frappe.get_traceback(), f"SO Approval TAT email failed for branch {branch_name}")
+# 			result["failed"].append({"branch": branch_name, "error": str(error)})
+
+
+
+SO_APPROVAL_TAT_RECIPIENTS = ["sanjay.n@steelstrong.com"]
+# SO_APPROVAL_TAT_RECIPIENTS = ["dhanvant.marathe@finbyz.tech"]
+
+
+def _send_full_report(base_filters, result, logger):
+	try:
+		filters = dict(base_filters)
+		filters.pop("branch", None)
+
+		columns, data = execute(filters=frappe._dict(filters))
+
+		if not data:
+			result.setdefault("skipped", []).append({"reason": "no_draft_data"})
+			return
+
+		recipients = normalize_email_recipients(SO_APPROVAL_TAT_RECIPIENTS)
+		_send_email(columns, data, recipients)
+
+		result.setdefault("sent", []).append({
+			"recipients": recipients,
+			"record_count": len(data),
+		})
+
+	except Exception as error:
+		logger.error(f"SO Approval TAT email failed: {error}")
+		frappe.log_error(frappe.get_traceback(), "SO Approval TAT email failed")
+		result.setdefault("failed", []).append({"error": str(error)})
+
+def _send_email(columns, data, recipients, branch=None, owner=None):
+	from generate_item.utils.report_email_scheduler import (
+		build_report_email_html,
+		build_report_excel_attachment,
+	)
+
+	subject = "SO Approval TAT - Draft Sales Orders"
+	if branch:
+		subject = f"{subject} - {branch}"
+	elif owner:
+		subject = f"{subject} created by {owner}"
+
+	frappe.sendmail(
+		recipients=recipients,
+		subject=subject,
+		message=build_report_email_html("SO Approval TAT", columns, data, branch=branch),
+		attachments=[build_report_excel_attachment("SO Approval TAT", columns, data, branch=branch)],
+		reference_doctype="Report",
+		reference_name="SO Approval TAT",
+		delayed=False,
+	)

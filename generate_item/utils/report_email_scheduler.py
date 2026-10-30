@@ -459,14 +459,14 @@ def build_report_email_html(report_name, columns, data, branch=None):
 		<div class="container" style="max-width: 900px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #dee2e6;">
 			<div class="header" style="background-color: #1a5276; color: #ffffff; padding: 25px 25px 20px 25px; text-align: left;">
 				<h3 style="margin: 0 0 6px 0; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #d0e1fd !important; font-weight: 600;">{company_name}</h3>
-				<h1 style="margin: 0 0 8px 0; font-size: 22px; color: #ffffff !important; font-weight: 700; line-height: 1.3;">Weekly Report: {report_name}</h1>
+				<h1 style="margin: 0 0 8px 0; font-size: 22px; color: #ffffff !important; font-weight: 700; line-height: 1.3;">Daily Report: {report_name}</h1>
 				<p style="margin: 0; font-size: 13px; color: #eaf2f8 !important; opacity: 0.95;">Generated on {format_datetime(now_datetime(), "dd-MM-yyyy HH:mm")}{branch_label}</p>
 			</div>
 
 			<div class="content" style="padding: 25px; background-color: #ffffff; color: #333333;">
 				<p style="font-size: 15px; margin-top: 0;">Dear Team,</p>
 				<p style="font-size: 14px; line-height: 1.6; color: #333333;">
-					Please find attached the weekly report for <strong>{report_name}</strong>{branch_label}.
+					Please find attached the daily report for <strong>{report_name}</strong>{branch_label}.
 				</p>
 
 				<div class="summary-box" style="background-color: #f8f9fa; border-left: 4px solid #1a5276; padding: 15px; margin: 20px 0; border-radius: 0 4px 4px 0;">
@@ -483,7 +483,7 @@ def build_report_email_html(report_name, columns, data, branch=None):
 			</div>
 
 			<div class="footer" style="background-color: #f8f9fa; padding: 15px 25px; font-size: 12px; color: #6c757d; text-align: center; border-top: 1px solid #dee2e6;">
-				<p style="margin: 0;">This is an automated weekly email sent by the Report Scheduler.</p>
+				<p style="margin: 0;">This is an automated daily email sent by the Report Scheduler.</p>
 				<p style="margin: 5px 0 0 0;">&copy; {now_datetime().year} {company_name}. All rights reserved.</p>
 			</div>
 		</div>
@@ -546,14 +546,14 @@ def build_dashboard_email_html(dashboard_name, dashboard_url, branch=None):
 		<div class="container" style="max-width: 750px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #dee2e6;">
 			<div class="header" style="background-color: #1a5276; color: #ffffff; padding: 25px 25px 20px 25px; text-align: center;">
 				<h3 style="margin: 0 0 6px 0; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; color: #d0e1fd !important; font-weight: 600;">{company_name}</h3>
-				<h1 style="margin: 0 0 8px 0; font-size: 22px; color: #ffffff !important; font-weight: 700; line-height: 1.3;">Weekly Dashboard: {dashboard_title}</h1>
+				<h1 style="margin: 0 0 8px 0; font-size: 22px; color: #ffffff !important; font-weight: 700; line-height: 1.3;">Daily Dashboard: {dashboard_title}</h1>
 				<p style="margin: 0; font-size: 13px; color: #eaf2f8 !important; opacity: 0.95;">Generated on {format_datetime(now_datetime(), "dd-MM-yyyy HH:mm")}{branch_label}</p>
 			</div>
 
 			<div class="content" style="padding: 30px; text-align: center; background-color: #ffffff;">
 				<p style="font-size: 16px; margin-top: 0; color: #333333;">Dear Team,</p>
 				<p style="font-size: 14px; color: #555555; line-height: 1.6;">
-					Your weekly <strong>{dashboard_title}</strong> metrics and dashboard views are ready for review{branch_label}.
+					Your Daily <strong>{dashboard_title}</strong> metrics and dashboard views are ready for review{branch_label}.
 				</p>
 
 				<div class="card" style="background-color: #f8f9fa; border: 1px solid #dee2e6; border-radius: 8px; padding: 25px; margin: 20px 0;">
@@ -569,7 +569,7 @@ def build_dashboard_email_html(dashboard_name, dashboard_url, branch=None):
 			</div>
 
 			<div class="footer" style="background-color: #f8f9fa; padding: 15px 25px; font-size: 12px; color: #6c757d; text-align: center; border-top: 1px solid #dee2e6;">
-				<p style="margin: 0;">This is an automated weekly email sent by the Dashboard Scheduler.</p>
+				<p style="margin: 0;">This is an automated daily email sent by the Dashboard Scheduler.</p>
 				<p style="margin: 5px 0 0 0;">&copy; {now_datetime().year} {company_name}. All rights reserved.</p>
 			</div>
 		</div>
@@ -965,7 +965,7 @@ def send_configured_email(
 				message_html = build_report_email_html(
 					name_clean, group_cols or [], group_data or [], branch=display_branch
 				)
-				default_subject = f"Weekly Report: {name_clean}{subject_branch} - {today()}"
+				default_subject = f"Daily Report: {name_clean}{subject_branch} - {today()}"
 			else:
 				# Non-tabular Page / Dashboard fallback to Executive Desk link
 				dashboard_title = get_dashboard_title(name_clean)
@@ -975,7 +975,7 @@ def send_configured_email(
 					dashboard_url += f"?branch={frappe.utils.quote(display_branch)}"
 
 				message_html = build_dashboard_email_html(name_clean, dashboard_url, branch=display_branch)
-				default_subject = f"Weekly Dashboard: {dashboard_title}{subject_branch} - {today()}"
+				default_subject = f"Daily Dashboard: {dashboard_title}{subject_branch} - {today()}"
 
 			subject = kwargs.get("subject") or default_subject
 
@@ -1046,83 +1046,75 @@ def send_weekly_report_email(type, name, filters=None, **kwargs):
 	)
 
 
-# -------------------------------------------------------------------------
-# Explicit Developer-Controlled Scheduled Handlers
-# Self-contained in scheduler; reports/pages remain clean and independent.
-# -------------------------------------------------------------------------
-@register_scheduled_email_handler("Report", "OMR Item Change")
-def send_omr_item_change_email(branch=None, filters=None, **kwargs):
-	"""
-	Developer-controlled email handler for OMR Item Change report.
-	Directly triggers send_configured_email without depending on any email code in report files.
-	"""
-	flt = dict(filters or {})
-	if branch:
-		flt["branch"] = branch
+# # -------------------------------------------------------------------------
+# # Explicit Developer-Controlled Scheduled Handlers
+# # -------------------------------------------------------------------------
+# @register_scheduled_email_handler("Report", "OMR Item Change")
+# def send_omr_item_change_email(branch=None, filters=None, **kwargs):
+# 	"""
+# 	Developer-controlled email handler for OMR Item Change report.
+# 	Directly triggers send_configured_email without depending on any email code in report files.
+# 	"""
+# 	flt = dict(filters or {})
+# 	if branch:
+# 		flt["branch"] = branch
 
-	return send_configured_email(
-		source_name="OMR Item Change",
-		source_type="Report",
-		filters=flt,
-		**kwargs,
-	)
+# 	return send_configured_email(
+# 		source_name="OMR Item Change",
+# 		source_type="Report",
+# 		filters=flt,
+# 		**kwargs,
+# 	)
 
 
 @register_scheduled_email_handler("Report", "SO Approval TAT")
-def send_so_approval_tat_email(branch=None, filters=None, **kwargs):
-	"""
-	Developer-controlled email handler for SO Approval TAT report.
-	Directly triggers send_configured_email without depending on any email code in report files.
-	"""
-	flt = dict(filters or {})
-	if branch:
-		flt["branch"] = branch
-
-	return send_configured_email(
-		source_name="SO Approval TAT",
-		source_type="Report",
-		filters=flt,
-		**kwargs,
+def _send_scheduled_so_approval_tat_email():
+	from generate_item.generate_item.report.so_approval_tat.so_approval_tat import (
+		send_so_approval_tat_email,
 	)
 
-
-@register_scheduled_email_handler("Page", "pending-advance-mate")
-def send_pending_advance_mate_email(filters=None, **kwargs):
-	"""
-	Developer-controlled email handler for pending-advance-mate page.
-	Directly triggers send_configured_email without depending on any email code in page files.
-	"""
-	return send_configured_email(
-		source_name="pending-advance-mate",
-		source_type="Page",
-		filters=filters,
-		**kwargs,
-	)
+	return send_so_approval_tat_email()
 
 
-@register_page_data_provider("pending-advance-mate")
-def provide_pending_advance_mate_data(filters=None, **kwargs):
-	"""
-	Server-side data provider adapter for pending-advance-mate page.
-	"""
-	try:
-		from generate_item.generate_item.page.pending_advance_mate.pending_advance_mate import get_data
-		raw_data = get_data(filters=filters)
-		columns = [
-			{"label": "Material Request", "fieldname": "material_request"},
-			{"label": "Transaction Date", "fieldname": "transaction_date"},
-			{"label": "Company", "fieldname": "company"},
-			{"label": "Item Code", "fieldname": "item_code"},
-			{"label": "Item Name", "fieldname": "item_name"},
-			{"label": "Qty", "fieldname": "qty"},
-			{"label": "Warehouse", "fieldname": "warehouse"},
-			{"label": "Batch No", "fieldname": "batch_no"},
-			{"label": "Production Plan", "fieldname": "production_plan"},
-		]
-		return columns, raw_data or []
-	except Exception as e:
-		get_logger().error(f"Error fetching data for pending-advance-mate: {str(e)}")
-		return None, None
+
+
+# @register_scheduled_email_handler("Page", "pending-advance-mate")
+# def send_pending_advance_mate_email(filters=None, **kwargs):
+# 	"""
+# 	Developer-controlled email handler for pending-advance-mate page.
+# 	Directly triggers send_configured_email without depending on any email code in page files.
+# 	"""
+# 	return send_configured_email(
+# 		source_name="pending-advance-mate",
+# 		source_type="Page",
+# 		filters=filters,
+# 		**kwargs,
+# 	)
+
+
+# @register_page_data_provider("pending-advance-mate")
+# def provide_pending_advance_mate_data(filters=None, **kwargs):
+# 	"""
+# 	Server-side data provider adapter for pending-advance-mate page.
+# 	"""
+# 	try:
+# 		from generate_item.generate_item.page.pending_advance_mate.pending_advance_mate import get_data
+# 		raw_data = get_data(filters=filters)
+# 		columns = [
+# 			{"label": "Material Request", "fieldname": "material_request"},
+# 			{"label": "Transaction Date", "fieldname": "transaction_date"},
+# 			{"label": "Company", "fieldname": "company"},
+# 			{"label": "Item Code", "fieldname": "item_code"},
+# 			{"label": "Item Name", "fieldname": "item_name"},
+# 			{"label": "Qty", "fieldname": "qty"},
+# 			{"label": "Warehouse", "fieldname": "warehouse"},
+# 			{"label": "Batch No", "fieldname": "batch_no"},
+# 			{"label": "Production Plan", "fieldname": "production_plan"},
+# 		]
+# 		return columns, raw_data or []
+# 	except Exception as e:
+# 		get_logger().error(f"Error fetching data for pending-advance-mate: {str(e)}")
+# 		return None, None
 
 
 # -------------------------------------------------------------------------
@@ -1130,13 +1122,13 @@ def provide_pending_advance_mate_data(filters=None, **kwargs):
 # -------------------------------------------------------------------------
 def execute_weekly_report_email_scheduler():
 	"""
-	Central scheduler entry point registered under scheduler_events['weekly'].
+	Central scheduler entry point registered under scheduler_events['daily'].
 	Only executes explicitly registered developer-controlled email handlers in
 	SCHEDULED_EMAIL_HANDLERS. Configuration in Report Email Master alone will NOT
 	cause automatic execution.
 	"""
 	logger = get_logger()
-	logger.info(f"Executing weekly report email scheduler. {len(SCHEDULED_EMAIL_HANDLERS)} handlers registered.")
+	logger.info(f"Executing daily report email scheduler. {len(SCHEDULED_EMAIL_HANDLERS)} handlers registered.")
 
 	results = {}
 	for (source_type, source_name), handler in SCHEDULED_EMAIL_HANDLERS.items():
@@ -1148,9 +1140,9 @@ def execute_weekly_report_email_scheduler():
 			logger.error(f"Error in scheduled handler for {source_type} '{source_name}': {str(err)}")
 			frappe.log_error(
 				frappe.get_traceback(),
-				f"Weekly Scheduled Handler Failed: {source_type} '{source_name}'",
+				f"daily Scheduled Handler Failed: {source_type} '{source_name}'",
 			)
 			results[f"{source_type}:{source_name}"] = {"status": "error", "error": str(err)}
 
-	logger.info(f"Weekly report email scheduler finished. Processed {len(results)} registered handlers.")
+	logger.info(f"daily report email scheduler finished. Processed {len(results)} registered handlers.")
 	return results

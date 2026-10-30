@@ -353,14 +353,15 @@ scheduler_events = {
 	# ],
 	"daily": [
 		"generate_item.scheduler_events.daily_material_request_update.update_material_request_with_production_plan",
-        "generate_item.scheduler_events.auto_linking_pp_with_mr.auto_link_production_plan"
+        "generate_item.scheduler_events.auto_linking_pp_with_mr.auto_link_production_plan",
+		"generate_item.utils.report_email_scheduler.execute_weekly_report_email_scheduler"
 	],
 	# "hourly": [
 	# 	"generate_item.tasks.hourly"
 	# ],
 	"weekly": [
 		"generate_item.scheduler_events.advance_mr_without_batch_weekly.process_advance_mr_without_batch",
-		"generate_item.utils.report_email_scheduler.execute_weekly_report_email_scheduler"
+		# "generate_item.utils.report_email_scheduler.execute_weekly_report_email_scheduler"
 	],
 	
 

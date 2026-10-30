@@ -18,7 +18,6 @@ from generate_item.utils.report_email_scheduler import (
 	SCHEDULED_EMAIL_HANDLERS,
 	send_omr_item_change_email,
 	send_pending_advance_mate_email,
-	send_so_approval_tat_email,
 )
 from generate_item.generate_item.report.omr_item_change.omr_item_change import (
 	execute as execute_omr_report,
@@ -28,6 +27,9 @@ from generate_item.generate_item.page.pending_advance_mate.pending_advance_mate 
 )
 from generate_item.generate_item.report.so_approval_tat.so_approval_tat import (
 	execute as execute_so_approval_tat_report,
+	get_conditions as get_so_approval_tat_conditions,
+	send_so_approval_tat_email,
+	normalize_email_recipients,
 )
 
 
@@ -93,6 +95,23 @@ class TestReportEmailMaster(UnitTestCase):
 		self.assertIn("dhanvant.marathe@finbyz.tech", sanand_email["recipients"])
 		self.assertNotIn("ritik.patwa@finbyz.tech", sanand_email["recipients"])
 		self.assertIn("omr_item_change_sanand", sanand_email["attachments"][0]["fname"])
+
+	def test_so_approval_tat_owner_filter(self):
+		conditions, values = get_so_approval_tat_conditions(frappe._dict({"owner": "creator@example.com"}))
+
+		self.assertIn("AND so.owner = %(owner)s", conditions)
+		self.assertEqual(values["owner"], "creator@example.com")
+		self.assertIn("AND so.status = 'Draft'", conditions)
+
+	def test_email_recipient_normalization(self):
+		self.assertEqual(
+			normalize_email_recipients(" first@example.com, second@example.com;FIRST@example.com "),
+			["first@example.com", "second@example.com"],
+		)
+		self.assertEqual(
+			normalize_email_recipients([" first@example.com ", "second@example.com"]),
+			["first@example.com", "second@example.com"],
+		)
 
 	def test_explicit_caller_branch_filter(self):
 		"""When caller specifies a branch, only that branch's group is emailed."""
@@ -288,6 +307,7 @@ class TestReportEmailMaster(UnitTestCase):
 	def test_developer_controlled_scheduling(self):
 		"""Scheduler only executes explicitly registered developer-controlled handlers."""
 		self.assertIn(("Report", "OMR Item Change"), SCHEDULED_EMAIL_HANDLERS)
+		self.assertIn(("Report", "SO Approval TAT"), SCHEDULED_EMAIL_HANDLERS)
 		self.assertIn(("Page", "pending-advance-mate"), SCHEDULED_EMAIL_HANDLERS)
 
 		sent_emails = []
@@ -296,11 +316,19 @@ class TestReportEmailMaster(UnitTestCase):
 			sent_emails.append(kwargs)
 			return MagicMock()
 
-		with patch("frappe.sendmail", side_effect=mock_sendmail):
+		with (
+			patch("frappe.sendmail", side_effect=mock_sendmail),
+			patch(
+				"generate_item.generate_item.report.so_approval_tat.so_approval_tat.send_so_approval_tat_email",
+				return_value={"status": "completed"},
+			) as send_tat_email,
+		):
 			results = execute_weekly_report_email_scheduler()
 
+		send_tat_email.assert_called_once_with()
 		self.assertIsInstance(results, dict)
 		self.assertIn("Report:OMR Item Change", results)
+		self.assertIn("Report:SO Approval TAT", results)
 		self.assertIn("Page:pending-advance-mate", results)
 
 	def test_group_failure_isolation(self):
@@ -338,29 +366,72 @@ class TestReportEmailMaster(UnitTestCase):
 
 	def test_so_approval_tat_email_dispatch(self):
 		"""
-		Tests that SO Approval TAT report generates and emails separate branch-filtered reports
-		to each branch's configured email group (Nandikoor and Sanand), matching OMR Item Change behavior.
+		Tests creator- and branch-specific Draft reports send without consulting Report Email Master.
 		"""
 		sent_emails = []
+		report_filters = []
+		columns = [{"label": "Sales Order", "fieldname": "sales_order"}]
 
 		def mock_sendmail(**kwargs):
 			sent_emails.append(kwargs)
 			return MagicMock()
 
-		with patch("frappe.sendmail", side_effect=mock_sendmail):
+		def mock_report_execute(filters=None):
+			report_filters.append(dict(filters or {}))
+			return columns, [{"sales_order": filters.get("owner") or filters.get("branch")}]
+
+		with (
+			patch("frappe.sendmail", side_effect=mock_sendmail),
+			patch("frappe.get_all", return_value=["creator@example.com"]),
+			patch("frappe.db.get_value", return_value="creator@example.com"),
+			patch(
+				"generate_item.generate_item.report.so_approval_tat.so_approval_tat._get_active_branches",
+				return_value=["Sanand", "Nandikoor", "Rabale"],
+			),
+			patch(
+				"generate_item.generate_item.report.so_approval_tat.so_approval_tat.execute",
+				side_effect=mock_report_execute,
+			),
+			patch(
+				"generate_item.utils.report_email_scheduler.build_report_excel_attachment",
+				return_value={"fname": "so_approval_tat.xlsx", "fcontent": b""},
+			),
+			patch(
+				"generate_item.utils.report_email_scheduler.build_report_email_html",
+				return_value="<p>SO Approval TAT</p>",
+			),
+			patch("generate_item.utils.report_email_scheduler.get_report_email_master_config") as get_master,
+		):
 			res = send_so_approval_tat_email()
 
 		self.assertEqual(res["status"], "completed")
-		self.assertEqual(len(sent_emails), 2)
+		self.assertEqual(len(sent_emails), 4)
+		self.assertEqual(len(res["user_sent"]), 1)
+		self.assertEqual(len(res["branch_sent"]), 3)
+		get_master.assert_not_called()
+		self.assertEqual(
+			{filters.get("owner") for filters in report_filters if filters.get("owner")},
+			{"creator@example.com"},
+		)
+		self.assertEqual(
+			{filters.get("branch") for filters in report_filters if filters.get("branch")},
+			{"Sanand", "Nandikoor", "Rabale"},
+		)
+		self.assertTrue(all(filters["status"] == ["Draft"] for filters in report_filters))
 
-		nandikoor_email = next(e for e in sent_emails if "Nandikoor" in e["subject"])
-		self.assertIn("dhanvant.marathe@finbyz.tech", nandikoor_email["recipients"])
-		self.assertIn("ritik.patwa@finbyz.tech", nandikoor_email["recipients"])
-		self.assertIn("so_approval_tat_nandikoor", nandikoor_email["attachments"][0]["fname"])
-		self.assertIn("Branch: <strong>Nandikoor</strong>", nandikoor_email["message"])
-
-		sanand_email = next(e for e in sent_emails if "Sanand" in e["subject"])
-		self.assertIn("dhanvant.marathe@finbyz.tech", sanand_email["recipients"])
-		self.assertNotIn("ritik.patwa@finbyz.tech", sanand_email["recipients"])
-		self.assertIn("so_approval_tat_sanand", sanand_email["attachments"][0]["fname"])
-		self.assertIn("Branch: <strong>Sanand</strong>", sanand_email["message"])
+		creator_email = next(email for email in sent_emails if email["recipients"] == ["creator@example.com"])
+		self.assertIn("created by creator@example.com", creator_email["subject"])
+		branch_emails = {
+			email["subject"].rsplit(" - ", 1)[-1]: email
+			for email in sent_emails
+			if email["subject"].endswith(("Sanand", "Nandikoor", "Rabale"))
+		}
+		self.assertEqual(branch_emails["Sanand"]["recipients"], ["dhanvant.marathe@finbyz.tech"])
+		self.assertEqual(
+			branch_emails["Nandikoor"]["recipients"],
+			["dhanvant.marathe@finbyz.tech", "ritik.patwa@finbyz.tech"],
+		)
+		self.assertEqual(
+			branch_emails["Rabale"]["recipients"],
+			["dhanvant.marathe@finbyz.tech", "ritik.patwa@finbyz.tech"],
+		)
