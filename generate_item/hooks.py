@@ -83,8 +83,10 @@ doctype_js = {"Item" : "public/js/item.js",
               "Work Order" : "public/js/work_order.js",
               "Customer" : "public/js/customer_supplier_workflow.js",
               "Supplier" : "public/js/customer_supplier_workflow.js",
+            #   "Issue": "public/js/issue.js",
               "Employee":"public/js/employee.js",
-              "User": "public/js/user.js"
+              "User": "public/js/user.js",
+              "Serial No": "public/js/serial_no.js"
     
               }
 
@@ -134,6 +136,10 @@ doctype_list_js = {
 
 # before_install = "generate_item.install.before_install"
 # after_install = "generate_item.install.after_install"
+after_migrate = [
+    "generate_item.mould_set_management.setup.setup_mould_set_management",
+    # "generate_item.customer_complaint.setup.setup_customer_complaint",
+]
 
 
 # Uninstallation
@@ -198,6 +204,10 @@ override_doctype_class = {
 # Hook on document methods and events
 
 doc_events = {
+    # "Issue": {
+    #     "validate": "generate_item.customer_complaint.issue.validate_issue",
+    #     "before_save": "generate_item.customer_complaint.issue.before_save_issue",
+    # },
     "Purchase Order": {
         "before_insert": "generate_item.utils.purchase_order.before_insert",
         "validate": "generate_item.utils.purchase_order.validate",
@@ -215,25 +225,34 @@ doc_events = {
     
     "Purchase Receipt": {
         "before_save": "generate_item.utils.purchase_receipt.before_save",
-        "validate": "generate_item.utils.purchase_receipt.validate",
+        "validate": [
+            "generate_item.utils.purchase_receipt.validate",
+            "generate_item.mould_set_management.stock_guards.validate_serial_movement_in_generic_stock_doc",
+        ],
         "on_submit": "generate_item.utils.purchase_receipt.update_received_qty_stock_uom",
         "on_cancel": "generate_item.utils.purchase_receipt.update_received_qty_stock_uom"
  
     },  
     "Stock Entry": {
         "before_insert": "generate_item.utils.stock_entry.before_insert",
+        "validate": "generate_item.mould_set_management.stock_guards.validate_stock_entry",
         "on_submit":"generate_item.utils.stock_entry.on_submit",
 
-          "onload": "generate_item.utils.scenario_workflow.set_submit_control_onload",
+        "onload": "generate_item.utils.scenario_workflow.set_submit_control_onload",
        
         "before_submit": "generate_item.utils.scenario_workflow.validate_stock_entry_submit",
    
-        "before_cancel":"generate_item.generate_item.doctype.serial_number.serial_number.before_cancel_stock_entry"
+        "before_cancel": [
+            "generate_item.generate_item.doctype.serial_number.serial_number.before_cancel_stock_entry",
+            "generate_item.mould_set_management.stock_guards.validate_stock_entry_cancel",
+        ],
+        "on_trash": "generate_item.mould_set_management.stock_guards.validate_stock_entry_delete",
     },
     "Sales Order": {
         "before_save": "generate_item.utils.sales_order.before_save",
         "validate": "generate_item.utils.sales_order.validate",
         "before_validate":"generate_item.utils.sales_order.before_validate",
+        "on_submit": "generate_item.generate_item.doctype.crm_notes.crm_notes.submit_draft_crm_notes",
         # "on_cancel": "generate_item.generate_item.doctype.serial_number.serial_number.on_cancel_sales_order",
          "on_cancel": [
         "generate_item.generate_item.doctype.serial_number.serial_number.on_cancel_sales_order",
@@ -263,7 +282,10 @@ doc_events = {
     "Sales Invoice": {
         "before_insert": "generate_item.utils.sales_invoice.before_insert",
         "after_insert": "generate_item.utils.sales_invoice.after_insert",
-        "validate": "generate_item.utils.sales_invoice.validate",
+        "validate": [
+            "generate_item.utils.sales_invoice.validate",
+            "generate_item.mould_set_management.stock_guards.validate_serial_movement_in_generic_stock_doc",
+        ],
         "on_submit": "generate_item.utils.sales_invoice.on_submit_update_warranty"
     
     },
@@ -278,12 +300,18 @@ doc_events = {
     },
     "Delivery Note": {
         "after_insert": "generate_item.utils.delivery_note.after_insert",
-        "validate": "generate_item.utils.delivery_note.validate",
+        "validate": [
+            "generate_item.utils.delivery_note.validate",
+            "generate_item.mould_set_management.stock_guards.validate_serial_movement_in_generic_stock_doc",
+        ],
         "before_save":"generate_item.utils.delivery_note.before_save",
         "before_submit":"generate_item.utils.delivery_note.handle_free_issue_item"
     },
     "Purchase Invoice": {
-        "validate": "generate_item.utils.purchase_invoice.validate",
+        "validate": [
+            "generate_item.utils.purchase_invoice.validate",
+            "generate_item.mould_set_management.stock_guards.validate_serial_movement_in_generic_stock_doc",
+        ],
     },
      "BOM":{
         "before_validate": "generate_item.utils.bom.before_validate",
@@ -304,7 +332,17 @@ doc_events = {
     "Subcontracting Receipt": {
         "before_save": "generate_item.utils.subcontracting_receipt.before_save",
         "after_save": "generate_item.utils.subcontracting_receipt.after_save",
-        "validate":"generate_item.utils.subcontracting_receipt.validate"
+        "validate": [
+            "generate_item.utils.subcontracting_receipt.validate",
+            "generate_item.mould_set_management.stock_guards.validate_serial_movement_in_generic_stock_doc",
+        ],
+    },
+    "Stock Reconciliation": {
+        "validate": "generate_item.mould_set_management.stock_guards.validate_serial_movement_in_generic_stock_doc",
+    },
+    "Serial No": {
+        "validate": "generate_item.mould_set_management.stock_guards.validate_serial_no_change",
+        "on_trash": "generate_item.mould_set_management.stock_guards.validate_serial_no_delete",
     },
     "Customer": {
         "validate": [
@@ -499,13 +537,19 @@ fixtures = [
     {
         "dt": "Custom Field",
         "filters": [
-            ["module", "in", ["Generate Item"]]
+            ["module", "in", ["Generate Item", "Mould Set Management"]]
         ]
     },
     {
         "dt": "Property Setter",
         "filters": [
-            ["module", "in", ["Generate Item"]]
+            ["module", "in", ["Generate Item", "Mould Set Management"]]
+        ]
+    },
+    {
+        "dt": "Role",
+        "filters": [
+            ["name", "in", ["Pattern Master", "Stores User", "Stores Manager"]]
         ]
     },
     {

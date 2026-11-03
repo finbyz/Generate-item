@@ -7,10 +7,58 @@ from frappe.custom.doctype.custom_field.custom_field import create_custom_fields
 
 def setup_mould_set_management():
 	"""
-	Sets up custom fields and configurations required by Pattern Set / Mould Set Management.
+	Sets up custom fields, roles, indexes, and configurations required by Pattern Set Management v1.0.
 	"""
-	# 1. Custom fields for Supplier Warehouse tracking on Warehouse doctype
+	print("Setting up Pattern Set Management v1.0...")
+
+	# 1. Custom fields per Section 4.8
 	custom_fields = {
+		"Serial No": [
+			{
+				"fieldname": "custom_pattern_set",
+				"label": "Pattern Set",
+				"fieldtype": "Link",
+				"options": "Pattern Set",
+				"read_only": 1,
+				"in_list_view": 1,
+				"in_standard_filter": 1,
+				"no_copy": 1,
+				"insert_after": "warehouse",
+				"module": "Mould Set Management",
+			}
+		],
+		"Warehouse": [
+			{
+				"fieldname": "custom_supplier",
+				"label": "Supplier",
+				"fieldtype": "Link",
+				"options": "Supplier",
+				"insert_after": "warehouse_type",
+				"module": "Mould Set Management",
+			}
+		],
+		"Stock Entry": [
+			{
+				"fieldname": "custom_pattern_set",
+				"label": "Pattern Set",
+				"fieldtype": "Link",
+				"options": "Pattern Set",
+				"read_only": 1,
+				"no_copy": 1,
+				"insert_after": "to_warehouse",
+				"module": "Mould Set Management",
+			},
+			{
+				"fieldname": "custom_pattern_set_transfer",
+				"label": "Pattern Set Transfer",
+				"fieldtype": "Link",
+				"options": "Pattern Set Transfer",
+				"read_only": 1,
+				"no_copy": 1,
+				"insert_after": "custom_pattern_set",
+				"module": "Mould Set Management",
+			},
+		],
 		"Purchase Order": [
 			{
 				"fieldname": "mould_set_info",
@@ -21,94 +69,76 @@ def setup_mould_set_management():
 		],
 	}
 	create_custom_fields(custom_fields, update=True)
+	print("Custom fields verified and created.")
 
-	# 2. Ensure "Supplier" Warehouse Type exists
-	if not frappe.db.exists("Warehouse Type", "Supplier"):
-		try:
-			doc = frappe.new_doc("Warehouse Type")
-			doc.name = "Supplier"
-			doc.insert(ignore_permissions=True)
-		except Exception:
-			pass
+	# 2. Roles per Section 10
+	roles = ["Pattern Master", "Stores User", "Stores Manager"]
+	for role_name in roles:
+		if not frappe.db.exists("Role", role_name):
+			try:
+				r = frappe.new_doc("Role")
+				r.role_name = role_name
+				r.insert(ignore_permissions=True)
+				print(f"Created role: {role_name}")
+			except Exception as e:
+				print(f"Error creating role {role_name}: {e}")
 
-	# 3. Rename DocType Mould Set -> Pattern Set if Mould Set exists
-	if frappe.db.exists("DocType", "Mould Set") and not frappe.db.exists("DocType", "Pattern Set"):
-		try:
-			frappe.rename_doc("DocType", "Mould Set", "Pattern Set", force=True)
-			print("Renamed DocType 'Mould Set' to 'Pattern Set'")
-		except Exception as e:
-			print(f"Error renaming Mould Set: {e}")
-
-	if frappe.db.exists("DocType", "Mould Set Component") and not frappe.db.exists("DocType", "Pattern Set Component"):
-		try:
-			frappe.rename_doc("DocType", "Mould Set Component", "Pattern Set Component", force=True)
-			print("Renamed DocType 'Mould Set Component' to 'Pattern Set Component'")
-		except Exception as e:
-			print(f"Error renaming Mould Set Component: {e}")
-
-	# If old DocType still exists alongside new, or tables need syncing:
+	# 3. Database Indexes per Section 13.2
 	try:
-		if frappe.db.table_exists("tabMould Set") and not frappe.db.table_exists("tabPattern Set"):
-			frappe.db.sql("RENAME TABLE `tabMould Set` TO `tabPattern Set`")
+		if frappe.db.table_exists("tabSerial No") and frappe.db.has_column("Serial No", "custom_pattern_set"):
+			frappe.db.add_index("Serial No", ["custom_pattern_set"], "idx_serial_no_custom_pattern_set")
 	except Exception:
 		pass
 
 	try:
-		if frappe.db.table_exists("tabMould Set Component") and not frappe.db.table_exists("tabPattern Set Component"):
-			frappe.db.sql("RENAME TABLE `tabMould Set Component` TO `tabPattern Set Component`")
+		if frappe.db.table_exists("tabComponent Pairing Log"):
+			if frappe.db.has_column("Component Pairing Log", "serial_no"):
+				frappe.db.add_index("Component Pairing Log", ["serial_no"], "idx_cpl_serial_no")
+			if frappe.db.has_column("Component Pairing Log", "pattern_set"):
+				frappe.db.add_index("Component Pairing Log", ["pattern_set"], "idx_cpl_pattern_set")
 	except Exception:
 		pass
 
-	# 4. Rename DocType Component Transfer -> Pattern Movement if Component Transfer exists
-	if frappe.db.exists("DocType", "Component Transfer") and not frappe.db.exists("DocType", "Pattern Movement"):
-		try:
-			frappe.rename_doc("DocType", "Component Transfer", "Pattern Movement", force=True)
-			print("Renamed DocType 'Component Transfer' to 'Pattern Movement'")
-		except Exception as e:
-			print(f"Error renaming Component Transfer: {e}")
-
+	# 4. Data Migration for existing records (Section 13.3)
 	try:
-		if frappe.db.table_exists("tabComponent Transfer") and not frappe.db.table_exists("tabPattern Movement"):
-			frappe.db.sql("RENAME TABLE `tabComponent Transfer` TO `tabPattern Movement`")
-	except Exception:
-		pass
+		if frappe.db.table_exists("tabPattern Set Component"):
+			if frappe.db.has_column("Pattern Set Component", "component_item") and frappe.db.has_column("Pattern Set Component", "item_code"):
+				frappe.db.sql(
+					"""
+					UPDATE `tabPattern Set Component`
+					SET item_code = component_item
+					WHERE (item_code IS NULL OR item_code = '')
+					AND component_item IS NOT NULL
+					"""
+				)
+			if frappe.db.has_column("Pattern Set Component", "component_name") and frappe.db.has_column("Pattern Set Component", "item_name"):
+				frappe.db.sql(
+					"""
+					UPDATE `tabPattern Set Component`
+					SET item_name = component_name
+					WHERE (item_name IS NULL OR item_name = '')
+					AND component_name IS NOT NULL
+					"""
+				)
 
-	# 5. Rename DocType Component Transfer Item -> Pattern Movement Item if exists
-	if frappe.db.exists("DocType", "Component Transfer Item") and not frappe.db.exists("DocType", "Pattern Movement Item"):
-		try:
-			frappe.rename_doc("DocType", "Component Transfer Item", "Pattern Movement Item", force=True)
-			print("Renamed DocType 'Component Transfer Item' to 'Pattern Movement Item'")
-		except Exception as e:
-			print(f"Error renaming Component Transfer Item: {e}")
-
-	try:
-		if frappe.db.table_exists("tabComponent Transfer Item") and not frappe.db.table_exists("tabPattern Movement Item"):
-			frappe.db.sql("RENAME TABLE `tabComponent Transfer Item` TO `tabPattern Movement Item`")
-	except Exception:
-		pass
-
-	# Ensure pattern_set_name column is populated
-	try:
 		if frappe.db.table_exists("tabPattern Set"):
-			if frappe.db.has_column("Pattern Set", "mould_set_name") and frappe.db.has_column("Pattern Set", "pattern_set_name"):
+			# Sync disabled flag
+			if frappe.db.has_column("Pattern Set", "disable") and frappe.db.has_column("Pattern Set", "disabled"):
 				frappe.db.sql(
 					"""
 					UPDATE `tabPattern Set`
-					SET pattern_set_name = mould_set_name
-					WHERE (pattern_set_name IS NULL OR pattern_set_name = '')
-					AND mould_set_name IS NOT NULL
+					SET disabled = disable
+					WHERE (disabled IS NULL OR disabled = 0)
+					AND disable = 1
 					"""
 				)
-			elif frappe.db.has_column("Pattern Set", "module_set_name") and frappe.db.has_column("Pattern Set", "pattern_set_name"):
-				frappe.db.sql(
-					"""
-					UPDATE `tabPattern Set`
-					SET pattern_set_name = module_set_name
-					WHERE (pattern_set_name IS NULL OR pattern_set_name = '')
-					AND module_set_name IS NOT NULL
-					"""
-				)
-	except Exception:
-		pass
 
-	print("Pattern Set Management setup completed.")
+			# Recalculate all pattern sets
+			all_sets = frappe.get_all("Pattern Set", pluck="name")
+			from generate_item.mould_set_management.pattern_set_utils import recalculate_pattern_set
+			for ps_name in all_sets:
+				recalculate_pattern_set(ps_name)
+	except Exception as e:
+		print(f"Error during data migration: {e}")
+
+	print("Pattern Set Management setup completed successfully.")

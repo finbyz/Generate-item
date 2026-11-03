@@ -9,19 +9,30 @@
  "field_order": [
   "section_break_details",
   "naming_series",
+  "status",
   "type_of_valve",
   "size",
   "class",
   "bore",
   "column_break_main",
+  "disabled",
   "disable",
   "type_of_pattern",
   "pattern_length",
+  "pattern_shape_name",
   "pattern_set_name",
+  "column_break_location",
+  "current_warehouse",
+  "current_supplier",
+  "core_remark",
   "remark",
   "amended_from",
+  "section_break_set_info",
+  "set_info",
   "section_break_components",
-  "items"
+  "items",
+  "section_break_transfer_history",
+  "transfer_history"
  ],
  "fields": [
   {
@@ -35,6 +46,18 @@
    "in_list_view": 1,
    "label": "Naming Series",
    "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "no_copy": 1,
+   "options": "Draft\nComplete\nIncomplete\nDisabled\nCancelled",
    "read_only": 1
   },
   {
@@ -79,10 +102,19 @@
   {
    "allow_on_submit": 1,
    "default": "0",
-   "fieldname": "disable",
+   "fieldname": "disabled",
    "fieldtype": "Check",
    "in_list_view": 1,
-   "label": "Disable"
+   "in_standard_filter": 1,
+   "label": "Disabled"
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "0",
+   "fieldname": "disable",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Disable (Legacy)"
   },
   {
    "fieldname": "type_of_pattern",
@@ -102,6 +134,11 @@
    "options": "\nShort\nLong"
   },
   {
+   "fieldname": "pattern_shape_name",
+   "fieldtype": "Data",
+   "label": "Pattern Shape Name"
+  },
+  {
    "fieldname": "pattern_set_name",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -109,6 +146,40 @@
    "label": "Pattern Set Name",
    "no_copy": 1,
    "read_only": 1
+  },
+  {
+   "fieldname": "column_break_location",
+   "fieldtype": "Column Break"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "current_warehouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Current Warehouse",
+   "options": "Warehouse",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "current_supplier",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Current Supplier",
+   "options": "Supplier",
+   "read_only": 1
+  },
+  {
+   "fieldname": "core_remark",
+   "fieldtype": "Small Text",
+   "label": "Core Remark"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Remark"
   },
   {
    "fieldname": "amended_from",
@@ -121,11 +192,24 @@
    "search_index": 1
   },
   {
+   "collapsible": 0,
+   "fieldname": "section_break_set_info",
+   "fieldtype": "Section Break",
+   "label": "Pattern Set Live Status"
+  },
+  {
+   "fieldname": "set_info",
+   "fieldtype": "HTML",
+   "label": "Set Info",
+   "read_only": 1
+  },
+  {
    "fieldname": "section_break_components",
    "fieldtype": "Section Break",
    "label": "Components"
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "items",
    "fieldtype": "Table",
    "label": "Components",
@@ -134,9 +218,16 @@
    "reqd": 1
   },
   {
-   "fieldname": "remark",
-   "fieldtype": "Small Text",
-   "label": "Remark"
+   "collapsible": 1,
+   "fieldname": "section_break_transfer_history",
+   "fieldtype": "Section Break",
+   "label": "Transfer History"
+  },
+  {
+   "fieldname": "transfer_history",
+   "fieldtype": "HTML",
+   "label": "Transfer History",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
@@ -145,11 +236,16 @@
  "links": [
   {
    "group": "Transactions",
-   "link_doctype": "Pattern Movement",
-   "link_fieldname": "mould_set"
+   "link_doctype": "Pattern Set Component Change",
+   "link_fieldname": "pattern_set"
+  },
+  {
+   "group": "Transactions",
+   "link_doctype": "Pattern Set Transfer",
+   "link_fieldname": "pattern_set"
   }
  ],
- "modified": "2026-10-21 10:27:18.415075",
+ "modified": "2026-11-02 12:00:00.000000",
  "modified_by": "Administrator",
  "module": "Mould Set Management",
  "name": "Pattern Set",
@@ -164,9 +260,10 @@
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "System Manager",
+   "role": "Pattern Master",
    "share": 1,
    "submit": 1,
+   "cancel": 1,
    "write": 1
   },
   {
@@ -179,7 +276,20 @@
    "report": 1,
    "role": "Stock User",
    "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
    "submit": 1,
+   "cancel": 1,
    "write": 1
   }
  ],

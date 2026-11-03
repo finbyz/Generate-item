@@ -7,12 +7,19 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "item_code",
+  "item_name",
+  "serial_no",
+  "warehouse",
+  "is_optional",
+  "paired_on",
+  "remarks",
+  "qty",
+  "attached_qty",
+  "column_break_drawings",
   "component_item",
   "component_name",
-  "qty",
   "uom",
-  "remark",
-  "column_break_drawings",
   "drawing_no",
   "drawing_rev_no",
   "pattern_drawing_no",
@@ -20,36 +27,76 @@
  ],
  "fields": [
   {
-   "fieldname": "component_item",
+   "allow_on_submit": 1,
+   "fieldname": "item_code",
    "fieldtype": "Link",
    "in_list_view": 1,
-   "label": "Component Item",
+   "label": "Item Code",
    "options": "Item",
    "reqd": 1
   },
   {
-   "fetch_from": "component_item.item_name",
-   "fieldname": "component_name",
+   "allow_on_submit": 1,
+   "fetch_from": "item_code.item_name",
+   "fieldname": "item_name",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Component Name",
+   "label": "Item Name",
    "read_only": 1
   },
   {
+   "allow_on_submit": 1,
+   "fieldname": "serial_no",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Serial No",
+   "options": "Serial No"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "warehouse",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Warehouse",
+   "options": "Warehouse",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "0",
+   "fieldname": "is_optional",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Is Optional"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "paired_on",
+   "fieldtype": "Datetime",
+   "label": "Paired On",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "remarks",
+   "fieldtype": "Data",
+   "label": "Remarks"
+  },
+  {
+   "allow_on_submit": 1,
    "default": "1",
    "fieldname": "qty",
    "fieldtype": "Float",
-   "in_list_view": 1,
-   "label": "Qty",
-   "reqd": 1
+   "hidden": 1,
+   "label": "Qty"
   },
   {
-   "fetch_from": "component_item.stock_uom",
-   "fieldname": "uom",
-   "fieldtype": "Link",
-   "in_list_view": 1,
-   "label": "UOM",
-   "options": "UOM",
+   "allow_on_submit": 1,
+   "default": "0",
+   "fieldname": "attached_qty",
+   "fieldtype": "Int",
+   "hidden": 1,
+   "label": "Attached Qty",
    "read_only": 1
   },
   {
@@ -57,43 +104,64 @@
    "fieldtype": "Column Break"
   },
   {
+   "allow_on_submit": 1,
+   "fieldname": "component_item",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Component Item (Legacy)",
+   "options": "Item"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "component_name",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Component Name (Legacy)",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fetch_from": "item_code.stock_uom",
+   "fieldname": "uom",
+   "fieldtype": "Link",
+   "label": "UOM",
+   "options": "UOM",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
    "fieldname": "drawing_no",
    "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Drawing No"
+   "label": "Drawing No."
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "drawing_rev_no",
    "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Drawing Rev No"
+   "label": "Drawing Rev. No."
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "pattern_drawing_no",
    "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Pattern Drawing No"
+   "label": "Pattern Drawing No."
   },
   {
+   "allow_on_submit": 1,
    "fieldname": "pattern_drawing_rev_no",
    "fieldtype": "Data",
-   "in_list_view": 1,
-   "label": "Pattern Drawing Rev No"
-  },
-  {
-   "fieldname": "remark",
-   "fieldtype": "Small Text",
-   "label": "Remark"
+   "label": "Pattern Drawing Rev. No."
   }
  ],
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2026-10-21 10:27:35.830512",
+ "modified": "2026-11-03 10:00:00.000000",
  "modified_by": "Administrator",
  "module": "Mould Set Management",
  "name": "Pattern Set Component",
+ "naming_rule": "Random",
  "owner": "Administrator",
  "permissions": [],
  "row_format": "Dynamic",

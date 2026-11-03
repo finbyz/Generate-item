@@ -327,7 +327,7 @@ def create_crm_note_from_sales_order(sales_order):
     crm_note.customers_purchase_order_date = so.po_date
     crm_note.order_amount = so.grand_total
 
-    crm_note.insert(ignore_permissions=True)  # Draft by default
+    crm_note.insert(ignore_permissions=True,ignore_mandatory=True)  # Draft by default
 
     return crm_note.name
 

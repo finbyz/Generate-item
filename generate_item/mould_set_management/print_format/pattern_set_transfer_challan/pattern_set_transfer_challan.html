@@ -1,0 +1,104 @@
+<div style="font-family: Arial, sans-serif; font-size: 13px; color: #333; line-height: 1.5;">
+	<div style="text-align: center; border-bottom: 2px solid #222; padding-bottom: 8px; margin-bottom: 15px;">
+		<h2 style="margin: 0 0 4px 0; text-transform: uppercase;">{{ doc.company }}</h2>
+		<h3 style="margin: 0; color: #555; text-transform: uppercase; font-size: 16px;">Pattern Set Transfer Challan / Gate Pass</h3>
+	</div>
+
+	<table style="width: 100%; border-collapse: collapse; margin-bottom: 15px;">
+		<tr>
+			<td style="width: 50%; vertical-align: top; padding: 4px;">
+				<strong>Transfer ID:</strong> {{ doc.name }}<br>
+				<strong>Posting Date:</strong> {{ frappe.format_date(doc.posting_date) }}<br>
+				<strong>Reference No / Vehicle:</strong> {{ doc.reference_no or "N/A" }}<br>
+				<strong>Transfer Type:</strong> {{ doc.transfer_type }}<br>
+				<strong>Purpose:</strong> {{ doc.purpose }}
+			</td>
+			<td style="width: 50%; vertical-align: top; padding: 4px;">
+				<strong>Linked Stock Entry:</strong> {{ doc.stock_entry or "N/A" }}<br>
+				<strong>From Warehouse:</strong> {{ doc.source_warehouse }}
+				{% if doc.source_supplier %} ({{ doc.source_supplier }}){% endif %}<br>
+				<strong>To Warehouse:</strong> {{ doc.target_warehouse }}
+				{% if doc.target_supplier %} ({{ doc.target_supplier }}){% endif %}
+			</td>
+		</tr>
+	</table>
+
+	<!-- Pattern Set Specification Section -->
+	{% set pset = frappe.get_doc("Pattern Set", doc.pattern_set) %}
+	<div style="background-color: #f7f7f7; border: 1px solid #ccc; padding: 8px 12px; margin-bottom: 15px; border-radius: 4px;">
+		<h4 style="margin: 0 0 6px 0; text-transform: uppercase; border-bottom: 1px solid #ddd; padding-bottom: 4px;">Pattern Set: {{ doc.pattern_set }}</h4>
+		<table style="width: 100%; font-size: 12px;">
+			<tr>
+				<td style="width: 25%;"><strong>Valve Type:</strong> {{ pset.type_of_valve or "-" }}</td>
+				<td style="width: 25%;"><strong>Size:</strong> {{ pset.size or "-" }}</td>
+				<td style="width: 25%;"><strong>Class:</strong> {{ pset.class or "-" }}</td>
+				<td style="width: 25%;"><strong>Bore:</strong> {{ pset.bore or "-" }}</td>
+			</tr>
+			<tr>
+				<td><strong>Pattern Type:</strong> {{ pset.type_of_pattern or "-" }}</td>
+				<td><strong>Length:</strong> {{ pset.pattern_length or "-" }}</td>
+				<td><strong>Shape Name:</strong> {{ pset.pattern_shape_name or "-" }}</td>
+				<td><strong>Core Remark:</strong> {{ pset.core_remark or "-" }}</td>
+			</tr>
+		</table>
+	</div>
+
+	<!-- Component List Moving -->
+	<h4 style="margin: 10px 0 6px 0; text-transform: uppercase;">Moving Pattern Components</h4>
+	<table style="width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 20px;">
+		<thead>
+			<tr style="background-color: #eee; border-top: 1px solid #333; border-bottom: 1px solid #333;">
+				<th style="padding: 6px; text-align: left; width: 40px;">#</th>
+				<th style="padding: 6px; text-align: left; width: 140px;">Serial No</th>
+				<th style="padding: 6px; text-align: left; width: 140px;">Item Code</th>
+				<th style="padding: 6px; text-align: left;">Item Name</th>
+				<th style="padding: 6px; text-align: center; width: 80px;">Type</th>
+				<th style="padding: 6px; text-align: left; width: 120px;">Remarks</th>
+			</tr>
+		</thead>
+		<tbody>
+			{% set moving_items = doc.items | selectattr("include", "equalto", 1) | list %}
+			{% for row in moving_items %}
+			<tr style="border-bottom: 1px solid #ddd;">
+				<td style="padding: 6px;">{{ loop.index }}</td>
+				<td style="padding: 6px; font-weight: bold;">{{ row.serial_no }}</td>
+				<td style="padding: 6px;">{{ row.item_code }}</td>
+				<td style="padding: 6px;">{{ row.item_name }}</td>
+				<td style="padding: 6px; text-align: center;">
+					{% if row.is_optional %}Optional{% else %}Required{% endif %}
+				</td>
+				<td style="padding: 6px;">{{ row.remarks or "" }}</td>
+			</tr>
+			{% endfor %}
+		</tbody>
+	</table>
+
+	<div style="margin-bottom: 30px; font-size: 13px;">
+		<strong>Total Components Moving:</strong> {{ doc.total_moving }} piece(s)<br>
+		{% if doc.total_left_behind > 0 %}
+		<span style="color: #666;"><strong>Note:</strong> {{ doc.total_left_behind }} optional component(s) were detached and retained at {{ doc.source_warehouse }}.</span><br>
+		{% endif %}
+		{% if doc.remarks %}
+		<strong>Transfer Remarks:</strong> {{ doc.remarks }}
+		{% endif %}
+	</div>
+
+	<!-- Signatures -->
+	<table style="width: 100%; margin-top: 50px; text-align: center; font-size: 12px;">
+		<tr>
+			<td style="width: 33%; padding-top: 40px; border-top: 1px solid #aaa;">
+				<strong>Issued / Prepared By</strong><br>
+				<small>(Pattern Store Incharge)</small>
+			</td>
+			<td style="width: 33%; padding-top: 40px; border-top: 1px solid #aaa;">
+				<strong>Dispatched / Transporter</strong><br>
+				<small>(Vehicle Driver / Carrier)</small>
+			</td>
+			<td style="width: 33%; padding-top: 40px; border-top: 1px solid #aaa;">
+				<strong>Received By</strong><br>
+				<small>(Supplier Receiver Stamp & Sign)</small>
+			</td>
+		</tr>
+	</table>
+</div>
+
