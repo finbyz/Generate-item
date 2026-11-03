@@ -83,7 +83,7 @@ doctype_js = {"Item" : "public/js/item.js",
               "Work Order" : "public/js/work_order.js",
               "Customer" : "public/js/customer_supplier_workflow.js",
               "Supplier" : "public/js/customer_supplier_workflow.js",
-            #   "Issue": "public/js/issue.js",
+              "Issue": "public/js/issue.js",
               "Employee":"public/js/employee.js",
               "User": "public/js/user.js",
               "Serial No": "public/js/serial_no.js"
@@ -138,7 +138,7 @@ doctype_list_js = {
 # after_install = "generate_item.install.after_install"
 after_migrate = [
     "generate_item.mould_set_management.setup.setup_mould_set_management",
-    # "generate_item.customer_complaint.setup.setup_customer_complaint",
+    "generate_item.customer_complaint.setup.setup_customer_complaint",
 ]
 
 
@@ -204,10 +204,10 @@ override_doctype_class = {
 # Hook on document methods and events
 
 doc_events = {
-    # "Issue": {
-    #     "validate": "generate_item.customer_complaint.issue.validate_issue",
-    #     "before_save": "generate_item.customer_complaint.issue.before_save_issue",
-    # },
+    "Issue": {
+        "validate": "generate_item.customer_complaint.issue.validate_issue",
+        "before_save": "generate_item.customer_complaint.issue.before_save_issue",
+    },
     "Purchase Order": {
         "before_insert": "generate_item.utils.purchase_order.before_insert",
         "validate": "generate_item.utils.purchase_order.validate",

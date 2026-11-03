@@ -1,0 +1,112 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-11-03 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "posting_datetime",
+  "complaint_status",
+  "action_by",
+  "responsible_department",
+  "action_remarks",
+  "progress_update",
+  "column_break_1",
+  "ssv_visiting_engineer",
+  "visit_schedule_date",
+  "visit_schedule_notes",
+  "attachment",
+  "mom_attachment",
+  "updated_by"
+ ],
+ "fields": [
+  {
+   "default": "Now",
+   "fieldname": "posting_datetime",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Update Date & Time",
+   "reqd": 1
+  },
+  {
+   "fieldname": "complaint_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Complaint Status",
+   "options": "Open\nAction in Progress\nClose"
+  },
+  {
+   "fieldname": "action_by",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Action By"
+  },
+  {
+   "fieldname": "responsible_department",
+   "fieldtype": "Data",
+   "label": "Responsible Department"
+  },
+  {
+   "fieldname": "action_remarks",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Action / Remarks"
+  },
+  {
+   "fieldname": "progress_update",
+   "fieldtype": "Small Text",
+   "label": "Progress Update"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "ssv_visiting_engineer",
+   "fieldtype": "Data",
+   "label": "SSV Visiting Engineer"
+  },
+  {
+   "fieldname": "visit_schedule_date",
+   "fieldtype": "Date",
+   "label": "Visit Schedule Date"
+  },
+  {
+   "fieldname": "visit_schedule_notes",
+   "fieldtype": "Small Text",
+   "label": "Visit Schedule Notes"
+  },
+  {
+   "fieldname": "attachment",
+   "fieldtype": "Attach",
+   "label": "Photo Evidence / Attachment"
+  },
+  {
+   "fieldname": "mom_attachment",
+   "fieldtype": "Attach",
+   "label": "MOM Attachment"
+  },
+  {
+   "fieldname": "updated_by",
+   "fieldtype": "Link",
+   "label": "Updated By",
+   "options": "User",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-03 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Issue Progress Update",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "posting_datetime",
+ "sort_order": "DESC",
+ "states": []
+}

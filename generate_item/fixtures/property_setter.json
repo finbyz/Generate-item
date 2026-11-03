@@ -2110,5 +2110,21 @@
   "property_type": "Check",
   "row_name": null,
   "value": "1"
+ },
+ {
+  "default_value": null,
+  "doc_type": "Issue",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocType",
+  "field_name": null,
+  "is_system_generated": 0,
+  "modified": "2026-11-03 16:00:50.459800",
+  "module": "Generate Item",
+  "name": "Issue-main-quick_entry",
+  "property": "quick_entry",
+  "property_type": "Check",
+  "row_name": null,
+  "value": "0"
  }
 ]
