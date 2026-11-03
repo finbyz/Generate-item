@@ -356,11 +356,12 @@ class FinancialDashboard {
 									<p class="fd-card-subtitle">${__('Branch Wise Sales Breakdown • Stock Items Only in ₹ INR')}</p>
 								</div>
 
-								<div class="fd-chart-header-actions">
+								<!-- UPDATED: full-width row, Stacked/Grouped toggle pushed to the right -->
+								<div class="fd-chart-header-actions" style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; width: 100%;">
 									<div class="fd-btn-toggle-group" id="btn-sales-grains">
 										<!-- Dynamically populated based on period -->
 									</div>
-									<div class="fd-btn-toggle-group" id="btn-sales-layout-toggle">
+									<div class="fd-btn-toggle-group" id="btn-sales-layout-toggle" style="margin-left: auto;">
 										<button type="button" data-layout="stacked" class="active">${__('Stacked')}</button>
 										<button type="button" data-layout="grouped">${__('Grouped')}</button>
 									</div>
@@ -388,11 +389,12 @@ class FinancialDashboard {
 									<p class="fd-card-subtitle">${__('Branch Wise Purchase Breakdown • Stock Items Only in ₹ INR')}</p>
 								</div>
 
-								<div class="fd-chart-header-actions">
+								<!-- UPDATED: full-width row, Stacked/Grouped toggle pushed to the right -->
+								<div class="fd-chart-header-actions" style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; width: 100%;">
 									<div class="fd-btn-toggle-group" id="btn-purchases-grains">
 										<!-- Dynamically populated based on period -->
 									</div>
-									<div class="fd-btn-toggle-group" id="btn-purchases-layout-toggle">
+									<div class="fd-btn-toggle-group" id="btn-purchases-layout-toggle" style="margin-left: auto;">
 										<button type="button" data-layout="stacked" class="active">${__('Stacked')}</button>
 										<button type="button" data-layout="grouped">${__('Grouped')}</button>
 									</div>

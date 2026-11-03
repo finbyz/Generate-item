@@ -47,14 +47,14 @@ def get_columns():
 # Whitelist maps, so column names never come from raw user input
 DATE_FIELD_MAP = {
     "GRN Date":        "DATE(pr.posting_date)",
-    "Creation Date":   "DATE(qi.report_date)",   # Quality Inspection posting date
-    "Submission Date": "DATE(qi.modified)",      # only for submitted QIs
+    "Creation Date(Inspection)":   "DATE(qi.report_date)",   # Quality Inspection posting date
+    "Submission Date(Inspection)": "DATE(qi.modified)",      # only for submitted QIs
 }
 
 ORDER_FIELD_MAP = {
     "GRN Date":        "pr.posting_date",
-    "Creation Date":   "qi.report_date",
-    "Submission Date": "qi.modified",
+    "Creation Date(Inspection)":   "qi.report_date",
+    "Submission Date(Inspection)": "qi.modified",
 }
 
 BULK_UPDATE_SELECT_OPTIONS = {

@@ -26,7 +26,7 @@ frappe.query_reports["Incoming Inspection"] = {
             "fieldname": "date_based_on",
             "label": __("Date Based On"),
             "fieldtype": "Select",
-            "options": ["GRN Date", "Creation Date", "Submission Date"].join("\n"),
+            "options": ["GRN Date", "Creation Date(Inspection)", "Submission Date(Inspection)"].join("\n"),
             "default": "GRN Date",
             "reqd": 1
         },

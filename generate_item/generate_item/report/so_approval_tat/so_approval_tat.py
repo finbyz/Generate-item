@@ -19,18 +19,20 @@ def get_columns():
 	return [
 		{"label": _("Sales Order"), "fieldname": "sales_order", "fieldtype": "Link", "options": "Sales Order", "width": 140},
 		{"label": _("Order Status"), "fieldname": "order_status", "fieldtype": "Data", "width": 130},
-		{"label": _("Order Date"), "fieldname": "order_date", "fieldtype": "Date", "width": 100},
-		{"label": _("Order Delivery Date"), "fieldname": "delivery_date", "fieldtype": "Date", "width": 120},
 		{"label": _("Sales Person 1"), "fieldname": "sales_person_1", "fieldtype": "Data", "width": 130},
 		{"label": _("Sales Person 2"), "fieldname": "sales_person_2", "fieldtype": "Data", "width": 130},
+		
 		{"label": _("Customer Name"), "fieldname": "customer_name", "fieldtype": "Data", "width": 220},
 		{"label": _("Customer PO Number"), "fieldname": "po_no", "fieldtype": "Data", "width": 160},
 		{"label": _("Customer PO Date"), "fieldname": "po_date", "fieldtype": "Date", "width": 110},
+		{"label": _("Order Date"), "fieldname": "order_date", "fieldtype": "Date", "width": 100},
 		{"label": _("Approved Date"), "fieldname": "approved_date", "fieldtype": "Date", "width": 110},
 		{"label": _("Entry Within Days"), "fieldname": "entry_within_days", "fieldtype": "Int", "width": 120},
 		{"label": _("Pending Approval Days"), "fieldname": "pending_approval_days", "fieldtype": "Int", "width": 140},
 		{"label": _("Approval Within Days"), "fieldname": "approval_within_days", "fieldtype": "Int", "width": 140},
 		{"label": _("Total Days"), "fieldname": "total_days", "fieldtype": "Int", "width": 100},
+		{"label": _("Order Delivery Date"), "fieldname": "delivery_date", "fieldtype": "Date", "width": 120},
+		
 		# Editable from the report (see .js) - latest row of the SO Approval Remark History table
 		{"label": _("Remark"), "fieldname": "remark", "fieldtype": "Small Text", "width": 280, "editable": 1},
 		{"label": _("Updated On"), "fieldname": "updated_on", "fieldtype": "Date", "width": 100},
@@ -60,7 +62,7 @@ def get_data(filters):
 					AND sc.workflow_state = 'Approved'
 			) AS approved_on
 		FROM `tabSales Order` so
-		WHERE so.docstatus < 2
+		WHERE 1 = 1
 		{conditions}
 		ORDER BY so.transaction_date, so.name
 		""",
@@ -230,8 +232,6 @@ def get_conditions(filters):
 	if status:
 		conditions.append("AND so.status IN %(status)s")
 		values["status"] = tuple(status)
-	else:
-		conditions.append("AND so.status = 'Draft'")
 
 	return " " + " ".join(conditions), values
 
