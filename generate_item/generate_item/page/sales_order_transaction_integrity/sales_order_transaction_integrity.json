@@ -1,0 +1,20 @@
+{
+ "content": null,
+ "creation": "2026-11-04 11:00:00.000000",
+ "docstatus": 0,
+ "doctype": "Page",
+ "icon": "fa fa-check-square-o",
+ "idx": 0,
+ "modified": "2026-11-04 11:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "sales-order-transaction-integrity",
+ "owner": "Administrator",
+ "page_name": "sales-order-transaction-integrity",
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Sales Order Transaction Integrity"
+}
