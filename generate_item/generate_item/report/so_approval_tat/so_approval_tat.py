@@ -470,6 +470,7 @@ def _send_creator_reports(base_filters, target_branch, result, logger):
 
 SO_APPROVAL_TAT_RECIPIENTS = ["sanjay.n@steelstrong.com"]
 # SO_APPROVAL_TAT_RECIPIENTS = ["dhanvant.marathe@finbyz.tech"]
+SO_APPROVAL_TAT_CC = ["ritik.patwa@finbyz.tech", "vishal.patel@finbyz.tech"]
 
 
 def _send_full_report(base_filters, result, logger):
@@ -484,10 +485,12 @@ def _send_full_report(base_filters, result, logger):
 			return
 
 		recipients = normalize_email_recipients(SO_APPROVAL_TAT_RECIPIENTS)
-		_send_email(columns, data, recipients)
+		cc = normalize_email_recipients(SO_APPROVAL_TAT_CC)
+		_send_email(columns, data, recipients, cc=cc)
 
 		result.setdefault("sent", []).append({
 			"recipients": recipients,
+			"cc": cc,
 			"record_count": len(data),
 		})
 
@@ -496,7 +499,7 @@ def _send_full_report(base_filters, result, logger):
 		frappe.log_error(frappe.get_traceback(), "SO Approval TAT email failed")
 		result.setdefault("failed", []).append({"error": str(error)})
 
-def _send_email(columns, data, recipients, branch=None, owner=None):
+def _send_email(columns, data, recipients, branch=None, owner=None, cc=None):
 	from generate_item.utils.report_email_scheduler import (
 		build_report_email_html,
 		build_report_excel_attachment,
@@ -508,12 +511,23 @@ def _send_email(columns, data, recipients, branch=None, owner=None):
 	elif owner:
 		subject = f"{subject} created by {owner}"
 
-	frappe.sendmail(
-		recipients=recipients,
-		subject=subject,
-		message=build_report_email_html("SO Approval TAT", columns, data, branch=branch),
-		attachments=[build_report_excel_attachment("SO Approval TAT", columns, data, branch=branch)],
-		reference_doctype="Report",
-		reference_name="SO Approval TAT",
-		delayed=False,
-	)
+	sendmail_kwargs = {
+		"recipients": recipients,
+		"subject": subject,
+		"message": build_report_email_html("SO Approval TAT", columns, data, branch=branch),
+		"attachments": [build_report_excel_attachment("SO Approval TAT", columns, data, branch=branch)],
+		"reference_doctype": "Report",
+		"reference_name": "SO Approval TAT",
+		"delayed": False,
+	}
+
+	if cc:
+		recipient_list = normalize_email_recipients(recipients)
+		recipient_seen = {r.lower() for r in recipient_list}
+		normalized_cc = [
+			c for c in normalize_email_recipients(cc) if c.lower() not in recipient_seen
+		]
+		if normalized_cc:
+			sendmail_kwargs["cc"] = normalized_cc
+
+	frappe.sendmail(**sendmail_kwargs)
