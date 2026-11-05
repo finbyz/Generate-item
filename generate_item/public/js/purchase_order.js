@@ -28,30 +28,28 @@ function set_supplier_warehouse(frm) {
 	}
 }
 
-function render_po_mould_set_info(frm) {
+const render_po_mould_set_info = frappe.utils.debounce(function (frm) {
 	if (!frm.fields_dict.mould_set_info) return;
-
-	let items = (frm.doc.items || []).map(row => ({
-		item_code: row.item_code,
-		fg_item: row.fg_item || ''
-	}));
 
 	frappe.call({
 		method: "generate_item.mould_set_management.po_enhancement.get_po_mould_set_info",
 		args: {
-			po_name: frm.doc.name || '',
+			po_name: frm.is_new() ? '' : frm.doc.name,
 			supplier: frm.doc.supplier || '',
 			supplier_warehouse: frm.doc.supplier_warehouse || '',
-			items: JSON.stringify(items)
+			branch: frm.doc.branch || '',
+			items: JSON.stringify((frm.doc.items || []).map(row => ({
+				item_code: row.item_code,
+				fg_item: row.fg_item || ''
+			})))
 		},
-		callback: function (r) {
+		callback(r) {
 			if (r.message && frm.fields_dict.mould_set_info) {
 				frm.fields_dict.mould_set_info.$wrapper.html(r.message.html);
 			}
 		}
 	});
-}
-
+}, 300);
 
 
 frappe.ui.form.on('Purchase Order', {

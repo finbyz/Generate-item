@@ -267,6 +267,7 @@ def get_transaction_integrity_data(
 	sort_order="desc",
 	page=1,
 	page_length=25,
+	kpi=None,
 ):
 	"""
 	Main backend method for Sales Order Transaction Integrity Report.
@@ -367,11 +368,13 @@ def get_transaction_integrity_data(
 
 	# Apply Transaction Type and Transaction Status filters
 	status_filter = cstr(transaction_status).strip()
+	kpi_mode = cstr(kpi).strip().lower() if kpi else ""
 
 	qualifying_sales_orders = []
 	all_user_emails = set()
 	total_open_tx_count = 0
 	open_draft_tx_count = 0
+	sos_with_open_tx_count = 0
 
 	for s in sales_orders:
 		so_name = s.name
@@ -398,12 +401,19 @@ def get_transaction_integrity_data(
 			if tx.get("responsible_user_raw"):
 				all_user_emails.add(tx["responsible_user_raw"])
 
-		# Rule: "Display only Sales Orders having at least one open linked transaction."
-		if not filtered_tx_list:
-			continue
-
 		# Sort transactions by date desc, then doctype, name
 		filtered_tx_list.sort(key=lambda x: (x.get("posting_date") or "", x["doctype"], x["name"]), reverse=True)
+
+		has_open_tx = bool(filtered_tx_list)
+		if has_open_tx:
+			sos_with_open_tx_count += 1
+			total_open_tx_count += len(filtered_tx_list)
+			open_draft_tx_count += sum(1 for tx in filtered_tx_list if tx.get("is_draft"))
+
+		# If KPI is NOT "checked", only include Sales Orders having at least one open linked transaction.
+		# For "checked", display all completed Sales Orders matching filters irrespective of open transactions.
+		if kpi_mode != "checked" and not has_open_tx:
+			continue
 
 		so_record = {
 			"sales_order": s.name,
@@ -437,8 +447,6 @@ def get_transaction_integrity_data(
 				continue
 
 		qualifying_sales_orders.append(so_record)
-		total_open_tx_count += len(filtered_tx_list)
-		open_draft_tx_count += sum(1 for tx in filtered_tx_list if tx["is_draft"])
 
 	# Resolve user full names
 	user_name_map = get_user_full_names(all_user_emails)
@@ -476,7 +484,7 @@ def get_transaction_integrity_data(
 	return {
 		"summary": {
 			"completed_sos_checked": completed_sos_checked,
-			"sos_with_open_tx": total_records,
+			"sos_with_open_tx": sos_with_open_tx_count,
 			"total_open_tx": total_open_tx_count,
 			"open_draft_tx": open_draft_tx_count,
 		},
@@ -1145,6 +1153,38 @@ def _query_all_linked_transactions(so_names, so_map, permitted_doctypes, so_open
 		)
 		for r in pi_rows:
 			record_transaction(r.so_name, "Proforma Invoice", r.name, r.posting_date, r.docstatus, r.status or ("Draft" if r.docstatus == 0 else "Submitted"), r.owner, r._assign)
+
+
+@frappe.whitelist()
+def get_completed_sales_orders(
+	from_date=None,
+	to_date=None,
+	branch=None,
+	customer=None,
+	sales_order=None,
+	search_term=None,
+	sort_field="transaction_date",
+	sort_order="desc",
+	page=1,
+	page_length=25,
+):
+	"""
+	Independently fetches completed Sales Orders matching the filters,
+	irrespective of whether they have open transactions or not.
+	"""
+	return get_transaction_integrity_data(
+		from_date=from_date,
+		to_date=to_date,
+		branch=branch,
+		customer=customer,
+		sales_order=sales_order,
+		search_term=search_term,
+		sort_field=sort_field,
+		sort_order=sort_order,
+		page=page,
+		page_length=page_length,
+		kpi="checked",
+	)
 
 
 @frappe.whitelist()

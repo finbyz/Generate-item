@@ -327,29 +327,26 @@ def get_supplier_warehouse(supplier=None, po_warehouse=None, branch=None):
 
 
 @frappe.whitelist()
-def get_po_mould_set_info(po_name=None, supplier_warehouse=None, supplier=None, items=None):
-	"""
-	Whitelisted API to fetch mould set stock info for a Purchase Order.
-	Can be called client-side on form refresh or field change.
-	"""
-	items_list = []
-	if items:
-		if isinstance(items, str):
-			try:
-				items_list = json.loads(items)
-			except Exception:
-				items_list = []
-		elif isinstance(items, list):
-			items_list = items
+def get_po_mould_set_info(po_name=None, supplier_warehouse=None, supplier=None, items=None, branch=None):
+	items_list = frappe.parse_json(items) if items else []
 
-	branch = None
-	if po_name:
-		po = frappe.get_doc("Purchase Order", po_name)
-		if not supplier_warehouse:
-			supplier_warehouse = po.supplier_warehouse or getattr(po, "set_warehouse", None)
-		branch = getattr(po, "branch", None)
+	# Only hit the DB for saved POs (temp "new-..." docs don't exist yet)
+	if po_name and frappe.db.exists("Purchase Order", po_name):
+		po = frappe.db.get_value(
+			"Purchase Order", po_name,
+			["supplier_warehouse", "set_warehouse", "branch"],
+			as_dict=True,
+		)
+		supplier_warehouse = supplier_warehouse or po.supplier_warehouse or po.set_warehouse
+		branch = branch or po.branch
+
 		if not items_list:
-			items_list = [{"item_code": i.item_code, "fg_item": getattr(i, "fg_item", None)} for i in po.items]
+			items_list = frappe.get_all(
+				"Purchase Order Item",
+				filters={"parent": po_name},
+				fields=["item_code", "fg_item"],
+				order_by="idx asc",
+			)
 
 	wh = get_supplier_warehouse(supplier=supplier, po_warehouse=supplier_warehouse, branch=branch)
 
@@ -359,19 +356,13 @@ def get_po_mould_set_info(po_name=None, supplier_warehouse=None, supplier=None, 
 
 	mould_sets_data = calculate_mould_sets_stock(mould_set_names, wh)
 
-	total_complete = sum(d["complete_sets"] for d in mould_sets_data)
-	total_loose = sum(d["loose_components"] for d in mould_sets_data)
-
-	html = render_mould_set_html(wh, mould_sets_data)
-
 	return {
 		"warehouse": wh,
-		"total_complete_sets": total_complete,
-		"total_loose_components": total_loose,
+		"total_complete_sets": sum(d["complete_sets"] for d in mould_sets_data),
+		"total_loose_components": sum(d["loose_components"] for d in mould_sets_data),
 		"mould_sets": mould_sets_data,
-		"html": html,
+		"html": render_mould_set_html(wh, mould_sets_data),
 	}
-
 
 def on_po_validate_or_save(doc, method=None):
 	"""

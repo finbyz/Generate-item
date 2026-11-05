@@ -88,10 +88,15 @@ class SalesOrderTransactionIntegrityReport {
 		this.filter_meta = {};
 		this.active_kpi = "with-open";
 		this.auto_expand_on_render = false;
+		this.filter_debounce_timer = null;
+		this.is_programmatic_change = false;
+		this.request_counter = 0;
 
 		this.render_page_actions();
 		this.render_shell();
+		this.is_programmatic_change = true;
 		this.init_filter_controls();
+		this.is_programmatic_change = false;
 		this.bind_events();
 		this.load_data();
 	}
@@ -132,7 +137,7 @@ class SalesOrderTransactionIntegrityReport {
 					<!-- Card 1: Completed SOs Checked -->
 					<div class="soti-card card-checked" data-kpi="checked" role="button" tabindex="0" title="${__("Click to show all checked Sales Orders")}">
 						<div class="soti-card-header">
-							<span class="soti-card-title">${__("Completed SOs Checked")}</span>
+							<span class="soti-card-title">${__("Completed SO Checked")}</span>
 							<div class="soti-card-icon">
 								${soti_icon("fileText")}
 							</div>
@@ -148,7 +153,7 @@ class SalesOrderTransactionIntegrityReport {
 					<!-- Card 2: SOs With Open Transactions -->
 					<div class="soti-card card-with-open" data-kpi="with-open" role="button" tabindex="0" title="${__("Click to show Sales Orders with open transactions")}">
 						<div class="soti-card-header">
-							<span class="soti-card-title">${__("SOs With Open Transactions")}</span>
+							<span class="soti-card-title">${__("SO With Open Transactions")}</span>
 							<div class="soti-card-icon">
 								${soti_icon("alertTriangle")}
 							</div>
@@ -326,17 +331,24 @@ class SalesOrderTransactionIntegrityReport {
 				default: this.filters.period,
 				input_class: "input-xs",
 				change: () => {
+					if (this.is_programmatic_change) return;
 					const val = this.controls.period.get_value();
 					this.filters.period = val;
 					if (val !== "Custom") {
 						const dates = this.resolve_preset(val);
 						if (dates) {
-							this.controls.from_date.set_value(dates.from_date || "");
-							this.controls.to_date.set_value(dates.to_date || "");
-							this.filters.from_date = dates.from_date || "";
-							this.filters.to_date = dates.to_date || "";
+							this.is_programmatic_change = true;
+							try {
+								this.controls.from_date.set_value(dates.from_date || "");
+								this.controls.to_date.set_value(dates.to_date || "");
+								this.filters.from_date = dates.from_date || "";
+								this.filters.to_date = dates.to_date || "";
+							} finally {
+								this.is_programmatic_change = false;
+							}
 						}
 					}
+					this.on_filter_change();
 				},
 			},
 			render_input: true,
@@ -350,7 +362,20 @@ class SalesOrderTransactionIntegrityReport {
 				default: this.filters.from_date,
 				input_class: "input-xs",
 				change: () => {
-					this.filters.from_date = this.controls.from_date.get_value();
+					if (this.is_programmatic_change) return;
+					const val = this.controls.from_date.get_value() || "";
+					if (this.filters.from_date === val) return;
+					this.filters.from_date = val;
+					if (this.filters.period !== "Custom") {
+						this.is_programmatic_change = true;
+						try {
+							this.controls.period.set_value("Custom");
+							this.filters.period = "Custom";
+						} finally {
+							this.is_programmatic_change = false;
+						}
+					}
+					this.on_filter_change();
 				},
 			},
 			render_input: true,
@@ -364,7 +389,20 @@ class SalesOrderTransactionIntegrityReport {
 				default: this.filters.to_date,
 				input_class: "input-xs",
 				change: () => {
-					this.filters.to_date = this.controls.to_date.get_value();
+					if (this.is_programmatic_change) return;
+					const val = this.controls.to_date.get_value() || "";
+					if (this.filters.to_date === val) return;
+					this.filters.to_date = val;
+					if (this.filters.period !== "Custom") {
+						this.is_programmatic_change = true;
+						try {
+							this.controls.period.set_value("Custom");
+							this.filters.period = "Custom";
+						} finally {
+							this.is_programmatic_change = false;
+						}
+					}
+					this.on_filter_change();
 				},
 			},
 			render_input: true,
@@ -379,7 +417,11 @@ class SalesOrderTransactionIntegrityReport {
 				placeholder: __("All Branches"),
 				input_class: "input-xs",
 				change: () => {
-					this.filters.branch = this.controls.branch.get_value();
+					if (this.is_programmatic_change) return;
+					const val = this.controls.branch.get_value() || "";
+					if (this.filters.branch === val) return;
+					this.filters.branch = val;
+					this.on_filter_change();
 				},
 			},
 			render_input: true,
@@ -394,7 +436,11 @@ class SalesOrderTransactionIntegrityReport {
 				placeholder: __("Select Customer"),
 				input_class: "input-xs",
 				change: () => {
-					this.filters.customer = this.controls.customer.get_value();
+					if (this.is_programmatic_change) return;
+					const val = this.controls.customer.get_value() || "";
+					if (this.filters.customer === val) return;
+					this.filters.customer = val;
+					this.on_filter_change();
 				},
 			},
 			render_input: true,
@@ -417,7 +463,11 @@ class SalesOrderTransactionIntegrityReport {
 					};
 				},
 				change: () => {
-					this.filters.sales_order = this.controls.sales_order.get_value();
+					if (this.is_programmatic_change) return;
+					const val = this.controls.sales_order.get_value() || "";
+					if (this.filters.sales_order === val) return;
+					this.filters.sales_order = val;
+					this.on_filter_change();
 				},
 			},
 			render_input: true,
@@ -458,7 +508,14 @@ class SalesOrderTransactionIntegrityReport {
 				placeholder: __("All Transaction Types"),
 				input_class: "input-xs",
 				change: () => {
-					this.filters.transaction_type = this.controls.transaction_type.get_value();
+					if (this.is_programmatic_change) return;
+					const val = this.controls.transaction_type.get_value() || "";
+					if (this.filters.transaction_type === val) return;
+					this.filters.transaction_type = val;
+					if (this.active_kpi === "checked" && val) {
+						this.active_kpi = "with-open";
+					}
+					this.on_filter_change();
 				},
 			},
 			render_input: true,
@@ -491,11 +548,38 @@ class SalesOrderTransactionIntegrityReport {
 				placeholder: __("All Statuses"),
 				input_class: "input-xs",
 				change: () => {
-					this.filters.transaction_status = this.controls.transaction_status.get_value();
+					if (this.is_programmatic_change) return;
+					const val = this.controls.transaction_status.get_value() || "";
+					if (this.filters.transaction_status === val) return;
+					this.filters.transaction_status = val;
+					if (val === "Draft") {
+						this.active_kpi = "draft";
+					} else if (this.active_kpi === "checked" && val) {
+						this.active_kpi = "with-open";
+					}
+					this.on_filter_change();
 				},
 			},
 			render_input: true,
 		});
+	}
+
+	on_filter_change(immediate = false) {
+		if (this.is_programmatic_change) return;
+
+		clearTimeout(this.filter_debounce_timer);
+		this.pagination.page = 1;
+
+		if (immediate) {
+			this.load_data();
+			return;
+		}
+
+		// Automatically refresh dashboard data with a safe debounce (200ms)
+		// Coalesces rapid filter changes and prevents duplicate API calls
+		this.filter_debounce_timer = setTimeout(() => {
+			this.load_data();
+		}, 200);
 	}
 
 	resolve_preset(preset) {
@@ -582,8 +666,7 @@ class SalesOrderTransactionIntegrityReport {
 
 		// Filter buttons
 		body.on("click", "#soti-apply-filters-btn", () => {
-			this.pagination.page = 1;
-			this.load_data();
+			this.on_filter_change(true);
 		});
 
 		body.on("click", "#soti-reset-filters-btn", () => {
@@ -673,47 +756,81 @@ class SalesOrderTransactionIntegrityReport {
 		if (kpi === "draft") {
 			// Toggle draft filter
 			if (this.filters.transaction_status === "Draft") {
-				this.controls.transaction_status.set_value("");
-				this.filters.transaction_status = "";
+				this.is_programmatic_change = true;
+				try {
+					this.controls.transaction_status.set_value("");
+					this.filters.transaction_status = "";
+				} finally {
+					this.is_programmatic_change = false;
+				}
 				this.active_kpi = "with-open";
 				this.auto_expand_on_render = false;
 			} else {
-				this.controls.transaction_status.set_value("Draft");
-				this.filters.transaction_status = "Draft";
+				this.is_programmatic_change = true;
+				try {
+					this.controls.transaction_status.set_value("Draft");
+					this.filters.transaction_status = "Draft";
+				} finally {
+					this.is_programmatic_change = false;
+				}
 				this.auto_expand_on_render = true;
 			}
 		} else if (kpi === "total-open") {
 			// Clear status filter if set and expand all rows to show open transactions
 			if (this.filters.transaction_status) {
-				this.controls.transaction_status.set_value("");
-				this.filters.transaction_status = "";
+				this.is_programmatic_change = true;
+				try {
+					this.controls.transaction_status.set_value("");
+					this.filters.transaction_status = "";
+				} finally {
+					this.is_programmatic_change = false;
+				}
 			}
 			this.auto_expand_on_render = true;
 		} else if (kpi === "checked") {
 			// Clear transaction status and type filters to show all checked completed SOs
 			if (this.filters.transaction_status) {
-				this.controls.transaction_status.set_value("");
-				this.filters.transaction_status = "";
+				this.is_programmatic_change = true;
+				try {
+					this.controls.transaction_status.set_value("");
+					this.filters.transaction_status = "";
+				} finally {
+					this.is_programmatic_change = false;
+				}
 			}
 			if (this.filters.transaction_type) {
-				this.controls.transaction_type.set_value("");
-				this.filters.transaction_type = "";
+				this.is_programmatic_change = true;
+				try {
+					this.controls.transaction_type.set_value("");
+					this.filters.transaction_type = "";
+				} finally {
+					this.is_programmatic_change = false;
+				}
 			}
 			this.auto_expand_on_render = false;
 		} else if (kpi === "with-open") {
 			// Reset status filter to show SOs with open transactions
 			if (this.filters.transaction_status) {
-				this.controls.transaction_status.set_value("");
-				this.filters.transaction_status = "";
+				this.is_programmatic_change = true;
+				try {
+					this.controls.transaction_status.set_value("");
+					this.filters.transaction_status = "";
+				} finally {
+					this.is_programmatic_change = false;
+				}
 			}
 			this.auto_expand_on_render = false;
 		}
 
+		clearTimeout(this.filter_debounce_timer);
 		this.pagination.page = 1;
 		this.load_data(true);
 	}
 
 	reset_filters() {
+		clearTimeout(this.filter_debounce_timer);
+		this.is_programmatic_change = true;
+
 		this.filters = {
 			period: "All Time",
 			from_date: "",
@@ -725,14 +842,18 @@ class SalesOrderTransactionIntegrityReport {
 			transaction_status: "",
 		};
 
-		this.controls.period.set_value("All Time");
-		this.controls.from_date.set_value("");
-		this.controls.to_date.set_value("");
-		this.controls.branch.set_value("");
-		this.controls.customer.set_value("");
-		this.controls.sales_order.set_value("");
-		this.controls.transaction_type.set_value("");
-		this.controls.transaction_status.set_value("");
+		try {
+			this.controls.period.set_value("All Time");
+			this.controls.from_date.set_value("");
+			this.controls.to_date.set_value("");
+			this.controls.branch.set_value("");
+			this.controls.customer.set_value("");
+			this.controls.sales_order.set_value("");
+			this.controls.transaction_type.set_value("");
+			this.controls.transaction_status.set_value("");
+		} finally {
+			this.is_programmatic_change = false;
+		}
 
 		$("#soti-search-input").val("");
 		this.search_query = "";
@@ -779,6 +900,9 @@ class SalesOrderTransactionIntegrityReport {
 			</div>
 		`);
 
+		this.request_counter = (this.request_counter || 0) + 1;
+		const req_id = this.request_counter;
+
 		const args = {
 			from_date: this.filters.from_date || undefined,
 			to_date: this.filters.to_date || undefined,
@@ -792,12 +916,16 @@ class SalesOrderTransactionIntegrityReport {
 			sort_order: this.sort_order,
 			page: this.pagination.page,
 			page_length: this.pagination.page_length,
+			kpi: this.active_kpi,
 		};
 
 		frappe.call({
 			method: "generate_item.generate_item.page.sales_order_transaction_integrity.sales_order_transaction_integrity.get_transaction_integrity_data",
 			args: args,
 			callback: (r) => {
+				if (req_id !== this.request_counter) {
+					return;
+				}
 				if (r.message) {
 					this.raw_data = r.message.data || [];
 					this.summary = r.message.summary || {};
@@ -821,6 +949,9 @@ class SalesOrderTransactionIntegrityReport {
 				}
 			},
 			error: () => {
+				if (req_id !== this.request_counter) {
+					return;
+				}
 				container.html(`
 					<div class="soti-empty-state">
 						<div class="soti-empty-icon" style="color: #ef4444;">
@@ -861,10 +992,10 @@ class SalesOrderTransactionIntegrityReport {
 
 		// Synchronize active card state
 		$(".soti-card").removeClass("is-active");
-		if (this.filters.transaction_status === "Draft") {
-			$(".soti-card.card-draft").addClass("is-active");
-		} else if (this.active_kpi === "checked") {
+		if (this.active_kpi === "checked") {
 			$(".soti-card.card-checked").addClass("is-active");
+		} else if (this.active_kpi === "draft" || this.filters.transaction_status === "Draft") {
+			$(".soti-card.card-draft").addClass("is-active");
 		} else if (this.active_kpi === "total-open") {
 			$(".soti-card.card-total-open").addClass("is-active");
 		} else {
@@ -876,15 +1007,27 @@ class SalesOrderTransactionIntegrityReport {
 		const container = $("#soti-table-container");
 
 		if (!this.raw_data || this.raw_data.length === 0) {
-			container.html(`
-				<div class="soti-empty-state">
-					<div class="soti-empty-icon">
-						${soti_icon("checkCircle")}
+			if (this.active_kpi === "checked") {
+				container.html(`
+					<div class="soti-empty-state">
+						<div class="soti-empty-icon">
+							${soti_icon("fileText")}
+						</div>
+						<h3>${__("No Completed Sales Orders Found")}</h3>
+						<p>${__("No completed Sales Orders found for the currently selected filters.")}</p>
 					</div>
-					<h3>${__("All Transactions Completed!")}</h3>
-					<p>${__("No open or draft linked transactions found for the selected completed Sales Orders.")}</p>
-				</div>
-			`);
+				`);
+			} else {
+				container.html(`
+					<div class="soti-empty-state">
+						<div class="soti-empty-icon">
+							${soti_icon("checkCircle")}
+						</div>
+						<h3>${__("All Transactions Completed!")}</h3>
+						<p>${__("No open or draft linked transactions found for the selected completed Sales Orders.")}</p>
+					</div>
+				`);
+			}
 			$("#soti-pagination-bar").hide();
 			return;
 		}
@@ -908,13 +1051,15 @@ class SalesOrderTransactionIntegrityReport {
 
 		this.raw_data.forEach((so) => {
 			const isExpanded = this.expanded_sos.has(so.sales_order);
-			const hasDraft = so.open_transactions.some((t) => t.is_draft);
-			const draftCount = so.open_transactions.filter((t) => t.is_draft).length;
+			const openTx = so.open_transactions || [];
+			const hasDraft = openTx.some((t) => t.is_draft);
+			const draftCount = openTx.filter((t) => t.is_draft).length;
+			const isZero = (so.open_transactions_count || 0) === 0;
 
 			html += `
 				<tr class="soti-row-parent ${isExpanded ? "is-expanded" : ""}" data-sales-order="${frappe.utils.escape_html(so.sales_order)}">
 					<td style="text-align: center;">
-						<button class="soti-expand-btn" data-sales-order="${frappe.utils.escape_html(so.sales_order)}" title="${__("Click to toggle open transactions")}">
+						<button class="soti-expand-btn" data-sales-order="${frappe.utils.escape_html(so.sales_order)}" title="${isZero ? __("Click to view details (all transactions completed)") : __("Click to toggle open transactions")}">
 							${soti_icon("chevronRight")}
 						</button>
 					</td>
@@ -938,9 +1083,9 @@ class SalesOrderTransactionIntegrityReport {
 						</span>
 					</td>
 					<td>
-						<span class="soti-count-pill ${hasDraft ? "has-draft" : ""}">
-							${soti_icon(hasDraft ? "edit" : "clock")}
-							${so.open_transactions_count} Open
+						<span class="soti-count-pill ${isZero ? "is-zero" : (hasDraft ? "has-draft" : "")}">
+							${soti_icon(isZero ? "checkCircle" : (hasDraft ? "edit" : "clock"))}
+							${so.open_transactions_count || 0} Open
 							${hasDraft ? `(${draftCount} Draft)` : ""}
 						</span>
 					</td>
@@ -961,9 +1106,10 @@ class SalesOrderTransactionIntegrityReport {
 									<span>${__("Open Linked Transactions for Sales Order:")} <strong>${frappe.utils.escape_html(so.sales_order)}</strong></span>
 								</div>
 								<span style="font-size: 11px; color: var(--soti-muted);">
-									${so.open_transactions.length} ${__("records pending completion")}
+									${openTx.length} ${__("records pending completion")}
 								</span>
 							</div>
+							${openTx.length > 0 ? `
 							<table class="soti-subtable">
 								<thead>
 									<tr>
@@ -977,9 +1123,15 @@ class SalesOrderTransactionIntegrityReport {
 									</tr>
 								</thead>
 								<tbody>
+							` : `
+							<div style="padding: 16px 20px; color: var(--soti-muted); font-size: 12px; display: flex; align-items: center; gap: 8px;">
+								<span style="color: #16a34a;">${soti_icon("checkCircle")}</span>
+								${__("All linked transactions for this Sales Order are completed. No open or draft records found.")}
+							</div>
+							`}
 			`;
 
-			so.open_transactions.forEach((tx) => {
+			openTx.forEach((tx) => {
 				const doctypeSlug = frappe.router.slug(tx.doctype);
 				const statusBadgeClass = this.get_status_badge_class(tx);
 				const docIcon = this.get_doctype_icon_name(tx.doctype);
@@ -1025,9 +1177,14 @@ class SalesOrderTransactionIntegrityReport {
 				`;
 			});
 
-			html += `
+			if (openTx.length > 0) {
+				html += `
 								</tbody>
 							</table>
+				`;
+			}
+
+			html += `
 						</div>
 					</td>
 				</tr>

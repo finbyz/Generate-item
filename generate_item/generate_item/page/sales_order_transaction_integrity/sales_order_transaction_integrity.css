@@ -559,6 +559,12 @@
 	border-color: #fca5a5;
 }
 
+.soti-count-pill.is-zero {
+	background: #dcfce7;
+	color: #15803d;
+	border-color: #bbf7d0;
+}
+
 /* Nested Sub-table */
 .soti-row-nested td {
 	padding: 0;
