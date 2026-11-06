@@ -59,16 +59,11 @@ def setup_mould_set_management():
 				"module": "Mould Set Management",
 			},
 		],
-		"Purchase Order": [
-			{
-				"fieldname": "mould_set_info",
-				"label": "Pattern Sets Information",
-				"fieldtype": "HTML",
-				"insert_after": "supplier_warehouse",
-			}
-		],
 	}
 	create_custom_fields(custom_fields, update=True)
+	# Clean up removed mould_set_info custom field per v2.0 Section 10
+	if frappe.db.exists("Custom Field", "Purchase Order-mould_set_info"):
+		frappe.delete_doc("Custom Field", "Purchase Order-mould_set_info", ignore_permissions=True)
 	print("Custom fields verified and created.")
 
 	# 2. Roles per Section 10

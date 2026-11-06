@@ -32,7 +32,7 @@ def get_columns():
 		{"label": _("Approval Within Days"), "fieldname": "approval_within_days", "fieldtype": "Int", "width": 140},
 		{"label": _("Total Days"), "fieldname": "total_days", "fieldtype": "Int", "width": 100},
 		{"label": _("Order Delivery Date"), "fieldname": "delivery_date", "fieldtype": "Date", "width": 120},
-		
+		{"label": _("Order Value (Excl. Tax)"), "fieldname": "order_value", "fieldtype": "Currency", "width": 150},
 		# Editable from the report (see .js) - latest row of the SO Approval Remark History table
 		{"label": _("Remark"), "fieldname": "remark", "fieldtype": "Small Text", "width": 280, "editable": 1},
 		{"label": _("Updated On"), "fieldname": "updated_on", "fieldtype": "Date", "width": 100},
@@ -50,6 +50,7 @@ def get_data(filters):
 			so.workflow_state,
 			so.transaction_date AS order_date,
 			so.delivery_date,
+			so.base_net_total AS order_value,
 			so.customer_name,
 			so.po_no,
 			so.po_date,
@@ -100,6 +101,7 @@ def get_data(filters):
 			"order_status": d.order_status,
 			"order_date": d.order_date,
 			"delivery_date": d.delivery_date,
+			"order_value": d.order_value or 0,
 			"sales_person_1": sp[0] if len(sp) > 0 else None,
 			"sales_person_2": sp[1] if len(sp) > 1 else None,
 			"customer_name": d.customer_name,

@@ -204,6 +204,9 @@ override_doctype_class = {
 # Hook on document methods and events
 
 doc_events = {
+    "Item": {
+        "on_update": "generate_item.mould_set_management.engineering_change.on_item_update",
+    },
     "Issue": {
         "validate": "generate_item.customer_complaint.issue.validate_issue",
         "before_save": "generate_item.customer_complaint.issue.before_save_issue",

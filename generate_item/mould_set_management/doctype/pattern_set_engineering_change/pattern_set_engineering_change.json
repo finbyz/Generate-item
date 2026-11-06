@@ -1,0 +1,292 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "naming_series:",
+ "creation": "2026-11-06 10:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_details",
+  "naming_series",
+  "item_code",
+  "item_name",
+  "change_date",
+  "column_break_status",
+  "status",
+  "engineering_approver",
+  "approval_date",
+  "closure_date",
+  "amended_from",
+  "section_break_changes",
+  "old_drawing_no",
+  "old_drawing_rev_no",
+  "old_pattern_drawing_no",
+  "old_pattern_drawing_rev_no",
+  "old_purchase_specification_no",
+  "old_purchase_specification_rev_no",
+  "column_break_new_values",
+  "new_drawing_no",
+  "new_drawing_rev_no",
+  "new_pattern_drawing_no",
+  "new_pattern_drawing_rev_no",
+  "new_purchase_specification_no",
+  "new_purchase_specification_rev_no",
+  "section_break_affected",
+  "impacted_pattern_sets",
+  "section_break_review",
+  "evidence_remarks"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_details",
+   "fieldtype": "Section Break",
+   "label": "Change Request Details"
+  },
+  {
+   "default": "PSEC-.YYYY.-.#####",
+   "fieldname": "naming_series",
+   "fieldtype": "Select",
+   "label": "Naming Series",
+   "no_copy": 1,
+   "options": "PSEC-.YYYY.-.#####",
+   "read_only": 1,
+   "reqd": 1
+  },
+  {
+   "fieldname": "item_code",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Item Code",
+   "options": "Item",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "item_code.item_name",
+   "fieldname": "item_name",
+   "fieldtype": "Data",
+   "label": "Item Name",
+   "read_only": 1
+  },
+  {
+   "default": "Now",
+   "fieldname": "change_date",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Change Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_status",
+   "fieldtype": "Column Break"
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "Open",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Status",
+   "options": "Open\nApproved\nRejected\nCancelled",
+   "reqd": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "engineering_approver",
+   "fieldtype": "Link",
+   "label": "Engineering Approver",
+   "options": "User"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "approval_date",
+   "fieldtype": "Date",
+   "label": "Approval Date"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "closure_date",
+   "fieldtype": "Date",
+   "label": "Closure Date"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Pattern Set Engineering Change",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_changes",
+   "fieldtype": "Section Break",
+   "label": "Drawing & Specification Changes"
+  },
+  {
+   "fieldname": "old_drawing_no",
+   "fieldtype": "Data",
+   "label": "Old Drawing No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "old_drawing_rev_no",
+   "fieldtype": "Data",
+   "label": "Old Drawing Rev No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "old_pattern_drawing_no",
+   "fieldtype": "Data",
+   "label": "Old Pattern Drawing No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "old_pattern_drawing_rev_no",
+   "fieldtype": "Data",
+   "label": "Old Pattern Drawing Rev No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "old_purchase_specification_no",
+   "fieldtype": "Data",
+   "label": "Old Purchase Spec No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "old_purchase_specification_rev_no",
+   "fieldtype": "Data",
+   "label": "Old Purchase Spec Rev No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_new_values",
+   "fieldtype": "Column Break",
+   "label": "New Values"
+  },
+  {
+   "fieldname": "new_drawing_no",
+   "fieldtype": "Data",
+   "label": "New Drawing No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "new_drawing_rev_no",
+   "fieldtype": "Data",
+   "label": "New Drawing Rev No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "new_pattern_drawing_no",
+   "fieldtype": "Data",
+   "label": "New Pattern Drawing No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "new_pattern_drawing_rev_no",
+   "fieldtype": "Data",
+   "label": "New Pattern Drawing Rev No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "new_purchase_specification_no",
+   "fieldtype": "Data",
+   "label": "New Purchase Spec No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "new_purchase_specification_rev_no",
+   "fieldtype": "Data",
+   "label": "New Purchase Spec Rev No",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_affected",
+   "fieldtype": "Section Break",
+   "label": "Affected Pattern Sets"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "impacted_pattern_sets",
+   "fieldtype": "Table",
+   "label": "Impacted Pattern Sets",
+   "options": "Pattern Set Engineering Change Item"
+  },
+  {
+   "fieldname": "section_break_review",
+   "fieldtype": "Section Break",
+   "label": "Review Remarks & Evidence"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "evidence_remarks",
+   "fieldtype": "Small Text",
+   "label": "Evidence & Remarks"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-11-06 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Mould Set Management",
+ "name": "Pattern Set Engineering Change",
+ "naming_rule": "By \"Naming Series\" field",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "cancel": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Pattern Master",
+   "share": 1,
+   "submit": 1,
+   "cancel": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stores Manager",
+   "share": 1,
+   "submit": 1,
+   "cancel": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Stores User"
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}
+

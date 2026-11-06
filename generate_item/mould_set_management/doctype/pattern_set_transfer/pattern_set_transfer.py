@@ -80,7 +80,37 @@ class PatternSetTransfer(Document):
 
 		self.source_warehouse = info["current_warehouse"]
 		self.set_status = info["status"]
+		self.completeness_status = info["completeness_status"]
+		self.engineering_status = info["engineering_status"]
 		self.source_supplier = info["current_supplier"]
+
+		# v2.0 Section 5: Transfer Eligibility
+		if info["completeness_status"] != "Complete":
+			frappe.throw(
+				_("Pattern Set {0} is Incomplete and cannot be transferred. All required components must be attached before transfer.").format(
+					frappe.bold(self.pattern_set)
+				)
+			)
+
+		if info["engineering_status"] not in ("Current", "Approved As-Is"):
+			frappe.throw(
+				_("Pattern Set {0} has Engineering Status '{1}' and cannot be transferred. Component drawing or purchase specification revisions must be reviewed and approved first.").format(
+					frappe.bold(self.pattern_set), frappe.bold(info["engineering_status"])
+				)
+			)
+
+		open_changes = frappe.db.sql("""
+			SELECT psec.name
+			FROM `tabPattern Set Engineering Change Item` pseci
+			JOIN `tabPattern Set Engineering Change` psec ON psec.name = pseci.parent
+			WHERE pseci.pattern_set = %s AND psec.docstatus = 0
+		""", (self.pattern_set,))
+		if open_changes:
+			frappe.throw(
+				_("Pattern Set {0} has an open Engineering Change ({1}) and cannot be transferred until disposition is approved.").format(
+					frappe.bold(self.pattern_set), frappe.bold(open_changes[0][0])
+				)
+			)
 
 		if not self.items:
 			self.load_components_from_pattern_set()
@@ -445,6 +475,8 @@ def get_pattern_set_transfer_data(pattern_set):
 		"source_warehouse": info["current_warehouse"],
 		"source_supplier": info["current_supplier"],
 		"set_status": info["status"],
+		"completeness_status": info["completeness_status"],
+		"engineering_status": info["engineering_status"],
 		"missing_items": info["missing_items"],
 		"items": items,
 	}

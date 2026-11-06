@@ -295,6 +295,8 @@ class PatternSet(Document):
 					"custom_drawing_rev_no",
 					"custom_pattern_drawing_no",
 					"custom_pattern_drawing_rev_no",
+					"custom_purchase_specification_no",
+					"custom_purchase_specification_rev_no",
 				],
 				as_dict=True,
 			)
@@ -316,6 +318,12 @@ class PatternSet(Document):
 				row.pattern_drawing_no = item_data.custom_pattern_drawing_no
 			if not row.pattern_drawing_rev_no and item_data.custom_pattern_drawing_rev_no:
 				row.pattern_drawing_rev_no = item_data.custom_pattern_drawing_rev_no
+			if not row.purchase_specification_no and item_data.custom_purchase_specification_no:
+				row.purchase_specification_no = item_data.custom_purchase_specification_no
+			if not row.purchase_specification_rev_no and item_data.custom_purchase_specification_rev_no:
+				row.purchase_specification_rev_no = item_data.custom_purchase_specification_rev_no
+			if not getattr(row, "snapshot_timestamp", None):
+				row.snapshot_timestamp = now_datetime()
 
 	def on_submit(self):
 		"""
@@ -354,6 +362,8 @@ class PatternSet(Document):
 		info = recalculate_pattern_set(self.name)
 		if info:
 			self.status = info["status"]
+			self.completeness_status = info["completeness_status"]
+			self.engineering_status = info["engineering_status"]
 			self.current_warehouse = info["current_warehouse"]
 			self.current_supplier = info["current_supplier"]
 
@@ -367,6 +377,8 @@ class PatternSet(Document):
 		info = recalculate_pattern_set(self.name)
 		if info:
 			self.status = info["status"]
+			self.completeness_status = info["completeness_status"]
+			self.engineering_status = info["engineering_status"]
 			self.current_warehouse = info["current_warehouse"]
 			self.current_supplier = info["current_supplier"]
 

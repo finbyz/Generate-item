@@ -6,12 +6,69 @@ from frappe import _
 from frappe.utils import get_link_to_form, now_datetime
 
 
+SNAPSHOT_FIELDS_MAP = [
+	("custom_drawing_no", "drawing_no"),
+	("custom_drawing_rev_no", "drawing_rev_no"),
+	("custom_pattern_drawing_no", "pattern_drawing_no"),
+	("custom_pattern_drawing_rev_no", "pattern_drawing_rev_no"),
+	("custom_purchase_specification_no", "purchase_specification_no"),
+	("custom_purchase_specification_rev_no", "purchase_specification_rev_no"),
+]
+
+
+def normalize_val(v):
+	return (v or "").strip()
+
+
+def check_snapshot_mismatches(comp_rows):
+	"""
+	Compares snapshot fields on component rows against current Item fields.
+	Returns (has_unapproved_mismatch, has_approved_mismatch, mismatch_details)
+	"""
+	has_unapproved = False
+	has_approved = False
+	details = []
+
+	for r in comp_rows:
+		item_code = r.get("item_code") or r.get("component_item")
+		if not item_code or not frappe.db.exists("Item", item_code):
+			continue
+
+		item_fields = [f[0] for f in SNAPSHOT_FIELDS_MAP]
+		item_vals = frappe.db.get_value("Item", item_code, item_fields, as_dict=True) or {}
+
+		mismatch_in_row = False
+		row_diffs = []
+		for item_f, comp_f in SNAPSHOT_FIELDS_MAP:
+			curr_val = normalize_val(item_vals.get(item_f))
+			snap_val = normalize_val(r.get(comp_f))
+			if curr_val != snap_val:
+				mismatch_in_row = True
+				row_diffs.append(f"{comp_f}: snapshot='{snap_val}' vs item='{curr_val}'")
+
+		if mismatch_in_row:
+			is_approved_as_is = bool(r.get("approved_as_is"))
+			if is_approved_as_is:
+				has_approved = True
+			else:
+				has_unapproved = True
+			details.append({
+				"row_name": r.name,
+				"item_code": item_code,
+				"approved_as_is": is_approved_as_is,
+				"diffs": row_diffs,
+			})
+
+	return has_unapproved, has_approved, details
+
+
 def get_pattern_set_slots_and_serials(pattern_set_name):
 	"""
 	Returns component rows, attached serials, warehouse, and status calculation data for a Pattern Set.
 	Follows Specification v2.0:
-	One row = one physical piece.
-	Each row carries item_code, serial_no (or blank if open), is_optional, warehouse, paired_on.
+	Dual Status Model:
+	- completeness_status: Complete / Incomplete
+	- engineering_status: Current / Review Pending / Rework Required / Approved As-Is / Replaced / Disabled
 	"""
 	doc = frappe.get_doc("Pattern Set", pattern_set_name)
 	
@@ -23,7 +80,7 @@ def get_pattern_set_slots_and_serials(pattern_set_name):
 	all_required_met = True
 	missing_items = []
 	
-	slot_summary = {}  # for backward-compatible slot counts if needed
+	slot_summary = {}
 
 	for r in comp_rows:
 		item_code = r.get("item_code") or r.get("component_item")
@@ -62,6 +119,13 @@ def get_pattern_set_slots_and_serials(pattern_set_name):
 			"paired_on": paired_on,
 			"remarks": r.get("remarks") or "",
 			"state": state,
+			"drawing_no": r.get("drawing_no") or "",
+			"drawing_rev_no": r.get("drawing_rev_no") or "",
+			"pattern_drawing_no": r.get("pattern_drawing_no") or "",
+			"pattern_drawing_rev_no": r.get("pattern_drawing_rev_no") or "",
+			"purchase_specification_no": r.get("purchase_specification_no") or "",
+			"purchase_specification_rev_no": r.get("purchase_specification_rev_no") or "",
+			"approved_as_is": bool(r.get("approved_as_is")),
 		}
 		rows_data.append(row_dict)
 
@@ -86,18 +150,44 @@ def get_pattern_set_slots_and_serials(pattern_set_name):
 	if current_warehouse:
 		current_supplier = frappe.db.get_value("Warehouse", current_warehouse, "custom_supplier")
 
-	# Status calculation (v2.0 Section 5.4)
-	# Draft, Complete, Incomplete, Disabled, Cancelled
+	# Completeness Status
+	if all_required_met and len(comp_rows) > 0:
+		completeness_status = "Complete"
+	else:
+		completeness_status = "Incomplete"
+
+	# Engineering Status
+	is_disabled = bool(doc.get("disabled") or doc.get("disable"))
+	if is_disabled:
+		engineering_status = "Disabled"
+	else:
+		# Check open engineering change records
+		open_changes = frappe.db.sql("""
+			SELECT psec.name
+			FROM `tabPattern Set Engineering Change Item` pseci
+			JOIN `tabPattern Set Engineering Change` psec ON psec.name = pseci.parent
+			WHERE pseci.pattern_set = %s
+			  AND psec.docstatus = 0
+		""", (pattern_set_name,))
+		
+		has_unapproved, has_approved, _diffs = check_snapshot_mismatches(comp_rows)
+
+		if open_changes or has_unapproved:
+			engineering_status = "Review Pending"
+		elif has_approved:
+			engineering_status = "Approved As-Is"
+		else:
+			engineering_status = "Current"
+
+	# Legacy/Combined Status
 	if doc.docstatus == 0:
 		computed_status = "Draft"
 	elif doc.docstatus == 2:
 		computed_status = "Cancelled"
-	elif doc.get("disabled") or doc.get("disable"):
+	elif is_disabled:
 		computed_status = "Disabled"
-	elif all_required_met and len(comp_rows) > 0:
-		computed_status = "Complete"
 	else:
-		computed_status = "Incomplete"
+		computed_status = completeness_status
 
 	return {
 		"doc": doc,
@@ -107,6 +197,8 @@ def get_pattern_set_slots_and_serials(pattern_set_name):
 		"current_warehouse": current_warehouse or "",
 		"current_supplier": current_supplier or "",
 		"status": computed_status,
+		"completeness_status": completeness_status,
+		"engineering_status": engineering_status,
 		"all_required_met": all_required_met,
 		"missing_items": missing_items,
 		"warehouses": list(warehouses),
@@ -116,8 +208,8 @@ def get_pattern_set_slots_and_serials(pattern_set_name):
 def render_set_info_html(pattern_set_name):
 	"""
 	Renders HTML for the Set Info panel per v2.0 Section 4.3 & 9.1:
-	Columns: #, Item, Required/Optional, Serial No, Warehouse, State.
-	Under the table: Status, Current Warehouse (and supplier), counts.
+	Columns: #, Item, Required/Optional, Serial No, Warehouse, Drawing / Spec, State.
+	Under the table: Completeness Status, Engineering Status, Current Warehouse (and supplier), counts.
 	"""
 	if not pattern_set_name or not frappe.db.exists("Pattern Set", pattern_set_name):
 		return "<div class='text-muted' style='padding: 10px;'>" + _("Select a Pattern Set to view details.") + "</div>"
@@ -147,6 +239,10 @@ def render_set_info_html(pattern_set_name):
 		)
 		wh_display = r["warehouse"] or "<span class='text-muted'>—</span>"
 
+		dwg_info = f"<small class='text-muted'>Dwg: {r['drawing_no'] or '-'} (Rev {r['drawing_rev_no'] or '0'})<br>Spec: {r['purchase_specification_no'] or '-'} (Rev {r['purchase_specification_rev_no'] or '0'})</small>"
+		if r["approved_as_is"]:
+			dwg_info += "<br><span class='badge bg-info text-dark' style='font-size: 10px;'>" + _("Approved As-Is") + "</span>"
+
 		rows_html.append(f"""
 			<tr>
 				<td style='text-align: center; color: #6b7280;'>{r['idx']}</td>
@@ -154,11 +250,14 @@ def render_set_info_html(pattern_set_name):
 				<td style='text-align: center;'>{req_badge}</td>
 				<td>{serial_display}</td>
 				<td>{wh_display}</td>
+				<td>{dwg_info}</td>
 				<td style='text-align: center;'>{state_badge}</td>
 			</tr>
 		""")
 
-	status_color = "#28a745" if info["status"] == "Complete" else ("#e06666" if info["status"] == "Incomplete" else "#6c757d")
+	comp_color = "#28a745" if info["completeness_status"] == "Complete" else "#e06666"
+	eng_color = "#28a745" if info["engineering_status"] == "Current" else ("#17a2b8" if info["engineering_status"] == "Approved As-Is" else "#e0a96d")
+	
 	wh_display_text = info["current_warehouse"] or "<span class='text-muted'>" + _("None (No components attached)") + "</span>"
 	supplier_display = f" <span class='badge bg-info text-white' style='margin-left: 6px;'>{info['current_supplier']}</span>" if info["current_supplier"] else ""
 
@@ -173,29 +272,32 @@ def render_set_info_html(pattern_set_name):
 				<tr style='background: #f3f4f6;'>
 					<th style='width: 40px; text-align: center;'>#</th>
 					<th>{_("Item")}</th>
-					<th style='width: 100px; text-align: center;'>{_("Type")}</th>
-					<th style='width: 180px;'>{_("Serial No")}</th>
-					<th style='width: 150px;'>{_("Warehouse")}</th>
-					<th style='width: 120px; text-align: center;'>{_("State")}</th>
+					<th style='width: 90px; text-align: center;'>{_("Type")}</th>
+					<th style='width: 160px;'>{_("Serial No")}</th>
+					<th style='width: 140px;'>{_("Warehouse")}</th>
+					<th>{_("Drawing / Spec Snapshot")}</th>
+					<th style='width: 100px; text-align: center;'>{_("State")}</th>
 				</tr>
 			</thead>
 			<tbody>
-				{''.join(rows_html) if rows_html else "<tr><td colspan='6' class='text-center text-muted'>" + _("No component rows configured") + "</td></tr>"}
+				{''.join(rows_html)}
 			</tbody>
 		</table>
-		<div style='display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; font-size: 13px; background: #f9fafb; border-radius: 4px;'>
+		<div style='display: flex; gap: 20px; align-items: center; font-size: 13px;'>
 			<div>
-				<strong>{_("Status")}:</strong>
-				<span class='badge' style='background-color: {status_color}; color: white; padding: 4px 8px; font-size: 12px; margin-right: 12px;'>
-					{info['status']}
-				</span>
-				<strong>{_("Location")}:</strong>
-				<span>{wh_display_text}{supplier_display}</span>
+				<strong>{_("Completeness Status")}:</strong> 
+				<span style='color: {comp_color}; font-weight: bold;'>{info['completeness_status']}</span>
 			</div>
-			<div style='color: #4b5563;'>
-				<span>{_("Total Rows")}: <strong>{total_rows}</strong></span> |
-				<span>{_("Attached")}: <strong style='color: #059669;'>{attached_count}</strong></span>
-				{" | <span style='color: #dc2626;'>" + _("Missing Required") + f": <strong>{missing_count}</strong></span>" if missing_count else ""}
+			<div>
+				<strong>{_("Engineering Status")}:</strong> 
+				<span style='color: {eng_color}; font-weight: bold;'>{info['engineering_status']}</span>
+			</div>
+			<div>
+				<strong>{_("Location")}:</strong> {wh_display_text}{supplier_display}
+			</div>
+			<div style='margin-left: auto; color: #4b5563;'>
+				{_("Components")}: <strong>{attached_count}</strong> / {total_rows} attached
+				{f" (<span style='color: #dc3545;'>{missing_count} required missing</span>)" if missing_count else ""}
 			</div>
 		</div>
 	</div>
@@ -258,7 +360,8 @@ def render_transfer_history_html(pattern_set_name):
 
 def recalculate_pattern_set(pattern_set_name):
 	"""
-	Recalculates status, current_warehouse, and current_supplier for a Pattern Set.
+	Recalculates status, completeness_status, engineering_status,
+	current_warehouse, and current_supplier for a Pattern Set.
 	Updates Pattern Set in the database.
 	"""
 	if not pattern_set_name or not frappe.db.exists("Pattern Set", pattern_set_name):
@@ -278,6 +381,8 @@ def recalculate_pattern_set(pattern_set_name):
 	# Update fields on parent Pattern Set
 	updates = {
 		"status": info["status"],
+		"completeness_status": info["completeness_status"],
+		"engineering_status": info["engineering_status"],
 		"current_warehouse": info["current_warehouse"] or None,
 		"current_supplier": info["current_supplier"] or None,
 	}

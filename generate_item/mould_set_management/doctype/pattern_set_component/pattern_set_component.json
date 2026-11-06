@@ -23,7 +23,12 @@
   "drawing_no",
   "drawing_rev_no",
   "pattern_drawing_no",
-  "pattern_drawing_rev_no"
+  "pattern_drawing_rev_no",
+  "purchase_specification_no",
+  "purchase_specification_rev_no",
+  "snapshot_timestamp",
+  "approved_as_is",
+  "engineering_change_ref"
  ],
  "fields": [
   {
@@ -151,6 +156,41 @@
    "fieldname": "pattern_drawing_rev_no",
    "fieldtype": "Data",
    "label": "Pattern Drawing Rev. No."
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "purchase_specification_no",
+   "fieldtype": "Data",
+   "label": "Purchase Specification No."
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "purchase_specification_rev_no",
+   "fieldtype": "Data",
+   "label": "Purchase Specification Rev. No."
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "snapshot_timestamp",
+   "fieldtype": "Datetime",
+   "label": "Snapshot Captured On",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "0",
+   "fieldname": "approved_as_is",
+   "fieldtype": "Check",
+   "label": "Approved As-Is",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "engineering_change_ref",
+   "fieldtype": "Link",
+   "label": "Engineering Change Ref",
+   "options": "Pattern Set Engineering Change",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,

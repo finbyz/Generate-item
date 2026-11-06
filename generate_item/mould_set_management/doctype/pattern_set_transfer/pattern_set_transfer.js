@@ -53,6 +53,8 @@ frappe.ui.form.on('Pattern Set Transfer', {
 					frm.set_value('source_warehouse', r.message.source_warehouse);
 					frm.set_value('source_supplier', r.message.source_supplier || '');
 					frm.set_value('set_status', r.message.set_status);
+					frm.set_value('completeness_status', r.message.completeness_status);
+					frm.set_value('engineering_status', r.message.engineering_status);
 					frm.doc._missing_items = r.message.missing_items;
 
 					frm.clear_table('items');
@@ -101,13 +103,18 @@ frappe.ui.form.on('Pattern Set Transfer', {
 	},
 
 	show_incomplete_warning: function(frm) {
-		if (frm.doc.set_status === 'Incomplete') {
+		if (frm.doc.completeness_status === 'Incomplete') {
 			let missing_str = (frm.doc._missing_items && frm.doc._missing_items.length)
 				? frm.doc._missing_items.join(', ')
 				: __('one or more required components');
 			frm.dashboard.set_headline_alert(
-				__('<strong>Notice:</strong> Pattern Set is Incomplete (missing: {0}). Transfer is permitted for job work or repairs.', [missing_str]),
-				'orange'
+				__('<strong>Blocked:</strong> Pattern Set is Incomplete (missing: {0}). Transfers are blocked until all required components are attached.', [missing_str]),
+				'red'
+			);
+		} else if (frm.doc.engineering_status && !['Current', 'Approved As-Is'].includes(frm.doc.engineering_status)) {
+			frm.dashboard.set_headline_alert(
+				__('<strong>Blocked:</strong> Pattern Set Engineering Status is <strong>{0}</strong>. Drawing / Specification review pending.', [frm.doc.engineering_status]),
+				'red'
 			);
 		} else {
 			frm.dashboard.clear_headline();

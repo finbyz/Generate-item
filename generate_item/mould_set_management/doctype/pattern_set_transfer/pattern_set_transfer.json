@@ -12,6 +12,8 @@
   "company",
   "pattern_set",
   "set_status",
+  "completeness_status",
+  "engineering_status",
   "purpose",
   "transfer_type",
   "column_break_wh",
@@ -77,6 +79,20 @@
    "fieldname": "set_status",
    "fieldtype": "Data",
    "label": "Set Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "engineering_status",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Engineering Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "completeness_status",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Completeness Status",
    "read_only": 1
   },
   {

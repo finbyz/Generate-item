@@ -218,10 +218,38 @@ class PatternSetComponentChange(Document):
 					)
 
 				row.set_row = target_open_row.name
+				item_vals = frappe.db.get_value(
+					"Item",
+					row.item_code,
+					[
+						"custom_drawing_no",
+						"custom_drawing_rev_no",
+						"custom_pattern_drawing_no",
+						"custom_pattern_drawing_rev_no",
+						"custom_purchase_specification_no",
+						"custom_purchase_specification_rev_no",
+					],
+					as_dict=True,
+				) or {}
+
+				comp_updates = {
+					"serial_no": row.serial_no,
+					"warehouse": row.warehouse,
+					"paired_on": now,
+					"drawing_no": item_vals.get("custom_drawing_no") or "",
+					"drawing_rev_no": item_vals.get("custom_drawing_rev_no") or "",
+					"pattern_drawing_no": item_vals.get("custom_pattern_drawing_no") or "",
+					"pattern_drawing_rev_no": item_vals.get("custom_pattern_drawing_rev_no") or "",
+					"purchase_specification_no": item_vals.get("custom_purchase_specification_no") or "",
+					"purchase_specification_rev_no": item_vals.get("custom_purchase_specification_rev_no") or "",
+					"snapshot_timestamp": now,
+					"approved_as_is": 0,
+					"engineering_change_ref": None,
+				}
 				frappe.db.set_value(
 					"Pattern Set Component",
 					target_open_row.name,
-					{"serial_no": row.serial_no, "warehouse": row.warehouse, "paired_on": now},
+					comp_updates,
 					update_modified=False,
 				)
 

@@ -10,6 +10,8 @@
   "section_break_details",
   "naming_series",
   "status",
+  "completeness_status",
+  "engineering_status",
   "type_of_valve",
   "size",
   "class",
@@ -58,6 +60,30 @@
    "label": "Status",
    "no_copy": 1,
    "options": "Draft\nComplete\nIncomplete\nDisabled\nCancelled",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "Current",
+   "fieldname": "engineering_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Engineering Status",
+   "no_copy": 1,
+   "options": "Current\nReview Pending\nRework Required\nApproved As-Is\nReplaced\nDisabled",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "default": "Incomplete",
+   "fieldname": "completeness_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Completeness Status",
+   "no_copy": 1,
+   "options": "Complete\nIncomplete",
    "read_only": 1
   },
   {
