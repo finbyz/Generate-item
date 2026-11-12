@@ -1,0 +1,48 @@
+.std-wrap{--std-bg:#f3f7f4;--std-card:#fff;--std-ink:#0d1b12;--std-mut:#4b5d52;--std-line:#dbe5de;--std-pri:#0a8f4e;--std-pri-s:#e3f5ea;--std-warn:#a85d00;--std-warn-s:#fdf0d8;
+	max-width:none;margin:0;padding:18px 0;color:var(--std-ink);font-weight:500}
+.std-wrap .std-top{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+.std-wrap .std-top h1{font-size:26px;font-weight:800;margin:0;color:var(--std-pri);letter-spacing:-.02em}
+.std-wrap .std-mut{color:var(--std-mut)}
+.std-wrap .std-card{background:var(--std-card);border:1px solid var(--std-line);border-radius:24px;padding:22px;margin-bottom:20px;box-shadow:0 1px 2px rgba(20,30,50,.04),0 8px 24px rgba(20,30,50,.05)}
+.std-wrap .std-hd{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px}
+.std-wrap .std-hd h2{font-size:20px;font-weight:800;margin:0}
+.std-wrap .std-seg{display:flex;gap:6px;flex-wrap:wrap}
+.std-wrap .std-seg button{font-weight:600;color:var(--std-ink);background:var(--std-card);border:1.5px solid var(--std-line);border-radius:99px;padding:6px 16px;cursor:pointer}
+.std-wrap .std-seg button.on{background:var(--std-pri);border-color:var(--std-pri);color:#fff}
+.std-wrap .std-na{padding:24px;background:var(--std-bg);border-radius:18px;text-align:center;color:var(--std-mut)}
+@media(max-width:600px){.std-wrap .std-card{padding:16px}}
+.std-wrap .std-sw{overflow-x:auto}
+.std-wrap table.std-tbl{width:100%;border-collapse:collapse}
+.std-wrap .std-tbl th,.std-wrap .std-tbl td{padding:11px 10px;border-bottom:1px solid var(--std-line);text-align:left;white-space:normal;word-break:break-word;font-weight:600;vertical-align:middle}
+.std-wrap .std-tbl th{font-size:12.5px;color:var(--std-mut);font-weight:700}
+.std-wrap .std-tbl td small{display:block;color:var(--std-mut);font-weight:500}
+.std-wrap .std-b{display:inline-block;padding:3px 12px;border-radius:99px;font-size:12.5px;font-weight:700}
+.std-wrap .std-b.g{background:var(--std-line);color:var(--std-mut)}
+.std-wrap .std-b.w{background:var(--std-warn-s);color:var(--std-warn)}
+.std-wrap .std-b.rd{background:#fbe7e7;color:#c62828;margin-left:6px}
+.std-wrap a.std-l{color:var(--std-pri);text-decoration:underline;font-weight:700}
+.std-wrap .std-btn{font-weight:600;color:var(--std-ink);background:var(--std-card);border:1.5px solid var(--std-line);border-radius:99px;padding:6px 16px;cursor:pointer}
+.std-wrap .std-work-filter{margin-bottom:12px}
+.std-wrap .std-seg button .std-cnt{opacity:.75;margin-left:4px}
+/* full-width page */
+.std-fullwidth .container,.std-fullwidth .page-body{max-width:100% !important;width:100%}
+.std-wrap .std-tbl th,.std-wrap .std-tbl td.std-nw{white-space:nowrap}
+.std-wrap .std-grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.std-wrap .std-k{background:var(--std-bg);border-radius:18px;padding:16px 18px}
+.std-wrap .std-k span{color:var(--std-mut)}
+.std-wrap .std-k b{display:block;font-size:30px;font-weight:800;line-height:1.2;color:var(--std-pri)}
+.std-wrap .std-k small{font-size:13px;color:var(--std-mut)}
+.std-wrap .std-up{color:var(--std-pri);font-weight:700}
+.std-wrap .std-dn{color:#c62828;font-weight:700}
+.std-wrap .std-bar{height:10px;border-radius:99px;background:var(--std-bg);overflow:hidden;margin:16px 0 4px}
+.std-wrap .std-bar i{display:block;height:100%;background:var(--std-pri);border-radius:99px}
+.std-wrap .std-days{display:flex;gap:6px;align-items:flex-end;margin-top:16px}
+.std-wrap .std-days div{flex:1;min-width:0;text-align:center;font-size:12px;color:var(--std-mut)}
+.std-wrap .std-days i{display:block;background:var(--std-pri);border-radius:6px 6px 0 0;min-height:3px;margin-top:2px}
+.std-wrap .std-days div.fut i{background:var(--std-line)}
+.std-wrap .std-days div.today{color:var(--std-ink);font-weight:800}
+.std-wrap .std-hero{display:flex;gap:18px;align-items:center;background:var(--std-pri-s);border-radius:20px;padding:18px 22px;margin-bottom:14px;flex-wrap:wrap}
+.std-wrap .std-hero .std-hero-rank{font-size:48px;font-weight:800;color:var(--std-pri);line-height:1}
+.std-wrap .std-tbl th.std-r,.std-wrap .std-tbl td.std-r{text-align:right}
+.std-wrap .std-tbl tr.std-me{background:#d9f2e2}
+.std-wrap .std-tbl tr.std-me td small{display:inline;margin-left:4px}
