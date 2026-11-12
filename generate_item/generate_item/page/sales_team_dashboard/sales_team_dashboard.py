@@ -187,16 +187,11 @@ def _sales_users():
 		"""
 		select u.name, u.full_name
 		from `tabUser` u
-		where u.enabled = 1 and u.name != 'Guest'
-			and (
-				u.name = 'Administrator'
-				or (
-					u.user_type = 'System User'
-					and exists (
-						select 1 from `tabHas Role` hr
-						where hr.parent = u.name and hr.parenttype = 'User' and hr.role = %s
-					)
-				)
+		where u.enabled = 1 and u.user_type = 'System User'
+			and u.name not in ('Administrator', 'Guest')
+			and exists (
+				select 1 from `tabHas Role` hr
+				where hr.parent = u.name and hr.parenttype = 'User' and hr.role = %s
 			)
 		""",
 		RANK_ROLE,
