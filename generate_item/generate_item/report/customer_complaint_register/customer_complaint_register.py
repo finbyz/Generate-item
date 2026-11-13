@@ -4,7 +4,7 @@
 import frappe
 from frappe import _
 
-ALLOWED_COMPLAINT_STATUSES = {"Open", "Action in Progress", "Close"}
+ALLOWED_COMPLAINT_STATUSES = {"Open", "Action in Progress", "In Process", "Close", "Closed"}
 
 ALLOWED_EDITABLE_FIELDS = {
 	"custom_complaint_status",
@@ -49,6 +49,8 @@ def get_columns():
 			"options": "\nOpen\nAction in Progress\nClose",
 			"editable": 1,
 			"width": 200,
+			"hidden": 1,  # Hidden in the report view, but editable in the grid view
+   
 		},
 		{
 			"label": _("Issue Status"),
@@ -88,6 +90,7 @@ def get_columns():
 			"fieldtype": "Link",
 			"options": "Issue Type",
 			"width": 120,
+   "hidden": 1,  # Hidden in the report view, but editable in the grid view
 		},
 		{
 			"label": _("Sales Order"),
@@ -108,12 +111,21 @@ def get_columns():
 			"fieldtype": "Data",
 			"editable": 1,
 			"width": 140,
+   "hidden": 1,  # Hidden in the report view, but editable in the grid view
 		},
 		{
 			"label": _("Project"),
 			"fieldname": "custom_project_name",
 			"fieldtype": "Data",
 			"width": 150,
+   "hidden": 1,  # Hidden in the report view, but editable in the grid view
+		},
+		{
+			"label": _("Product"),
+			"fieldname": "product",
+			"fieldtype": "Link",
+			"options": "Item Generator Template",
+			"width": 120,
 		},
 		{
 			"label": _("Valve"),
@@ -315,16 +327,32 @@ def get_conditions(filters):
 		conditions.append("i.custom_fs_number LIKE %(fs_number)s")
 		params["fs_number"] = f"%{filters.get('fs_number')}%"
 
+	if filters.get("product"):
+		conditions.append("""(
+			EXISTS (SELECT 1 FROM `tabIssue Valve` iv WHERE iv.parent = i.name AND iv.product = %(product)s)
+			OR i.custom_valve = %(product)s
+		)""")
+		params["product"] = filters.get("product")
+
 	if filters.get("valve"):
-		conditions.append("i.custom_valve LIKE %(valve)s")
+		conditions.append("""(
+			i.custom_valve LIKE %(valve)s
+			OR EXISTS (SELECT 1 FROM `tabIssue Valve` iv WHERE iv.parent = i.name AND (iv.product LIKE %(valve)s OR iv.valve_type LIKE %(valve)s))
+		)""")
 		params["valve"] = f"%{filters.get('valve')}%"
 
 	if filters.get("valve_size"):
-		conditions.append("i.custom_valve_size LIKE %(valve_size)s")
+		conditions.append("""(
+			i.custom_valve_size LIKE %(valve_size)s
+			OR EXISTS (SELECT 1 FROM `tabIssue Valve` iv WHERE iv.parent = i.name AND iv.size LIKE %(valve_size)s)
+		)""")
 		params["valve_size"] = f"%{filters.get('valve_size')}%"
 
 	if filters.get("valve_class"):
-		conditions.append("i.custom_valve_class LIKE %(valve_class)s")
+		conditions.append("""(
+			i.custom_valve_class LIKE %(valve_class)s
+			OR EXISTS (SELECT 1 FROM `tabIssue Valve` iv WHERE iv.parent = i.name AND iv.rating LIKE %(valve_class)s)
+		)""")
 		params["valve_class"] = f"%{filters.get('valve_class')}%"
 
 	if filters.get("actuator_make"):
@@ -390,7 +418,50 @@ def get_data(conditions, query_params):
 			i.creation DESC
 	"""
 
-	return frappe.db.sql(query, query_params, as_dict=True)
+	rows = frappe.db.sql(query, query_params, as_dict=True)
+	if not rows:
+		return []
+
+	issue_names = [r["name"] for r in rows if r.get("name")]
+	if issue_names:
+		child_valves = frappe.get_all(
+			"Issue Valve",
+			filters={"parent": ["in", issue_names]},
+			fields=["parent", "product", "valve_type", "size", "rating", "shell_moc", "operator", "qty", "serial_number"],
+			order_by="idx asc",
+		)
+		valves_by_issue = {}
+		for cv in child_valves:
+			valves_by_issue.setdefault(cv["parent"], []).append(cv)
+
+		for r in rows:
+			cv_list = valves_by_issue.get(r["name"])
+			if cv_list:
+				products = list(dict.fromkeys(filter(None, [cv.get("product") for cv in cv_list])))
+				types = list(dict.fromkeys(filter(None, [cv.get("valve_type") for cv in cv_list])))
+				sizes = list(dict.fromkeys(filter(None, [cv.get("size") for cv in cv_list])))
+				ratings = list(dict.fromkeys(filter(None, [cv.get("rating") for cv in cv_list])))
+				mocs = list(dict.fromkeys(filter(None, [cv.get("shell_moc") for cv in cv_list])))
+				serials = list(dict.fromkeys(filter(None, [cv.get("serial_number") for cv in cv_list])))
+				total_qty = sum(cv.get("qty") or 0 for cv in cv_list if cv.get("qty"))
+
+				r["product"] = ", ".join(products)
+				if types and not r.get("custom_valve_type"):
+					r["custom_valve_type"] = ", ".join(types)
+				if sizes and not r.get("custom_valve_size"):
+					r["custom_valve_size"] = ", ".join(sizes)
+				if ratings and not r.get("custom_valve_class"):
+					r["custom_valve_class"] = ", ".join(ratings)
+				if mocs and not r.get("custom_moc"):
+					r["custom_moc"] = ", ".join(mocs)
+				if serials and not r.get("custom_valve_serial_no"):
+					r["custom_valve_serial_no"] = ", ".join(serials)
+				if total_qty and (not r.get("custom_qty") or str(r.get("custom_qty")).strip() in ("", "0")):
+					r["custom_qty"] = str(total_qty)
+			else:
+				r["product"] = r.get("custom_valve") or ""
+
+	return rows
 
 
 @frappe.whitelist()

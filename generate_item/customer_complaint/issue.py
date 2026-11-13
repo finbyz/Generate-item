@@ -4,9 +4,25 @@
 import frappe
 from frappe import _
 
-ALLOWED_COMPLAINT_STATUSES = ("Open", "Action in Progress", "Close")
+ALLOWED_ISSUE_STATUSES = ("Open", "In Process", "Closed")
+ALLOWED_COMPLAINT_STATUSES = ("Open", "Action in Progress", "In Process", "Close", "Closed")
+
+STATUS_TO_COMPLAINT_MAP = {
+	"Open": "Open",
+	"In Process": "Action in Progress",
+	"Closed": "Close",
+}
+
+COMPLAINT_TO_STATUS_MAP = {
+	"Open": "Open",
+	"Action in Progress": "In Process",
+	"In Process": "In Process",
+	"Close": "Closed",
+	"Closed": "Closed",
+}
 
 PROGRESS_TRACKED_FIELDS = (
+	"status",
 	"custom_complaint_status",
 	"custom_action_remarks",
 	"custom_final_action_remarks",
@@ -21,35 +37,65 @@ PROGRESS_TRACKED_FIELDS = (
 def validate_issue(doc, method=None):
 	"""
 	Validates complaint fields on Issue DocType:
-	- Enforces allowed complaint status values
+	- Enforces allowed status (Open, In Process, Closed) and synchronizes with custom_complaint_status
 	- Sets defaults for registration date and complaint status
 	- Sets closure date and closed by on closing
 	- Enforces append-only rule for progress history
 	"""
-	# Set default complaint status
-	if not doc.custom_complaint_status:
+	# Synchronize standard status and custom_complaint_status
+	if not doc.status and not doc.custom_complaint_status:
+		doc.status = "Open"
 		doc.custom_complaint_status = "Open"
-
-	# Validate complaint status
-	if doc.custom_complaint_status not in ALLOWED_COMPLAINT_STATUSES:
-		frappe.throw(
-			_("Complaint Status must be one of: {0}").format(", ".join(ALLOWED_COMPLAINT_STATUSES)),
-			frappe.ValidationError,
-		)
+	elif doc.status:
+		if doc.status not in ALLOWED_ISSUE_STATUSES:
+			frappe.throw(
+				_("Status must be one of: {0}").format(", ".join(ALLOWED_ISSUE_STATUSES)),
+				frappe.ValidationError,
+			)
+		doc.custom_complaint_status = STATUS_TO_COMPLAINT_MAP.get(doc.status, "Open")
+	elif doc.custom_complaint_status:
+		doc.status = COMPLAINT_TO_STATUS_MAP.get(doc.custom_complaint_status, "Open")
+		doc.custom_complaint_status = STATUS_TO_COMPLAINT_MAP.get(doc.status, doc.custom_complaint_status)
 
 	# Set default registration date
 	if not doc.custom_complaint_reg_date:
 		doc.custom_complaint_reg_date = doc.opening_date or frappe.utils.today()
 
 	# Set closure metadata when closed
-	if doc.custom_complaint_status == "Close":
+	if doc.status == "Closed" or doc.custom_complaint_status in ("Close", "Closed"):
 		if not doc.custom_closure_date:
 			doc.custom_closure_date = frappe.utils.today()
 		if not doc.custom_closure_by and frappe.session and frappe.session.user:
 			doc.custom_closure_by = frappe.session.user
 
+	# Synchronize customer name and default primary address
+	sync_customer_details(doc)
+
 	# Append-only check for existing progress history
 	validate_progress_history_append_only(doc)
+
+
+def sync_customer_details(doc):
+	"""
+	Ensures customer name and primary customer address are defaulted when customer is set on Issue.
+	"""
+	if not doc.customer:
+		return
+
+	if not doc.customer_name:
+		doc.customer_name = frappe.db.get_value("Customer", doc.customer, "customer_name")
+
+	if not doc.custom_customer_address:
+		from frappe.contacts.doctype.address.address import get_default_address
+		primary_addr = frappe.db.get_value("Customer", doc.customer, "customer_primary_address")
+		if not primary_addr:
+			primary_addr = get_default_address("Customer", doc.customer)
+		if primary_addr:
+			doc.custom_customer_address = primary_addr
+
+	if doc.custom_customer_address and not doc.custom_address_display:
+		from frappe.contacts.doctype.address.address import get_address_display
+		doc.custom_address_display = get_address_display(doc.custom_customer_address)
 
 
 def validate_progress_history_append_only(doc):
@@ -156,6 +202,7 @@ def add_progress_history_entry(doc, remarks=None):
 def add_complaint_progress_update(
 	issue_id,
 	complaint_status=None,
+	status=None,
 	action_remarks=None,
 	responsible_department=None,
 	action_by=None,
@@ -180,15 +227,25 @@ def add_complaint_progress_update(
 
 	doc = frappe.get_doc("Issue", issue_id)
 
-	if complaint_status:
-		if complaint_status not in ALLOWED_COMPLAINT_STATUSES:
+	target_status = status or complaint_status
+	if target_status:
+		if target_status in COMPLAINT_TO_STATUS_MAP:
+			doc.status = COMPLAINT_TO_STATUS_MAP[target_status]
+			doc.custom_complaint_status = STATUS_TO_COMPLAINT_MAP.get(doc.status, target_status)
+		elif target_status in ALLOWED_ISSUE_STATUSES:
+			doc.status = target_status
+			doc.custom_complaint_status = STATUS_TO_COMPLAINT_MAP.get(target_status, "Open")
+		elif target_status in ALLOWED_COMPLAINT_STATUSES:
+			doc.custom_complaint_status = target_status
+			doc.status = COMPLAINT_TO_STATUS_MAP.get(target_status, "Open")
+		else:
 			frappe.throw(
-				_("Invalid Complaint Status '{0}'. Must be one of: {1}").format(
-					complaint_status, ", ".join(ALLOWED_COMPLAINT_STATUSES)
+				_("Invalid Status '{0}'. Must be one of: {1}").format(
+					target_status, ", ".join(ALLOWED_ISSUE_STATUSES)
 				)
 			)
-		doc.custom_complaint_status = complaint_status
-		if complaint_status == "Close":
+
+		if doc.status == "Closed" or doc.custom_complaint_status in ("Close", "Closed"):
 			if not doc.custom_closure_date:
 				doc.custom_closure_date = frappe.utils.today()
 			if not doc.custom_closure_by and frappe.session and frappe.session.user:
@@ -235,3 +292,90 @@ def add_complaint_progress_update(
 		"issue_id": doc.name,
 		"message": _("Progress update added successfully."),
 	}
+
+
+@frappe.whitelist()
+def get_valve_attribute_options(template_name=None):
+	"""
+	Returns dropdown options for Multiple Valves child table matching Item Generator logic.
+	Reads active values from Custom Item Attribute Value child records for the selected template.
+	"""
+	mapping = {
+		"valve_type": [],
+		"size": [],
+		"rating": [],
+		"shell_moc": [],
+		"operator": [],
+	}
+
+	if template_name and frappe.db.exists("Item Generator Template", template_name):
+		t_doc = frappe.get_doc("Item Generator Template", template_name)
+		for v in (t_doc.custom_variants or []):
+			lh = (v.logic_heading or "").strip()
+			if not lh:
+				continue
+			heading = lh.split("-", 1)[1].strip().upper() if "-" in lh else lh.upper()
+			if heading in ("VALVE TYPE", "TYPE OF VALVE"):
+				mapping["valve_type"].append(lh)
+			elif heading == "SIZE":
+				mapping["size"].append(lh)
+			elif heading in ("RATING", "CLASS"):
+				mapping["rating"].append(lh)
+			elif "MOC" in heading:
+				mapping["shell_moc"].append(lh)
+			elif heading == "OPERATOR":
+				mapping["operator"].append(lh)
+
+	# If no template or a field has no mapped variant in the template, provide canonical fallbacks
+	default_mapping = {
+		"valve_type": [
+			"BLV-Valve Type",
+			"BFV-Valve Type",
+			"GGC-Valve Type",
+			"PLV-Valve Type",
+			"Type Of Valve",
+			"Valve Type",
+		],
+		"size": ["FG-Size", "Size", "WIP-Size"],
+		"rating": ["FG-Rating", "Rating", "Class", "WIP-Class"],
+		"shell_moc": [
+			"BLV-Shell MOC",
+			"BFV-Shell MOC",
+			"GGC-Shell MOC",
+			"PLV-Shell MOC",
+			"ACTUATOR-MOC",
+			"BAR-MOC",
+			"STANDARD COMPONENT-MOC",
+			"WIP-MOC",
+			"MOC",
+			"Shell MOC",
+		],
+		"operator": [
+			"BLV-Operator",
+			"BFV-Operator",
+			"GGC-Operator",
+			"PLV-Operator",
+			"Operator",
+		],
+	}
+
+	result = {}
+	for fieldname in ("valve_type", "size", "rating", "shell_moc", "operator"):
+		parents = mapping.get(fieldname)
+		if not parents:
+			parents = default_mapping[fieldname]
+
+		rows = frappe.get_all(
+			"Custom Item Attribute Value",
+			filters={"parent": ["in", parents], "disabled": 0},
+			fields=["item_long_description"],
+			order_by="item_long_description asc",
+		)
+		opts = set()
+		for r in rows:
+			desc = (r.get("item_long_description") or "").strip()
+			if desc and desc != "-":
+				opts.add(desc)
+		result[fieldname] = [""] + sorted(list(opts))
+
+	return result

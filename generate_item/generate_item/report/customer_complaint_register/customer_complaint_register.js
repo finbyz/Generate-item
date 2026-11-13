@@ -73,17 +73,17 @@ frappe.query_reports["Customer Complaint Register"] = {
 			fieldtype: "Link",
 			options: "Customer",
 		},
-		{
-			fieldname: "complaint_status",
-			label: __("Complaint Status"),
-			fieldtype: "Select",
-			options: ["", "Open", "Action in Progress", "Close"].join("\n"),
-		},
+		// {
+		// 	fieldname: "complaint_status",
+		// 	label: __("Complaint Status"),
+		// 	fieldtype: "Select",
+		// 	options: ["", "Open", "Action in Progress", "Close"].join("\n"),
+		// },
 		{
 			fieldname: "status",
-			label: __("Standard Issue Status"),
+			label: __("Issue Status"),
 			fieldtype: "Select",
-			options: ["", "Open", "Replied", "On Hold", "Resolved", "Closed"].join("\n"),
+			options: ["", "Open", "In Process", "Closed"].join("\n"),
 		},
 		{
 			fieldname: "priority",
@@ -91,12 +91,12 @@ frappe.query_reports["Customer Complaint Register"] = {
 			fieldtype: "Link",
 			options: "Issue Priority",
 		},
-		{
-			fieldname: "issue_type",
-			label: __("Issue Type"),
-			fieldtype: "Link",
-			options: "Issue Type",
-		},
+		// {
+		// 	fieldname: "issue_type",
+		// 	label: __("Issue Type"),
+		// 	fieldtype: "Link",
+		// 	options: "Issue Type",
+		// },
 		{
 			fieldname: "sales_order",
 			label: __("Sales Order"),
@@ -108,15 +108,22 @@ frappe.query_reports["Customer Complaint Register"] = {
 			label: __("Responsible Department"),
 			fieldtype: "Data",
 		},
-		{
-			fieldname: "site",
-			label: __("Site"),
-			fieldtype: "Data",
-		},
+		// {
+		// 	fieldname: "site",
+		// 	label: __("Site"),
+		// 	fieldtype: "Data",
+		// },
 		{
 			fieldname: "fs_number",
 			label: __("FS Number"),
 			fieldtype: "Data",
+		},
+		{
+			fieldname: "product",
+			label: __("Product"),
+			fieldtype: "Link",
+			options: "Item Generator Template",
+			get_query: () => ({ filters: { disabled: 0 } }),
 		},
 		{
 			fieldname: "valve",
@@ -138,11 +145,11 @@ frappe.query_reports["Customer Complaint Register"] = {
 			label: __("Actuator Make"),
 			fieldtype: "Data",
 		},
-		{
-			fieldname: "project",
-			label: __("Project"),
-			fieldtype: "Data",
-		},
+		// {
+		// 	fieldname: "project",
+		// 	label: __("Project"),
+		// 	fieldtype: "Data",
+		// },
 	],
 
 	// ─── STATE ────────────────────────────────────────────────────────────────
@@ -234,6 +241,7 @@ frappe.query_reports["Customer Complaint Register"] = {
 		report.page.add_inner_button(__("New Complaint"), () => {
 			const default_customer = report.get_filter_value("customer");
 			const default_so = report.get_filter_value("sales_order");
+			const default_product = report.get_filter_value("product");
 			const prefill = {};
 			if (default_customer) prefill.customer = default_customer;
 			if (default_so) prefill.custom_sales_order = default_so;
@@ -243,6 +251,10 @@ frappe.query_reports["Customer Complaint Register"] = {
 				const doc = frappe.model.get_new_doc("Issue");
 				if (prefill.customer) doc.customer = prefill.customer;
 				if (prefill.custom_sales_order) doc.custom_sales_order = prefill.custom_sales_order;
+				if (default_product) {
+					const child = frappe.model.add_child(doc, "Issue Valve", "custom_valves");
+					child.product = default_product;
+				}
 				frappe.set_route("Form", "Issue", doc.name);
 			});
 		});

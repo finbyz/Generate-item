@@ -1,0 +1,92 @@
+{
+ "actions": [],
+ "creation": "2026-11-06 17:31:26.360655",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "product",
+  "valve_type",
+  "size",
+  "rating",
+  "remark",
+  "column_break_1lwh",
+  "shell_moc",
+  "operator",
+  "qty",
+  "serial_number"
+ ],
+ "fields": [
+  {
+   "fieldname": "product",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Product",
+   "options": "Item Generator Template"
+  },
+  {
+   "fieldname": "valve_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Valve Type"
+  },
+  {
+   "fieldname": "size",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Size"
+  },
+  {
+   "fieldname": "rating",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Rating"
+  },
+  {
+   "fieldname": "shell_moc",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Shell MOC"
+  },
+  {
+   "fieldname": "operator",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Operator"
+  },
+  {
+   "fieldname": "qty",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Qty",
+   "non_negative": 1
+  },
+  {
+   "fieldname": "serial_number",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Serial Number"
+  },
+  {
+   "fieldname": "column_break_1lwh",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Remark"
+  }
+ ],
+ "istable": 1,
+ "links": [],
+ "modified": "2026-11-07 12:15:00.000000",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "Issue Valve",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
