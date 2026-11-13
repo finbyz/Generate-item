@@ -223,6 +223,10 @@ function update_and_create_work_orders(frm) {
 function add_get_update_button(frm, group) {
     frm.page.remove_inner_button(__("Get Update"), group);
 
+    if (["Completed", "Closed", "Cancelled"].includes(frm.doc.status)) {
+        return;
+    }
+
     if (!frm.doc.bom_modification && !frm.doc.sales_order_modification) {
         return;
     }
@@ -495,7 +499,7 @@ frappe.ui.form.on('Production Plan', {
     refresh: function (frm) {
         render_bom_exploded_table(frm);
         const UPDATE_GROUP = __("Update");
-        if (frm.doc.docstatus === 1) {
+        if (frm.doc.docstatus === 1 && frm.doc.status !== "Completed") {
             add_get_update_button(frm, UPDATE_GROUP);
             add_update_and_create_work_orders_button(frm, UPDATE_GROUP);
             add_create_material_request_button(frm, UPDATE_GROUP);

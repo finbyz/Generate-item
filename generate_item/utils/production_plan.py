@@ -345,6 +345,10 @@ def _get_default_transfer_warehouses(pp):
 
 @frappe.whitelist()
 def get_update_for_submitted_pp(docname):
+    status = frappe.db.get_value("Production Plan", docname, "status")
+    if status == "Completed":
+        frappe.throw(_("Cannot update a Completed Production Plan."))
+
     pp = frappe.get_doc("Production Plan", docname)
     validate_work_orders_before_update(pp.name)
     was_submitted = pp.docstatus == 1
