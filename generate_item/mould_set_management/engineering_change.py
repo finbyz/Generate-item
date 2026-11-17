@@ -18,7 +18,7 @@ def on_item_update(doc, method=None):
 	If any of the 6 drawing/specification fields on Item change:
 	1. Find all Pattern Set Component rows referencing this Item (including open rows).
 	2. Create an auditable Pattern Set Engineering Change document.
-	3. Update the Pattern Set engineering_status to 'Review Pending' without changing physical warehouse.
+	3. Update the Pattern Set engineering_status to 'Open' without changing physical warehouse.
 	"""
 	if doc.is_new():
 		return
@@ -85,14 +85,12 @@ def on_item_update(doc, method=None):
 			"serial_no": r.serial_no or "",
 			"current_warehouse": r.current_warehouse or "",
 			"current_supplier": r.current_supplier or "",
-			"disposition": "Accept As-Is",
-			"disposition_status": "Pending",
 		})
 
 	ec.flags.ignore_permissions = True
 	ec.insert()
 
-	# Recalculate each impacted Pattern Set to update engineering_status to 'Review Pending'
+	# Recalculate each impacted Pattern Set after the Engineering Change sets its status to Open.
 	affected_sets = {r.ps_name for r in comp_rows}
 	for ps_name in affected_sets:
 		recalculate_pattern_set(ps_name)

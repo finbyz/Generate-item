@@ -64,14 +64,14 @@
   },
   {
    "allow_on_submit": 1,
-   "default": "Current",
+   "default": "Open",
    "fieldname": "engineering_status",
    "fieldtype": "Select",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Engineering Status",
    "no_copy": 1,
-   "options": "Current\nReview Pending\nRework Required\nApproved As-Is\nReplaced\nDisabled",
+   "options": "Open\nApproved\nRejected",
    "read_only": 1
   },
   {

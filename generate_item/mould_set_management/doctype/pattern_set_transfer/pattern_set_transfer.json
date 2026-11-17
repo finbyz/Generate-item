@@ -101,7 +101,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Purpose",
-   "options": "Job Work\nRepair\nStorage\nReturn\nOther",
+   "options": "Transfer\nReturn",
    "reqd": 1
   },
   {

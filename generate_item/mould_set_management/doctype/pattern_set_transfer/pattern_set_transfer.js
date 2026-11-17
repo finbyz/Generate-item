@@ -5,15 +5,24 @@ frappe.ui.form.on('Pattern Set Transfer', {
 	setup: function(frm) {
 		// Filter Pattern Set to submitted, active sets
 		frm.set_query('pattern_set', function() {
-			return {
-				filters: {
-					docstatus: 1,
-					disabled: 0
-				}
+			let filters = {
+				docstatus: 1,
+				disabled: 0,
+				disable: 0,
+				status: 'Complete',
+				completeness_status: 'Complete'
 			};
+
+			if (frm.doc.purpose === 'Transfer') {
+				filters.engineering_status = 'Approved';
+			} else {
+				filters.engineering_status = ['in', ['Open', 'Approved', 'Rejected']];
+			}
+
+			return { filters: filters };
 		});
 
-		// Filter Target Warehouse: not group, not disabled, same company, not equal to source
+		// Filter Target Warehouse based on purpose and transfer context
 		frm.set_query('target_warehouse', function(doc) {
 			let filters = {
 				is_group: 0,
@@ -25,14 +34,65 @@ frappe.ui.form.on('Pattern Set Transfer', {
 			if (doc.source_warehouse) {
 				filters['name'] = ['!=', doc.source_warehouse];
 			}
+			if (doc.purpose === 'Return') {
+				filters['custom_supplier'] = ['is', 'not set'];
+			}
 			return { filters: filters };
 		});
 	},
 
 	refresh: function(frm) {
+		frm.refresh_field('pattern_set');
+		frm.refresh_field('target_warehouse');
 		frm.trigger('update_counts');
 		frm.trigger('show_incomplete_warning');
 		frm.trigger('lock_required_rows');
+	},
+
+	purpose: function(frm) {
+		frm.trigger('refresh_purpose_filters');
+	},
+
+	refresh_purpose_filters: function(frm) {
+		frm.refresh_field('pattern_set');
+		frm.refresh_field('target_warehouse');
+		frm.trigger('show_incomplete_warning');
+
+		let pattern_set = frm.doc.pattern_set;
+		if (pattern_set) {
+			frappe.db.get_value(
+				'Pattern Set',
+				pattern_set,
+				['docstatus', 'disabled', 'disable', 'status', 'completeness_status', 'engineering_status'],
+				function(r) {
+					if (frm.doc.pattern_set !== pattern_set) {
+						return;
+					}
+
+					let allowed_engineering_statuses = frm.doc.purpose === 'Transfer'
+						? ['Approved']
+						: ['Open', 'Approved', 'Rejected'];
+					if (!r || r.docstatus !== 1 || r.disabled || r.disable
+						|| r.status !== 'Complete' || r.completeness_status !== 'Complete'
+						|| !allowed_engineering_statuses.includes(r.engineering_status)) {
+						frm.set_value('pattern_set', '');
+					}
+				}
+			);
+		}
+
+		let target_warehouse = frm.doc.target_warehouse;
+		if (frm.doc.purpose === 'Return' && target_warehouse) {
+			frappe.db.get_value('Warehouse', target_warehouse, 'custom_supplier', function(r) {
+				if (frm.doc.target_warehouse !== target_warehouse || frm.doc.purpose !== 'Return') {
+					return;
+				}
+
+				if (r && r.custom_supplier) {
+					frm.set_value('target_warehouse', '');
+				}
+			});
+		}
 	},
 
 	pattern_set: function(frm) {
@@ -40,8 +100,11 @@ frappe.ui.form.on('Pattern Set Transfer', {
 			frm.set_value('source_warehouse', '');
 			frm.set_value('source_supplier', '');
 			frm.set_value('set_status', '');
+			frm.set_value('completeness_status', '');
+			frm.set_value('engineering_status', '');
 			frm.clear_table('items');
 			frm.refresh_field('items');
+			frm.trigger('show_incomplete_warning');
 			return;
 		}
 
@@ -103,17 +166,19 @@ frappe.ui.form.on('Pattern Set Transfer', {
 	},
 
 	show_incomplete_warning: function(frm) {
-		if (frm.doc.completeness_status === 'Incomplete') {
+		if (frm.doc.pattern_set
+			&& (frm.doc.set_status !== 'Complete' || frm.doc.completeness_status !== 'Complete')) {
 			let missing_str = (frm.doc._missing_items && frm.doc._missing_items.length)
 				? frm.doc._missing_items.join(', ')
 				: __('one or more required components');
 			frm.dashboard.set_headline_alert(
-				__('<strong>Blocked:</strong> Pattern Set is Incomplete (missing: {0}). Transfers are blocked until all required components are attached.', [missing_str]),
+				__('<strong>Blocked:</strong> Pattern Set must be Complete (missing: {0}).', [missing_str]),
 				'red'
 			);
-		} else if (frm.doc.engineering_status && !['Current', 'Approved As-Is'].includes(frm.doc.engineering_status)) {
+		} else if (frm.doc.pattern_set && frm.doc.purpose === 'Transfer'
+			&& frm.doc.engineering_status !== 'Approved') {
 			frm.dashboard.set_headline_alert(
-				__('<strong>Blocked:</strong> Pattern Set Engineering Status is <strong>{0}</strong>. Drawing / Specification review pending.', [frm.doc.engineering_status]),
+				__('<strong>Blocked:</strong> Pattern Set Engineering Status must be Approved for Purpose Transfer. Current status: <strong>{0}</strong>.', [frm.doc.engineering_status]),
 				'red'
 			);
 		} else {
@@ -153,8 +218,9 @@ frappe.ui.form.on('Pattern Set Transfer', {
 
 		// Confirmation dialog on Submit (Section 7.1 step 6)
 		frappe.validated = false;
+		let action_label = get_pattern_set_action_label(frm.doc.engineering_status);
 		let d = new frappe.ui.Dialog({
-			title: __('Confirm Whole-Set Transfer'),
+			title: __('Confirm {0}', [action_label]),
 			fields: [
 				{
 					fieldtype: 'HTML',
@@ -171,7 +237,7 @@ frappe.ui.form.on('Pattern Set Transfer', {
 					`
 				}
 			],
-			primary_action_label: __('Proceed & Submit'),
+			primary_action_label: action_label,
 			primary_action: function() {
 				frm._transfer_confirmed = true;
 				d.hide();
@@ -181,6 +247,10 @@ frappe.ui.form.on('Pattern Set Transfer', {
 		d.show();
 	}
 });
+
+function get_pattern_set_action_label(engineering_status) {
+	return __(engineering_status === 'Approved' ? 'Transfer Set' : 'Issue Set');
+}
 
 frappe.ui.form.on('Pattern Set Transfer Item', {
 	include: function(frm, cdt, cdn) {

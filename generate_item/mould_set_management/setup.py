@@ -96,7 +96,7 @@ def setup_mould_set_management():
 
 	# 4. Data Migration for existing records (Section 13.3)
 	try:
-		if frappe.db.table_exists("tabPattern Set Component"):
+		if frappe.db.table_exists("Pattern Set Component"):
 			if frappe.db.has_column("Pattern Set Component", "component_item") and frappe.db.has_column("Pattern Set Component", "item_code"):
 				frappe.db.sql(
 					"""
@@ -116,7 +116,7 @@ def setup_mould_set_management():
 					"""
 				)
 
-		if frappe.db.table_exists("tabPattern Set"):
+		if frappe.db.table_exists("Pattern Set"):
 			# Sync disabled flag
 			if frappe.db.has_column("Pattern Set", "disable") and frappe.db.has_column("Pattern Set", "disabled"):
 				frappe.db.sql(
@@ -125,6 +125,20 @@ def setup_mould_set_management():
 					SET disabled = disable
 					WHERE (disabled IS NULL OR disabled = 0)
 					AND disable = 1
+					"""
+				)
+
+			if frappe.db.has_column("Pattern Set", "engineering_status"):
+				frappe.db.sql(
+					"""
+					UPDATE `tabPattern Set`
+					SET engineering_status = CASE
+						WHEN engineering_status IN ('Current', 'Review Pending') THEN 'Open'
+						WHEN engineering_status IN ('Approved As-Is', 'Replaced') THEN 'Approved'
+						WHEN engineering_status = 'Rework Required' THEN 'Rejected'
+						ELSE 'Open'
+					END
+					WHERE IFNULL(engineering_status, '') NOT IN ('Open', 'Approved', 'Rejected')
 					"""
 				)
 

@@ -11,11 +11,7 @@
   "serial_no",
   "current_warehouse",
   "current_supplier",
-  "disposition",
-  "disposition_status",
-  "action_reference",
-  "reason_and_evidence",
-  "closure_date"
+  "reason_and_evidence"
  ],
  "fields": [
   {
@@ -56,40 +52,9 @@
   },
   {
    "allow_on_submit": 1,
-   "default": "Accept As-Is",
-   "fieldname": "disposition",
-   "fieldtype": "Select",
-   "in_list_view": 1,
-   "label": "Disposition",
-   "options": "Accept As-Is\nReturn to Company\nSupplier Rework\nReplace Component",
-   "reqd": 1
-  },
-  {
-   "allow_on_submit": 1,
-   "default": "Pending",
-   "fieldname": "disposition_status",
-   "fieldtype": "Select",
-   "in_list_view": 1,
-   "label": "Disposition Status",
-   "options": "Pending\nApproved As-Is\nRework Completed\nReturned\nReplaced"
-  },
-  {
-   "allow_on_submit": 1,
-   "fieldname": "action_reference",
-   "fieldtype": "Data",
-   "label": "Action / Document Reference"
-  },
-  {
-   "allow_on_submit": 1,
    "fieldname": "reason_and_evidence",
    "fieldtype": "Small Text",
    "label": "Reason & Evidence"
-  },
-  {
-   "allow_on_submit": 1,
-   "fieldname": "closure_date",
-   "fieldtype": "Date",
-   "label": "Closure Date"
   }
  ],
  "grid_page_length": 50,

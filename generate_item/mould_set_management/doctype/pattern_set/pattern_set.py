@@ -363,7 +363,6 @@ class PatternSet(Document):
 		if info:
 			self.status = info["status"]
 			self.completeness_status = info["completeness_status"]
-			self.engineering_status = info["engineering_status"]
 			self.current_warehouse = info["current_warehouse"]
 			self.current_supplier = info["current_supplier"]
 
@@ -378,7 +377,6 @@ class PatternSet(Document):
 		if info:
 			self.status = info["status"]
 			self.completeness_status = info["completeness_status"]
-			self.engineering_status = info["engineering_status"]
 			self.current_warehouse = info["current_warehouse"]
 			self.current_supplier = info["current_supplier"]
 

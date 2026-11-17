@@ -20,55 +20,13 @@ def normalize_val(v):
 	return (v or "").strip()
 
 
-def check_snapshot_mismatches(comp_rows):
-	"""
-	Compares snapshot fields on component rows against current Item fields.
-	Returns (has_unapproved_mismatch, has_approved_mismatch, mismatch_details)
-	"""
-	has_unapproved = False
-	has_approved = False
-	details = []
-
-	for r in comp_rows:
-		item_code = r.get("item_code") or r.get("component_item")
-		if not item_code or not frappe.db.exists("Item", item_code):
-			continue
-
-		item_fields = [f[0] for f in SNAPSHOT_FIELDS_MAP]
-		item_vals = frappe.db.get_value("Item", item_code, item_fields, as_dict=True) or {}
-
-		mismatch_in_row = False
-		row_diffs = []
-		for item_f, comp_f in SNAPSHOT_FIELDS_MAP:
-			curr_val = normalize_val(item_vals.get(item_f))
-			snap_val = normalize_val(r.get(comp_f))
-			if curr_val != snap_val:
-				mismatch_in_row = True
-				row_diffs.append(f"{comp_f}: snapshot='{snap_val}' vs item='{curr_val}'")
-
-		if mismatch_in_row:
-			is_approved_as_is = bool(r.get("approved_as_is"))
-			if is_approved_as_is:
-				has_approved = True
-			else:
-				has_unapproved = True
-			details.append({
-				"row_name": r.name,
-				"item_code": item_code,
-				"approved_as_is": is_approved_as_is,
-				"diffs": row_diffs,
-			})
-
-	return has_unapproved, has_approved, details
-
-
 def get_pattern_set_slots_and_serials(pattern_set_name):
 	"""
 	Returns component rows, attached serials, warehouse, and status calculation data for a Pattern Set.
 	Follows Specification v2.0:
 	Dual Status Model:
 	- completeness_status: Complete / Incomplete
-	- engineering_status: Current / Review Pending / Rework Required / Approved As-Is / Replaced / Disabled
+	- engineering_status: Open / Approved / Rejected
 	"""
 	doc = frappe.get_doc("Pattern Set", pattern_set_name)
 	
@@ -156,30 +114,10 @@ def get_pattern_set_slots_and_serials(pattern_set_name):
 	else:
 		completeness_status = "Incomplete"
 
-	# Engineering Status
-	is_disabled = bool(doc.get("disabled") or doc.get("disable"))
-	if is_disabled:
-		engineering_status = "Disabled"
-	else:
-		# Check open engineering change records
-		open_changes = frappe.db.sql("""
-			SELECT psec.name
-			FROM `tabPattern Set Engineering Change Item` pseci
-			JOIN `tabPattern Set Engineering Change` psec ON psec.name = pseci.parent
-			WHERE pseci.pattern_set = %s
-			  AND psec.docstatus = 0
-		""", (pattern_set_name,))
-		
-		has_unapproved, has_approved, _diffs = check_snapshot_mismatches(comp_rows)
-
-		if open_changes or has_unapproved:
-			engineering_status = "Review Pending"
-		elif has_approved:
-			engineering_status = "Approved As-Is"
-		else:
-			engineering_status = "Current"
+	engineering_status = doc.get("engineering_status") or "Open"
 
 	# Legacy/Combined Status
+	is_disabled = bool(doc.get("disabled") or doc.get("disable"))
 	if doc.docstatus == 0:
 		computed_status = "Draft"
 	elif doc.docstatus == 2:
@@ -256,7 +194,12 @@ def render_set_info_html(pattern_set_name):
 		""")
 
 	comp_color = "#28a745" if info["completeness_status"] == "Complete" else "#e06666"
-	eng_color = "#28a745" if info["engineering_status"] == "Current" else ("#17a2b8" if info["engineering_status"] == "Approved As-Is" else "#e0a96d")
+	eng_colors = {
+		"Open": "#e0a96d",
+		"Approved": "#28a745",
+		"Rejected": "#dc3545",
+	}
+	eng_color = eng_colors.get(info["engineering_status"], "#6c757d")
 	
 	wh_display_text = info["current_warehouse"] or "<span class='text-muted'>" + _("None (No components attached)") + "</span>"
 	supplier_display = f" <span class='badge bg-info text-white' style='margin-left: 6px;'>{info['current_supplier']}</span>" if info["current_supplier"] else ""
@@ -360,8 +303,8 @@ def render_transfer_history_html(pattern_set_name):
 
 def recalculate_pattern_set(pattern_set_name):
 	"""
-	Recalculates status, completeness_status, engineering_status,
-	current_warehouse, and current_supplier for a Pattern Set.
+	Recalculates status, completeness_status, current_warehouse, and current_supplier
+	for a Pattern Set. Engineering Status is managed by Engineering Change records.
 	Updates Pattern Set in the database.
 	"""
 	if not pattern_set_name or not frappe.db.exists("Pattern Set", pattern_set_name):
@@ -382,9 +325,42 @@ def recalculate_pattern_set(pattern_set_name):
 	updates = {
 		"status": info["status"],
 		"completeness_status": info["completeness_status"],
-		"engineering_status": info["engineering_status"],
 		"current_warehouse": info["current_warehouse"] or None,
 		"current_supplier": info["current_supplier"] or None,
 	}
 	frappe.db.set_value("Pattern Set", pattern_set_name, updates, update_modified=False)
 	return info
+
+
+def sync_pattern_set_engineering_status(pattern_set_name, status=None):
+	if not pattern_set_name or not frappe.db.exists("Pattern Set", pattern_set_name):
+		return None
+
+	if status is None:
+		active_changes = frappe.db.sql(
+			"""
+			SELECT psec.status
+			FROM `tabPattern Set Engineering Change Item` pseci
+			JOIN `tabPattern Set Engineering Change` psec ON psec.name = pseci.parent
+			WHERE pseci.pattern_set = %s
+			  AND psec.docstatus IN (0, 1)
+			ORDER BY CASE WHEN psec.docstatus = 0 THEN 0 ELSE 1 END,
+			         psec.modified DESC,
+			         psec.name DESC
+			LIMIT 1
+			""",
+			(pattern_set_name,),
+		)
+		status = active_changes[0][0] if active_changes else "Open"
+
+	if status not in ("Open", "Approved", "Rejected"):
+		frappe.throw(_("Invalid Engineering Status: {0}").format(status))
+
+	frappe.db.set_value(
+		"Pattern Set",
+		pattern_set_name,
+		"engineering_status",
+		status,
+		update_modified=False,
+	)
+	return status

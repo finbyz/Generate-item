@@ -46,8 +46,11 @@ frappe.ui.form.on("Pattern Set", {
 				});
 			});
 
-			frm.add_custom_button(__("Transfer Set"), function () {
+			let is_issue = frm.doc.engineering_status !== "Approved";
+			let action_label = is_issue ? __("Issue Set") : __("Transfer Set");
+			frm.add_custom_button(action_label, function () {
 				frappe.new_doc("Pattern Set Transfer", {
+					purpose: is_issue ? "Return" : "Transfer",
 					pattern_set: frm.doc.name,
 				});
 			});

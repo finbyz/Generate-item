@@ -13,9 +13,6 @@
   "change_date",
   "column_break_status",
   "status",
-  "engineering_approver",
-  "approval_date",
-  "closure_date",
   "amended_from",
   "section_break_changes",
   "old_drawing_no",
@@ -88,27 +85,8 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Status",
-   "options": "Open\nApproved\nRejected\nCancelled",
+   "options": "Open\nApproved\nRejected",
    "reqd": 1
-  },
-  {
-   "allow_on_submit": 1,
-   "fieldname": "engineering_approver",
-   "fieldtype": "Link",
-   "label": "Engineering Approver",
-   "options": "User"
-  },
-  {
-   "allow_on_submit": 1,
-   "fieldname": "approval_date",
-   "fieldtype": "Date",
-   "label": "Approval Date"
-  },
-  {
-   "allow_on_submit": 1,
-   "fieldname": "closure_date",
-   "fieldtype": "Date",
-   "label": "Closure Date"
   },
   {
    "fieldname": "amended_from",

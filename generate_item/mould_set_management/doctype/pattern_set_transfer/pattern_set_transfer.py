@@ -50,7 +50,15 @@ class PatternSetTransfer(Document):
 		ps = frappe.db.get_value(
 			"Pattern Set",
 			self.pattern_set,
-			["docstatus", "disabled", "disable", "current_warehouse"],
+			[
+				"docstatus",
+				"disabled",
+				"disable",
+				"current_warehouse",
+				"status",
+				"completeness_status",
+				"engineering_status",
+			],
 			as_dict=True,
 		)
 		if not ps:
@@ -81,36 +89,49 @@ class PatternSetTransfer(Document):
 		self.source_warehouse = info["current_warehouse"]
 		self.set_status = info["status"]
 		self.completeness_status = info["completeness_status"]
-		self.engineering_status = info["engineering_status"]
+		self.engineering_status = ps.engineering_status
 		self.source_supplier = info["current_supplier"]
 
-		# v2.0 Section 5: Transfer Eligibility
-		if info["completeness_status"] != "Complete":
+		if (
+			ps.status != "Complete"
+			or ps.completeness_status != "Complete"
+			or info["status"] != "Complete"
+			or info["completeness_status"] != "Complete"
+		):
 			frappe.throw(
-				_("Pattern Set {0} is Incomplete and cannot be transferred. All required components must be attached before transfer.").format(
-					frappe.bold(self.pattern_set)
-				)
+				_("Only Complete Pattern Sets can be selected for Pattern Set Transfer.")
 			)
 
-		if info["engineering_status"] not in ("Current", "Approved As-Is"):
-			frappe.throw(
-				_("Pattern Set {0} has Engineering Status '{1}' and cannot be transferred. Component drawing or purchase specification revisions must be reviewed and approved first.").format(
-					frappe.bold(self.pattern_set), frappe.bold(info["engineering_status"])
+		if self.purpose == "Transfer":
+			if ps.engineering_status != "Approved":
+				frappe.throw(
+					_("Pattern Set {0} must have Engineering Status Approved for Purpose Transfer.").format(
+						frappe.bold(self.pattern_set)
+					)
 				)
-			)
+		elif self.purpose == "Return":
+			if ps.engineering_status not in ("Open", "Approved", "Rejected"):
+				frappe.throw(
+					_("Pattern Set {0} has an unsupported Engineering Status: {1}.").format(
+						frappe.bold(self.pattern_set), frappe.bold(ps.engineering_status)
+					)
+				)
+		else:
+			frappe.throw(_("Purpose must be Transfer or Return."))
 
-		open_changes = frappe.db.sql("""
-			SELECT psec.name
-			FROM `tabPattern Set Engineering Change Item` pseci
-			JOIN `tabPattern Set Engineering Change` psec ON psec.name = pseci.parent
-			WHERE pseci.pattern_set = %s AND psec.docstatus = 0
-		""", (self.pattern_set,))
-		if open_changes:
-			frappe.throw(
-				_("Pattern Set {0} has an open Engineering Change ({1}) and cannot be transferred until disposition is approved.").format(
-					frappe.bold(self.pattern_set), frappe.bold(open_changes[0][0])
+		if self.purpose == "Transfer":
+			open_changes = frappe.db.sql("""
+				SELECT psec.name
+				FROM `tabPattern Set Engineering Change Item` pseci
+				JOIN `tabPattern Set Engineering Change` psec ON psec.name = pseci.parent
+				WHERE pseci.pattern_set = %s AND psec.docstatus = 0
+			""", (self.pattern_set,))
+			if open_changes:
+				frappe.throw(
+					_("Pattern Set {0} has an open Engineering Change ({1}) and cannot be transferred until its Engineering Status is Approved.").format(
+						frappe.bold(self.pattern_set), frappe.bold(open_changes[0][0])
+					)
 				)
-			)
 
 		if not self.items:
 			self.load_components_from_pattern_set()
@@ -146,7 +167,12 @@ class PatternSetTransfer(Document):
 		if self.target_warehouse == self.source_warehouse:
 			frappe.throw(_("Target Warehouse cannot be the same as Source Warehouse ({0}).").format(self.source_warehouse))
 
-		tgt_wh = frappe.db.get_value("Warehouse", self.target_warehouse, ["is_group", "disabled", "company"], as_dict=True)
+		tgt_wh = frappe.db.get_value(
+			"Warehouse",
+			self.target_warehouse,
+			["is_group", "disabled", "company", "custom_supplier"],
+			as_dict=True,
+		)
 		if not tgt_wh:
 			frappe.throw(_("Target Warehouse {0} does not exist.").format(self.target_warehouse))
 
@@ -155,6 +181,13 @@ class PatternSetTransfer(Document):
 
 		if tgt_wh.disabled:
 			frappe.throw(_("Target Warehouse {0} is disabled.").format(self.target_warehouse))
+
+		if self.purpose == "Return" and tgt_wh.custom_supplier:
+			frappe.throw(
+				_("Target Warehouse {0} is linked to Supplier {1}; Return requires a warehouse without a Supplier.").format(
+					self.target_warehouse, frappe.bold(tgt_wh.custom_supplier)
+				)
+			)
 
 		if self.company and tgt_wh.company and tgt_wh.company != self.company:
 			frappe.throw(

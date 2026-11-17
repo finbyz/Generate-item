@@ -9,6 +9,7 @@ from generate_item.mould_set_management.pattern_set_utils import (
 	get_pattern_set_slots_and_serials,
 	recalculate_pattern_set,
 	render_set_info_html,
+	sync_pattern_set_engineering_status,
 )
 from generate_item.mould_set_management.doctype.component_pairing_log.component_pairing_log import (
 	close_pairing,
@@ -305,11 +306,12 @@ class PatternSetComponentChange(Document):
 					source_doc=self.name,
 				)
 
-		# Recalculate status and location for this set and all previous sets touched
-		recalculate_pattern_set(self.pattern_set)
-		for ps in previous_sets_to_refresh:
-			if ps != self.pattern_set:
-				recalculate_pattern_set(ps)
+		self.recalculate_affected_pattern_sets(previous_sets_to_refresh)
+
+	def recalculate_affected_pattern_sets(self, previous_sets):
+		for pattern_set in {self.pattern_set, *previous_sets}:
+			recalculate_pattern_set(pattern_set)
+			sync_pattern_set_engineering_status(pattern_set)
 
 	def on_cancel(self):
 		"""
@@ -477,11 +479,7 @@ class PatternSetComponentChange(Document):
 					source_doc=self.name,
 				)
 
-		# Recalculate
-		recalculate_pattern_set(self.pattern_set)
-		for ps in previous_sets_to_refresh:
-			if ps != self.pattern_set:
-				recalculate_pattern_set(ps)
+		self.recalculate_affected_pattern_sets(previous_sets_to_refresh)
 
 
 @frappe.whitelist()
