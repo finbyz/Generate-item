@@ -236,14 +236,13 @@ class SalesTeamDashboard {
 		const pct = a.created ? Math.round((a.completed / a.created) * 100) : 0;
 
 		let days = "";
-		if (r.daily.length) {
-			const mx = Math.max(1, ...r.daily.map((d) => d.count));
-			const today = frappe.datetime.get_today();
-			const label = (d) => moment(d.date).format("ddd");
-			days = `<div class="std-days">${r.daily
+		const buckets = this.bucket_daily(r.daily || []);
+		if (buckets.length) {
+			const mx = Math.max(1, ...buckets.map((d) => d.count));
+			days = `<div class="std-days">${buckets
 				.map(
-					(d) => `<div class="${d.future ? "fut" : ""} ${d.date === today ? "today" : ""}" title="${frappe.datetime.str_to_user(d.date)}: ${d.count}">
-						<b>${d.count || ""}</b><i style="height:${(d.count / mx) * 70}px"></i>${label(d)}</div>`
+					(d) => `<div class="${d.future ? "fut" : ""} ${d.today ? "today" : ""}" title="${d.title}: ${d.count}">
+						<b>${d.count || ""}</b><i style="height:${(d.count / mx) * 70}px"></i>${d.label}</div>`
 				)
 				.join("")}</div>`;
 		}
@@ -264,6 +263,46 @@ class SalesTeamDashboard {
 			<small class="std-mut">${__("{0} of {1} Sales Orders completed ({2}%)", [a.completed, a.created, pct])} · ${range}</small>
 			${days}
 		`);
+	}
+
+	// Group daily counts so the bar strip stays readable for long ranges:
+	// up to 14 days -> one bar per day, up to ~3 months -> per week, else per month.
+	bucket_daily(daily) {
+		if (!daily.length) return [];
+		const today = frappe.datetime.get_today();
+		const n = daily.length;
+		const unit = n <= 14 ? "day" : n <= 98 ? "week" : "month";
+		const multiYear = moment(daily[0].date).year() !== moment(daily[n - 1].date).year();
+		const keyOf = (date) => {
+			const m = moment(date);
+			if (unit === "day") return m.format("YYYY-MM-DD");
+			if (unit === "week") return m.clone().isoWeekday(1).format("YYYY-MM-DD");
+			return m.format("YYYY-MM");
+		};
+
+		const map = new Map();
+		daily.forEach((d) => {
+			const k = keyOf(d.date);
+			if (!map.has(k)) map.set(k, { start: d.date, end: d.date, count: 0, future: true, today: false });
+			const b = map.get(k);
+			b.end = d.date;
+			b.count += d.count || 0;
+			b.future = b.future && !!d.future;
+			b.today = b.today || d.date === today;
+		});
+
+		return [...map.values()].map((b) => {
+			const s = moment(b.start);
+			let label;
+			if (unit === "day") label = s.format(n <= 7 ? "ddd" : "D MMM");
+			else if (unit === "week") label = s.format("D MMM");
+			else label = s.format(multiYear ? "MMM 'YY" : "MMM");
+			const title =
+				b.start === b.end
+					? frappe.datetime.str_to_user(b.start)
+					: `${frappe.datetime.str_to_user(b.start)} – ${frappe.datetime.str_to_user(b.end)}`;
+			return { ...b, label, title };
+		});
 	}
 
 	// ---------- 3. Ranking ----------
