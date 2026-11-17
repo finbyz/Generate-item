@@ -1,6 +1,19 @@
 // Copyright (c) 2026, Finbyz and contributors
 // For license information, please see license.txt
 
+const STD_DATE_PRESETS = [
+	"This Quarter",
+	"Today",
+	"This Week",
+	"Last Week",
+	"This Month",
+	"Last Month",
+	"Last Quarter",
+	"This Year",
+	"Last Year",
+	"Custom",
+];
+
 frappe.pages["sales-team-dashboard"].on_page_load = function (wrapper) {
 	frappe.sales_team_dashboard = new SalesTeamDashboard(wrapper);
 };
@@ -16,8 +29,14 @@ class SalesTeamDashboard {
 		});
 		this.page.set_secondary_action(__("Refresh"), () => this.refresh(), "refresh");
 		this.work = { rows: [], doctypes: [], filter: "ALL", show_all: false };
-		this.perf = { period: "week" };
-		this.rank = { week: "cur", doc: "ALL", metric: "docs", show_all: false };
+		this.perf = { preset: "This Week", ...this.resolve_date_preset("This Week") };
+		this.rank = {
+			preset: "This Week",
+			...this.resolve_date_preset("This Week"),
+			doc: "ALL",
+			metric: "docs",
+			show_all: false,
+		};
 		this.make_layout();
 		this.bind_events();
 		this.refresh();
@@ -29,7 +48,7 @@ class SalesTeamDashboard {
 				<div class="std-top">
 					<div>
 						<h1>${__("Sales Team Dashboard")}</h1>
-						<small class="std-mut">${frappe.utils.escape_html(frappe.session.user_fullname || frappe.session.user)}</small>
+						<small class="std-user-name">${frappe.utils.escape_html(frappe.session.user_fullname || frappe.session.user)}</small>
 					</div>
 				</div>
 
@@ -41,12 +60,12 @@ class SalesTeamDashboard {
 				</section>
 
 				<section class="std-card" data-section="performance">
-					<div class="std-hd"><h2>${__("2. My performance")}</h2><div class="std-seg std-perf-seg"></div></div>
+					<div class="std-hd"><h2>${__("2. My performance")}</h2><div class="std-date-filter std-perf-date"></div></div>
 					<div class="std-section-body"></div>
 				</section>
 
 				<section class="std-card" data-section="ranking">
-					<div class="std-hd"><h2>${__("3. Ranking")}</h2><div class="std-seg std-rank-week"></div></div>
+					<div class="std-hd"><h2>${__("3. Ranking")}</h2><div class="std-date-filter std-rank-date"></div></div>
 					<div class="std-seg std-rank-doc" style="margin-bottom:8px"></div>
 					<div class="std-seg std-rank-metric" style="margin-bottom:14px"></div>
 					<div class="std-section-body"></div>
@@ -77,9 +96,22 @@ class SalesTeamDashboard {
 			this.work.show_all = !this.work.show_all;
 			this.draw_work();
 		});
-		this.$body.find('[data-section="performance"]').on("click", ".std-perf-seg button", (e) => {
-			this.perf.period = $(e.currentTarget).attr("data-period");
-			this.render_performance();
+		this.$body.on("change", ".std-date-preset", (e) => {
+			const $target = $(e.currentTarget);
+			this.apply_date_preset($target.attr("data-date-section"), $target.val());
+		});
+		this.$body.on("change", ".std-date-input", (e) => {
+			const $target = $(e.currentTarget);
+			const section = $target.attr("data-date-section");
+			const filter = this.date_filter(section);
+			const $controls = this.date_controls(section);
+			const fromDate = $controls.find(".std-date-from").val();
+			const toDate = $controls.find(".std-date-to").val();
+			if (fromDate && toDate && fromDate <= toDate) {
+				filter.from_date = fromDate;
+				filter.to_date = toDate;
+				this.render_date_section(section);
+			}
 		});
 		const $r = this.$body.find('[data-section="ranking"]');
 		$r.on("click", "[data-rank-key]", (e) => {
@@ -172,23 +204,26 @@ class SalesTeamDashboard {
 
 	// ---------- 2. My performance (Sales Order) ----------
 	render_performance() {
-		const period = this.perf.period;
-		this.$body.find(".std-perf-seg").html(
-			[["day", __("Today")], ["week", __("This week")]]
-				.map(([v, l]) => `<button class="${v === period ? "on" : ""}" data-period="${v}">${l}</button>`)
-				.join("")
-		);
+		this.render_date_filter("performance");
 		this.section("performance").html(`<div class="std-na">${__("Loading...")}</div>`);
+		const previous = this.resolve_previous_range(this.perf.preset, this.perf.from_date, this.perf.to_date);
+		const req = {
+			preset: this.perf.preset,
+			from_date: this.perf.from_date,
+			to_date: this.perf.to_date,
+			prev_from_date: previous.from_date,
+			prev_to_date: previous.to_date,
+		};
 		frappe
-			.xcall("generate_item.generate_item.page.sales_team_dashboard.sales_team_dashboard.get_my_performance", { period })
+			.xcall("generate_item.generate_item.page.sales_team_dashboard.sales_team_dashboard.get_my_performance", req)
 			.then((r) => {
-				if (r.period === this.perf.period) this.draw_performance(r);
+				if (r.from_date === this.perf.from_date && r.to_date === this.perf.to_date) this.draw_performance(r);
 			});
 	}
 
 	draw_performance(r) {
 		const a = r.current, b = r.previous;
-		const vs = r.period === "day" ? __("yesterday") : __("last week");
+		const vs = this.previous_period_label(this.perf.preset);
 		const money = (v) => format_currency(v, r.currency, 0);
 		const delta = (x, y, as_pct) => {
 			const d = x - y;
@@ -239,7 +274,7 @@ class SalesTeamDashboard {
 			items
 				.map(([v, l]) => `<button class="${R[key] === v ? "on" : ""}" data-rank-key="${key}" data-rank-val="${v}">${l}</button>`)
 				.join("");
-		$sec.find(".std-rank-week").html(seg("week", [["cur", __("This week")], ["prev", __("Last week")]]));
+		this.render_date_filter("ranking");
 		$sec.find(".std-rank-doc").html(
 			seg("doc", [["ALL", __("All documents")], ["SO", "SO"], ["MR", "MR"], ["DN", "DN"], ["OMR", "OMR"], ["BMR", "BMR"]])
 		);
@@ -247,11 +282,11 @@ class SalesTeamDashboard {
 		$sec.find(".std-rank-all").prop("hidden", true);
 		this.section("ranking").html(`<div class="std-na">${__("Loading...")}</div>`);
 
-		const req = { week: R.week, doc: R.doc, metric: R.metric };
+		const req = { from_date: R.from_date, to_date: R.to_date, doc: R.doc, metric: R.metric };
 		frappe
 			.xcall("generate_item.generate_item.page.sales_team_dashboard.sales_team_dashboard.get_ranking", req)
 			.then((r) => {
-				if (r.week !== R.week || r.doc !== R.doc || r.metric !== R.metric) return;
+				if (r.from_date !== R.from_date || r.to_date !== R.to_date || r.doc !== R.doc || r.metric !== R.metric) return;
 				R.data = r;
 				this.draw_ranking(r);
 			});
@@ -274,7 +309,7 @@ class SalesTeamDashboard {
 		const rows = r.rows || [];
 		if (!rows.length) {
 			$all.prop("hidden", true);
-			this.section("ranking").html(`<div class="std-na">${__("No one to rank for this week.")}</div>`);
+			this.section("ranking").html(`<div class="std-na">${__("No one to rank for this period.")}</div>`);
 			return;
 		}
 
@@ -289,7 +324,7 @@ class SalesTeamDashboard {
 		let hero;
 		if (mi < 0) {
 			const why = r.doc === "OMR" || r.doc === "BMR"
-				? __("Only users who created a Sales Order this week are ranked for {0}.", [r.doc])
+				? __("Only users who created a Sales Order in this period are ranked for {0}.", [r.doc])
 				: __("Only users with the {0} role are ranked.", [r.role]);
 			hero = `<div class="std-hero"><div><b style="font-size:20px">${__("You are not in this ranking")}</b><br><span>${why}</span></div></div>`;
 		} else {
@@ -333,5 +368,150 @@ class SalesTeamDashboard {
 			<div class="std-sw"><table class="std-tbl">${head}${body}</table></div>
 			<small class="std-mut">${note} ${__("Ties share the same rank.")} · ${range}</small>
 		`);
+	}
+
+	date_filter(section) {
+		return section === "performance" ? this.perf : this.rank;
+	}
+
+	date_controls(section) {
+		return this.$body.find(section === "performance" ? ".std-perf-date" : ".std-rank-date");
+	}
+
+	render_date_filter(section) {
+		const filter = this.date_filter(section);
+		this.date_controls(section).html(`
+			<select class="std-date-preset" data-date-section="${section}" aria-label="${__("Period")}">
+				${STD_DATE_PRESETS.map((preset) => `<option value="${preset}" ${preset === filter.preset ? "selected" : ""}>${__(preset)}</option>`).join("")}
+			</select>
+			<input class="std-date-input std-date-from" data-date-section="${section}" type="date" aria-label="${__("From date")}" value="${filter.from_date}" ${filter.preset !== "Custom" ? "disabled" : ""}>
+			<span class="std-date-sep">${__("to")}</span>
+			<input class="std-date-input std-date-to" data-date-section="${section}" type="date" aria-label="${__("To date")}" value="${filter.to_date}" ${filter.preset !== "Custom" ? "disabled" : ""}>
+		`);
+	}
+
+	apply_date_preset(section, preset) {
+		const filter = this.date_filter(section);
+		filter.preset = preset;
+		if (preset !== "Custom") Object.assign(filter, this.resolve_date_preset(preset));
+		this.render_date_section(section);
+	}
+
+	render_date_section(section) {
+		if (section === "performance") this.render_performance();
+		else this.render_ranking();
+	}
+
+	resolve_date_preset(preset) {
+		const today = frappe.datetime.get_today();
+		const todayDate = frappe.datetime.str_to_obj(today);
+		const fmt = (date) => frappe.datetime.obj_to_str(date);
+		const addDays = (date, count) => {
+			const result = new Date(date);
+			result.setDate(result.getDate() + count);
+			return result;
+		};
+		const subMonths = (date, count) => {
+			const result = new Date(date);
+			result.setMonth(result.getMonth() - count);
+			return result;
+		};
+		const daysToMonday = todayDate.getDay() === 0 ? -6 : 1 - todayDate.getDay();
+
+		switch (preset) {
+			case "Today":
+				return { from_date: today, to_date: today };
+			case "This Week":
+				return { from_date: fmt(addDays(todayDate, daysToMonday)), to_date: today };
+			case "Last Week": {
+				const from = addDays(todayDate, daysToMonday - 7);
+				return { from_date: fmt(from), to_date: fmt(addDays(from, 6)) };
+			}
+			case "This Month":
+				return { from_date: fmt(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1)), to_date: today };
+			case "Last Month":
+				return {
+					from_date: fmt(new Date(todayDate.getFullYear(), todayDate.getMonth() - 1, 1)),
+					to_date: fmt(new Date(todayDate.getFullYear(), todayDate.getMonth(), 0)),
+				};
+			case "This Quarter":
+				return { from_date: fmt(subMonths(todayDate, 3)), to_date: today };
+			case "Last Quarter": {
+				const thisQuarterStart = subMonths(todayDate, 3);
+				return {
+					from_date: fmt(subMonths(thisQuarterStart, 3)),
+					to_date: fmt(addDays(thisQuarterStart, -1)),
+				};
+			}
+			case "This Year":
+				return { from_date: fmt(new Date(todayDate.getFullYear(), 0, 1)), to_date: today };
+			case "Last Year":
+				return {
+					from_date: fmt(new Date(todayDate.getFullYear() - 1, 0, 1)),
+					to_date: fmt(new Date(todayDate.getFullYear() - 1, 11, 31)),
+				};
+			default:
+				return { from_date: today, to_date: today };
+		}
+	}
+
+	resolve_previous_range(preset, fromDate, toDate) {
+		const from = frappe.datetime.str_to_obj(fromDate);
+		const to = frappe.datetime.str_to_obj(toDate);
+		const fmt = (date) => frappe.datetime.obj_to_str(date);
+		const addDays = (date, count) => {
+			const result = new Date(date);
+			result.setDate(result.getDate() + count);
+			return result;
+		};
+		const subtractMonths = (date, count) => {
+			const result = new Date(date);
+			result.setMonth(result.getMonth() - count);
+			return result;
+		};
+
+		switch (preset) {
+			case "Today": {
+				const previous = addDays(from, -1);
+				return { from_date: fmt(previous), to_date: fmt(previous) };
+			}
+			case "This Week":
+			case "Last Week":
+				return { from_date: fmt(addDays(from, -7)), to_date: fmt(addDays(to, -7)) };
+			case "This Month":
+			case "Last Month":
+				return {
+					from_date: fmt(new Date(from.getFullYear(), from.getMonth() - 1, 1)),
+					to_date: fmt(new Date(from.getFullYear(), from.getMonth(), 0)),
+				};
+			case "This Quarter":
+			case "Last Quarter":
+				return { from_date: fmt(subtractMonths(from, 3)), to_date: fmt(subtractMonths(to, 3)) };
+			case "This Year":
+			case "Last Year":
+				return {
+					from_date: fmt(new Date(from.getFullYear() - 1, 0, 1)),
+					to_date: fmt(new Date(from.getFullYear() - 1, 11, 31)),
+				};
+			default: {
+				const days = Math.round((to - from) / 86400000) + 1;
+				const previousTo = addDays(from, -1);
+				return { from_date: fmt(addDays(previousTo, -(days - 1))), to_date: fmt(previousTo) };
+			}
+		}
+	}
+
+	previous_period_label(preset) {
+		return {
+			Today: __("yesterday"),
+			"This Week": __("last week"),
+			"Last Week": __("prior week"),
+			"This Month": __("last month"),
+			"Last Month": __("prior month"),
+			"This Quarter": __("previous quarter"),
+			"Last Quarter": __("quarter before that"),
+			"This Year": __("last year"),
+			"Last Year": __("prior year"),
+		}[preset] || __("prior period");
 	}
 }

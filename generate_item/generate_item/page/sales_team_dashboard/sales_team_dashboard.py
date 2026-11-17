@@ -127,36 +127,50 @@ def _so_stats(user, from_date, to_date):
 
 
 @frappe.whitelist()
-def get_my_performance(period="week"):
+def get_my_performance(period="week", preset=None, from_date=None, to_date=None, prev_from_date=None, prev_to_date=None):
 	"""Sales Orders created by the logged-in user for the period vs the previous period."""
 	from frappe.utils import add_days
 
-	if period not in ("day", "week"):
-		period = "week"
-
 	today = getdate(nowdate())
-	cur_from, cur_to = _period_range(period, today)
-	prev_from, prev_to = _period_range(period, today, offset=1)
+	if preset:
+		period = preset
+	if from_date and to_date:
+		cur_from, cur_to = getdate(from_date), getdate(to_date)
+		if cur_from > cur_to:
+			frappe.throw("From date cannot be after To date.")
+		period = period or "custom"
+		if prev_from_date and prev_to_date:
+			prev_from, prev_to = getdate(prev_from_date), getdate(prev_to_date)
+			if prev_from > prev_to:
+				frappe.throw("Previous From date cannot be after Previous To date.")
+		else:
+			previous_days = (cur_to - cur_from).days + 1
+			prev_to = add_days(cur_from, -1)
+			prev_from = add_days(prev_to, -(previous_days - 1))
+	else:
+		if period not in ("day", "week"):
+			period = "week"
+		cur_from, cur_to = _period_range(period, today)
+		prev_from, prev_to = _period_range(period, today, offset=1)
 
 	user = frappe.session.user
 
 	daily = []
-	if period != "day":
-		counts = dict(
-			frappe.db.sql(
-				f"""
-				select so.transaction_date, count(*)
-				from `tabSales Order` so
-				where {SO_CONDITION}
-				group by so.transaction_date
-				""",
-				{"user": user, "from": cur_from, "to": cur_to},
-			)
+	counts = dict(
+		frappe.db.sql(
+			f"""
+			select so.transaction_date, count(*)
+			from `tabSales Order` so
+			where {SO_CONDITION}
+			group by so.transaction_date
+			""",
+			{"user": user, "from": cur_from, "to": cur_to},
 		)
-		d = cur_from
-		while d <= cur_to:
-			daily.append({"date": d, "count": counts.get(d, 0), "future": d > today})
-			d = add_days(d, 1)
+	)
+	d = cur_from
+	while d <= cur_to:
+		daily.append({"date": d, "count": counts.get(d, 0), "future": d > today})
+		d = add_days(d, 1)
 
 	return {
 		"period": period,
@@ -229,7 +243,7 @@ def _doc_stats(key, users, from_date, to_date):
 
 
 @frappe.whitelist()
-def get_ranking(week="cur", doc="ALL", metric="docs"):
+def get_ranking(week="cur", doc="ALL", metric="docs", from_date=None, to_date=None):
 	from frappe.utils import add_days
 
 	if week not in ("cur", "prev"):
@@ -239,8 +253,13 @@ def get_ranking(week="cur", doc="ALL", metric="docs"):
 	if metric not in ("docs", "lines", "value"):
 		metric = "docs"
 
-	today = getdate(nowdate())
-	from_date, to_date = _period_range("week", today, offset=1 if week == "prev" else 0)
+	if from_date and to_date:
+		from_date, to_date = getdate(from_date), getdate(to_date)
+		if from_date > to_date:
+			frappe.throw("From date cannot be after To date.")
+	else:
+		today = getdate(nowdate())
+		from_date, to_date = _period_range("week", today, offset=1 if week == "prev" else 0)
 
 	base = {
 		"week": week, "doc": doc, "metric": metric,

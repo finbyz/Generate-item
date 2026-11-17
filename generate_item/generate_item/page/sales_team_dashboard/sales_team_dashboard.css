@@ -2,6 +2,7 @@
 	max-width:none;margin:0;padding:18px 0;color:var(--std-ink);font-weight:500}
 .std-wrap .std-top{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:16px}
 .std-wrap .std-top h1{font-size:26px;font-weight:800;margin:0;color:var(--std-pri);letter-spacing:-.02em}
+.std-wrap .std-top .std-user-name{display:block;color:var(--std-mut);font-size:14px;font-weight:600;margin-top:3px}
 .std-wrap .std-mut{color:var(--std-mut)}
 .std-wrap .std-card{background:var(--std-card);border:1px solid var(--std-line);border-radius:24px;padding:22px;margin-bottom:20px;box-shadow:0 1px 2px rgba(20,30,50,.04),0 8px 24px rgba(20,30,50,.05)}
 .std-wrap .std-hd{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:14px}
@@ -9,6 +10,10 @@
 .std-wrap .std-seg{display:flex;gap:6px;flex-wrap:wrap}
 .std-wrap .std-seg button{font-weight:600;color:var(--std-ink);background:var(--std-card);border:1.5px solid var(--std-line);border-radius:99px;padding:6px 16px;cursor:pointer}
 .std-wrap .std-seg button.on{background:var(--std-pri);border-color:var(--std-pri);color:#fff}
+.std-wrap .std-date-filter{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.std-wrap .std-date-filter select,.std-wrap .std-date-filter input{font:inherit;color:var(--std-ink);background:var(--std-card);border:1.5px solid var(--std-line);border-radius:8px;padding:5px 8px;max-width:100%}
+.std-wrap .std-date-filter input:disabled{opacity:.65}
+.std-wrap .std-date-sep{color:var(--std-mut);font-size:12px}
 .std-wrap .std-na{padding:24px;background:var(--std-bg);border-radius:18px;text-align:center;color:var(--std-mut)}
 @media(max-width:600px){.std-wrap .std-card{padding:16px}}
 .std-wrap .std-sw{overflow-x:auto}
