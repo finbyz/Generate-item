@@ -318,11 +318,17 @@ class PatternSetTransfer(Document):
 				cc_doc.submit()
 				self.db_set("component_change", cc_doc.name)
 
-			# Step 3: Create and submit Stock Entry of type Material Transfer
+			# Step 3: Create and submit Stock Entry (purpose Material Transfer).
+			# "Transfer Set" (purpose Transfer) uses the dedicated "Pattern Set Transfer"
+			# Stock Entry Type; "Issue Set" (purpose Return) keeps standard "Material Transfer".
 			moving_rows = [row for row in self.items if row.include]
 			stock_entry = frappe.new_doc("Stock Entry")
 			stock_entry.purpose = "Material Transfer"
-			stock_entry.stock_entry_type = "Material Transfer"
+			stock_entry.stock_entry_type = (
+				"Pattern Set Transfer"
+				if self.purpose == "Transfer" and frappe.db.exists("Stock Entry Type", "Pattern Set Transfer")
+				else "Material Transfer"
+			)
 			stock_entry.company = self.company
 			stock_entry.posting_date = self.posting_date
 			stock_entry.from_warehouse = self.source_warehouse
@@ -364,7 +370,8 @@ class PatternSetTransfer(Document):
 						row_dict["batch_no"] = sn_batch
 				stock_entry.append("items", row_dict)
 
-			stock_entry.set_stock_entry_type()
+			# Note: do not call stock_entry.set_stock_entry_type() here; in v16 it resets
+			# the type to the standard one for the purpose, overriding the type set above.
 			stock_entry.flags.ignore_permissions = True
 			stock_entry.insert(ignore_permissions=True)
 			stock_entry.submit()
