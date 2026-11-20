@@ -4,15 +4,49 @@
 
 from __future__ import unicode_literals
 import frappe
+from frappe import _
 from frappe.model.document import Document
 from frappe.utils import flt,cint ,comma_or, nowdate, getdate
 from frappe.model.mapper import get_mapped_doc
 from generate_item.utils.sales_order import update_proforma_details,change_sales_order_status
 from erpnext.controllers.status_updater import StatusUpdater
+from erpnext.utilities.transaction_base import TransactionBase
 # from generate_item.api import validate_sales_person
 
 
-class ProformaInvoice(Document):
+class ProformaInvoice(TransactionBase):
+	# TransactionBase gives the server-side item selection (process_item_selection) that the
+	# ERPNext v16 selling form calls when an item is picked.
+	def calculate_taxes_and_totals(self):
+		from erpnext.controllers.taxes_and_totals import calculate_taxes_and_totals
+
+		# ERPNext's totals code reads tax.category for doctypes outside its sales list.
+		# Sales tax rows have no such field, so treat every row as "Total".
+		for tax in self.get("taxes") or []:
+			if not tax.get("category"):
+				tax.category = "Total"
+			if not tax.get("add_deduct_tax"):
+				tax.add_deduct_tax = "Add"
+
+		calculate_taxes_and_totals(self)
+
+	def apply_shipping_rule(self):
+		if self.get("shipping_rule"):
+			shipping_rule = frappe.get_doc("Shipping Rule", self.shipping_rule)
+			shipping_rule.apply(self)
+			self.calculate_taxes_and_totals()
+
+	def is_rounded_total_disabled(self):
+		if self.meta.get_field("disable_rounded_total"):
+			return self.disable_rounded_total
+		return frappe.db.get_single_value("Global Defaults", "disable_rounded_total")
+
+	def is_internal_transfer(self):
+		return False
+
+	def drop_mapped_discount(self, item):
+		item.mapped_additional_discount_amount = 0
+
 	def before_insert(self):
 		self.set_naming_series_by_branch()
 
@@ -30,8 +64,19 @@ class ProformaInvoice(Document):
 			self.payment_due_amount = flt(self.rounded_total) * self.payment_percentage / 100
 		for item in self.items:
 			item.payment_amount = flt(item.net_amount) * self.payment_percentage / 100
+		self.validate_sales_team_allocation()
 		self.validate_sales_person()
 	
+	def validate_sales_team_allocation(self):
+		if not self.sales_team:
+			return
+		total = sum(flt(d.allocated_percentage) for d in self.sales_team)
+		if abs(flt(total, 2) - 100) > 0.01:
+			frappe.throw(
+				_("Total contribution of the Sales Team must be 100%. It is currently {0}%.").format(flt(total, 2)),
+				title=_("Invalid Sales Team"),
+			)
+
 	def validate_sales_person(self):
 		if self.sales_team:
 			self.sales_person=self.sales_team[0].sales_person
@@ -58,7 +103,10 @@ def set_status(self, update_modified= True):
 			self.db_set('status','Partially Paid', update_modified= update_modified)
 		else:
 			self.db_set('status','Unpaid', update_modified= update_modified)
-	change_sales_order_status(frappe.get_doc("Sales Order",self.items[0].sales_order), update_modified= update_modified)
+	# Only when the invoice is linked to a Sales Order (items added by hand have none).
+	sales_orders = {d.sales_order for d in self.items if d.sales_order}
+	for sales_order in sales_orders:
+		change_sales_order_status(frappe.get_doc("Sales Order", sales_order), update_modified= update_modified)
 
 @frappe.whitelist()
 def create_proforma_invoice(source_name, target_doc=None):
@@ -85,7 +133,6 @@ def create_proforma_invoice(source_name, target_doc=None):
 				"payment_terms_template": "payment_terms_template",
 				"bank_account": "bank_account",
 				"sales_person": "sales_person",
-				"sales_team": "sales_team",	
 				"tax_id": "tax_id",
 				"taxes": "taxes",
 			},
