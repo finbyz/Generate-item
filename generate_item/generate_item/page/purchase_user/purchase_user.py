@@ -581,14 +581,18 @@ def get_dashboard(
 
     item_summary = _build_item_summary(cards)
     total_distinct_items = len({it["item_code"] for it in item_summary})
-    trends = _get_mr_trends(branch_filter, valid_users, from_date, to_date)
+    po_metrics = _get_po_metrics(branch_filter, valid_users, from_date, to_date, prev_from_date, prev_to_date)
+    po_workflow_status = _get_po_workflow_status(branch_filter, valid_users, from_date, to_date)
+    po_supplier_orders = _get_po_supplier_orders(branch_filter, valid_users, from_date, to_date)
     po_leaderboard = _get_po_creator_leaderboard(branch_filter, valid_users, from_date, to_date)
 
     return {
         "cards": cards,
         "item_summary": item_summary,
         "total_distinct_items": total_distinct_items,
-        "trends": trends,
+        "po_metrics": po_metrics,
+        "po_workflow_status": po_workflow_status,
+        "po_supplier_orders": po_supplier_orders,
         "po_leaderboard": po_leaderboard,
         "active_filters": {
             "branch": branch_val,
@@ -684,128 +688,177 @@ def _get_po_creator_leaderboard(
     return result
 
 
-def _get_mr_trends(
+def _get_po_metrics(
     branch_filter: Any,
     users: list[str],
     from_date: str | None,
     to_date: str | None,
+    prev_from_date: str | None = None,
+    prev_to_date: str | None = None,
 ) -> dict[str, Any]:
-    """Calculate daily Material Request item procurement trends for the period."""
-    if not _doctype_exists("Material Request"):
-        return {"daily_data": [], "trend_direction": "stable", "trend_emoji": "▬", "change_percentage": 0, "total_this_month": 0}
+    """On Time Delivery, Total PO Net Value and Average PO Value for submitted Purchase Orders.
 
-    today_str = nowdate()
-    start_d = getdate(from_date) if from_date else getdate(today_str)
-    end_d = getdate(to_date) if to_date else getdate(today_str)
+    On Time Delivery: a PO is "due" when its Required By date has passed or it is fully received.
+    It is "on time" when it is fully received and the last Purchase Receipt was posted on or
+    before the PO Required By date (schedule_date).
+    """
+    empty = {
+        "po_count": 0, "total_net_value": 0.0, "avg_po_value": 0.0,
+        "on_time_count": 0, "due_count": 0, "late_count": 0, "on_time_pct": 0.0,
+        "previous": None,
+    }
+    if not _doctype_exists("Purchase Order") or not frappe.has_permission("Purchase Order", "read"):
+        return empty
 
-    # If start and end date are the same day (e.g. Today filter), expand visualization window to 30 days
-    is_single_day = (start_d == end_d)
-    vis_start_d = frappe.utils.add_days(end_d, -29) if is_single_day else start_d
+    def _compute(f_date: str | None, t_date: str | None) -> dict[str, Any]:
+        where_sql, params = _build_sql_where("po", "transaction_date", f_date, t_date, users, branch_filter)
 
-    where_clauses = ["mr.docstatus = 1", "mr.material_request_type = 'Purchase'"]
-    params: list[Any] = []
+        try:
+            val = frappe.db.sql(f"""
+                SELECT COUNT(po.name) AS cnt, COALESCE(SUM(po.base_net_total), 0) AS net_total
+                FROM `tabPurchase Order` po
+                WHERE {where_sql}
+            """, params, as_dict=True)
+        except Exception:
+            val = []
+        po_count = cint(val[0].get("cnt")) if val else 0
+        net_total = flt(val[0].get("net_total")) if val else 0.0
 
-    where_clauses.append("mr.transaction_date BETWEEN %s AND %s")
-    params.extend([str(vis_start_d), str(end_d)])
+        try:
+            otd = frappe.db.sql(f"""
+                SELECT
+                    COUNT(po.name) AS due_cnt,
+                    COALESCE(SUM(CASE WHEN po.per_received >= 100
+                        AND pr_last.last_date IS NOT NULL
+                        AND pr_last.last_date <= po.schedule_date THEN 1 ELSE 0 END), 0) AS on_time_cnt
+                FROM `tabPurchase Order` po
+                LEFT JOIN (
+                    SELECT pri.purchase_order, MAX(pr.posting_date) AS last_date
+                    FROM `tabPurchase Receipt Item` pri
+                    INNER JOIN `tabPurchase Receipt` pr ON pr.name = pri.parent AND pr.docstatus = 1
+                    WHERE COALESCE(pri.purchase_order, '') != ''
+                    GROUP BY pri.purchase_order
+                ) pr_last ON pr_last.purchase_order = po.name
+                WHERE {where_sql}
+                    AND po.status NOT IN ('Closed', 'On Hold')
+                    AND po.schedule_date IS NOT NULL
+                    AND (po.per_received >= 100 OR po.schedule_date < %s)
+            """, params + [nowdate()], as_dict=True)
+        except Exception:
+            otd = []
+        due_cnt = cint(otd[0].get("due_cnt")) if otd else 0
+        on_time_cnt = cint(otd[0].get("on_time_cnt")) if otd else 0
 
-    if users:
-        where_clauses.append("mr.owner IN %s")
-        params.append(tuple(users))
+        return {
+            "po_count": po_count,
+            "total_net_value": round(net_total, 2),
+            "avg_po_value": round(net_total / po_count, 2) if po_count else 0.0,
+            "on_time_count": on_time_cnt,
+            "due_count": due_cnt,
+            "late_count": max(due_cnt - on_time_cnt, 0),
+            "on_time_pct": round((on_time_cnt / due_cnt) * 100, 1) if due_cnt else 0.0,
+        }
 
-    if branch_filter:
-        if isinstance(branch_filter, (list, tuple)) and len(branch_filter) == 2 and branch_filter[0] == "in":
-            where_clauses.append("mr.branch IN %s")
-            params.append(tuple(branch_filter[1]))
-        elif isinstance(branch_filter, str):
-            where_clauses.append("mr.branch = %s")
-            params.append(branch_filter)
+    result = _compute(from_date, to_date)
+    result["previous"] = _compute(prev_from_date, prev_to_date) if (prev_from_date or prev_to_date) else None
+    return result
 
-    has_item_dt = _doctype_exists("Material Request Item")
-    where_sql = " AND ".join(where_clauses)
 
-    if has_item_dt:
-        query = f"""
-            SELECT
-                mr.transaction_date AS d_date,
-                COUNT(mri.name) AS count,
-                COUNT(DISTINCT mr.name) AS doc_count,
-                COALESCE(SUM(mri.qty), 0) AS total_qty
-            FROM `tabMaterial Request` mr
-            LEFT JOIN `tabMaterial Request Item` mri
-                ON mri.parent = mr.name AND mri.parenttype = 'Material Request'
-            WHERE {where_sql}
-            GROUP BY mr.transaction_date
-            ORDER BY mr.transaction_date ASC
-        """
-    else:
-        query = f"""
-            SELECT
-                mr.transaction_date AS d_date,
-                COUNT(mr.name) AS count,
-                COUNT(mr.name) AS doc_count,
-                0 AS total_qty
-            FROM `tabMaterial Request` mr
-            WHERE {where_sql}
-            GROUP BY mr.transaction_date
-            ORDER BY mr.transaction_date ASC
-        """
+def _get_po_workflow_status(
+    branch_filter: Any,
+    users: list[str],
+    from_date: str | None,
+    to_date: str | None,
+) -> list[dict[str, Any]]:
+    """Purchase Orders grouped by workflow state (draft and submitted, cancelled excluded)."""
+    if not _doctype_exists("Purchase Order") or not frappe.has_permission("Purchase Order", "read"):
+        return []
+
+    state_field = "workflow_state" if _has_field("Purchase Order", "workflow_state") else "status"
+    where_sql, params = _build_sql_where("po", "transaction_date", from_date, to_date, users, branch_filter)
+    # _build_sql_where always adds docstatus = 1; workflow view also needs drafts
+    where_sql = where_sql.replace("po.docstatus = 1", "po.docstatus < 2", 1)
 
     try:
-        daily_counts = frappe.db.sql(query, params, as_dict=True)
+        rows = frappe.db.sql(f"""
+            SELECT
+                COALESCE(NULLIF(po.`{state_field}`, ''), 'Not Set') AS workflow_state,
+                COUNT(po.name) AS count,
+                COALESCE(SUM(po.base_net_total), 0) AS net_value
+            FROM `tabPurchase Order` po
+            WHERE {where_sql}
+            GROUP BY 1
+            ORDER BY count DESC
+        """, params, as_dict=True)
     except Exception:
-        daily_counts = []
+        rows = []
 
-    date_map = {}
-    for row in daily_counts:
-        d_val = row.get("d_date")
-        if d_val:
-            d_str = str(getdate(d_val))
-            item_cnt = cint(row.get("count"))
-            doc_cnt = cint(row.get("doc_count"))
-            date_map[d_str] = item_cnt if item_cnt > 0 else doc_cnt
+    return [
+        {
+            "workflow_state": r.get("workflow_state") or "Not Set",
+            "state_field": state_field,
+            "count": cint(r.get("count")),
+            "net_value": round(flt(r.get("net_value")), 2),
+        }
+        for r in rows
+    ]
 
-    trends = []
-    cur = getdate(vis_start_d)
-    target_end = getdate(end_d)
-    safety = 0
-    while cur <= target_end and safety < 400:
-        d_str = str(cur)
-        trends.append({
-            "date": d_str,
-            "count": date_map.get(d_str, 0),
-            "label": cur.strftime("%d %b"),
-        })
-        cur = frappe.utils.add_days(cur, 1)
-        safety += 1
 
-    counts = [t["count"] for t in trends]
-    total_in_period = sum(counts)
+def _get_po_supplier_orders(
+    branch_filter: Any,
+    users: list[str],
+    from_date: str | None,
+    to_date: str | None,
+    limit: int = 3000,
+) -> dict[str, Any]:
+    """Submitted Purchase Orders with supplier and creator, for the supplier-wise drill-down.
 
-    # Calculate trend percentage (first half vs second half)
-    if len(trends) >= 2:
-        mid = len(trends) // 2
-        first_half = sum(t["count"] for t in trends[:mid])
-        second_half = sum(t["count"] for t in trends[mid:])
-        if first_half > 0:
-            change_pct = ((second_half - first_half) / first_half) * 100
-        else:
-            change_pct = 0 if second_half == 0 else 100
+    The page groups these rows by supplier (optionally for one creator) and expands a
+    supplier to list its Purchase Orders.
+    """
+    if not _doctype_exists("Purchase Order") or not frappe.has_permission("Purchase Order", "read"):
+        return {"rows": [], "truncated": False}
 
-        if change_pct < -10:
-            trend_direction, trend_emoji = "down", "📉"
-        elif change_pct > 10:
-            trend_direction, trend_emoji = "up", "📈"
-        else:
-            trend_direction, trend_emoji = "stable", "📊"
-    else:
-        change_pct, trend_direction, trend_emoji = 0, "stable", "📊"
+    where_sql, params = _build_sql_where("po", "transaction_date", from_date, to_date, users, branch_filter)
+    wf_sel = "COALESCE(po.workflow_state, '')" if _has_field("Purchase Order", "workflow_state") else "''"
+
+    try:
+        rows = frappe.db.sql(f"""
+            SELECT
+                po.name,
+                po.transaction_date,
+                COALESCE(po.supplier, '') AS supplier,
+                COALESCE(NULLIF(po.supplier_name, ''), po.supplier, '') AS supplier_name,
+                po.owner,
+                COALESCE(po.base_net_total, 0) AS net_value,
+                COALESCE(po.status, '') AS status,
+                {wf_sel} AS workflow_state
+            FROM `tabPurchase Order` po
+            WHERE {where_sql}
+            ORDER BY po.transaction_date DESC, po.name DESC
+            LIMIT {cint(limit) + 1}
+        """, params, as_dict=True)
+    except Exception:
+        rows = []
+
+    truncated = len(rows) > cint(limit)
+    rows = rows[: cint(limit)]
 
     return {
-        "daily_data": trends,
-        "trend_direction": trend_direction,
-        "trend_emoji": trend_emoji,
-        "change_percentage": round(change_pct, 1),
-        "total_this_month": total_in_period,
+        "rows": [
+            {
+                "name": r.get("name"),
+                "date": str(r.get("transaction_date") or ""),
+                "supplier": r.get("supplier") or "",
+                "supplier_name": r.get("supplier_name") or r.get("supplier") or "",
+                "owner": r.get("owner") or "",
+                "net_value": round(flt(r.get("net_value")), 2),
+                "status": r.get("status") or "",
+                "workflow_state": r.get("workflow_state") or "",
+            }
+            for r in rows
+        ],
+        "truncated": truncated,
     }
 
 
