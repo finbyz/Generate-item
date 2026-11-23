@@ -320,6 +320,7 @@ doc_events = {
         "before_validate": "generate_item.utils.bom.before_validate",
         "before_insert": "generate_item.utils.bom.before_insert",
         "before_save": "generate_item.utils.bom.before_save",
+        "before_cancel": "generate_item.utils.bom.ignore_bom_modification_request_links",
         "on_cancel": "generate_item.utils.bom.clear_custom_fields_on_cancel",
         "on_submit": "generate_item.utils.bom.on_submit",
         "on_trash" : "generate_item.utils.bom.on_trash"

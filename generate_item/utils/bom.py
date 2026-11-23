@@ -3,6 +3,15 @@ from generate_item.utils.bom_naming import get_custom_bom_name, get_available_bo
 
 from frappe import _
 
+def ignore_bom_modification_request_links(doc, method=None):
+    """A submitted Bom Modification Request links back to its BOM through `bom`.
+    That link must not block cancelling the BOM. Other links (Work Order, parent
+    BOMs, etc.) are still checked by Frappe and ERPNext as usual."""
+    ignored = set(doc.get("ignore_linked_doctypes") or ())
+    ignored.add("Bom Modification Request")
+    doc.ignore_linked_doctypes = tuple(ignored)
+
+
 def on_trash(doc, method):
     doc.sales_order = ""
     doc.custom_batch_no = ""
