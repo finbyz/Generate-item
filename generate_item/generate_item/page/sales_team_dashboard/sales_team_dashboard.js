@@ -2,12 +2,12 @@
 // For license information, please see license.txt
 
 const STD_DATE_PRESETS = [
-	"This Quarter",
 	"Today",
 	"This Week",
 	"Last Week",
 	"This Month",
 	"Last Month",
+	"This Quarter",
 	"Last Quarter",
 	"This Year",
 	"Last Year",
@@ -51,7 +51,6 @@ class SalesTeamDashboard {
 						<small class="std-user-name">${frappe.utils.escape_html(frappe.session.user_fullname || frappe.session.user)}</small>
 					</div>
 				</div>
-
 				<section class="std-card" data-section="work">
 					<div class="std-hd"><h2>${__("1. My work to do")}</h2><small class="std-mut std-work-summary"></small></div>
 					<div class="std-seg std-work-filter"></div>
@@ -73,6 +72,9 @@ class SalesTeamDashboard {
 				</section>
 			</div>
 		`).appendTo(this.page.main);
+		this.date_ctl = {};
+		this.make_date_filter("performance");
+		this.make_date_filter("ranking");
 	}
 
 	section(name) {
@@ -95,23 +97,6 @@ class SalesTeamDashboard {
 		$w.on("click", ".std-work-all", () => {
 			this.work.show_all = !this.work.show_all;
 			this.draw_work();
-		});
-		this.$body.on("change", ".std-date-preset", (e) => {
-			const $target = $(e.currentTarget);
-			this.apply_date_preset($target.attr("data-date-section"), $target.val());
-		});
-		this.$body.on("change", ".std-date-input", (e) => {
-			const $target = $(e.currentTarget);
-			const section = $target.attr("data-date-section");
-			const filter = this.date_filter(section);
-			const $controls = this.date_controls(section);
-			const fromDate = $controls.find(".std-date-from").val();
-			const toDate = $controls.find(".std-date-to").val();
-			if (fromDate && toDate && fromDate <= toDate) {
-				filter.from_date = fromDate;
-				filter.to_date = toDate;
-				this.render_date_section(section);
-			}
 		});
 		const $r = this.$body.find('[data-section="ranking"]');
 		$r.on("click", "[data-rank-key]", (e) => {
@@ -154,7 +139,7 @@ class SalesTeamDashboard {
 		const overdue = rows.filter((r) => r.overdue).length;
 		$sec.find(".std-work-summary").html(
 			`<b>${rows.length}</b> ${__("draft documents need your action")}` +
-				(overdue ? `, <b style="color:#c62828">${overdue} ${__("overdue")}</b>` : "")
+				(overdue ? `, <b style="color:var(--text-on-red)">${overdue} ${__("overdue")}</b>` : "")
 		);
 
 		// doctype filter chips with counts
@@ -417,16 +402,56 @@ class SalesTeamDashboard {
 		return this.$body.find(section === "performance" ? ".std-perf-date" : ".std-rank-date");
 	}
 
+	// Frappe controls: Select (period) + DateRange. Picking dates switches the period to "Custom".
+	make_date_filter(section) {
+		const $c = this.date_controls(section).empty();
+		const f = this.date_filter(section);
+
+		const preset = frappe.ui.form.make_control({
+			parent: $('<div class="std-ctl std-ctl-preset"></div>').appendTo($c),
+			df: {
+				fieldtype: "Select",
+				fieldname: `${section}_period`,
+				placeholder: __("Period"),
+				options: STD_DATE_PRESETS.map((p) => ({ label: __(p), value: p })),
+				change: () => {
+					const v = preset.get_input_value();
+					if (v && v !== f.preset) this.apply_date_preset(section, v);
+				},
+			},
+			render_input: true,
+		});
+
+		const range = frappe.ui.form.make_control({
+			parent: $('<div class="std-ctl std-ctl-range"></div>').appendTo($c),
+			df: {
+				fieldtype: "DateRange",
+				fieldname: `${section}_range`,
+				placeholder: __("Date Range"),
+				change: () => {
+					const v = range.parse(range.get_input_value());
+					if (!v || !v[0] || !v[1]) return;
+					if (v[0] === f.from_date && v[1] === f.to_date) return;
+					f.from_date = v[0];
+					f.to_date = v[1];
+					f.preset = "Custom";
+					this.render_date_section(section);
+				},
+			},
+			render_input: true,
+		});
+
+		this.date_ctl[section] = { preset, range };
+		this.render_date_filter(section);
+	}
+
+	// keep the controls in sync with the current filter (no change events fired)
 	render_date_filter(section) {
-		const filter = this.date_filter(section);
-		this.date_controls(section).html(`
-			<select class="std-date-preset" data-date-section="${section}" aria-label="${__("Period")}">
-				${STD_DATE_PRESETS.map((preset) => `<option value="${preset}" ${preset === filter.preset ? "selected" : ""}>${__(preset)}</option>`).join("")}
-			</select>
-			<input class="std-date-input std-date-from" data-date-section="${section}" type="date" aria-label="${__("From date")}" value="${filter.from_date}" ${filter.preset !== "Custom" ? "disabled" : ""}>
-			<span class="std-date-sep">${__("to")}</span>
-			<input class="std-date-input std-date-to" data-date-section="${section}" type="date" aria-label="${__("To date")}" value="${filter.to_date}" ${filter.preset !== "Custom" ? "disabled" : ""}>
-		`);
+		const ctl = this.date_ctl && this.date_ctl[section];
+		if (!ctl) return;
+		const f = this.date_filter(section);
+		ctl.preset.set_input(f.preset);
+		ctl.range.set_input(f.from_date, f.to_date);
 	}
 
 	apply_date_preset(section, preset) {
@@ -442,102 +467,39 @@ class SalesTeamDashboard {
 	}
 
 	resolve_date_preset(preset) {
-		const today = frappe.datetime.get_today();
-		const todayDate = frappe.datetime.str_to_obj(today);
-		const fmt = (date) => frappe.datetime.obj_to_str(date);
-		const addDays = (date, count) => {
-			const result = new Date(date);
-			result.setDate(result.getDate() + count);
-			return result;
+		const today = moment(frappe.datetime.get_today());
+		const fmt = (m) => m.format("YYYY-MM-DD");
+		const span = (unit, back = 0) => {
+			const start = today.clone().subtract(back, unit).startOf(unit === "week" ? "isoWeek" : unit);
+			const end = start.clone().endOf(unit === "week" ? "isoWeek" : unit);
+			return { from_date: fmt(start), to_date: fmt(back ? end : moment.min(end, today)) };
 		};
-		const subMonths = (date, count) => {
-			const result = new Date(date);
-			result.setMonth(result.getMonth() - count);
-			return result;
-		};
-		const daysToMonday = todayDate.getDay() === 0 ? -6 : 1 - todayDate.getDay();
 
 		switch (preset) {
-			case "Today":
-				return { from_date: today, to_date: today };
-			case "This Week":
-				return { from_date: fmt(addDays(todayDate, daysToMonday)), to_date: today };
-			case "Last Week": {
-				const from = addDays(todayDate, daysToMonday - 7);
-				return { from_date: fmt(from), to_date: fmt(addDays(from, 6)) };
-			}
-			case "This Month":
-				return { from_date: fmt(new Date(todayDate.getFullYear(), todayDate.getMonth(), 1)), to_date: today };
-			case "Last Month":
-				return {
-					from_date: fmt(new Date(todayDate.getFullYear(), todayDate.getMonth() - 1, 1)),
-					to_date: fmt(new Date(todayDate.getFullYear(), todayDate.getMonth(), 0)),
-				};
-			case "This Quarter":
-				return { from_date: fmt(subMonths(todayDate, 3)), to_date: today };
-			case "Last Quarter": {
-				const thisQuarterStart = subMonths(todayDate, 3);
-				return {
-					from_date: fmt(subMonths(thisQuarterStart, 3)),
-					to_date: fmt(addDays(thisQuarterStart, -1)),
-				};
-			}
-			case "This Year":
-				return { from_date: fmt(new Date(todayDate.getFullYear(), 0, 1)), to_date: today };
-			case "Last Year":
-				return {
-					from_date: fmt(new Date(todayDate.getFullYear() - 1, 0, 1)),
-					to_date: fmt(new Date(todayDate.getFullYear() - 1, 11, 31)),
-				};
-			default:
-				return { from_date: today, to_date: today };
+			case "This Week": return span("week");
+			case "Last Week": return span("week", 1);
+			case "This Month": return span("month");
+			case "Last Month": return span("month", 1);
+			case "This Quarter": return span("quarter");
+			case "Last Quarter": return span("quarter", 1);
+			case "This Year": return span("year");
+			case "Last Year": return span("year", 1);
+			default: return { from_date: fmt(today), to_date: fmt(today) };
 		}
 	}
 
+	// same-length period immediately before (calendar-aligned for presets)
 	resolve_previous_range(preset, fromDate, toDate) {
-		const from = frappe.datetime.str_to_obj(fromDate);
-		const to = frappe.datetime.str_to_obj(toDate);
-		const fmt = (date) => frappe.datetime.obj_to_str(date);
-		const addDays = (date, count) => {
-			const result = new Date(date);
-			result.setDate(result.getDate() + count);
-			return result;
-		};
-		const subtractMonths = (date, count) => {
-			const result = new Date(date);
-			result.setMonth(result.getMonth() - count);
-			return result;
-		};
-
-		switch (preset) {
-			case "Today": {
-				const previous = addDays(from, -1);
-				return { from_date: fmt(previous), to_date: fmt(previous) };
-			}
-			case "This Week":
-			case "Last Week":
-				return { from_date: fmt(addDays(from, -7)), to_date: fmt(addDays(to, -7)) };
-			case "This Month":
-			case "Last Month":
-				return {
-					from_date: fmt(new Date(from.getFullYear(), from.getMonth() - 1, 1)),
-					to_date: fmt(new Date(from.getFullYear(), from.getMonth(), 0)),
-				};
-			case "This Quarter":
-			case "Last Quarter":
-				return { from_date: fmt(subtractMonths(from, 3)), to_date: fmt(subtractMonths(to, 3)) };
-			case "This Year":
-			case "Last Year":
-				return {
-					from_date: fmt(new Date(from.getFullYear() - 1, 0, 1)),
-					to_date: fmt(new Date(from.getFullYear() - 1, 11, 31)),
-				};
-			default: {
-				const days = Math.round((to - from) / 86400000) + 1;
-				const previousTo = addDays(from, -1);
-				return { from_date: fmt(addDays(previousTo, -(days - 1))), to_date: fmt(previousTo) };
-			}
-		}
+		const from = moment(fromDate), to = moment(toDate);
+		const fmt = (m) => m.format("YYYY-MM-DD");
+		const unit = {
+			Today: "day", "This Week": "week", "Last Week": "week", "This Month": "month",
+			"Last Month": "month", "This Quarter": "quarter", "Last Quarter": "quarter",
+			"This Year": "year", "Last Year": "year",
+		}[preset];
+		if (unit) return { from_date: fmt(from.clone().subtract(1, unit)), to_date: fmt(to.clone().subtract(1, unit)) };
+		const days = to.diff(from, "days") + 1;
+		return { from_date: fmt(from.clone().subtract(days, "days")), to_date: fmt(from.clone().subtract(1, "days")) };
 	}
 
 	previous_period_label(preset) {

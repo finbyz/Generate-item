@@ -318,13 +318,16 @@ class PurchaseUserDashboard {
 					</div>
 				</div>
 
-				<!-- ── Top KPI Cards ── -->
-				<div class="pud-kpi-row" data-role="top-kpis"></div>
+				<!-- ── Number Cards: 5 stage cards + 3 PO value/delivery cards, 4 per row ── -->
+				<div class="pud-kpi-grid-4">
+					<div class="pud-kpi-row" data-role="top-kpis"></div>
+					<div class="pud-kpi-row pud-kpi-row--po" data-role="po-kpis"></div>
+				</div>
 
-				<!-- ── Section 01 · Material Request Trend (Item-wise) ── -->
-				<section class="pud-section" data-section="mr-trend">
-					${this.section_head("01", __("Material Request Trend (Item-wise)"))}
-					<div class="pud-trend-full-width" data-trend-full></div>
+				<!-- ── Section 01 · Purchase Order Workflow Status ── -->
+				<section class="pud-section" data-section="po-workflow">
+					${this.section_head("01", __("Purchase Order Workflow Status"))}
+					<div data-po-workflow></div>
 				</section>
 
 				<!-- ── Section 02 · Document Intensity (Document-wise) ── -->
@@ -548,6 +551,27 @@ class PurchaseUserDashboard {
 				return;
 			}
 
+			// PO value / delivery KPI -> Purchase Order list for the selected period
+			const poListBtn = e.target.closest("[data-po-list]");
+			if (poListBtn) {
+				e.preventDefault();
+				e.stopPropagation();
+				frappe.route_options = this.po_list_filters({ docstatus: 1 });
+				frappe.set_route("List", "Purchase Order");
+				return;
+			}
+
+			// Workflow status row -> Purchase Order list filtered by that state
+			const wfRow = e.target.closest("[data-po-workflow-state]");
+			if (wfRow) {
+				const opts = { docstatus: ["!=", 2] };
+				const state = wfRow.dataset.poWorkflowState;
+				if (state && state !== "Not Set") opts[wfRow.dataset.stateField || "workflow_state"] = state;
+				frappe.route_options = this.po_list_filters(opts);
+				frappe.set_route("List", "Purchase Order");
+				return;
+			}
+
 			// KPI Card click -> Modal Inspection
 			const kpiCard = e.target.closest(".pud-kpi-card[data-card-id]");
 			if (kpiCard) {
@@ -563,11 +587,21 @@ class PurchaseUserDashboard {
 				this.open_intensity_modal(type, sevKey);
 			}
 
-			// Creator Row Click in Leaderboard -> Open Purchase Order List View filtered by creator
-			const creatorRow = e.target.closest(".pud-clickable-row[data-creator]");
+			// Creator List button in Leaderboard -> Purchase Order List View filtered by creator
+			const creatorListBtn = e.target.closest("[data-creator-list]");
+			if (creatorListBtn) {
+				e.preventDefault();
+				e.stopPropagation();
+				this.open_po_list_by_creator(creatorListBtn.dataset.creatorList);
+				return;
+			}
+
+			// Creator Row Click in Leaderboard -> supplier-wise drill-down for that creator
+			const creatorRow = e.target.closest("[data-creator-select]");
 			if (creatorRow) {
-				const creator = creatorRow.dataset.creator;
-				this.open_po_list_by_creator(creator);
+				const creator = creatorRow.dataset.creatorSelect;
+				this.set_supplier_creator(this.supplier_creator === creator ? null : creator);
+				return;
 			}
 
 			// Modal backdrop / Close button
@@ -897,7 +931,8 @@ class PurchaseUserDashboard {
 			// Error Isolation: Wrap each section in its own try/catch
 			try { this.render_summary(data); } catch (e) { console.error("Error in render_summary:", e); }
 			try { this.render_top_kpis(data); } catch (e) { console.error("Error in render_top_kpis:", e); }
-			try { this.render_mr_trend(data); } catch (e) { console.error("Error in render_mr_trend:", e); }
+			try { this.render_po_kpis(data); } catch (e) { console.error("Error in render_po_kpis:", e); }
+			try { this.render_po_workflow(data); } catch (e) { console.error("Error in render_po_workflow:", e); }
 			try { this.render_order_change_intensity(data); } catch (e) { console.error("Error in render_order_change_intensity:", e); }
 			try { this.render_item_change_intensity(data); } catch (e) { console.error("Error in render_item_change_intensity:", e); }
 			try { this.render_item_table(); } catch (e) { console.error("Error in render_item_table:", e); }
@@ -914,8 +949,10 @@ class PurchaseUserDashboard {
 	show_loading() {
 		const sumEl = this.wrapper.querySelector('[data-field="summary"]');
 		if (sumEl) sumEl.textContent = __("Loading…");
-		const trendEl = this.wrapper.querySelector('[data-trend-full]');
-		if (trendEl) trendEl.innerHTML = '<div class="pud-card pud-skel" style="height:380px"></div>';
+		const poKpiEl = this.wrapper.querySelector('[data-role="po-kpis"]');
+		if (poKpiEl) poKpiEl.innerHTML = this.skeleton_cards(3, 170);
+		const wfEl = this.wrapper.querySelector('[data-po-workflow]');
+		if (wfEl) wfEl.innerHTML = '<div class="pud-card pud-skel" style="height:300px"></div>';
 		const kpiEl = this.wrapper.querySelector('[data-role="top-kpis"]');
 		if (kpiEl) kpiEl.innerHTML = this.skeleton_cards(5, 170);
 		const orderGrid = this.wrapper.querySelector('[data-grid="order-intensity"]');
@@ -1037,381 +1074,198 @@ class PurchaseUserDashboard {
 		`;
 	}
 
-	// --------------------------------------------------------------- MR Trend
-	render_mr_trend(data) {
-		const container = this.wrapper.querySelector("[data-trend-full]");
-		if (!container) return;
-
-		let dailyData = [];
-		let trendDirection = "stable";
-		let trendEmoji = "▬";
-		let changePct = 0;
-		let totalPeriod = 0;
-
-		if (data.trends && Array.isArray(data.trends.daily_data) && data.trends.daily_data.length) {
-			dailyData = data.trends.daily_data;
-			trendDirection = data.trends.trend_direction || "stable";
-			trendEmoji = data.trends.trend_emoji || "▬";
-			changePct = data.trends.change_percentage || 0;
-			totalPeriod = data.trends.total_this_month !== undefined ? data.trends.total_this_month : 0;
-		} else {
-			// Fallback: calculate from card items
-			const mrDocs = [];
-			(data.cards || []).forEach((c) => {
-				if (c.doctype === "Material Request" || c.id === "po_pending" || c.id === "mr_completed") {
-					(c.items || []).forEach((doc) => mrDocs.push(doc));
-				}
-			});
-
-			const dailyMap = {};
-			const fromIso = pud_normalize_iso(this.filters.from_date);
-			const toIso = pud_normalize_iso(this.filters.to_date);
-
-			if (fromIso && toIso) {
-				try {
-					let cur = frappe.datetime.str_to_obj(fromIso) || new Date(fromIso);
-					const end = frappe.datetime.str_to_obj(toIso) || new Date(toIso);
-					let safety = 0;
-					while (cur <= end && safety < 400) {
-						const dstr = frappe.datetime.obj_to_str(cur);
-						dailyMap[dstr] = 0;
-						cur = new Date(cur.getTime() + 86400000);
-						safety++;
-					}
-				} catch (_e) {}
-			}
-
-			mrDocs.forEach((doc) => {
-				const d = pud_normalize_iso(doc.date);
-				if (d) {
-					const count = (doc.doc_items && doc.doc_items.length) || 1;
-					dailyMap[d] = (dailyMap[d] || 0) + count;
-				}
-			});
-
-			dailyData = Object.keys(dailyMap).sort().map((dateStr) => {
-				const p = dateStr.split("-");
-				const label = p.length === 3 ? `${p[2]}/${p[1]}` : dateStr;
-				return {
-					date: dateStr,
-					label: label,
-					count: dailyMap[dateStr] || 0,
-				};
-			});
-
-			const counts = dailyData.map((d) => d.count);
-			totalPeriod = counts.reduce((a, b) => a + b, 0);
-
-			const mid = Math.floor(counts.length / 2);
-			const firstHalf = counts.slice(0, mid).reduce((a, b) => a + b, 0);
-			const secondHalf = counts.slice(mid).reduce((a, b) => a + b, 0);
-
-			if (firstHalf === 0 && secondHalf > 0) {
-				trendDirection = "up";
-				changePct = 100;
-				trendEmoji = "📈";
-			} else if (firstHalf > 0) {
-				changePct = Math.round(((secondHalf - firstHalf) / firstHalf) * 100);
-				if (changePct > 10) {
-					trendDirection = "up";
-					trendEmoji = "📈";
-				} else if (changePct < -10) {
-					trendDirection = "down";
-					trendEmoji = "📉";
-				}
-			}
-		}
-
-		const counts = dailyData.map((d) => d.count || 0);
-		if (!totalPeriod) {
-			totalPeriod = counts.reduce((a, b) => a + b, 0);
-		}
-		const avg = counts.length ? Math.round((totalPeriod / counts.length) * 10) / 10 : 0;
-		const peak = counts.length ? Math.max(...counts) : 0;
-		const peakDay = dailyData.find((d) => d.count === peak);
-
-		container.innerHTML = `
-			<div class="pud-card pud-trend-full-card">
-				<div class="pud-trend-full-header">
-					<div class="pud-trend-heading">
-						<span class="pud-trend-heading-icon">${pud_icon("activity")}</span>
-						<div>
-							<div class="pud-list-title">${this.get_trend_heading()}</div>
-							<div class="pud-list-subtitle">${__("Daily Material Request item procurement volume")}</div>
-						</div>
-					</div>
-					<div class="pud-trend-badge">
-						<span class="pud-trend-badge-value ${trendDirection}">
-							${trendEmoji} ${changePct > 0 ? "+" : ""}${changePct}%
-						</span>
-					</div>
-				</div>
-
-				<div class="pud-sparkline-full" data-sparkline-full></div>
-
-				<div class="pud-trend-stat-row">
-					<div class="pud-trend-stat">
-						<span class="pud-trend-stat-label">${__("Total in Period")}</span>
-						<span class="pud-trend-stat-value">${totalPeriod}</span>
-					</div>
-					<div class="pud-trend-stat">
-						<span class="pud-trend-stat-label">${__("Daily Average")}</span>
-						<span class="pud-trend-stat-value">${avg}</span>
-					</div>
-					<div class="pud-trend-stat">
-						<span class="pud-trend-stat-label">${__("Peak Day")}</span>
-						<span class="pud-trend-stat-value">${peak}${peakDay && peakDay.label ? ` <small>(${frappe.utils.escape_html(peakDay.label)})</small>` : ""}</span>
-					</div>
-				</div>
-
-				<div class="pud-trend-full-summary">
-					<div class="pud-trend-direction pud-trend-direction-${trendDirection}">
-						${trendDirection === "down" ? pud_icon("trendingDown") : trendDirection === "up" ? pud_icon("trendingUp") : pud_icon("activity")}
-						<span>${
-							trendDirection === "down"
-								? __("MR procurement volume trending downward")
-								: trendDirection === "up"
-									? __("MR procurement volume increasing — active ordering")
-									: __("MR procurement steady and consistent")
-						}</span>
-					</div>
-				</div>
-
-				<div class="pud-trend-period-section" data-period-breakdown></div>
-			</div>
-		`;
-
-		const sparkEl = container.querySelector("[data-sparkline-full]");
-		if (sparkEl) this.render_sparkline(sparkEl, dailyData);
-
-		const breakdownEl = container.querySelector("[data-period-breakdown]");
-		if (breakdownEl) this.render_period_breakdown(breakdownEl, data, dailyData);
+	// ------------------------------------------------------- PO Value & Delivery KPIs
+	pud_money(value) {
+		const n = Number(value || 0);
+		return "₹" + n.toLocaleString("en-IN", { maximumFractionDigits: 0 });
 	}
 
-	get_trend_heading() {
-		const preset = this.filters.preset;
-		if (preset === "Custom") {
-			if (this.filters.from_date && this.filters.to_date) {
-				return `${pud_fmt_date(this.filters.from_date)} → ${pud_fmt_date(this.filters.to_date)} Trend`;
-			}
-			return __("Custom Period Trend");
+	// Same Period / Branch / Created By filters the dashboard uses, for Purchase Order list links
+	po_list_filters(base = {}) {
+		const opts = { ...base };
+		if (this.filters.from_date && this.filters.to_date) {
+			opts.transaction_date = ["between", [this.filters.from_date, this.filters.to_date]];
+		} else if (this.filters.from_date) {
+			opts.transaction_date = [">=", this.filters.from_date];
+		} else if (this.filters.to_date) {
+			opts.transaction_date = ["<=", this.filters.to_date];
 		}
-		return __(preset + " Trend");
+		if (this.filters.branch) {
+			opts.branch = this.filters.branch;
+		}
+		if (this.filters.users && this.filters.users.length) {
+			opts.owner = ["in", this.filters.users];
+		}
+		return opts;
 	}
 
-	get_period_title() {
-		switch (this.filters.preset) {
-			case "This Quarter":
-			case "Last Quarter":
-				return __("Monthly Changes");
-			case "This Year":
-			case "Last Year":
-				return __("Monthly Changes");
-			case "This Month":
-			case "Last Month":
-				return __("Weekly Changes");
-			case "This Week":
-			case "Last Week":
-				return __("Daily Changes");
-			default:
-				return __("Daily Changes");
-		}
-	}
+	render_po_kpis(data) {
+		const el = this.wrapper.querySelector('[data-role="po-kpis"]');
+		if (!el) return;
 
-	get_monthly_changes(dailyData) {
-		const months = [
-			"January", "February", "March", "April", "May", "June",
-			"July", "August", "September", "October", "November", "December"
+		const m = data.po_metrics || {};
+		const prev = m.previous || null;
+		const periodLabel = this.get_previous_period_label();
+
+		// On Time Delivery delta is shown in percentage points
+		let otdDelta = "";
+		if (prev && prev.due_count) {
+			const diff = Math.round(((m.on_time_pct || 0) - (prev.on_time_pct || 0)) * 10) / 10;
+			const dir = diff > 0 ? "up" : diff < 0 ? "down" : "stable";
+			const arrow = dir === "up" ? "▲" : dir === "down" ? "▼" : "▬";
+			otdDelta = `
+				<span class="pud-kpi-delta pud-kpi-delta-${dir}">
+					${arrow} ${diff > 0 ? "+" : ""}${diff} ${__("pts")} <span class="pud-kpi-delta-label">${__("vs")} ${periodLabel}</span>
+				</span>`;
+		}
+
+		const otdPct = Number(m.on_time_pct || 0);
+		const otdColor = !m.due_count
+			? "var(--pud-accent-steel)"
+			: otdPct >= 90 ? "var(--pud-sev-ok)" : otdPct >= 70 ? "var(--pud-sev-watch)" : "var(--pud-sev-critical)";
+
+		const tiles = [
+			{
+				key: "on_time",
+				title: __("On Time Delivery"),
+				icon: "checkCircle",
+				color: otdColor,
+				value: m.due_count ? `${otdPct}%` : "—",
+				badge: __("On Time"),
+				lineLabel: __("POs Delivered On Time"),
+				lineVal: `${Number(m.on_time_count || 0).toLocaleString()} / ${Number(m.due_count || 0).toLocaleString()}`,
+				sub: `${Number(m.late_count || 0).toLocaleString()} ${__("Late / Not Received")}`,
+				delta: otdDelta,
+				title_attr: __("Fully received POs whose last Purchase Receipt is on or before the Required By date, out of POs that are fully received or past their Required By date (Closed and On Hold excluded)."),
+			},
+			{
+				key: "total_value",
+				title: __("Total PO Value (Net)"),
+				icon: "package",
+				color: "var(--pud-accent-amber)",
+				value: this.pud_money(m.total_net_value),
+				badge: __("Net Value"),
+				lineLabel: __("Submitted POs"),
+				lineVal: Number(m.po_count || 0).toLocaleString(),
+				sub: __("Net total, before taxes"),
+				delta: prev ? this.render_kpi_delta(Number(m.total_net_value || 0), Number(prev.total_net_value || 0)) : "",
+				title_attr: __("Sum of Net Total (company currency) of submitted Purchase Orders in the period."),
+			},
+			{
+				key: "avg_value",
+				title: __("Average PO Value"),
+				icon: "trendingUp",
+				color: "var(--pud-accent-teal)",
+				value: this.pud_money(m.avg_po_value),
+				badge: __("Per PO"),
+				lineLabel: __("Submitted POs"),
+				lineVal: Number(m.po_count || 0).toLocaleString(),
+				sub: __("Net value ÷ PO count"),
+				delta: prev ? this.render_kpi_delta(Number(m.avg_po_value || 0), Number(prev.avg_po_value || 0)) : "",
+				title_attr: __("Total PO Net Value divided by the number of submitted Purchase Orders."),
+			},
 		];
-		const monthlyCounts = {};
-		dailyData.forEach((t) => {
-			const parts = (t.date || "").split("-");
-			if (parts.length >= 2) {
-				const m = parseInt(parts[1], 10) - 1;
-				monthlyCounts[m] = (monthlyCounts[m] || 0) + (t.count || 0);
-			}
-		});
 
-		return months.map((month, index) => ({
-			label: month,
-			count: monthlyCounts[index] || 0,
-		}));
-	}
-
-	get_quarter_monthly_changes(dailyData) {
-		if (!dailyData.length) return [];
-		const monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-		const counts = {}, order = [];
-		dailyData.forEach((t) => {
-			const parts = (t.date || "").split("-");
-			if (parts.length >= 2) {
-				const y = parts[0];
-				const m = parseInt(parts[1], 10) - 1;
-				const key = `${y}-${m}`;
-				if (!(key in counts)) {
-					counts[key] = 0;
-					order.push(key);
-				}
-				counts[key] += (t.count || 0);
-			}
-		});
-		return order.map((key) => {
-			const [y, m] = key.split("-").map(Number);
-			return { label: `${monthLabels[m]} ${y}`, count: counts[key] || 0 };
-		});
-	}
-
-	get_weekly_changes(dailyData) {
-		if (!dailyData.length) return [];
-		const firstParts = (dailyData[0].date || "").split("-");
-		const year = parseInt(firstParts[0], 10) || new Date().getFullYear();
-		const month = (parseInt(firstParts[1], 10) || 1) - 1;
-		const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-		const weeks = Array.from(
-			{ length: Math.ceil(daysInMonth / 7) },
-			(_, index) => {
-				const start = index * 7 + 1;
-				const end = Math.min(start + 6, daysInMonth);
-				return {
-					label: `Week ${index + 1} (${start}-${end})`,
-					count: 0,
-				};
-			}
-		);
-
-		dailyData.forEach((trend) => {
-			const parts = (trend.date || "").split("-");
-			if (parts.length === 3) {
-				const day = parseInt(parts[2], 10);
-				const weekIndex = Math.floor((day - 1) / 7);
-				if (weeks[weekIndex]) {
-					weeks[weekIndex].count += Number(trend.count || 0);
-				}
-			}
-		});
-
-		return weeks;
-	}
-
-	get_daily_changes(dailyData) {
-		const days = ["Day 1", "Day 2", "Day 3", "Day 4", "Day 5", "Day 6", "Day 7"];
-		return dailyData.slice(0, 14).map((t, i) => ({
-			label: t.label || days[i] || `Day ${i + 1}`,
-			count: t.count || 0,
-		}));
-	}
-
-	render_period_breakdown(container, data, dailyData) {
-		const trendsDaily = (data.trends && data.trends.daily_data) || dailyData || [];
-		if (!trendsDaily.length) return;
-
-		const preset = this.filters.preset;
-		let periodData = [];
-
-		if (preset === "This Year" || preset === "Last Year") {
-			periodData = this.get_monthly_changes(trendsDaily);
-		} else if (preset === "This Quarter" || preset === "Last Quarter") {
-			periodData = this.get_quarter_monthly_changes(trendsDaily);
-		} else if (preset === "This Month" || preset === "Last Month") {
-			periodData = this.get_weekly_changes(trendsDaily);
-		} else if (preset === "This Week" || preset === "Last Week") {
-			periodData = this.get_daily_changes(trendsDaily);
-		} else {
-			periodData = this.get_daily_changes(trendsDaily);
-		}
-
-		const maxCount = Math.max(...periodData.map((p) => p.count), 1);
-		const totalCount = periodData.reduce((s, p) => s + (p.count || 0), 0) || 1;
-
-		container.innerHTML = `
-			<div class="pud-trend-period-header">
-				<span class="pud-trend-period-title">${pud_icon("layers", "pud-inline-icon")}${this.get_period_title()}</span>
-				<span class="pud-trend-period-subtitle">${__("Material Request item procurement distribution")}</span>
+		el.innerHTML = tiles.map((t) => `
+			<div class="pud-kpi-card pud-po-kpi-card" data-po-kpi="${t.key}" style="--kpi-accent:${t.color}" title="${frappe.utils.escape_html(t.title_attr)}">
+				<div class="pud-kpi-top">
+					<div class="pud-kpi-top-left">
+						<div class="pud-kpi-icon" style="color:${t.color}">${pud_icon(t.icon)}</div>
+						<div class="pud-kpi-label">${frappe.utils.escape_html(t.title)}</div>
+					</div>
+					<button type="button" class="pud-kpi-list-btn" title="${__("Open Purchase Orders in List View")}" data-po-list="1">
+						${pud_icon("externalLink")} <span>${__("List")}</span>
+					</button>
+				</div>
+				<div class="pud-kpi-main">
+					<div class="pud-kpi-value pud-po-kpi-value" style="color:${t.color}">${t.value}</div>
+					<div class="pud-kpi-doc-badge">${t.badge}</div>
+				</div>
+				<div class="pud-kpi-line-item-row">
+					<span class="pud-kpi-line-item-label">${t.lineLabel}:</span>
+					<span class="pud-kpi-line-item-val">${t.lineVal}</span>
+				</div>
+				<div class="pud-kpi-footer">
+					<div class="pud-kpi-sub">${t.sub}</div>
+					${t.delta}
+				</div>
 			</div>
-			<div class="pud-period-rows">
-				${periodData.map((item, i) => {
-					const pct = Math.round((item.count / maxCount) * 100);
-					const share = Math.round((item.count / totalCount) * 100);
-					return `
-						<div class="pud-row pud-period-row">
-							<span class="pud-row-rank">${i + 1}</span>
-							<span class="pud-row-name" style="flex:1;">${item.label}</span>
-							<span class="pud-row-bar-wrap" style="flex:0 0 150px;">
-								<span class="pud-row-bar" style="--accent:var(--pud-accent-steel);width:${pct}%"></span>
-							</span>
-							<span class="pud-period-share">${share}%</span>
-							<span class="pud-row-count">${item.count}</span>
-						</div>
-					`;
-				}).join("")}
-			</div>
-		`;
+		`).join("");
 	}
 
-	render_sparkline(container, data) {
-		if (!data.length) {
-			container.innerHTML = `<div class="pud-empty-state"><div class="pud-empty-text">${__("No trend data available")}</div></div>`;
+	// ------------------------------------------------------- PO Workflow Status
+	render_po_workflow(data) {
+		const el = this.wrapper.querySelector("[data-po-workflow]");
+		if (!el) return;
+
+		const rows = Array.isArray(data.po_workflow_status) ? data.po_workflow_status : [];
+		if (!rows.length) {
+			el.innerHTML = `<div class="pud-card"><div class="pud-empty-state"><div class="pud-empty-icon">${pud_icon("inbox")}</div><div class="pud-empty-text">${__("No Purchase Orders in this period.")}</div></div></div>`;
 			return;
 		}
 
-		const values = data.map((d) => d.count || 0);
-		const max = Math.max(...values, 1);
-		const min = 0;
-		const w = container.clientWidth || 700;
-		const h = 220, pad = 14;
-		const stepX = values.length > 1 ? (w - pad * 2) / (values.length - 1) : 0;
-		const yFor = (v) => h - pad - ((v - min) / ((max - min) || 1)) * (h - pad * 2);
-		const pts = values.map((v, i) => `${pad + i * stepX},${yFor(v)}`).join(" ");
+		const palette = [
+			"var(--pud-accent-steel)", "var(--pud-accent-moss)", "var(--pud-accent-amber)",
+			"var(--pud-accent-violet)", "var(--pud-accent-teal)", "var(--pud-accent-rust)",
+		];
+		const totalCount = rows.reduce((s, r) => s + (r.count || 0), 0) || 1;
+		const totalValue = rows.reduce((s, r) => s + (r.net_value || 0), 0);
+		const maxCount = Math.max(...rows.map((r) => r.count || 0), 1);
+		const stateField = rows[0].state_field || "workflow_state";
 
-		const avg = values.reduce((a, b) => a + b, 0) / values.length;
-		const avgY = yFor(avg);
-
-		const peakVal = Math.max(...values);
-		const peakIdx = values.indexOf(peakVal);
-		const peakX = pad + peakIdx * stepX;
-		const peakY = yFor(peakVal);
-
-		const todayStr = frappe.datetime.get_today();
-		const todayIdx = data.findIndex((d) => d.date === todayStr);
-
-		const isUp = values[values.length - 1] > values[0];
-		const gid = "pud-sg-" + Math.random().toString(36).slice(2, 9);
-		const col = isUp ? "var(--pud-accent-steel)" : "var(--pud-sev-ok)";
-
-		const dots = values.map((v, i) => {
-			const x = pad + i * stepX;
-			const y = yFor(v);
-			const label = data[i].label || data[i].date || "";
-			const isPeak = i === peakIdx && peakVal > 0;
-			const isToday = i === todayIdx;
-			const titleText = frappe.utils.escape_html(`${label}: ${v}`);
-			return `
-				<g class="pud-spark-point${isPeak ? " pud-spark-point--peak" : ""}${isToday ? " pud-spark-point--today" : ""}">
-					<rect x="${x - Math.max(stepX, 1) / 2}" y="0" width="${Math.max(stepX, 1)}" height="${h}" fill="transparent"><title>${titleText}</title></rect>
-					<circle cx="${x}" cy="${y}" r="${isPeak ? 5 : 3.5}" class="pud-spark-dot" fill="${isPeak ? "var(--pud-sev-critical)" : col}"><title>${titleText}</title></circle>
-				</g>
-			`;
-		}).join("");
-
-		container.innerHTML = `
-			<svg width="100%" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none" class="pud-spark-svg">
-				<defs>
-					<linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
-						<stop offset="0%" stop-color="${col}" stop-opacity="0.32"/>
-						<stop offset="100%" stop-color="${col}" stop-opacity="0.02"/>
-					</linearGradient>
-				</defs>
-				<line x1="${pad}" y1="${avgY}" x2="${w - pad}" y2="${avgY}" class="pud-spark-avg-line"/>
-				<polygon fill="url(#${gid})" points="${pts} ${w - pad},${h} ${pad},${h}"/>
-				<polyline fill="none" stroke="${col}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" points="${pts}"/>
-				${dots}
-				${peakIdx >= 0 && peakVal > 0 ? `<text x="${peakX}" y="${Math.max(peakY - 12, 12)}" class="pud-spark-peak-label" text-anchor="middle">${__("Peak")} ${peakVal}</text>` : ""}
-			</svg>
-			<div class="pud-spark-legend">
-				<span><i class="pud-legend-dot" style="background:${col}"></i>${__("Daily count")}</span>
-				<span><i class="pud-legend-dot pud-legend-dot--avg"></i>${__("Average")}</span>
-				${peakIdx >= 0 && peakVal > 0 ? `<span><i class="pud-legend-dot" style="background:var(--pud-sev-critical)"></i>${__("Peak")}</span>` : ""}
+		el.innerHTML = `
+			<div class="pud-card pud-wf-card">
+				<div class="pud-wf-layout">
+					<div class="pud-wf-list">
+						<div class="pud-wf-list-head">
+							<span class="pud-wf-col-name">${__("Workflow Status")}</span>
+							<span class="pud-wf-col-bar"></span>
+							<span class="pud-wf-col-num">${__("POs")}</span>
+							<span class="pud-wf-col-num">${__("Share")}</span>
+							<span class="pud-wf-col-amt">${__("Net Value")}</span>
+						</div>
+						${rows.map((r, i) => {
+							const color = palette[i % palette.length];
+							const pct = Math.round(((r.count || 0) / maxCount) * 100);
+							const share = Math.round(((r.count || 0) / totalCount) * 100);
+							return `
+								<div class="pud-row pud-wf-row" data-po-workflow-state="${frappe.utils.escape_html(r.workflow_state)}" data-state-field="${stateField}" title="${__("Open in List View")}">
+									<span class="pud-wf-col-name"><i class="pud-legend-dot" style="background:${color}"></i>${frappe.utils.escape_html(__(r.workflow_state))}</span>
+									<span class="pud-wf-col-bar pud-row-bar-wrap"><span class="pud-row-bar" style="--accent:${color};width:${pct}%"></span></span>
+									<span class="pud-wf-col-num pud-row-count">${Number(r.count || 0).toLocaleString()}</span>
+									<span class="pud-wf-col-num pud-period-share">${share}%</span>
+									<span class="pud-wf-col-amt">${this.pud_money(r.net_value)}</span>
+								</div>
+							`;
+						}).join("")}
+						<div class="pud-wf-total">
+							<span class="pud-wf-col-name">${__("Total")}</span>
+							<span class="pud-wf-col-bar"></span>
+							<span class="pud-wf-col-num">${totalCount.toLocaleString()}</span>
+							<span class="pud-wf-col-num">100%</span>
+							<span class="pud-wf-col-amt">${this.pud_money(totalValue)}</span>
+						</div>
+					</div>
+					<div class="pud-wf-chart">
+						<div class="pud-wf-chart-title">${__("Purchase Orders by Workflow Status")}</div>
+						${rows.map((r, i) => {
+							const color = palette[i % palette.length];
+							const w = r.count ? Math.max(Math.round(((r.count || 0) / maxCount) * 100), 2) : 0;
+							return `
+								<div class="pud-hbar-row" data-po-workflow-state="${frappe.utils.escape_html(r.workflow_state)}" data-state-field="${stateField}" title="${frappe.utils.escape_html(__(r.workflow_state))}: ${Number(r.count || 0).toLocaleString()} ${__("POs")}">
+									<span class="pud-hbar-label">${frappe.utils.escape_html(__(r.workflow_state))}</span>
+									<span class="pud-hbar-track"><span class="pud-hbar-fill" style="width:${w}%;background:${color}"></span></span>
+									<span class="pud-hbar-value">${Number(r.count || 0).toLocaleString()}</span>
+								</div>
+							`;
+						}).join("")}
+						<div class="pud-hbar-axis">
+							<span class="pud-hbar-label"></span>
+							<span class="pud-hbar-ticks"><span>0</span><span>${Math.round(maxCount / 2).toLocaleString()}</span><span>${maxCount.toLocaleString()}</span></span>
+							<span class="pud-hbar-value"></span>
+						</div>
+					</div>
+				</div>
 			</div>
 		`;
 	}
@@ -1828,26 +1682,207 @@ class PurchaseUserDashboard {
 		}
 
 		const highRows = [...rows].sort((a, b) => b.count - a.count);
-		const lowRows = [...rows].sort((a, b) => a.count - b.count);
+
+		// Keep the creator drill-down only if that creator is still in the list
+		if (this.supplier_creator && !highRows.some((r) => r.id === this.supplier_creator)) {
+			this.supplier_creator = null;
+		}
 
 		el.innerHTML =
 			this.leaderboard_card({
 				title: __("Most Purchase Orders"),
-				subtitle: __("Creators who raised the most Purchase Orders in period"),
+				subtitle: __("Creators who raised the most Purchase Orders in period. Click a creator to see their suppliers."),
 				rows: highRows,
 				accent: "steel",
 			}) +
-			this.leaderboard_card({
-				title: __("Fewest Purchase Orders"),
-				subtitle: __("Creators with fewer Purchase Orders in period"),
-				rows: lowRows,
-				accent: "moss",
-			});
+			`<div data-supplier-slot></div>`;
 
 		this.bind_leaderboard_actions(el, [
 			{ rows: highRows, filename: "most_purchase_orders" },
-			{ rows: lowRows, filename: "fewest_purchase_orders" },
 		]);
+
+		// Renders the supplier card and highlights the selected creator (if any)
+		this.set_supplier_creator(this.supplier_creator);
+	}
+
+	// ------------------------------------------------ Supplier-wise drill-down (Leaderboard)
+	get_supplier_groups() {
+		const src = (this.last_data && this.last_data.po_supplier_orders) || {};
+		const rows = Array.isArray(src.rows) ? src.rows : [];
+		const creator = this.supplier_creator || null;
+		const map = {};
+		rows.forEach((r) => {
+			if (creator && r.owner !== creator) return;
+			const key = r.supplier || r.supplier_name || __("Not Set");
+			if (!map[key]) {
+				map[key] = { supplier: r.supplier || "", supplier_name: r.supplier_name || key, count: 0, net_value: 0, pos: [] };
+			}
+			map[key].count += 1;
+			map[key].net_value += Number(r.net_value || 0);
+			map[key].pos.push(r);
+		});
+		return Object.values(map).sort((a, b) => b.count - a.count || b.net_value - a.net_value);
+	}
+
+	render_supplier_card() {
+		const slot = this.wrapper.querySelector("[data-supplier-slot]");
+		if (!slot) return;
+
+		const src = (this.last_data && this.last_data.po_supplier_orders) || {};
+		const groups = this.get_supplier_groups();
+		this.supplier_groups = groups;
+		const creator = this.supplier_creator || null;
+		const creatorName = creator ? this.resolve_user_label(creator) : "";
+		const max = Math.max(...groups.map((g) => g.count), 1);
+		const totalPOs = groups.reduce((s, g) => s + g.count, 0);
+		const totalValue = groups.reduce((s, g) => s + g.net_value, 0);
+
+		const subtitle = creator
+			? __("Created by {0} · {1} POs · {2}. Click a supplier to see its POs.", [frappe.utils.escape_html(creatorName), totalPOs, this.pud_money(totalValue)])
+			: __("All creators · {0} POs · {1}. Click a creator on the left, or a supplier below, to drill down.", [totalPOs, this.pud_money(totalValue)]);
+
+		const rowsHtml = groups.map((g, i) => {
+			const pct = Math.round((g.count / max) * 100);
+			const extra = i >= 5 ? " pud-sup-extra" : "";
+			const shown = g.pos.slice(0, 25);
+			return `
+				<div class="pud-sup-group${extra}" data-sup-name="${frappe.utils.escape_html((g.supplier_name + " " + g.supplier).toLowerCase())}">
+					<div class="pud-row pud-clickable-row pud-sup-row" data-supplier-toggle="${i}" tabindex="0" role="button" title="${__("Show Purchase Orders for this supplier")}">
+						<span class="pud-sup-chevron">${pud_icon("chevronDown", "pud-inline-icon")}</span>
+						<span class="pud-avatar" style="--accent:var(--pud-accent-amber)">${this.initials(g.supplier_name)}</span>
+						<span class="pud-row-name" title="${frappe.utils.escape_html(g.supplier_name)}">${frappe.utils.escape_html(g.supplier_name)}</span>
+						<span class="pud-row-bar-wrap"><span class="pud-row-bar" style="--accent:var(--pud-accent-amber);width:${pct}%"></span></span>
+						<span class="pud-row-count">${g.count} ${__("POs")} <small class="pud-sup-amt">(${this.pud_money(g.net_value)})</small></span>
+					</div>
+					<div class="pud-sup-detail" style="display:none;">
+						<table class="pud-sup-table">
+							<thead><tr>
+								<th>${__("Purchase Order")}</th>
+								<th>${__("Date")}</th>
+								<th>${__("Created By")}</th>
+								<th>${__("Workflow Status")}</th>
+								<th style="text-align:right;">${__("Net Value")}</th>
+							</tr></thead>
+							<tbody>
+								${shown.map((po) => `
+									<tr>
+										<td><a href="/app/purchase-order/${encodeURIComponent(po.name)}" target="_blank" rel="noopener">${frappe.utils.escape_html(po.name)}</a></td>
+										<td>${pud_fmt_date(po.date)}</td>
+										<td>${frappe.utils.escape_html(this.resolve_user_label(po.owner))}</td>
+										<td>${frappe.utils.escape_html(__(po.workflow_state || po.status || ""))}</td>
+										<td style="text-align:right;">${this.pud_money(po.net_value)}</td>
+									</tr>
+								`).join("")}
+							</tbody>
+						</table>
+						<div class="pud-sup-detail-foot">
+							<span>${g.pos.length > shown.length ? __("Showing {0} of {1} POs", [shown.length, g.pos.length]) : __("{0} POs", [g.pos.length])}</span>
+							<button type="button" class="pud-export-btn pud-list-view-btn" data-supplier-list="${i}">${pud_icon("externalLink")}${__("Open in List View")}</button>
+						</div>
+					</div>
+				</div>
+			`;
+		}).join("");
+
+		slot.innerHTML = `
+			<div class="pud-card pud-list-card pud-supplier-card">
+				<div class="pud-list-card-head">
+					<div class="pud-list-card-head-text">
+						<div class="pud-list-title">${__("Supplier-wise Purchase Orders")}</div>
+						<div class="pud-list-subtitle">${subtitle}</div>
+					</div>
+					<div class="pud-list-card-actions">
+						${creator ? `<button type="button" class="pud-export-btn" data-supplier-clear title="${__("Show all creators")}">${pud_icon("x")}${__("All Creators")}</button>` : ""}
+						${groups.length ? `<button type="button" class="pud-export-btn" data-supplier-csv title="${__("Export CSV")}">${pud_icon("download")}${__("CSV")}</button>` : ""}
+					</div>
+				</div>
+				${groups.length > 5 ? `
+					<label class="pud-list-search">
+						${pud_icon("search", "pud-list-search-icon")}
+						<input type="text" class="pud-list-search-input" data-role="supplier-search" placeholder="${__("Filter by supplier…")}" aria-label="${__("Filter by supplier")}" />
+					</label>
+				` : ""}
+				${groups.length
+					? `<div class="pud-rows">${rowsHtml}</div>`
+					: `<div class="pud-empty-state"><div class="pud-empty-text">${__("No Purchase Orders for this selection.")}</div></div>`}
+				${groups.length > 5 ? `<button type="button" class="pud-viewmore-btn" data-supplier-more>${__("View More")}${pud_icon("chevronDown", "pud-inline-icon")}</button>` : ""}
+				${src.truncated ? `<div class="pud-sup-note">${__("Only the latest 3,000 Purchase Orders in the period are included here.")}</div>` : ""}
+			</div>
+		`;
+
+		const card = slot.querySelector(".pud-supplier-card");
+		if (!card) return;
+
+		card.addEventListener("click", (e) => {
+			if (e.target.closest("a")) return;
+
+			if (e.target.closest("[data-supplier-clear]")) {
+				this.set_supplier_creator(null);
+				return;
+			}
+			if (e.target.closest("[data-supplier-csv]")) {
+				this.export_rows_csv((this.supplier_groups || []).map((g) => ({
+					"Supplier": g.supplier,
+					"Supplier Name": g.supplier_name,
+					"PO Count": g.count,
+					"Net Value": Math.round(g.net_value * 100) / 100,
+					"Created By": creator ? creatorName : "All",
+				})), "supplier_wise_purchase_orders");
+				return;
+			}
+			const listBtn = e.target.closest("[data-supplier-list]");
+			if (listBtn) {
+				e.stopPropagation();
+				const g = (this.supplier_groups || [])[Number(listBtn.dataset.supplierList)];
+				if (g) this.open_po_list_by_supplier(g.supplier);
+				return;
+			}
+			if (e.target.closest("[data-supplier-more]")) {
+				const btn = e.target.closest("[data-supplier-more]");
+				const expanded = card.classList.toggle("pud-sup-expanded");
+				btn.innerHTML = expanded
+					? `${__("View Less")}${pud_icon("chevronDown", "pud-inline-icon pud-inline-icon--up")}`
+					: `${__("View More")}${pud_icon("chevronDown", "pud-inline-icon")}`;
+				return;
+			}
+			const toggle = e.target.closest("[data-supplier-toggle]");
+			if (toggle) {
+				const group = toggle.closest(".pud-sup-group");
+				const detail = group && group.querySelector(".pud-sup-detail");
+				if (detail) {
+					const open = detail.style.display === "none";
+					detail.style.display = open ? "block" : "none";
+					group.classList.toggle("pud-sup-open", open);
+				}
+			}
+		});
+
+		const search = card.querySelector("[data-role='supplier-search']");
+		if (search) {
+			search.addEventListener("input", () => {
+				const q = search.value.trim().toLowerCase();
+				card.classList.toggle("pud-sup-searching", !!q);
+				card.querySelectorAll(".pud-sup-group").forEach((g) => {
+					g.style.display = (!q || (g.dataset.supName || "").includes(q)) ? "" : "none";
+				});
+			});
+		}
+	}
+
+	set_supplier_creator(creatorId) {
+		this.supplier_creator = creatorId || null;
+		this.wrapper.querySelectorAll("[data-creator-select]").forEach((row) => {
+			row.classList.toggle("pud-creator-active", !!creatorId && row.dataset.creatorSelect === creatorId);
+		});
+		this.render_supplier_card();
+	}
+
+	open_po_list_by_supplier(supplier) {
+		const opts = this.po_list_filters({ docstatus: 1 });
+		if (supplier) opts.supplier = supplier;
+		if (this.supplier_creator) opts.owner = this.supplier_creator;
+		frappe.route_options = opts;
+		frappe.set_route("List", "Purchase Order");
 	}
 
 	resolve_user_label(userId) {
@@ -1899,12 +1934,13 @@ class PurchaseUserDashboard {
 			const amountHtml = row.total_amount > 0 ? ` <small style="color:var(--pud-muted);font-size:11px;font-weight:500;margin-left:4px;">(₹${Number(row.total_amount).toLocaleString()})</small>` : "";
 
 			return `
-				<div class="pud-row${extraClass} pud-clickable-row" data-creator="${frappe.utils.escape_html(row.id)}" tabindex="0" role="button" title="${__("Click to open Purchase Orders created by {0} in List View", [row.full_name])}">
+				<div class="pud-row${extraClass} pud-clickable-row" data-creator-select="${frappe.utils.escape_html(row.id)}" tabindex="0" role="button" title="${__("Click to see suppliers for Purchase Orders created by {0}", [row.full_name])}">
 					${rankHtml}
 					<span class="pud-avatar" style="--accent:var(--pud-accent-${accent})">${this.initials(row.full_name)}</span>
 					<span class="pud-row-name" title="${frappe.utils.escape_html(row.full_name)}">${frappe.utils.escape_html(row.full_name)}</span>
 					<span class="pud-row-bar-wrap"><span class="pud-row-bar" style="--accent:var(--pud-accent-${accent});width:${pct}%"></span></span>
 					<span class="pud-row-count">${row.count} ${__("POs")}${amountHtml}</span>
+					<button type="button" class="pud-creator-list-btn" data-creator-list="${frappe.utils.escape_html(row.id)}" title="${__("Open Purchase Orders created by {0} in List View", [row.full_name])}">${pud_icon("externalLink")}</button>
 				</div>
 			`;
 		}).join("");
@@ -3041,5 +3077,69 @@ const PUD_CSS = `
 	.pud-kpi-row, .pud-grid, .pud-leaderboard-grid { grid-template-columns: 1fr; }
 	.pud-toolbar-group { width: 100%; }
 	.pud-custom-select-wrapper { width: 100%; }
+}
+
+/* PO value / delivery KPIs and Workflow Status section */
+.pud-kpi-grid-4 { margin-top: 30px; margin-bottom: var(--pud-space-2); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--pud-space-4); }
+.pud-kpi-grid-4 > .pud-kpi-row { display: contents; }
+@media (max-width: 1100px) { .pud-kpi-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px)  { .pud-kpi-grid-4 { grid-template-columns: 1fr; } }
+.pud-po-kpi-card { cursor: default; }
+.pud-po-kpi-card { min-width: 0; }
+.pud-po-kpi-card .pud-kpi-main { flex-wrap: wrap; row-gap: 4px; min-width: 0; }
+.pud-po-kpi-value { font-size: clamp(20px, 1.9vw, 28px); white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.pud-po-kpi-card .pud-kpi-doc-badge { white-space: nowrap; margin-left: auto; }
+.pud-wf-card { padding: var(--pud-space-5); }
+.pud-wf-layout { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: var(--pud-space-5); align-items: center; }
+.pud-wf-list-head, .pud-wf-row, .pud-wf-total { display: flex; align-items: center; gap: 10px; }
+.pud-wf-list-head { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--pud-muted); padding-bottom: 8px; border-bottom: 1px solid var(--pud-border); }
+.pud-wf-row { cursor: pointer; }
+.pud-wf-row:hover { background: var(--pud-surface-2); }
+.pud-wf-total { font-size: 12.5px; font-weight: 800; color: var(--pud-ink); padding-top: 10px; border-top: 1px solid var(--pud-border); }
+.pud-wf-col-name { flex: 1 1 140px; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--pud-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pud-wf-col-bar { flex: 0 0 110px; }
+.pud-wf-col-num { flex: 0 0 52px; text-align: right; }
+.pud-wf-col-amt { flex: 0 0 120px; text-align: right; font-size: 12.5px; font-weight: 600; color: var(--pud-ink-secondary); white-space: nowrap; }
+.pud-wf-chart { min-height: 260px; }
+@media (max-width: 900px) {
+	.pud-wf-layout { grid-template-columns: 1fr; }
+	.pud-wf-col-bar { display: none; }
+}
+
+/* Workflow Status: horizontal bar chart */
+.pud-wf-chart { min-height: 0; display: flex; flex-direction: column; gap: 10px; }
+.pud-wf-chart-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--pud-muted); margin-bottom: 4px; }
+.pud-hbar-row, .pud-hbar-axis { display: flex; align-items: center; gap: 10px; }
+.pud-hbar-row { cursor: pointer; border-radius: 6px; }
+.pud-hbar-row:hover .pud-hbar-fill { filter: brightness(1.08); }
+.pud-hbar-label { flex: 0 0 130px; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--pud-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; }
+.pud-hbar-track { flex: 1 1 auto; height: 22px; background: var(--pud-surface-2); border-radius: 6px; overflow: hidden; }
+.pud-hbar-fill { display: block; height: 100%; border-radius: 6px; transition: width .7s ease; }
+.pud-hbar-value { flex: 0 0 52px; font-size: 12.5px; font-weight: 800; color: var(--pud-ink); text-align: left; }
+.pud-hbar-ticks { flex: 1 1 auto; display: flex; justify-content: space-between; font-size: 11px; color: var(--pud-muted); border-top: 1px solid var(--pud-border); padding-top: 4px; }
+
+/* Leaderboard: creator list button + supplier drill-down */
+.pud-creator-list-btn { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: 1px solid var(--pud-border); border-radius: 6px; background: var(--pud-surface); color: var(--pud-muted); cursor: pointer; }
+.pud-creator-list-btn:hover { color: var(--pud-accent-steel); border-color: var(--pud-accent-steel); }
+.pud-creator-list-btn .pud-icon { width: 13px; height: 13px; }
+.pud-row.pud-creator-active { background: rgba(47,111,235,.08); box-shadow: inset 3px 0 0 var(--pud-accent-steel); }
+.pud-sup-group { border-bottom: 1px solid var(--pud-border); }
+.pud-sup-group:last-child { border-bottom: none; }
+.pud-sup-group .pud-sup-row { border-bottom: none; }
+.pud-sup-extra { display: none; }
+.pud-supplier-card.pud-sup-expanded .pud-sup-extra, .pud-supplier-card.pud-sup-searching .pud-sup-extra { display: block; }
+.pud-sup-chevron { flex: none; display: inline-flex; color: var(--pud-muted); transition: transform .2s; transform: rotate(-90deg); }
+.pud-sup-open .pud-sup-chevron { transform: rotate(0deg); }
+.pud-sup-amt { color: var(--pud-muted); font-size: 11px; font-weight: 500; margin-left: 4px; }
+.pud-sup-detail { padding: 4px 0 12px 30px; }
+.pud-sup-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pud-sup-table th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--pud-muted); font-weight: 700; padding: 6px 6px; border-bottom: 1px solid var(--pud-border); }
+.pud-sup-table td { padding: 6px 6px; border-bottom: 1px solid var(--pud-border); color: var(--pud-ink-secondary); white-space: nowrap; }
+.pud-sup-table td a { color: var(--pud-accent-steel); font-weight: 600; }
+.pud-sup-detail-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 11.5px; color: var(--pud-muted); }
+.pud-sup-note { margin-top: 8px; font-size: 11.5px; color: var(--pud-muted); }
+@media (max-width: 600px) {
+	.pud-hbar-label { flex-basis: 90px; }
+	.pud-sup-detail { padding-left: 0; overflow-x: auto; }
 }
 `;

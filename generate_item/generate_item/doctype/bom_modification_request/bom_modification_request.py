@@ -34,6 +34,22 @@ class BomModificationRequest(Document):
             if has_mfg:
                 create_pp_task_on_bmr_submit(self)
 
+    def on_cancel(self):
+        self.clear_bom_item_rev_no()
+
+    def on_trash(self):
+        self.clear_bom_item_rev_no()
+
+    def clear_bom_item_rev_no(self):
+        """Remove this request's name from BOM Item.rev_no so no stale
+        revision reference is left behind after cancel or delete."""
+        for row_name in frappe.get_all(
+            "BOM Item", filters={"rev_no": self.name}, pluck="name"
+        ):
+            frappe.db.set_value(
+                "BOM Item", row_name, "rev_no", None, update_modified=False
+            )
+
     def has_manufacturing_changes(self):
         """
         Returns True ONLY if there is a Quantity change or an Item change in this BMR.

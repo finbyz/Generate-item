@@ -485,6 +485,9 @@ def update_proforma_details(docname,action):
             sales_order_list = []
 
             for item in doc.items:
+                # Rows added by hand (not mapped from a Sales Order) have nothing to update.
+                if not (item.sales_order and item.sales_order_item):
+                    continue
                 proforma_query = frappe.db.sql("""
                     select sum(poi.payment_amount) as payment_amount,soi.net_amount
                     from `tabProforma Invoice Item` as poi
@@ -501,7 +504,7 @@ def update_proforma_details(docname,action):
                     proforma_amount = proforma_query[0][0]
                     net_amount = proforma_query[0][1] 
                     if proforma_amount:
-                        proforma_percentage = (flt(proforma_amount) + flt(item.payment_amount)) / flt(net_amount) * 100
+                        proforma_percentage = (flt(proforma_amount) + flt(item.payment_amount)) / flt(net_amount) * 100 if flt(net_amount) else 0
                         if cint(proforma_percentage) > 100:
                             frappe.throw("<b>Row {}</b>: Proforma Invoice has already been raised".format(item.idx))
 
@@ -516,22 +519,25 @@ def update_proforma_details(docname,action):
                         'proforma_amount',item.payment_amount)
                     proforma_percentage = frappe.db.get_value("Sales Order Item", {"name":item.sales_order_item,"parent":item.sales_order}, 'net_amount') or 0
                     frappe.db.set_value("Sales Order Item",{"name":item.sales_order_item,"parent":item.sales_order},\
-                        'proforma_percentage',((flt(item.payment_amount) / flt(proforma_percentage)) * 100))
+                        'proforma_percentage',((flt(item.payment_amount) / flt(proforma_percentage)) * 100) if flt(proforma_percentage) else 0)
             sales_order_list = list(set(sales_order_list))
             for so in sales_order_list:
                 if so:
                     so_doc = frappe.get_doc("Sales Order",so)
                     so_doc.db_set("proforma_amount",flt(doc.payment_due_amount) + flt(so_doc.proforma_amount))
                     if so_doc.disable_rounded_total:
-                        so_doc.db_set("proforma_percentage",flt(so_doc.proforma_amount) / flt(so_doc.grand_total) * 100)
+                        so_doc.db_set("proforma_percentage",flt(so_doc.proforma_amount) / flt(so_doc.grand_total) * 100 if flt(so_doc.grand_total) else 0)
                     else:
-                        so_doc.db_set("proforma_percentage",flt(so_doc.proforma_amount) / flt(so_doc.rounded_total) * 100)
+                        so_doc.db_set("proforma_percentage",flt(so_doc.proforma_amount) / flt(so_doc.rounded_total) * 100 if flt(so_doc.rounded_total) else 0)
 
                     change_sales_order_status(so_doc)
 
         elif action == "cancel":
             sales_order_list = []
             for item in doc.items:
+                # Rows added by hand (not mapped from a Sales Order) have nothing to update.
+                if not (item.sales_order and item.sales_order_item):
+                    continue
                 proforma_query = frappe.db.sql("""
                     select sum(poi.payment_amount) as payment_amount,soi.net_amount
                     from `tabProforma Invoice Item` as poi
@@ -569,7 +575,7 @@ def update_proforma_details(docname,action):
                     so_doc  = frappe.get_doc("Sales Order",so)
     
                     so_doc.db_set("proforma_amount",flt(so_doc.proforma_amount) - flt(doc.payment_due_amount))
-                    so_doc.db_set("proforma_percentage",flt(so_doc.proforma_amount) / flt(so_doc.rounded_total) * 100)
+                    so_doc.db_set("proforma_percentage",flt(so_doc.proforma_amount) / flt(so_doc.rounded_total) * 100 if flt(so_doc.rounded_total) else 0)
                     change_sales_order_status(so_doc)
 
 def change_sales_order_status(so_doc, update_modified= True):

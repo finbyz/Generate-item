@@ -176,229 +176,229 @@ frappe.ui.form.on('Purchase Receipt', {
         }, __('Get Items From'));
 
         // =============================
-        frm.add_custom_button('Append from PO (Line Wise)', function () {
+        // frm.add_custom_button('Append from PO (Line Wise)', function () {
 
-            // Step 1: Select Purchase Order
-            frappe.prompt([
-                {
-                    label: 'Purchase Order',
-                    fieldname: 'po',
-                    fieldtype: 'Link',
-                    options: 'Purchase Order',
-                    reqd: 1,
-                    get_query: function () {
-                        let filters = {
-                            supplier: frm.doc.supplier,
-                            status: ["not in", ["Completed", "Closed", "Cancelled"]],
-                            docstatus: 1
-                        };
-                        if (frm.doc.branch) {
-                            filters.branch = frm.doc.branch;
-                        }
-                        return { filters: filters };
-                    }
-                }
-            ], function (values) {
+        //     // Step 1: Select Purchase Order
+        //     frappe.prompt([
+        //         {
+        //             label: 'Purchase Order',
+        //             fieldname: 'po',
+        //             fieldtype: 'Link',
+        //             options: 'Purchase Order',
+        //             reqd: 1,
+        //             get_query: function () {
+        //                 let filters = {
+        //                     supplier: frm.doc.supplier,
+        //                     status: ["not in", ["Completed", "Closed", "Cancelled"]],
+        //                     docstatus: 1
+        //                 };
+        //                 if (frm.doc.branch) {
+        //                     filters.branch = frm.doc.branch;
+        //                 }
+        //                 return { filters: filters };
+        //             }
+        //         }
+        //     ], function (values) {
 
-                // Step 2: Fetch PO
-                frappe.call({
-                    method: 'frappe.client.get',
-                    args: {
-                        doctype: 'Purchase Order',
-                        name: values.po
-                    },
-                    callback: function (r) {
+        //         // Step 2: Fetch PO
+        //         frappe.call({
+        //             method: 'frappe.client.get',
+        //             args: {
+        //                 doctype: 'Purchase Order',
+        //                 name: values.po
+        //             },
+        //             callback: function (r) {
 
-                        let po = r.message;
-                        if (!po) return;
+        //                 let po = r.message;
+        //                 if (!po) return;
 
-                        // =========================
-                        // Build Table HTML
-                        // =========================
-                        let html = `
-                            <table class="table table-bordered" style="width:100%;">
-                                <thead>
-                                    <tr>
-                                        <th><input type="checkbox" id="select_all"></th>
-                                        <th>Line No</th>
-                                        <th>Item Code</th>
-                                        <th>Item Name</th>
-                                        <th>Qty</th>
-                                        <th>Received Qty</th>
-                                        <th>Pending Qty</th>
-                                    
-                                    </tr>
-                                </thead>
-                                <tbody>
-                        `;
+        //                 // =========================
+        //                 // Build Table HTML
+        //                 // =========================
+        //                 let html = `
+        //                     <table class="table table-bordered" style="width:100%;">
+        //                         <thead>
+        //                             <tr>
+        //                                 <th><input type="checkbox" id="select_all"></th>
+        //                                 <th>Line No</th>
+        //                                 <th>Item Code</th>
+        //                                 <th>Item Name</th>
+        //                                 <th>Qty</th>
+        //                                 <th>Received Qty</th>
+        //                                 <th>Pending Qty</th>
 
-                        po.items.forEach(item => {
+        //                             </tr>
+        //                         </thead>
+        //                         <tbody>
+        //                 `;
 
-                            let ordered = item.qty || 0;
-                            let received = item.received_qty || 0;
-                            let pending = ordered - received;
+        //                 po.items.forEach(item => {
 
-                            html += `
-                                <tr>
-                                    <td>
-                                        <input type="checkbox" class="po-line" value="${item.name}">
-                                    </td>
-                                    <td>${item.po_line_no || item.idx}</td>
-                                    <td>${item.item_code}</td>
-                                    <td>${item.item_name || ''}</td>
-                                    <td>${item.qty}</td>
-                                    <td>${received}</td>
-                                    <td style="color:${pending > 0 ? 'red' : 'green'};">
-                                        ${pending}
-                                    </td>
-                                </tr>
-                            `;
-                        });
+        //                     let ordered = item.qty || 0;
+        //                     let received = item.received_qty || 0;
+        //                     let pending = ordered - received;
 
-                        html += `</tbody></table>`;
+        //                     html += `
+        //                         <tr>
+        //                             <td>
+        //                                 <input type="checkbox" class="po-line" value="${item.name}">
+        //                             </td>
+        //                             <td>${item.po_line_no || item.idx}</td>
+        //                             <td>${item.item_code}</td>
+        //                             <td>${item.item_name || ''}</td>
+        //                             <td>${item.qty}</td>
+        //                             <td>${received}</td>
+        //                             <td style="color:${pending > 0 ? 'red' : 'green'};">
+        //                                 ${pending}
+        //                             </td>
+        //                         </tr>
+        //                     `;
+        //                 });
 
-                        // =========================
-                        // Dialog
-                        // =========================
-                        let d = new frappe.ui.Dialog({
-                            title: 'Select PO Lines',
-                            size: 'large',
-                            fields: [
-                                {
-                                    fieldtype: 'HTML',
-                                    fieldname: 'po_table'
-                                }
-                            ],
-                            primary_action_label: 'Add Items',
-                            primary_action() {
+        //                 html += `</tbody></table>`;
 
-                                let selected_lines = [];
+        //                 // =========================
+        //                 // Dialog
+        //                 // =========================
+        //                 let d = new frappe.ui.Dialog({
+        //                     title: 'Select PO Lines',
+        //                     size: 'large',
+        //                     fields: [
+        //                         {
+        //                             fieldtype: 'HTML',
+        //                             fieldname: 'po_table'
+        //                         }
+        //                     ],
+        //                     primary_action_label: 'Add Items',
+        //                     primary_action() {
 
-                                // Get selected checkboxes
-                                d.$wrapper.find('.po-line:checked').each(function () {
-                                    selected_lines.push($(this).val());
-                                });
+        //                         let selected_lines = [];
 
-                                po.items.forEach(function (item) {
+        //                         // Get selected checkboxes
+        //                         d.$wrapper.find('.po-line:checked').each(function () {
+        //                             selected_lines.push($(this).val());
+        //                         });
 
-                                    // Filter selected
-                                    if (
-                                        selected_lines.length > 0 &&
-                                        !selected_lines.includes(item.name)
-                                    ) {
-                                        return;
-                                    }
+        //                         po.items.forEach(function (item) {
 
-                                    // Duplicate check
-                                    let exists = frm.doc.items.some(d =>
-                                        d.purchase_order === po.name &&
-                                        d.purchase_order_item === item.name
-                                    );
+        //                             // Filter selected
+        //                             if (
+        //                                 selected_lines.length > 0 &&
+        //                                 !selected_lines.includes(item.name)
+        //                             ) {
+        //                                 return;
+        //                             }
 
-                                    if (!exists) {
+        //                             // Duplicate check
+        //                             let exists = frm.doc.items.some(d =>
+        //                                 d.purchase_order === po.name &&
+        //                                 d.purchase_order_item === item.name
+        //                             );
 
-                                        let row = frm.add_child('items');
+        //                             if (!exists) {
 
-                                        // 🔹 Standard fields
-                                        row.item_code = item.item_code;
-                                        row.item_name = item.item_name;
-                                        row.description = item.description;
-                                        row.gst_hsn_code = item.gst_hsn_code;
-                                        row.qty = item.qty;
-                                        row.uom = item.uom;
-                                        row.rate = item.rate;
-                                        row.amount = (row.qty || 0) * (row.rate || 0);
-                                        row.base_amount = row.amount * (frm.doc.conversion_rate || 1);
+        //                                 let row = frm.add_child('items');
 
-                                        row.net_rate = item.net_rate;
-                                        row.net_amount = item.net_amount;
-                                        row.base_net_amount = item.base_net_amount;
-                                        row.base_net_rate = item.base_net_rate;
-                                        row.taxable_value = item.taxable_value;
+        //                                 // 🔹 Standard fields
+        //                                 row.item_code = item.item_code;
+        //                                 row.item_name = item.item_name;
+        //                                 row.description = item.description;
+        //                                 row.gst_hsn_code = item.gst_hsn_code;
+        //                                 row.qty = item.qty;
+        //                                 row.uom = item.uom;
+        //                                 row.rate = item.rate;
+        //                                 row.amount = (row.qty || 0) * (row.rate || 0);
+        //                                 row.base_amount = row.amount * (frm.doc.conversion_rate || 1);
 
-                                        // 🔹 Links
-                                        row.purchase_order = po.name;
-                                        row.purchase_order_item = item.name;
-                                        row.material_request = item.material_request;
+        //                                 row.net_rate = item.net_rate;
+        //                                 row.net_amount = item.net_amount;
+        //                                 row.base_net_amount = item.base_net_amount;
+        //                                 row.base_net_rate = item.base_net_rate;
+        //                                 row.taxable_value = item.taxable_value;
 
-                                        // GST DETAILS
-                                        row.cgst_rate = item.cgst_rate;
-                                        row.igst_rate = item.igst_rate;
-                                        row.sgst_rate = item.sgst_rate;
-                                        row.cess_rate = item.cess_rate;
-                                        row.cess_non_advol_rate = item.cess_non_advol_rate;
-                                        row.igst_amount = item.igst_amount;
-                                        row.cgst_amount = item.cgst_amount;
-                                        row.sgst_amount = item.sgst_amount;
-                                        row.cess_amount = item.cess_amount;
-                                        row.cess_non_advol_amount = item.cess_non_advol_amount;
+        //                                 // 🔹 Links
+        //                                 row.purchase_order = po.name;
+        //                                 row.purchase_order_item = item.name;
+        //                                 row.material_request = item.material_request;
 
-                                        // 🔹 Warehouse
-                                        row.warehouse = item.warehouse || frm.doc.set_warehouse;
+        //                                 // GST DETAILS
+        //                                 row.cgst_rate = item.cgst_rate;
+        //                                 row.igst_rate = item.igst_rate;
+        //                                 row.sgst_rate = item.sgst_rate;
+        //                                 row.cess_rate = item.cess_rate;
+        //                                 row.cess_non_advol_rate = item.cess_non_advol_rate;
+        //                                 row.igst_amount = item.igst_amount;
+        //                                 row.cgst_amount = item.cgst_amount;
+        //                                 row.sgst_amount = item.sgst_amount;
+        //                                 row.cess_amount = item.cess_amount;
+        //                                 row.cess_non_advol_amount = item.cess_non_advol_amount;
 
-                                        // Item Weight Details 
-                                        row.weight_per_unit = item.weight_per_unit
-                                        row.weight_uom = item.weight_uom
+        //                                 // 🔹 Warehouse
+        //                                 row.warehouse = item.warehouse || frm.doc.set_warehouse;
 
-                                        // 🔹 Custom mappings
-                                        // row.custom_batch_no = item.custom_batch_no;
-                                        row.branch = item.branch;
+        //                                 // Item Weight Details 
+        //                                 row.weight_per_unit = item.weight_per_unit
+        //                                 row.weight_uom = item.weight_uom
 
-                                        // PO qty reference
-                                        row.po_qty = item.qty;
-                                        row.po_rate = item.rate;
+        //                                 // 🔹 Custom mappings
+        //                                 // row.custom_batch_no = item.custom_batch_no;
+        //                                 row.branch = item.branch;
+
+        //                                 // PO qty reference
+        //                                 row.po_qty = item.qty;
+        //                                 row.po_rate = item.rate;
 
 
-                                        row.project = item.project;
-                                        // console.log(item.stock_qty);
-                                        row.qty_in_stock_uom = item.stock_qty;
-                                        row.expense_account = item.expense_account;
+        //                                 row.project = item.project;
+        //                                 // console.log(item.stock_qty);
+        //                                 row.qty_in_stock_uom = item.stock_qty;
+        //                                 row.expense_account = item.expense_account;
 
-                                        row.custom_drg_and_pur_spec = item.custom_drg_and_pur_spec;
-                                        row.custom_drawing_no = item.custom_drawing_no;
-                                        row.custom_drawing_rev_no = item.custom_drawing_rev_no;
+        //                                 row.custom_drg_and_pur_spec = item.custom_drg_and_pur_spec;
+        //                                 row.custom_drawing_no = item.custom_drawing_no;
+        //                                 row.custom_drawing_rev_no = item.custom_drawing_rev_no;
 
-                                        row.custom_pattern_drawing_no = item.custom_pattern_drawing_no;
-                                        row.custom_pattern_drawing_rev_no = item.custom_pattern_drawing_rev_no;
+        //                                 row.custom_pattern_drawing_no = item.custom_pattern_drawing_no;
+        //                                 row.custom_pattern_drawing_rev_no = item.custom_pattern_drawing_rev_no;
 
-                                        row.custom_purchase_specification_no = item.custom_purchase_specification_no;
-                                        row.custom_purchase_specification_rev_no = item.custom_purchase_specification_rev_no;
+        //                                 row.custom_purchase_specification_no = item.custom_purchase_specification_no;
+        //                                 row.custom_purchase_specification_rev_no = item.custom_purchase_specification_rev_no;
 
-                                        // Pending stock qty
-                                        row.stock_qty = item.pending_qty_in_stock_uom;
+        //                                 // Pending stock qty
+        //                                 row.stock_qty = item.pending_qty_in_stock_uom;
 
-                                        // PO Line No
-                                        if (item.po_line_no) {
-                                            row.po_line_no = item.po_line_no;
-                                        }
-                                    }
+        //                                 // PO Line No
+        //                                 if (item.po_line_no) {
+        //                                     row.po_line_no = item.po_line_no;
+        //                                 }
+        //                             }
 
-                                });
+        //                         });
 
-                                frm.refresh_field('items');
-                                d.hide();
-                            }
-                        });
+        //                         frm.refresh_field('items');
+        //                         d.hide();
+        //                     }
+        //                 });
 
-                        // Set HTML
-                        d.fields_dict.po_table.$wrapper.html(html);
+        //                 // Set HTML
+        //                 d.fields_dict.po_table.$wrapper.html(html);
 
-                        d.show();
+        //                 d.show();
 
-                        // =========================
-                        // Select All checkbox
-                        // =========================
-                        d.$wrapper.on('change', '#select_all', function () {
-                            let checked = $(this).prop('checked');
-                            d.$wrapper.find('.po-line').prop('checked', checked);
-                        });
+        //                 // =========================
+        //                 // Select All checkbox
+        //                 // =========================
+        //                 d.$wrapper.on('change', '#select_all', function () {
+        //                     let checked = $(this).prop('checked');
+        //                     d.$wrapper.find('.po-line').prop('checked', checked);
+        //                 });
 
-                    }
-                });
+        //             }
+        //         });
 
-            }, 'Select Purchase Order');
+        //     }, 'Select Purchase Order');
 
-        });
+        // });
         // =============================================
     },
 
