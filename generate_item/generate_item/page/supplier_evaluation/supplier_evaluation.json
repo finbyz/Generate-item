@@ -1,0 +1,19 @@
+{
+ "content": null,
+ "creation": "2026-11-24 16:46:29.237997",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-11-24 16:46:29.237997",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "supplier-evaluation",
+ "owner": "Administrator",
+ "page_name": "supplier-evaluation",
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Supplier Evaluation Dashboard"
+}

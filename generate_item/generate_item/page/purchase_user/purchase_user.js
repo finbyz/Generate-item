@@ -330,94 +330,9 @@ class PurchaseUserDashboard {
 					<div data-po-workflow></div>
 				</section>
 
-				<!-- ── Section 02 · Document Intensity (Document-wise) ── -->
-				<section class="pud-section" data-section="order-change">
-					<div class="pud-section-head">
-						<span class="pud-section-index">02</span>
-						<span class="pud-section-title">${__("Document Intensity (Document-wise)")}</span>
-						<span class="pud-section-context" id="order-context"></span>
-						<span class="pud-section-line" aria-hidden="true"></span>
-					</div>
-					<div class="pud-stage-pills-bar" data-pills="order-change">
-						<button type="button" class="pud-stage-pill active" data-stage="all">${__("All Stages")}</button>
-						<button type="button" class="pud-stage-pill" data-stage="po_pending">${__("MR Pending")}</button>
-						<button type="button" class="pud-stage-pill" data-stage="mr_completed">${__("PO Converted")}</button>
-						<button type="button" class="pud-stage-pill" data-stage="pr_pending">${__("PR Pending")}</button>
-						<button type="button" class="pud-stage-pill" data-stage="pi_pending">${__("PI Pending")}</button>
-						<button type="button" class="pud-stage-pill" data-stage="pi_completed">${__("PI Completed")}</button>
-					</div>
-					<div class="pud-grid pud-grid--4" data-grid="order-intensity"></div>
-				</section>
-
-				<!-- ── Section 03 · Item Intensity (Item-wise) ── -->
-				<section class="pud-section" data-section="batch-change">
-					<div class="pud-section-head">
-						<span class="pud-section-index">03</span>
-						<span class="pud-section-title">${__("Item Intensity (Item-wise)")}</span>
-						<span class="pud-section-context" id="batch-context"></span>
-						<span class="pud-section-line" aria-hidden="true"></span>
-					</div>
-					<div class="pud-stage-pills-bar" data-pills="batch-change">
-						<button type="button" class="pud-stage-pill active" data-stage="all">${__("All Stages")}</button>
-						<button type="button" class="pud-stage-pill" data-stage="po_pending">${__("MR Pending")}</button>
-						<button type="button" class="pud-stage-pill" data-stage="mr_completed">${__("PO Converted")}</button>
-						<button type="button" class="pud-stage-pill" data-stage="pr_pending">${__("PR Pending")}</button>
-						<button type="button" class="pud-stage-pill" data-stage="pi_pending">${__("PI Pending")}</button>
-						<button type="button" class="pud-stage-pill" data-stage="pi_completed">${__("PI Completed")}</button>
-					</div>
-					<div class="pud-grid pud-grid--batch-buckets" data-grid="batch-intensity"></div>
-
-					<!-- Detailed Searchable Item Table directly below -->
-					<div class="pud-item-table-container">
-						<div class="pud-item-toolbar">
-							<div class="pud-item-toolbar-left">
-								<div class="pud-item-search-wrap">
-									${pud_icon("search")}
-									<input type="text" class="pud-item-search-input" data-role="item-table-search" placeholder="${__("Search item code, name, or document…")}" />
-								</div>
-								<div class="pud-item-stage-tabs" role="tablist">
-									<button type="button" class="pud-stage-tab-btn active" data-tab="all">${__("All Items")} <span class="pud-count-pill" id="pud-pill-all">0</span></button>
-									<button type="button" class="pud-stage-tab-btn" data-tab="po_pending">${__("MR Pending")} <span class="pud-count-pill" id="pud-pill-po">0</span></button>
-									<button type="button" class="pud-stage-tab-btn" data-tab="mr_completed">${__("PO Converted")} <span class="pud-count-pill" id="pud-pill-mr">0</span></button>
-									<button type="button" class="pud-stage-tab-btn" data-tab="pr_pending">${__("PR Pending")} <span class="pud-count-pill" id="pud-pill-pr">0</span></button>
-									<button type="button" class="pud-stage-tab-btn" data-tab="pi_pending">${__("PI Pending")} <span class="pud-count-pill" id="pud-pill-pi">0</span></button>
-									<button type="button" class="pud-stage-tab-btn" data-tab="pi_completed">${__("PI Completed")} <span class="pud-count-pill" id="pud-pill-cmp">0</span></button>
-								</div>
-							</div>
-							<div class="pud-item-toolbar-right">
-								<button type="button" class="pud-export-btn pud-export-items-csv" title="${__("Export CSV")}">
-									${pud_icon("download")}${__("CSV")}
-								</button>
-							</div>
-						</div>
-
-						<div class="pud-item-table-wrap">
-							<table class="pud-item-table">
-								<thead>
-									<tr>
-										<th style="width:170px;">${__("Item Code")}</th>
-										<th>${__("Item Name")}</th>
-										<th style="width:130px;">${__("Stage")}</th>
-										<th style="width:120px;text-align:right;">${__("Pending Qty")}</th>
-										<th style="width:105px;text-align:right;">${__("Total Qty")}</th>
-										<th style="width:125px;text-align:right;">${__("Est. Amount")}</th>
-										<th style="width:140px;">${__("Branch / Warehouse")}</th>
-										<th style="width:190px;">${__("Linked Documents")}</th>
-									</tr>
-								</thead>
-								<tbody id="pud-item-table-body"></tbody>
-							</table>
-						</div>
-						<div id="pud-item-table-empty" class="pud-empty-state" style="display:none;">
-							<div class="pud-empty-icon">${pud_icon("inbox")}</div>
-							<div class="pud-empty-text">${__("No matching line items found.")}</div>
-						</div>
-					</div>
-				</section>
-
-				<!-- ── Section 04 · Creator Leaderboard ── -->
+				<!-- ── Section 02 · Creator Leaderboard ── -->
 				<section class="pud-section" data-section="leaderboard">
-					${this.section_head("04", __("Creator Leaderboard (Purchase Orders)"))}
+					${this.section_head("02", __("Creator Leaderboard (Purchase Orders)"))}
 					<div class="pud-leaderboard-grid"></div>
 				</section>
 
@@ -477,32 +392,6 @@ class PurchaseUserDashboard {
 		const toInput = this.wrapper.querySelector("[data-role='to-date']");
 		if (fromInput) fromInput.addEventListener("change", () => this.sync_custom_dates());
 		if (toInput) toInput.addEventListener("change", () => this.sync_custom_dates());
-
-		// Stage Pills for Document Intensity
-		const orderPills = this.wrapper.querySelector('[data-pills="order-change"]');
-		if (orderPills) {
-			orderPills.addEventListener("click", (e) => {
-				const pill = e.target.closest(".pud-stage-pill");
-				if (!pill) return;
-				orderPills.querySelectorAll(".pud-stage-pill").forEach((p) => p.classList.remove("active"));
-				pill.classList.add("active");
-				this.order_intensity_stage = pill.dataset.stage;
-				this.render_order_change_intensity(this.last_data);
-			});
-		}
-
-		// Stage Pills for Item Intensity
-		const batchPills = this.wrapper.querySelector('[data-pills="batch-change"]');
-		if (batchPills) {
-			batchPills.addEventListener("click", (e) => {
-				const pill = e.target.closest(".pud-stage-pill");
-				if (!pill) return;
-				batchPills.querySelectorAll(".pud-stage-pill").forEach((p) => p.classList.remove("active"));
-				pill.classList.add("active");
-				this.batch_intensity_stage = pill.dataset.stage;
-				this.render_item_change_intensity(this.last_data);
-			});
-		}
 
 		// Item Table Stage Tabs
 		const itemTabs = this.wrapper.querySelector(".pud-item-stage-tabs");
@@ -596,11 +485,10 @@ class PurchaseUserDashboard {
 				return;
 			}
 
-			// Creator Row Click in Leaderboard -> supplier-wise drill-down for that creator
+			// Creator Row Click in Leaderboard -> expand/collapse that creator's POs grouped by supplier
 			const creatorRow = e.target.closest("[data-creator-select]");
 			if (creatorRow) {
-				const creator = creatorRow.dataset.creatorSelect;
-				this.set_supplier_creator(this.supplier_creator === creator ? null : creator);
+				this.toggle_creator_detail(creatorRow);
 				return;
 			}
 
@@ -933,9 +821,6 @@ class PurchaseUserDashboard {
 			try { this.render_top_kpis(data); } catch (e) { console.error("Error in render_top_kpis:", e); }
 			try { this.render_po_kpis(data); } catch (e) { console.error("Error in render_po_kpis:", e); }
 			try { this.render_po_workflow(data); } catch (e) { console.error("Error in render_po_workflow:", e); }
-			try { this.render_order_change_intensity(data); } catch (e) { console.error("Error in render_order_change_intensity:", e); }
-			try { this.render_item_change_intensity(data); } catch (e) { console.error("Error in render_item_change_intensity:", e); }
-			try { this.render_item_table(); } catch (e) { console.error("Error in render_item_table:", e); }
 			try { this.render_leaderboard(data); } catch (e) { console.error("Error in render_leaderboard:", e); }
 
 		} catch (error) {
@@ -955,10 +840,6 @@ class PurchaseUserDashboard {
 		if (wfEl) wfEl.innerHTML = '<div class="pud-card pud-skel" style="height:300px"></div>';
 		const kpiEl = this.wrapper.querySelector('[data-role="top-kpis"]');
 		if (kpiEl) kpiEl.innerHTML = this.skeleton_cards(5, 170);
-		const orderGrid = this.wrapper.querySelector('[data-grid="order-intensity"]');
-		if (orderGrid) orderGrid.innerHTML = this.skeleton_cards(4, 230);
-		const batchGrid = this.wrapper.querySelector('[data-grid="batch-intensity"]');
-		if (batchGrid) batchGrid.innerHTML = this.skeleton_cards(4, 230);
 		const leadGrid = this.wrapper.querySelector('.pud-leaderboard-grid');
 		if (leadGrid) leadGrid.innerHTML = `<div class="pud-card pud-skel" style="height:280px"></div><div class="pud-card pud-skel" style="height:280px"></div>`;
 	}
@@ -992,7 +873,8 @@ class PurchaseUserDashboard {
 		const el = this.wrapper.querySelector('[data-role="top-kpis"]');
 		if (!el) return;
 
-		const cards = data.cards || [];
+		// PO Converted (mr_completed) is not shown as a number card; its data is still used by the line item table
+		const cards = (data.cards || []).filter((c) => c.id !== "mr_completed");
 		const stageColors = {
 			po_pending: "var(--pud-accent-steel)",
 			mr_completed: "var(--pud-accent-moss)",
@@ -1145,24 +1027,12 @@ class PurchaseUserDashboard {
 				color: "var(--pud-accent-amber)",
 				value: this.pud_money(m.total_net_value),
 				badge: __("Net Value"),
+				extraRows: [{ label: __("Average PO Value"), val: this.pud_money(m.avg_po_value), title: __("Total PO Net Value divided by the number of submitted Purchase Orders.") }],
 				lineLabel: __("Submitted POs"),
 				lineVal: Number(m.po_count || 0).toLocaleString(),
 				sub: __("Net total, before taxes"),
 				delta: prev ? this.render_kpi_delta(Number(m.total_net_value || 0), Number(prev.total_net_value || 0)) : "",
 				title_attr: __("Sum of Net Total (company currency) of submitted Purchase Orders in the period."),
-			},
-			{
-				key: "avg_value",
-				title: __("Average PO Value"),
-				icon: "trendingUp",
-				color: "var(--pud-accent-teal)",
-				value: this.pud_money(m.avg_po_value),
-				badge: __("Per PO"),
-				lineLabel: __("Submitted POs"),
-				lineVal: Number(m.po_count || 0).toLocaleString(),
-				sub: __("Net value ÷ PO count"),
-				delta: prev ? this.render_kpi_delta(Number(m.avg_po_value || 0), Number(prev.avg_po_value || 0)) : "",
-				title_attr: __("Total PO Net Value divided by the number of submitted Purchase Orders."),
 			},
 		];
 
@@ -1181,6 +1051,11 @@ class PurchaseUserDashboard {
 					<div class="pud-kpi-value pud-po-kpi-value" style="color:${t.color}">${t.value}</div>
 					<div class="pud-kpi-doc-badge">${t.badge}</div>
 				</div>
+				${(t.extraRows || []).map((r) => `
+				<div class="pud-kpi-line-item-row pud-kpi-line-item-row--extra" title="${frappe.utils.escape_html(r.title || "")}">
+					<span class="pud-kpi-line-item-label">${r.label}:</span>
+					<span class="pud-kpi-line-item-val">${r.val}</span>
+				</div>`).join("")}
 				<div class="pud-kpi-line-item-row">
 					<span class="pud-kpi-line-item-label">${t.lineLabel}:</span>
 					<span class="pud-kpi-line-item-val">${t.lineVal}</span>
@@ -1271,153 +1146,7 @@ class PurchaseUserDashboard {
 	}
 
 	// -------------------------------------------------- Document Intensity (Document-wise)
-	render_order_change_intensity(data) {
-		const grid = this.wrapper.querySelector('[data-grid="order-intensity"]');
-		if (!grid) return;
-
-		const stage = this.order_intensity_stage || "all";
-		const cards = data.cards || [];
-		const keys = ["1", "2", "3", "3+"];
-
-		let totalDocs = 0;
-		const buckets = {
-			"1": { count: 0, previous_count: 0, branches: { Sanand: 0, Nandikoor: 0, Rabale: 0 } },
-			"2": { count: 0, previous_count: 0, branches: { Sanand: 0, Nandikoor: 0, Rabale: 0 } },
-			"3": { count: 0, previous_count: 0, branches: { Sanand: 0, Nandikoor: 0, Rabale: 0 } },
-			"3+": { count: 0, previous_count: 0, branches: { Sanand: 0, Nandikoor: 0, Rabale: 0 } },
-		};
-
-		cards.forEach((c) => {
-			if (stage === "all" || c.id === stage) {
-				const di = c.document_intensity;
-				if (di) {
-					totalDocs += di.total_documents !== undefined ? di.total_documents : (c.count || 0);
-					keys.forEach((k) => {
-						const b = di.buckets && di.buckets[k];
-						if (b) {
-							buckets[k].count += b.count || 0;
-							buckets[k].previous_count += b.previous_count || 0;
-							if (b.branches) {
-								PUD_BRANCHES.forEach((bName) => {
-									buckets[k].branches[bName] = (buckets[k].branches[bName] || 0) + (b.branches[bName] || 0);
-								});
-							}
-						}
-					});
-				} else {
-					totalDocs += c.count || 0;
-				}
-			}
-		});
-
-		// Update section heading context badge
-		const contextEl = this.wrapper.querySelector("#order-context");
-		if (contextEl) {
-			contextEl.innerHTML = `
-				<span class="pud-section-context-badge">
-					${pud_icon("package", "pud-section-context-icon")}
-					<span>${__("Total Documents")}:</span>
-					<span class="pud-section-context-count" data-count="${totalDocs}">0</span>
-				</span>
-			`;
-			this.animate_values(contextEl);
-		}
-
-		grid.innerHTML = keys.map((key) => {
-			const meta = PUD_DOC_SEVERITY[key];
-			const bData = buckets[key];
-			const val = bData.count;
-			const prevVal = bData.previous_count;
-
-			return this.intensity_card({
-				label: meta.label,
-				value: val,
-				previous_value: prevVal,
-				branches: bData.branches,
-				action_type: "order-change",
-				severity_key: key,
-				accent: meta.key,
-				desc: meta.desc,
-			});
-		}).join("");
-
-		this.animate_values(grid);
-	}
-
 	// -------------------------------------------------- Item Intensity (Item-wise)
-	render_item_change_intensity(data) {
-		const grid = this.wrapper.querySelector('[data-grid="batch-intensity"]');
-		if (!grid) return;
-
-		const stage = this.batch_intensity_stage || "all";
-		const cards = data.cards || [];
-		const keys = ["1", "2", "3", "3+"];
-
-		let totalLineItems = 0;
-		const buckets = {
-			"1": { count: 0, previous_count: 0, branches: { Sanand: 0, Nandikoor: 0, Rabale: 0 } },
-			"2": { count: 0, previous_count: 0, branches: { Sanand: 0, Nandikoor: 0, Rabale: 0 } },
-			"3": { count: 0, previous_count: 0, branches: { Sanand: 0, Nandikoor: 0, Rabale: 0 } },
-			"3+": { count: 0, previous_count: 0, branches: { Sanand: 0, Nandikoor: 0, Rabale: 0 } },
-		};
-
-		cards.forEach((c) => {
-			if (stage === "all" || c.id === stage) {
-				const lineItems = c.line_item_count !== undefined ? c.line_item_count : (c.item_count || 0);
-				totalLineItems += lineItems;
-
-				const ii = c.item_intensity;
-				if (ii && ii.buckets) {
-					keys.forEach((k) => {
-						const b = ii.buckets[k];
-						if (b) {
-							buckets[k].count += b.count || 0;
-							buckets[k].previous_count += b.previous_count || 0;
-							if (b.branches) {
-								PUD_BRANCHES.forEach((bName) => {
-									buckets[k].branches[bName] = (buckets[k].branches[bName] || 0) + (b.branches[bName] || 0);
-								});
-							}
-						}
-					});
-				}
-			}
-		});
-
-		// Update section heading context badge
-		const contextEl = this.wrapper.querySelector("#batch-context");
-		if (contextEl) {
-			contextEl.innerHTML = `
-				<span class="pud-section-context-badge">
-					${pud_icon("inbox", "pud-section-context-icon")}
-					<span>${__("Total Line Items")}:</span>
-					<span class="pud-section-context-count" data-count="${totalLineItems}">0</span>
-				</span>
-			`;
-			this.animate_values(contextEl);
-		}
-
-		grid.innerHTML = keys.map((key) => {
-			const meta = PUD_ITEM_SEVERITY[key];
-			const bData = buckets[key];
-			const val = bData.count;
-			const prevVal = bData.previous_count;
-
-			return this.intensity_card({
-				label: meta.label,
-				value: val,
-				previous_value: prevVal,
-				branches: bData.branches,
-				action_type: "batch-change",
-				severity_key: key,
-				accent: meta.key,
-				desc: meta.desc,
-			});
-		}).join("");
-
-		this.animate_values(grid);
-	}
-
 	get_branch_breakdown_from_docs(docs) {
 		const res = {};
 		PUD_BRANCHES.forEach((b) => { res[b] = 0; });
@@ -1691,7 +1420,7 @@ class PurchaseUserDashboard {
 		el.innerHTML =
 			this.leaderboard_card({
 				title: __("Most Purchase Orders"),
-				subtitle: __("Creators who raised the most Purchase Orders in period. Click a creator to see their suppliers."),
+				subtitle: __("Creators who raised the most Purchase Orders in period. Click a creator to see their Purchase Orders grouped by supplier."),
 				rows: highRows,
 				accent: "steel",
 			}) +
@@ -1701,15 +1430,35 @@ class PurchaseUserDashboard {
 			{ rows: highRows, filename: "most_purchase_orders" },
 		]);
 
-		// Renders the supplier card and highlights the selected creator (if any)
+		// Supplier rows and List View buttons inside an expanded creator (right-hand card has its own handler)
+		el.addEventListener("click", (e) => {
+			if (e.target.closest("a") || !e.target.closest(".pud-creator-detail")) return;
+			const listBtn = e.target.closest("[data-supplier-list]");
+			if (listBtn) {
+				e.stopPropagation();
+				this.open_po_list_by_supplier(listBtn.dataset.supplierList, listBtn.dataset.owner);
+				return;
+			}
+			const toggle = e.target.closest("[data-supplier-toggle]");
+			if (toggle) {
+				const group = toggle.closest(".pud-sup-group");
+				const detail = group && group.querySelector(".pud-sup-detail");
+				if (detail) {
+					const open = detail.style.display === "none";
+					detail.style.display = open ? "block" : "none";
+					group.classList.toggle("pud-sup-open", open);
+				}
+			}
+		});
+
+		// Renders the right-hand supplier card and highlights the selected creator (if any)
 		this.set_supplier_creator(this.supplier_creator);
 	}
 
-	// ------------------------------------------------ Supplier-wise drill-down (Leaderboard)
-	get_supplier_groups() {
+	// ------------------------------------------------ Creator drill-down: POs grouped by supplier (Leaderboard)
+	get_supplier_groups(creator) {
 		const src = (this.last_data && this.last_data.po_supplier_orders) || {};
 		const rows = Array.isArray(src.rows) ? src.rows : [];
-		const creator = this.supplier_creator || null;
 		const map = {};
 		rows.forEach((r) => {
 			if (creator && r.owner !== creator) return;
@@ -1724,12 +1473,84 @@ class PurchaseUserDashboard {
 		return Object.values(map).sort((a, b) => b.count - a.count || b.net_value - a.net_value);
 	}
 
+	toggle_creator_detail(creatorRow) {
+		const group = creatorRow.closest(".pud-creator-group");
+		const detail = group && group.querySelector(".pud-creator-detail");
+		if (!detail) return;
+		const open = detail.style.display === "none";
+		if (open && !detail.dataset.rendered) {
+			detail.innerHTML = this.creator_suppliers_html(creatorRow.dataset.creatorSelect);
+			detail.dataset.rendered = "1";
+		}
+		detail.style.display = open ? "block" : "none";
+		group.classList.toggle("pud-creator-open", open);
+		const creator = creatorRow.dataset.creatorSelect;
+		if (open) this.set_supplier_creator(creator);
+		else if (this.supplier_creator === creator) this.set_supplier_creator(null);
+	}
+
+	creator_suppliers_html(creator) {
+		const src = (this.last_data && this.last_data.po_supplier_orders) || {};
+		const groups = this.get_supplier_groups(creator);
+		if (!groups.length) {
+			return `<div class="pud-empty-state"><div class="pud-empty-text">${__("No Purchase Orders for this creator in the period.")}</div></div>`;
+		}
+		const max = Math.max(...groups.map((g) => g.count), 1);
+		const owner = frappe.utils.escape_html(creator || "");
+
+		const rowsHtml = groups.map((g) => {
+			const pct = Math.round((g.count / max) * 100);
+			const shown = g.pos.slice(0, 25);
+			return `
+				<div class="pud-sup-group">
+					<div class="pud-row pud-clickable-row pud-sup-row" data-supplier-toggle="1" tabindex="0" role="button" title="${__("Show Purchase Orders for this supplier")}">
+						<span class="pud-sup-chevron">${pud_icon("chevronDown", "pud-inline-icon")}</span>
+						<span class="pud-avatar" style="--accent:var(--pud-accent-amber)">${this.initials(g.supplier_name)}</span>
+						<span class="pud-row-name" title="${frappe.utils.escape_html(g.supplier_name)}">${frappe.utils.escape_html(g.supplier_name)}</span>
+						<span class="pud-row-bar-wrap"><span class="pud-row-bar" style="--accent:var(--pud-accent-amber);width:${pct}%"></span></span>
+						<span class="pud-row-count">${g.count} ${__("POs")} <small class="pud-sup-amt">(${this.pud_money(g.net_value)})</small></span>
+					</div>
+					<div class="pud-sup-detail" style="display:none;">
+						<table class="pud-sup-table">
+							<thead><tr>
+								<th>${__("Purchase Order")}</th>
+								<th>${__("Date")}</th>
+								<th>${__("Workflow Status")}</th>
+								<th style="text-align:right;">${__("Net Value")}</th>
+							</tr></thead>
+							<tbody>
+								${shown.map((po) => `
+									<tr>
+										<td><a href="/app/purchase-order/${encodeURIComponent(po.name)}" target="_blank" rel="noopener">${frappe.utils.escape_html(po.name)}</a></td>
+										<td>${pud_fmt_date(po.date)}</td>
+										<td>${frappe.utils.escape_html(__(po.workflow_state || po.status || ""))}</td>
+										<td style="text-align:right;">${this.pud_money(po.net_value)}</td>
+									</tr>
+								`).join("")}
+							</tbody>
+						</table>
+						<div class="pud-sup-detail-foot">
+							<span>${g.pos.length > shown.length ? __("Showing {0} of {1} POs", [shown.length, g.pos.length]) : __("{0} POs", [g.pos.length])}</span>
+							<button type="button" class="pud-export-btn pud-list-view-btn" data-supplier-list="${frappe.utils.escape_html(g.supplier)}" data-owner="${owner}">${pud_icon("externalLink")}${__("Open in List View")}</button>
+						</div>
+					</div>
+				</div>
+			`;
+		}).join("");
+
+		return `
+			<div class="pud-creator-sup-head">${__("{0} suppliers · click a supplier to see its Purchase Orders", [groups.length])}</div>
+			<div class="pud-rows">${rowsHtml}</div>
+			${src.truncated ? `<div class="pud-sup-note">${__("Only the latest 3,000 Purchase Orders in the period are included here.")}</div>` : ""}
+		`;
+	}
+
 	render_supplier_card() {
 		const slot = this.wrapper.querySelector("[data-supplier-slot]");
 		if (!slot) return;
 
 		const src = (this.last_data && this.last_data.po_supplier_orders) || {};
-		const groups = this.get_supplier_groups();
+		const groups = this.get_supplier_groups(this.supplier_creator || null);
 		this.supplier_groups = groups;
 		const creator = this.supplier_creator || null;
 		const creatorName = creator ? this.resolve_user_label(creator) : "";
@@ -1834,7 +1655,7 @@ class PurchaseUserDashboard {
 			if (listBtn) {
 				e.stopPropagation();
 				const g = (this.supplier_groups || [])[Number(listBtn.dataset.supplierList)];
-				if (g) this.open_po_list_by_supplier(g.supplier);
+				if (g) this.open_po_list_by_supplier(g.supplier, this.supplier_creator);
 				return;
 			}
 			if (e.target.closest("[data-supplier-more]")) {
@@ -1877,10 +1698,10 @@ class PurchaseUserDashboard {
 		this.render_supplier_card();
 	}
 
-	open_po_list_by_supplier(supplier) {
+	open_po_list_by_supplier(supplier, owner) {
 		const opts = this.po_list_filters({ docstatus: 1 });
 		if (supplier) opts.supplier = supplier;
-		if (this.supplier_creator) opts.owner = this.supplier_creator;
+		if (owner) opts.owner = owner;
 		frappe.route_options = opts;
 		frappe.set_route("List", "Purchase Order");
 	}
@@ -1926,7 +1747,7 @@ class PurchaseUserDashboard {
 
 		const items = rows.map((row, i) => {
 			const pct = Math.round((row.count / max) * 100);
-			const extraClass = i >= 5 ? " pud-row-extra" : "";
+			const extraClass = i >= 5 ? " pud-creator-extra" : "";
 			const rankHtml = i < 3
 				? `<span class="pud-row-medal" aria-hidden="true">${medals[i]}</span>`
 				: `<span class="pud-row-rank">${i + 1}</span>`;
@@ -1934,13 +1755,17 @@ class PurchaseUserDashboard {
 			const amountHtml = row.total_amount > 0 ? ` <small style="color:var(--pud-muted);font-size:11px;font-weight:500;margin-left:4px;">(₹${Number(row.total_amount).toLocaleString()})</small>` : "";
 
 			return `
-				<div class="pud-row${extraClass} pud-clickable-row" data-creator-select="${frappe.utils.escape_html(row.id)}" tabindex="0" role="button" title="${__("Click to see suppliers for Purchase Orders created by {0}", [row.full_name])}">
+				<div class="pud-creator-group${extraClass}">
+				<div class="pud-row pud-clickable-row" data-creator-select="${frappe.utils.escape_html(row.id)}" tabindex="0" role="button" title="${__("Click to see Purchase Orders created by {0}, grouped by supplier", [row.full_name])}">
+					<span class="pud-sup-chevron pud-creator-chevron">${pud_icon("chevronDown", "pud-inline-icon")}</span>
 					${rankHtml}
 					<span class="pud-avatar" style="--accent:var(--pud-accent-${accent})">${this.initials(row.full_name)}</span>
 					<span class="pud-row-name" title="${frappe.utils.escape_html(row.full_name)}">${frappe.utils.escape_html(row.full_name)}</span>
 					<span class="pud-row-bar-wrap"><span class="pud-row-bar" style="--accent:var(--pud-accent-${accent});width:${pct}%"></span></span>
 					<span class="pud-row-count">${row.count} ${__("POs")}${amountHtml}</span>
 					<button type="button" class="pud-creator-list-btn" data-creator-list="${frappe.utils.escape_html(row.id)}" title="${__("Open Purchase Orders created by {0} in List View", [row.full_name])}">${pud_icon("externalLink")}</button>
+				</div>
+				<div class="pud-creator-detail" style="display:none;"></div>
 				</div>
 			`;
 		}).join("");
@@ -1994,10 +1819,11 @@ class PurchaseUserDashboard {
 			if (searchInput) {
 				searchInput.addEventListener("input", () => {
 					const q = searchInput.value.trim().toLowerCase();
-					card.querySelectorAll(".pud-row").forEach((row) => {
-						const nameEl = row.querySelector(".pud-row-name");
+					card.classList.toggle("pud-searching", !!q);
+					card.querySelectorAll(".pud-creator-group").forEach((grp) => {
+						const nameEl = grp.querySelector("[data-creator-select] .pud-row-name");
 						const name = nameEl ? nameEl.textContent.toLowerCase() : "";
-						row.style.display = (!q || name.includes(q)) ? "" : "none";
+						grp.style.display = (!q || name.includes(q)) ? "" : "none";
 					});
 				});
 			}
@@ -3138,8 +2964,17 @@ const PUD_CSS = `
 .pud-sup-table td a { color: var(--pud-accent-steel); font-weight: 600; }
 .pud-sup-detail-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 11.5px; color: var(--pud-muted); }
 .pud-sup-note { margin-top: 8px; font-size: 11.5px; color: var(--pud-muted); }
+.pud-creator-group { border-bottom: 1px solid var(--pud-border); }
+.pud-creator-group:last-child { border-bottom: none; }
+.pud-creator-group > .pud-row { border-bottom: none; }
+.pud-creator-extra { display: none; }
+.pud-list-card.pud-expanded .pud-creator-extra, .pud-list-card.pud-searching .pud-creator-extra { display: block; }
+.pud-creator-open .pud-creator-chevron { transform: rotate(0deg); }
+.pud-creator-detail { margin: 0 0 10px 34px; padding: 6px 12px 8px; border-left: 2px solid var(--pud-accent-steel); background: var(--pud-surface-2); border-radius: 0 var(--pud-radius-sm) var(--pud-radius-sm) 0; }
+.pud-creator-sup-head { font-size: 11.5px; color: var(--pud-muted); padding: 2px 0 4px; }
 @media (max-width: 600px) {
 	.pud-hbar-label { flex-basis: 90px; }
 	.pud-sup-detail { padding-left: 0; overflow-x: auto; }
+	.pud-creator-detail { margin-left: 0; }
 }
 `;

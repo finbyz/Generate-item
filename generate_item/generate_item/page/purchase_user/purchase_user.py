@@ -764,6 +764,9 @@ def _get_po_metrics(
     return result
 
 
+PO_WORKFLOW_ORDER = ("Draft", "Checking Pending", "Approval Pending", "Approved")
+
+
 def _get_po_workflow_status(
     branch_filter: Any,
     users: list[str],
@@ -792,6 +795,10 @@ def _get_po_workflow_status(
         """, params, as_dict=True)
     except Exception:
         rows = []
+
+    # Fixed order following the PO approval flow; any other state comes after, by count
+    rank = {s: i for i, s in enumerate(PO_WORKFLOW_ORDER)}
+    rows.sort(key=lambda r: (rank.get(r.get("workflow_state"), len(rank)), -cint(r.get("count"))))
 
     return [
         {
