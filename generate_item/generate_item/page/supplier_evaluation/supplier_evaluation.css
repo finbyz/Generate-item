@@ -1,0 +1,399 @@
+/* Supplier Evaluation Dashboard
+ * Look and feel follow the Sales Order Tracker page (.ao-tracker-wrap):
+ * same tokens, top bar, pill filters, panels, stat cards, status table and
+ * light / dark theme.
+ * Colours: Delivery = blue, Quality = green, Supplier Rating = amber,
+ * grades A-E = green / blue / amber / orange / red.
+ */
+
+/* ---------- tokens (same values as Sales Order Tracker) ---------- */
+.sed-wrap {
+	--sed-bg: #F8FAFC; --sed-panel: #FFFFFF; --sed-panel-subtle: #F8FAFD;
+	--sed-line: #E2E8F0; --sed-line-soft: #EDF2F7;
+	--sed-ink: #0F172A; --sed-ink-soft: #475569; --sed-ink-faint: #94A3B8;
+	--sed-accent: #2563EB; --sed-accent-soft: #EFF6FF;
+	--sed-head-bg: #F3F5FC; --sed-zebra: #FBFCFE; --sed-card-bg: #FBFBFD;
+	--sed-green-bg: #DCFCE7; --sed-green-ink: #15803D;
+	--sed-blue-bg: #DBEAFE; --sed-blue-ink: #1D4ED8;
+	--sed-amber-bg: #FEF3C7; --sed-amber-ink: #B45309;
+	--sed-orange-bg: #FFEDD5; --sed-orange-ink: #C2410C;
+	--sed-red-bg: #FEE2E2; --sed-red-ink: #B91C1C;
+	--sed-radius: 12px; --sed-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+
+	background: var(--sed-bg);
+	color: var(--sed-ink);
+	min-height: 100vh;
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+	font-size: 13px;
+	padding: 24px 32px;
+}
+
+.sed-wrap[data-theme="dark"] {
+	--sed-bg: #0B0E14; --sed-panel: #121620; --sed-panel-subtle: #181D2A;
+	--sed-line: #232A3B; --sed-line-soft: #1B2130;
+	--sed-ink: #F1F5F9; --sed-ink-soft: #94A3B8; --sed-ink-faint: #64748B;
+	--sed-accent: #3B82F6; --sed-accent-soft: #1E293B;
+	--sed-head-bg: #181D2A; --sed-zebra: #191C26; --sed-card-bg: #151A26;
+	--sed-green-bg: #064E3B; --sed-green-ink: #6EE7B7;
+	--sed-blue-bg: #1E3A8A; --sed-blue-ink: #BFDBFE;
+	--sed-amber-bg: #78350F; --sed-amber-ink: #FDE68A;
+	--sed-orange-bg: #7C2D12; --sed-orange-ink: #FFEDD5;
+	--sed-red-bg: #7F1D1D; --sed-red-ink: #FCA5A5;
+	--sed-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+@media (max-width: 768px) {
+	.sed-wrap { padding: 16px; }
+}
+
+/* colour tones: --sed-tone = text, --sed-tint = background */
+.sed-wrap .sed-tone-delivery { --sed-tone: var(--sed-blue-ink); --sed-tint: var(--sed-blue-bg); }
+.sed-wrap .sed-tone-quality  { --sed-tone: var(--sed-green-ink); --sed-tint: var(--sed-green-bg); }
+.sed-wrap .sed-tone-rating   { --sed-tone: var(--sed-amber-ink); --sed-tint: var(--sed-amber-bg); }
+.sed-wrap .sed-tone-a { --sed-tone: var(--sed-green-ink); --sed-tint: var(--sed-green-bg); }
+.sed-wrap .sed-tone-b { --sed-tone: var(--sed-blue-ink); --sed-tint: var(--sed-blue-bg); }
+.sed-wrap .sed-tone-c { --sed-tone: var(--sed-amber-ink); --sed-tint: var(--sed-amber-bg); }
+.sed-wrap .sed-tone-d { --sed-tone: var(--sed-orange-ink); --sed-tint: var(--sed-orange-bg); }
+.sed-wrap .sed-tone-e { --sed-tone: var(--sed-red-ink); --sed-tint: var(--sed-red-bg); }
+
+.sed-wrap .sed-faint { color: var(--sed-ink-faint); }
+
+/* ---------- top bar ---------- */
+.sed-wrap .sed-topbar {
+	display: flex; align-items: center; justify-content: space-between;
+	gap: 16px; flex-wrap: wrap; margin-bottom: 20px;
+}
+.sed-wrap .sed-topbar-title { display: flex; align-items: center; gap: 12px; }
+.sed-wrap .sed-topbar-badge {
+	width: 36px; height: 36px; border-radius: 10px;
+	background: linear-gradient(135deg, #2563EB, #4F46E5); color: #fff;
+	font-weight: 800; font-size: 13px; letter-spacing: -.02em;
+	display: flex; align-items: center; justify-content: center;
+	box-shadow: 0 4px 10px rgba(37, 99, 235, .28);
+}
+.sed-wrap .sed-topbar-heading { font-size: 17px; font-weight: 700; letter-spacing: -.01em; margin: 0; }
+.sed-wrap .sed-topbar-sub { font-size: 12px; color: var(--sed-ink-faint); margin-top: 2px; }
+.sed-wrap .sed-topbar-actions { display: flex; align-items: center; gap: 10px; }
+.sed-wrap .sed-icon-btn {
+	width: 32px; height: 32px; border-radius: 8px;
+	border: 1px solid var(--sed-line); background: var(--sed-panel); color: var(--sed-ink-soft);
+	display: inline-flex; align-items: center; justify-content: center;
+	cursor: pointer; transition: .15s;
+}
+.sed-wrap .sed-icon-btn:hover { color: var(--sed-accent); border-color: var(--sed-accent); }
+
+/* ---------- filters ---------- */
+.sed-wrap .sed-filters {
+	display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px;
+	background: var(--sed-panel); border: 1px solid var(--sed-line); border-radius: var(--sed-radius);
+	padding: 12px 14px; box-shadow: var(--sed-shadow);
+}
+.sed-wrap .sed-filter-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.sed-wrap .sed-filter-group { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; flex: 1; }
+.sed-wrap .sed-filter-actions { display: flex; align-items: center; gap: 8px; }
+
+.sed-wrap .sed-pill-field {
+	display: inline-flex; align-items: center; gap: 7px;
+	background: var(--sed-bg); border: 1px solid var(--sed-line); border-radius: 8px;
+	padding: 0 10px; height: 36px; box-sizing: border-box;
+	transition: border-color .15s, box-shadow .15s;
+}
+.sed-wrap .sed-pill-field:focus-within { border-color: var(--sed-accent); box-shadow: 0 0 0 2px var(--sed-accent-soft); }
+.sed-wrap .sed-field-supplier { min-width: 240px; flex: 1; max-width: 360px; }
+.sed-wrap .sed-field-fy { min-width: 180px; max-width: 220px; }
+.sed-wrap .sed-field-quarter { min-width: 180px; max-width: 220px; }
+.sed-wrap .sed-pill-icon { display: inline-flex; align-items: center; justify-content: center; color: var(--sed-ink-faint); flex-shrink: 0; }
+.sed-wrap .sed-pill-input { display: block; flex: 1; min-width: 120px; height: 100%; position: relative; }
+
+/* Frappe controls inside a pill field (same overrides as the tracker) */
+.sed-wrap .sed-pill-input .frappe-control,
+.sed-wrap .sed-pill-input .form-group,
+.sed-wrap .sed-pill-input .control-input-wrapper {
+	margin: 0 !important; padding: 0 !important; width: 100% !important; max-width: 100% !important;
+	height: 100% !important; position: relative !important;
+}
+.sed-wrap .sed-pill-input .clearfix,
+.sed-wrap .sed-pill-input .control-label,
+.sed-wrap .sed-pill-input .help,
+.sed-wrap .sed-pill-input .help-box,
+.sed-wrap .sed-pill-input .tooltip-content,
+.sed-wrap .sed-pill-input .link-btn { display: none !important; }
+.sed-wrap .sed-pill-input .control-input,
+.sed-wrap .sed-pill-input .link-field,
+.sed-wrap .sed-pill-input .awesomplete,
+.sed-wrap .sed-pill-input .select-input {
+	width: 100% !important; height: 100% !important; position: relative !important;
+}
+.sed-wrap .sed-pill-input .awesomplete { display: block !important; }
+.sed-wrap .sed-pill-input .input-with-feedback,
+.sed-wrap .sed-pill-input input {
+	border: none !important; background: transparent !important; box-shadow: none !important;
+	padding: 0 4px !important; height: 34px !important; line-height: 34px !important;
+	font-size: 12.5px !important; font-weight: 600 !important; color: var(--sed-ink) !important;
+	text-overflow: ellipsis !important; width: 100% !important; margin: 0 !important;
+	display: block !important; outline: none !important;
+}
+.sed-wrap .sed-pill-input select {
+	border: none !important; background: transparent !important; box-shadow: none !important;
+	height: 34px !important; padding: 0 20px 0 4px !important;
+	font-size: 12.5px !important; font-weight: 600 !important; color: var(--sed-ink) !important;
+	outline: none !important; cursor: pointer !important;
+}
+.sed-wrap .sed-pill-input .select-icon { top: 9px !important; right: 2px !important; }
+.sed-wrap .sed-pill-input input::placeholder { color: var(--sed-ink-faint) !important; font-weight: 500 !important; }
+.sed-wrap .sed-pill-input .awesomplete > ul {
+	position: absolute !important; top: calc(100% + 4px) !important; left: 0 !important;
+	min-width: 240px !important; max-width: 380px !important; max-height: 260px !important; overflow-y: auto !important;
+	background: var(--sed-panel) !important; border: 1px solid var(--sed-line) !important; border-radius: 9px !important;
+	box-shadow: 0 10px 25px rgba(15, 23, 42, 0.18) !important; z-index: 1100 !important;
+	padding: 4px !important; margin: 0 !important; list-style: none !important;
+}
+.sed-wrap .sed-pill-input .awesomplete > ul:empty { display: none !important; }
+.sed-wrap .sed-pill-input .awesomplete > ul > li {
+	padding: 8px 12px !important; font-size: 12.5px !important; font-weight: 600 !important;
+	color: var(--sed-ink) !important; border-radius: 6px !important; cursor: pointer !important;
+	display: block !important; margin-bottom: 2px !important;
+	white-space: nowrap !important; overflow: hidden !important; text-overflow: ellipsis !important;
+}
+.sed-wrap .sed-pill-input .awesomplete > ul > li:hover,
+.sed-wrap .sed-pill-input .awesomplete > ul > li[aria-selected="true"] {
+	background: var(--sed-accent-soft) !important; color: var(--sed-accent) !important;
+}
+
+.sed-wrap .sed-reset {
+	height: 36px; padding: 0 14px; font-size: 12.5px; font-weight: 600; border-radius: 8px;
+	border: 1px solid var(--sed-line); background: var(--sed-bg); color: var(--sed-ink-soft);
+	cursor: pointer; transition: .15s; display: inline-flex; align-items: center;
+}
+.sed-wrap .sed-reset:hover { color: var(--sed-accent); border-color: var(--sed-accent); }
+
+/* ---------- section heads and panels ---------- */
+.sed-wrap .sed-section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.sed-wrap .sed-section-title-wrap { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.sed-wrap .sed-section-title {
+	font-size: 13px; font-weight: 700; color: var(--sed-ink-faint);
+	text-transform: uppercase; letter-spacing: .05em;
+}
+.sed-wrap .sed-result-count { font-size: 12.5px; color: var(--sed-ink-faint); }
+
+.sed-wrap .sed-panel {
+	background: var(--sed-panel); border: 1px solid var(--sed-line); border-radius: var(--sed-radius);
+	box-shadow: var(--sed-shadow); margin-bottom: 18px; overflow: hidden;
+}
+.sed-wrap .sed-panel-pad { padding: 14px 16px; }
+.sed-wrap .sed-panel-title {
+	display: flex; align-items: center; gap: 8px;
+	font-size: 10.5px; font-weight: 700; color: var(--sed-ink-faint);
+	text-transform: uppercase; letter-spacing: .03em; margin-bottom: 6px;
+}
+.sed-wrap .sed-panel-title::before {
+	content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--sed-tone, var(--sed-accent));
+}
+.sed-wrap .sed-empty-row { text-align: center; padding: 40px 20px; color: var(--sed-ink-faint); font-size: 13.5px; }
+
+/* ---------- stat cards ---------- */
+.sed-wrap .sed-stat-grid {
+	display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+	gap: 14px; margin-bottom: 14px;
+}
+.sed-wrap .sed-stat-card {
+	background: var(--sed-card-bg); border: 1px solid var(--sed-line); border-radius: 11px;
+	padding: 14px 15px; box-shadow: var(--sed-shadow);
+	border-left: 3px solid var(--sed-tone, var(--sed-line));
+}
+.sed-wrap .sed-stat-card.sed-highlight {
+	background: color-mix(in srgb, var(--sed-tint) 35%, var(--sed-panel));
+}
+.sed-wrap .sed-stat-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.sed-wrap .sed-stat-label {
+	font-size: 10.5px; font-weight: 700; color: var(--sed-ink-faint);
+	text-transform: uppercase; letter-spacing: .03em;
+}
+.sed-wrap .sed-stat-value { font-size: 20px; font-weight: 800; color: var(--sed-tone, var(--sed-ink)); }
+.sed-wrap .sed-stat-sub { font-size: 11px; color: var(--sed-ink-faint); margin-top: 4px; }
+
+/* ---------- grade pills and key ---------- */
+.sed-wrap .sed-pill {
+	display: inline-flex; align-items: center; justify-content: center;
+	min-width: 22px; height: 20px; padding: 0 8px; border-radius: 999px;
+	font-size: 11px; font-weight: 700; white-space: nowrap; vertical-align: middle;
+}
+.sed-wrap .sed-pill.sed-grade-a { background: var(--sed-green-bg); color: var(--sed-green-ink); }
+.sed-wrap .sed-pill.sed-grade-b { background: var(--sed-blue-bg); color: var(--sed-blue-ink); }
+.sed-wrap .sed-pill.sed-grade-c { background: var(--sed-amber-bg); color: var(--sed-amber-ink); }
+.sed-wrap .sed-pill.sed-grade-d { background: var(--sed-orange-bg); color: var(--sed-orange-ink); }
+.sed-wrap .sed-pill.sed-grade-e { background: var(--sed-red-bg); color: var(--sed-red-ink); }
+.sed-wrap .sed-grade-none { display: inline-block; width: 22px; vertical-align: middle; }
+.sed-wrap .sed-grade-level { font-size: 11px; color: var(--sed-ink-soft); }
+
+.sed-wrap .sed-legend {
+	display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px;
+	background: var(--sed-panel); border: 1px solid var(--sed-line); border-radius: var(--sed-radius);
+	box-shadow: var(--sed-shadow); padding: 10px 14px; margin-bottom: 18px; font-size: 12.5px;
+}
+.sed-wrap .sed-legend-title {
+	font-size: 10.5px; font-weight: 700; color: var(--sed-ink-faint);
+	text-transform: uppercase; letter-spacing: .03em;
+}
+.sed-wrap .sed-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.sed-wrap .sed-legend-level { font-weight: 600; color: var(--sed-ink-soft); }
+
+/* ---------- charts (one supplier selected) ---------- */
+.sed-wrap .sed-chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 18px; }
+.sed-wrap .sed-chart-grid .sed-panel { margin-bottom: 0; }
+@media (max-width: 991px) {
+	.sed-wrap .sed-chart-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------- status tables ---------- */
+.sed-wrap .sed-table-wrap { overflow-x: auto; }
+.sed-wrap table.sed-status-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+.sed-wrap .sed-status-table thead th {
+	text-align: left; font-size: 10.5px; font-weight: 700; color: var(--sed-ink-soft);
+	text-transform: uppercase; letter-spacing: .03em; line-height: 1.35;
+	padding: 10px 12px; border-bottom: 1px solid var(--sed-line);
+	background: var(--sed-head-bg); vertical-align: bottom;
+}
+.sed-wrap .sed-status-table tbody td {
+	padding: 10px 12px; border-bottom: 1px solid var(--sed-line-soft); vertical-align: middle; white-space: nowrap;
+}
+.sed-wrap .sed-status-table tbody tr:nth-child(even) td { background: var(--sed-zebra); }
+.sed-wrap .sed-status-table tbody tr:hover td { background: var(--sed-accent-soft); }
+.sed-wrap .sed-status-table tfoot td {
+	padding: 11px 12px; font-weight: 800; white-space: nowrap;
+	background: var(--sed-panel-subtle); border-top: 1px solid var(--sed-line);
+}
+.sed-wrap .sed-status-table .sed-num { text-align: right; }
+.sed-wrap .sed-status-table .sed-num-c { text-align: center; }
+
+.sed-wrap .sed-q-months {
+	margin-top: 2px; font-size: 11px; font-weight: 500; text-transform: none; letter-spacing: 0;
+	color: var(--sed-ink-faint);
+}
+
+/* Supplier Rating Weighted table */
+.sed-wrap .sed-quarter-table td:first-child { font-weight: 600; white-space: nowrap; }
+.sed-wrap .sed-quarter-table .sed-q-total td { font-weight: 800; }
+.sed-wrap .sed-quarter-table .sed-q-avg { background: var(--sed-panel-subtle) !important; font-weight: 700; }
+.sed-wrap .sed-quarter-table thead th.sed-q-avg { background: var(--sed-head-bg) !important; color: var(--sed-ink); }
+
+/* Delivery and Quality Rating table (Sales Order Tracker table style) */
+.sed-wrap .sed-table-scroll {
+	background: var(--sed-panel); border: 1px solid var(--sed-line); border-radius: var(--sed-radius);
+	box-shadow: var(--sed-shadow); overflow: auto; max-height: calc(100vh - 230px); position: relative;
+}
+.sed-wrap .sed-rating-table thead th {
+	position: sticky; top: 0; z-index: 20; white-space: nowrap; vertical-align: middle; padding: 12px;
+}
+.sed-wrap .sed-rating-table thead th[title] { cursor: help; }
+.sed-wrap .sed-rating-table tbody td { padding: 10px 12px; }
+
+/* pinned first column */
+.sed-wrap .sed-rating-table .sed-lead {
+	position: sticky; left: 0; z-index: 15; min-width: 220px;
+	background: var(--sed-panel);
+	box-shadow: 3px 0 6px rgba(0, 0, 0, 0.06); border-right: 1px solid var(--sed-line);
+}
+.sed-wrap .sed-rating-table thead th.sed-lead { z-index: 35; background: var(--sed-head-bg); }
+.sed-wrap .sed-rating-table tbody tr:nth-child(even) td.sed-lead { background: var(--sed-zebra); }
+.sed-wrap .sed-rating-table tbody tr:hover td.sed-lead { background: var(--sed-accent-soft) !important; }
+.sed-wrap .sed-rating-table tfoot td.sed-lead { background: var(--sed-panel-subtle); }
+
+.sed-wrap .sed-num-cell {
+	text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; font-size: 12px;
+	white-space: nowrap; min-width: 85px;
+}
+.sed-wrap .sed-rating-cell { text-align: right; white-space: nowrap; min-width: 100px; }
+.sed-wrap .sed-grade-cell { text-align: left; white-space: nowrap; min-width: 140px; }
+.sed-wrap .sed-rating-table thead th.sed-num-cell,
+.sed-wrap .sed-rating-table thead th.sed-rating-cell { text-align: right; }
+
+/* rating values as coloured pills */
+.sed-wrap .sed-mini-pill {
+	display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 999px;
+	font-size: 11px; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums;
+	background: var(--sed-tint, var(--sed-accent-soft)); color: var(--sed-tone, var(--sed-accent));
+}
+.sed-wrap .sed-rating-table .sed-pill { height: 22px; padding: 0 10px; font-size: 11px; }
+
+/* supplier and quarter rows */
+.sed-wrap .sed-lead-main { display: flex; align-items: center; gap: 8px; }
+.sed-wrap .sed-chip {
+	display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 4px;
+	font-size: 11px; font-weight: 700; background: var(--sed-bg); color: var(--sed-ink-soft);
+	border: 1px solid var(--sed-line);
+}
+.sed-wrap .sed-chip-sub { margin-left: 6px; font-size: 12px; }
+.sed-wrap .sed-rating-table tbody tr.sed-parent-row td,
+.sed-wrap .sed-rating-table tbody tr.sed-parent-row td.sed-lead {
+	background: var(--sed-panel-subtle); border-top: 1px solid var(--sed-line);
+}
+.sed-wrap .sed-rating-table tbody tr.sed-parent-row:hover td { background: var(--sed-accent-soft) !important; }
+.sed-wrap .sed-rating-table tbody tr.sed-sub-row td { background: var(--sed-panel); }
+.sed-wrap .sed-rating-table tbody tr.sed-sub-row td.sed-lead { padding-left: 32px; background: var(--sed-panel); }
+.sed-wrap .sed-rating-table tbody tr.sed-sub-row td.sed-num-cell { font-weight: 500; color: var(--sed-ink-soft); }
+.sed-wrap .sed-rating-table tbody tr.sed-sub-row:hover td { background: var(--sed-accent-soft); }
+
+/* footer total row */
+.sed-wrap .sed-rating-table tfoot td {
+	position: sticky; bottom: 0; z-index: 10;
+	font-weight: 800; border-top: 1px solid var(--sed-line);
+}
+.sed-wrap .sed-rating-table tfoot td.sed-lead { z-index: 30; }
+
+/* Supplier Wise / Quarter Wise switch */
+.sed-wrap .sed-view-mode-toggle {
+	display: inline-flex; align-items: center; background: var(--sed-panel);
+	border: 1px solid var(--sed-line); border-radius: 8px; padding: 2px; box-shadow: var(--sed-shadow);
+}
+.sed-wrap .sed-mode-btn {
+	display: inline-flex; align-items: center; gap: 6px; border: none; background: transparent;
+	padding: 5px 12px; font-size: 12px; font-weight: 700; color: var(--sed-ink-soft);
+	border-radius: 6px; cursor: pointer; transition: all .15s ease;
+}
+.sed-wrap .sed-mode-btn:hover { color: var(--sed-accent); }
+.sed-wrap .sed-mode-btn.active { background: var(--sed-accent); color: #fff; box-shadow: 0 2px 6px rgba(37, 99, 235, .28); }
+
+/* "Showing" footer bar */
+.sed-wrap .sed-pagination-bar {
+	display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+	padding: 10px 14px; margin-top: 12px; margin-bottom: 18px;
+	background: var(--sed-panel); border: 1px solid var(--sed-line);
+	border-radius: var(--sed-radius); box-shadow: var(--sed-shadow);
+}
+.sed-wrap .sed-page-info { font-size: 12.5px; color: var(--sed-ink-soft); font-weight: 600; }
+.sed-wrap .sed-page-legend { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+
+/* links (tracker Sales Order link style) */
+.sed-wrap a.sed-so-link { color: var(--sed-accent); font-weight: 700; cursor: pointer; text-decoration: none; font-size: 13px; }
+.sed-wrap a.sed-so-link:hover { text-decoration: underline; }
+
+/* frappe charts on dark */
+.sed-wrap[data-theme="dark"] .frappe-chart text { fill: var(--sed-ink-soft); }
+
+/* ---------- collapsible quarter rows ---------- */
+.sed-wrap .sed-rating-table tr.sed-sub-row.sed-hidden { display: none; }
+.sed-wrap .sed-rating-table tr.sed-parent-row { cursor: pointer; }
+.sed-wrap .sed-rating-table tr.sed-parent-row.expanded td.sed-lead { box-shadow: inset 3px 0 0 var(--sed-accent), 3px 0 6px rgba(0, 0, 0, 0.06); }
+
+.sed-wrap .sed-expand-btn {
+	width: 22px; height: 22px; flex-shrink: 0; border-radius: 6px;
+	border: 1px solid var(--sed-line); background: var(--sed-panel); color: var(--sed-ink-soft);
+	display: inline-flex; align-items: center; justify-content: center;
+	cursor: pointer; padding: 0; transition: transform .15s ease, color .15s, border-color .15s;
+}
+.sed-wrap .sed-expand-btn:hover { color: var(--sed-accent); border-color: var(--sed-accent); }
+.sed-wrap .sed-rating-table tr.sed-parent-row.expanded .sed-expand-btn {
+	transform: rotate(90deg); color: var(--sed-accent); border-color: var(--sed-accent);
+}
+
+/* quarter rows indent past the arrow */
+.sed-wrap .sed-rating-table tbody tr.sed-sub-row td.sed-lead { padding-left: 42px; }
+
+.sed-wrap .sed-toggle-all-btn {
+	display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px;
+	font-size: 12px; font-weight: 700; color: var(--sed-ink-soft);
+	background: var(--sed-panel); border: 1px solid var(--sed-line); border-radius: 8px;
+	box-shadow: var(--sed-shadow); cursor: pointer; transition: .15s;
+}
+.sed-wrap .sed-toggle-all-btn:hover { color: var(--sed-accent); border-color: var(--sed-accent); }
