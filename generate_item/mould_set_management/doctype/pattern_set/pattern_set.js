@@ -7,13 +7,14 @@ frappe.ui.form.on("Pattern Set", {
 	},
 
 	setup(frm) {
-		// Filter Item Code to serial-tracked stock items
+		// Filter Item Code to serial-tracked stock items of the Patterns and Die group
 		let item_filter = function () {
 			return {
 				filters: {
 					disabled: 0,
 					is_stock_item: 1,
 					has_serial_no: 1,
+					item_group: ["descendants of (inclusive)", "Patterns and Die"],
 				},
 			};
 		};
