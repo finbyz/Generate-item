@@ -4,6 +4,7 @@
 import frappe
 from frappe import _
 from frappe.model.document import Document
+from frappe.contacts.doctype.address.address import get_address_display, get_default_address
 from frappe.utils import get_link_to_form
 from generate_item.mould_set_management.pattern_set_utils import (
 	get_pattern_set_slots_and_serials,
@@ -17,6 +18,7 @@ class PatternSetTransfer(Document):
 		self.set_transfer_type_and_suppliers()
 		self.validate_target_warehouse()
 		self.validate_items()
+		self.set_outward_address()
 		self.check_concurrent_drafts()
 
 	def set_transfer_type_and_suppliers(self):
@@ -256,6 +258,14 @@ class PatternSetTransfer(Document):
 
 		self.total_moving = moving_count
 		self.total_left_behind = left_behind_count
+		# Total Qty for the outward print: one piece per included component
+		self.total_qty = moving_count
+
+	def set_outward_address(self):
+		"""Default the Address to the Target Supplier's default address; the user may change it."""
+		if not self.address and self.target_supplier:
+			self.address = get_default_address("Supplier", self.target_supplier)
+		self.address_display = get_address_display(self.address) if self.address else ""
 
 	def check_concurrent_drafts(self):
 		if not self.is_new():
@@ -520,3 +530,11 @@ def get_pattern_set_transfer_data(pattern_set):
 		"missing_items": info["missing_items"],
 		"items": items,
 	}
+
+
+@frappe.whitelist()
+def get_supplier_default_address(supplier):
+	"""Default address of a supplier and its formatted display, for the transfer form."""
+	frappe.has_permission("Supplier", "read", supplier, throw=True)
+	address = get_default_address("Supplier", supplier) if supplier else None
+	return {"address": address or "", "address_display": get_address_display(address) if address else ""}

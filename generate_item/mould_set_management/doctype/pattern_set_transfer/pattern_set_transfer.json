@@ -29,6 +29,14 @@
   "column_break_links",
   "stock_entry",
   "component_change",
+  "section_break_outward",
+  "address",
+  "address_display",
+  "column_break_outward",
+  "actual_value_of_pattern",
+  "approx_total_value",
+  "total_qty",
+  "gross_weight",
   "section_break_items",
   "items",
   "section_break_remarks",
@@ -201,6 +209,57 @@
    "read_only": 1
   },
   {
+   "fieldname": "section_break_outward",
+   "fieldtype": "Section Break",
+   "label": "Outward Details"
+  },
+  {
+   "allow_on_submit": 1,
+   "description": "Defaults to the Target Supplier's default address. You can change it.",
+   "fieldname": "address",
+   "fieldtype": "Link",
+   "label": "Address",
+   "options": "Address"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "address_display",
+   "fieldtype": "Small Text",
+   "label": "Address Details",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_outward",
+   "fieldtype": "Column Break"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "actual_value_of_pattern",
+   "fieldtype": "Currency",
+   "label": "Actual Value of the Pattern",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "approx_total_value",
+   "fieldtype": "Currency",
+   "label": "Approx Total Value",
+   "options": "Company:company:default_currency"
+  },
+  {
+   "description": "Count of components included in this transfer.",
+   "fieldname": "total_qty",
+   "fieldtype": "Int",
+   "label": "Total Qty",
+   "read_only": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "gross_weight",
+   "fieldtype": "Float",
+   "label": "Gross Weight (Kg)"
+  },
+  {
    "fieldname": "section_break_items",
    "fieldtype": "Section Break",
    "label": "Set Components"
@@ -227,7 +286,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-11-02 12:00:00.000000",
+ "modified": "2026-11-26 18:00:00.000000",
  "modified_by": "Administrator",
  "module": "Mould Set Management",
  "name": "Pattern Set Transfer",
@@ -235,6 +294,7 @@
  "owner": "Administrator",
  "permissions": [
   {
+   "cancel": 1,
    "create": 1,
    "delete": 1,
    "email": 1,
@@ -245,7 +305,6 @@
    "role": "Pattern Master",
    "share": 1,
    "submit": 1,
-   "cancel": 1,
    "write": 1
   },
   {
@@ -261,6 +320,7 @@
    "write": 1
   },
   {
+   "cancel": 1,
    "create": 1,
    "delete": 1,
    "email": 1,
@@ -271,7 +331,6 @@
    "role": "Stores Manager",
    "share": 1,
    "submit": 1,
-   "cancel": 1,
    "write": 1
   },
   {
@@ -293,6 +352,7 @@
    "share": 1
   },
   {
+   "cancel": 1,
    "create": 1,
    "delete": 1,
    "email": 1,
@@ -303,7 +363,6 @@
    "role": "System Manager",
    "share": 1,
    "submit": 1,
-   "cancel": 1,
    "write": 1
   }
  ],

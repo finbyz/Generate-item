@@ -263,3 +263,55 @@ frappe.ui.form.on('Pattern Set Transfer Item', {
 	}
 });
 
+// ------------------------------------------------------------------
+// Outward details: address and total qty
+// ------------------------------------------------------------------
+frappe.ui.form.on('Pattern Set Transfer', {
+	setup: function(frm) {
+		// Address: only addresses linked to the Target Supplier, when there is one
+		frm.set_query('address', function(doc) {
+			if (!doc.target_supplier) return {};
+			return {
+				query: 'frappe.contacts.doctype.address.address.address_query',
+				filters: { link_doctype: 'Supplier', link_name: doc.target_supplier },
+			};
+		});
+	},
+
+	target_supplier: function(frm) {
+		if (!frm.doc.target_supplier) {
+			frm.set_value('address', '');
+			return;
+		}
+		frappe.call({
+			method: 'generate_item.mould_set_management.doctype.pattern_set_transfer.pattern_set_transfer.get_supplier_default_address',
+			args: { supplier: frm.doc.target_supplier },
+			callback: function(r) {
+				let res = r.message || {};
+				frm.set_value('address', res.address || '');
+				frm.set_value('address_display', res.address_display || '');
+			},
+		});
+	},
+
+	address: function(frm) {
+		if (!frm.doc.address) {
+			frm.set_value('address_display', '');
+			return;
+		}
+		frappe.call({
+			method: 'frappe.contacts.doctype.address.address.get_address_display',
+			args: { address_dict: frm.doc.address },
+			callback: function(r) {
+				frm.set_value('address_display', r.message || '');
+			},
+		});
+	},
+});
+
+frappe.ui.form.on('Pattern Set Transfer Item', {
+	include: function(frm) {
+		let total = (frm.doc.items || []).filter(row => row.include).length;
+		frm.set_value('total_qty', total);
+	},
+});
