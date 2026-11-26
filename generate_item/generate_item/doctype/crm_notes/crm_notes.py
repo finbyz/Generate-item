@@ -6,7 +6,20 @@ from frappe.model.document import Document
 
 
 class CRMNotes(Document):
-	pass
+	def before_submit(self):
+		"""Re-sync from the Sales Order so a submitted note matches it at submission time.
+
+		before_submit runs before the row is written, so the changes are saved with the submit.
+		"""
+		from generate_item.utils.crm_notes import apply_sales_order_values, changes_html
+
+		changes = apply_sales_order_values(self)
+		if changes:
+			frappe.msgprint(
+				changes_html(self, changes),
+				title=frappe._("CRM Note updated from Sales Order {0}").format(self.order_number),
+				indicator="blue",
+			)
 
 import frappe
 from frappe import _

@@ -311,25 +311,13 @@ def update_sales_order_item_batches(sales_order, batch_updates):
     
 @frappe.whitelist()
 def create_crm_note_from_sales_order(sales_order):
-    if frappe.db.exists("CRM Notes", {"order_number": sales_order}):
-        frappe.throw(
-            f"CRM Notes already exists for Sales Order <b>{sales_order}</b>"
-        )
+    """Add To CRM button: open the existing CRM Note, or create a Draft one."""
+    from generate_item.utils.crm_notes import create_crm_note_for_sales_order
+
     so = frappe.get_doc("Sales Order", sales_order)
-
-    crm_note = frappe.new_doc("CRM Notes")
-    crm_note.order_number = so.name
-    crm_note.order_date = so.transaction_date
-    crm_note.delivery_date = so.delivery_date
-    crm_note.branch = so.branch
-    crm_note.customer = so.customer
-    crm_note.customers_purchase_order = so.po_no
-    crm_note.customers_purchase_order_date = so.po_date
-    crm_note.order_amount = so.grand_total
-
-    crm_note.insert(ignore_permissions=True,ignore_mandatory=True)  # Draft by default
-
-    return crm_note.name
+    so.check_permission("read")
+    name, created = create_crm_note_for_sales_order(so)
+    return {"name": name, "created": created}
 
 
 
