@@ -392,48 +392,7 @@ def on_po_validate_or_save(doc, method=None):
 	if not mould_sets_data:
 		return
 
-	total_complete = sum(d["complete_sets"] for d in mould_sets_data)
-	total_loose = sum(d["loose_components"] for d in mould_sets_data)
 
 	# 1. Update HTML on the document field if field exists
 	if hasattr(doc, "mould_set_info"):
 		doc.mould_set_info = render_mould_set_html(wh, mould_sets_data)
-
-	# 2. Display info section to user on save
-	ms_summary_rows = ""
-	for ms in mould_sets_data:
-		ms_summary_rows += f"""
-		<li style="margin-top: 4px;">
-			<b>{frappe.utils.escape_html(ms['mould_set_name'])}</b> (Item: {frappe.utils.escape_html(ms['item'])}):
-			<span style="color: #2b8a3e; font-weight: bold;">{ms['complete_sets']} Complete Set(s)</span>,
-			<span style="color: #d97706; font-weight: bold;">{ms['loose_components']:g} Loose Item(s)</span>
-		</li>
-		"""
-
-	msg_html = f"""
-	<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px;">
-		<div style="display: flex; gap: 10px; margin-bottom: 12px;">
-			<div style="flex: 1; background: #ebfbee; border: 1px solid #b2f2bb; border-radius: 6px; padding: 8px 12px; text-align: center;">
-				<div style="font-size: 11px; font-weight: bold; color: #2b8a3e; text-transform: uppercase;">Complete Pattern Sets</div>
-				<div style="font-size: 22px; font-weight: bold; color: #2b8a3e;">{total_complete}</div>
-			</div>
-			<div style="flex: 1; background: #fff9db; border: 1px solid #ffe066; border-radius: 6px; padding: 8px 12px; text-align: center;">
-				<div style="font-size: 11px; font-weight: bold; color: #d97706; text-transform: uppercase;">Individual / Loose Components</div>
-				<div style="font-size: 22px; font-weight: bold; color: #d97706;">{total_loose:g}</div>
-			</div>
-		</div>
-		<div style="color: #495057; font-size: 12px;">
-			<b>Pattern Sets at Warehouse ({frappe.utils.escape_html(wh)}):</b>
-			<ul style="margin: 6px 0 0 16px; padding: 0;">
-				{ms_summary_rows}
-			</ul>
-		</div>
-	</div>
-	"""
-
-	frappe.msgprint(
-		msg=msg_html,
-		title=_("Pattern Set Information ({0})").format(wh),
-		indicator="blue",
-		alert=True,
-	)

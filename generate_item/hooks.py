@@ -228,6 +228,7 @@ doc_events = {
     
     "Purchase Receipt": {
         "before_save": "generate_item.utils.purchase_receipt.before_save",
+        "before_submit": "generate_item.utils.pattern_serial.create_pattern_serials",
         "validate": [
             "generate_item.utils.purchase_receipt.validate",
             "generate_item.mould_set_management.stock_guards.validate_serial_movement_in_generic_stock_doc",
