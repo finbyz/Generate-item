@@ -39,11 +39,11 @@
    "label": "Details"
   },
   {
-   "default": "PM-.YYYY.-.#####",
    "fieldname": "naming_series",
    "fieldtype": "Select",
    "label": "Naming Series",
-   "options": "PM-.YYYY.-.#####\nPM-.#####",
+   "no_copy": 1,
+   "options": "PTRN.fiscal.#####\nPM-.YYYY.-.#####\nPM-.#####",
    "reqd": 1
   },
   {
@@ -204,7 +204,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-09-30 18:16:11.649006",
+ "modified": "2026-11-26 11:28:59.940817",
  "modified_by": "Administrator",
  "module": "Mould Set Management",
  "name": "Pattern Movement",

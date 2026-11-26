@@ -638,11 +638,14 @@ frappe.ui.form.on('Sales Order', {
                     },
                     callback: function (r) {
                         if (r.message) {
-                            frappe.msgprint({
-                                title: __('CRM Initiated'),
-                                message: __('CRM Note Created: <a href="/app/crm-notes/{0}">{0}</a>', [r.message]),
+                            const note = r.message.name || r.message;
+                            frappe.show_alert({
+                                message: r.message.created === false
+                                    ? __('CRM Note {0} already exists', [note])
+                                    : __('CRM Note {0} created', [note]),
                                 indicator: 'green'
                             });
+                            frappe.set_route('Form', 'CRM Notes', note);
                         }
                     }
                 });

@@ -253,6 +253,7 @@ doc_events = {
     },
     "Sales Order": {
         "before_save": "generate_item.utils.sales_order.before_save",
+        "after_insert": "generate_item.utils.crm_notes.on_sales_order_insert",
         "validate": "generate_item.utils.sales_order.validate",
         "before_validate":"generate_item.utils.sales_order.before_validate",
         "on_submit": "generate_item.generate_item.doctype.crm_notes.crm_notes.submit_draft_crm_notes",
