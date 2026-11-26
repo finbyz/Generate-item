@@ -7,7 +7,7 @@
   "doctype_or_field": "DocType",
   "field_name": null,
   "is_system_generated": 0,
-  "modified": "2026-11-13 13:04:49.139077",
+  "modified": "2026-11-24 18:13:00.075534",
   "module": "Generate Item",
   "name": "Sales Taxes and Charges-main-field_order",
   "property": "field_order",
@@ -2190,5 +2190,21 @@
   "property_type": "Check",
   "row_name": null,
   "value": "1"
+ },
+ {
+  "default_value": null,
+  "doc_type": "Issue",
+  "docstatus": 0,
+  "doctype": "Property Setter",
+  "doctype_or_field": "DocField",
+  "field_name": "naming_series",
+  "is_system_generated": 0,
+  "modified": "2026-11-26 10:30:21.063847",
+  "module": "Generate Item",
+  "name": "Issue-naming_series-options",
+  "property": "options",
+  "property_type": "Text",
+  "row_name": null,
+  "value": "CUSC.fiscal.#####"
  }
 ]
