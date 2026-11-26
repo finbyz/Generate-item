@@ -1,144 +1,252 @@
 # Copyright (c) 2026, Finbyz and contributors
 # For license information, please see license.txt
 
-"""Pattern Set Association Details for Purchase Order (view-only).
+"""Pattern association for Purchase Order lines (view-only, TASK40942).
 
-A Pattern Set is associated with a Purchase Order when any Purchase Order Item
-matches a component of a submitted, non-disabled Pattern Set on all seven fields
-below, using exact (case-sensitive) equality. Nothing is saved to the PO.
+A casting item on a PO line matches an item of the "Patterns and Die" item group when both
+    Item.custom_pattern_drawing_no      and
+    Item.custom_pattern_drawing_rev_no
+are equal. Values are compared after trimming spaces and ignoring case, because the item
+master has values like " 12T2500101_P". Drawing no alone is not a match.
+
+The PO's Set Target Warehouse and Supplier Warehouse are NOT used. The supplier's
+warehouses are the warehouses whose Supplier field (Warehouse.custom_supplier) is the PO
+supplier. For each matched row:
+    complete_sets    submitted, enabled Pattern Sets with current_supplier = PO supplier and
+                     current_warehouse in the supplier's warehouses, status Complete,
+                     that contain a matched pattern item
+    incomplete_sets  the same, status Incomplete
+    warehouse_qty    Bin.actual_qty of the matched pattern item(s) in the supplier's warehouses
+    company_qty      Bin.actual_qty of the matched pattern item(s) in all warehouses of the
+                     PO company (whole system)
+
+Nothing is saved to the Purchase Order.
 """
 
 import json
 
 import frappe
 from frappe import _
-from frappe.query_builder.functions import IfNull
+from frappe.utils import cint, cstr, flt
+from frappe.utils.nestedset import get_descendants_of
 
-# (Purchase Order Item field, Pattern Set Component field)
-MATCH_FIELDS = (
-	("item_code", "item_code"),
-	("custom_drawing_no", "drawing_no"),
-	("custom_drawing_rev_no", "drawing_rev_no"),
-	("custom_pattern_drawing_no", "pattern_drawing_no"),
-	("custom_pattern_drawing_rev_no", "pattern_drawing_rev_no"),
-	("custom_purchase_specification_no", "purchase_specification_no"),
-	("custom_purchase_specification_rev_no", "purchase_specification_rev_no"),
-)
-
-# Guard against abusive payloads. A real PO is far below this.
+PATTERN_ITEM_GROUP = "Patterns and Die"
 MAX_ITEMS = 2000
 
 
 @frappe.whitelist()
-def get_pattern_set_associations(items=None, purchase_order=None):
-	"""Return unique Pattern Sets whose components match PO items on all 7 fields.
+def get_pattern_set_info(items=None, supplier=None, company=None, purchase_order=None):
+	"""Return pattern association info per Purchase Order row.
 
-	:param items: list (or JSON string) of dicts with the 7 Purchase Order Item fields.
-	:param purchase_order: name of the saved Purchase Order, if any (for doc-level permission).
-	:return: list of dicts: pattern_set_id, supplier (Pattern Set current_supplier),
-	        current_warehouse, completeness_status
+	:param items: list (or JSON) of {"row": <row name>, "idx": <row no>, "item_code": <item>}
+	:param supplier: Purchase Order supplier
+	:param company: Purchase Order company, for the company (whole system) quantity
+	:param purchase_order: saved PO name, for document-level permission
+	:return: {"supplier", "company", "warehouses": [...], "rows": [...]},
+	        one row per PO line whose item has a pattern drawing no
 	"""
 	_check_permission(purchase_order)
+	warehouses = _get_supplier_warehouses(supplier)
+	out = {"supplier": supplier, "company": company, "warehouses": warehouses, "rows": []}
 
-	keys = _get_item_keys(items)
-	if not keys:
-		return []
+	rows = _parse_items(items)
+	if not rows:
+		return out
 
-	ps = frappe.qb.DocType("Pattern Set")
-	psc = frappe.qb.DocType("Pattern Set Component")
+	castings = _get_casting_items({r["item_code"] for r in rows})
+	keys = {c.key for c in castings.values() if c.key}
+	patterns_by_key = _get_pattern_items(keys)
 
-	query = (
-		frappe.qb.from_(psc)
-		.inner_join(ps)
-		.on(psc.parent == ps.name)
-		.select(
-			ps.name,
-			ps.current_supplier,
-			ps.current_warehouse,
-			ps.completeness_status,
-			*[psc[component_field] for _po_field, component_field in MATCH_FIELDS],
+	pattern_codes = {p.name for plist in patterns_by_key.values() for p in plist}
+	warehouse_stock = _get_actual_qty(pattern_codes, warehouses=warehouses)
+	company_stock = _get_actual_qty(pattern_codes, company=company)
+	sets_by_item = _get_pattern_sets(pattern_codes, supplier, warehouses)
+
+	result = []
+	for r in rows:
+		casting = castings.get(r["item_code"])
+		if not casting or not casting.key:
+			continue  # no pattern drawing no on the item, or the item is itself a pattern
+
+		patterns = patterns_by_key.get(casting.key, [])
+		sets = {}
+		for p in patterns:
+			sets.update(sets_by_item.get(p.name, {}))
+
+		result.append(
+			{
+				"row": r["row"],
+				"idx": r["idx"],
+				"item_code": r["item_code"],
+				"item_name": casting.item_name,
+				"pattern_drawing_no": casting.drawing_no,
+				"pattern_drawing_rev_no": casting.rev_no,
+				"patterns": [{"item_code": p.name, "item_name": p.item_name} for p in patterns],
+				"complete_sets": sorted(n for n, s in sets.items() if s == "Complete"),
+				"incomplete_sets": sorted(n for n, s in sets.items() if s != "Complete"),
+				"warehouse_qty": sum(warehouse_stock.get(p.name, 0.0) for p in patterns) if warehouses else None,
+				"company_qty": sum(company_stock.get(p.name, 0.0) for p in patterns),
+			}
 		)
-		.where(psc.parenttype == "Pattern Set")
-		.where(psc.parentfield == "items")
-		.where(ps.docstatus == 1)
-		# Exclude disabled Pattern Sets (current flag, legacy flag and status).
-		.where(IfNull(ps.disabled, 0) == 0)
-		.where(IfNull(ps.disable, 0) == 0)
-		.where(IfNull(ps.status, "") != "Disabled")
-		.orderby(ps.name)
+
+	out["rows"] = result
+	return out
+
+
+# ---------------------------------------------------------------------- queries
+
+
+def _norm(value):
+	value = cstr(value).strip()
+	return value.upper() if value else None
+
+
+def _pattern_groups():
+	return [PATTERN_ITEM_GROUP] + (get_descendants_of("Item Group", PATTERN_ITEM_GROUP) or [])
+
+
+def _get_casting_items(item_codes):
+	"""Item code -> {item_name, drawing_no, rev_no, key}. Pattern items themselves get no key."""
+	pattern_groups = set(_pattern_groups())
+	out = {}
+	for item in frappe.get_all(
+		"Item",
+		filters={"name": ["in", list(item_codes)]},
+		fields=["name", "item_name", "item_group", "custom_pattern_drawing_no", "custom_pattern_drawing_rev_no"],
+	):
+		drawing_no = cstr(item.custom_pattern_drawing_no).strip()
+		rev_no = cstr(item.custom_pattern_drawing_rev_no).strip()
+		key = None
+		if drawing_no and item.item_group not in pattern_groups:
+			key = (_norm(drawing_no), _norm(rev_no))
+		out[item.name] = frappe._dict(item_name=item.item_name, drawing_no=drawing_no, rev_no=rev_no, key=key)
+	return out
+
+
+def _get_pattern_items(keys):
+	"""(drawing_no, rev_no) -> [enabled Patterns and Die items with the same pair]."""
+	if not keys:
+		return {}
+
+	candidates = frappe.db.sql(
+		"""
+		select name, item_name, custom_pattern_drawing_no, custom_pattern_drawing_rev_no
+		from `tabItem`
+		where item_group in %(groups)s
+			and disabled = 0
+			and upper(trim(custom_pattern_drawing_no)) in %(drawing_nos)s
+		order by name
+		""",
+		{"groups": tuple(_pattern_groups()), "drawing_nos": tuple({k[0] for k in keys})},
+		as_dict=True,
 	)
 
-	# Narrow the scan in SQL: each component field must be one of the requested values.
-	# This is a pre-filter only, the exact 7-field tuple match is done below.
-	for index, (_po_field, component_field) in enumerate(MATCH_FIELDS):
-		query = query.where(psc[component_field].isin(sorted({key[index] for key in keys})))
+	out = {}
+	for item in candidates:
+		key = (_norm(item.custom_pattern_drawing_no), _norm(item.custom_pattern_drawing_rev_no))
+		if key in keys:  # drawing no AND revision must both match
+			out.setdefault(key, []).append(item)
+	return out
 
-	rows = query.run(as_dict=True)
 
-	# Exact, case-sensitive tuple match. SQL comparison uses the table collation
-	# (case and trailing-space insensitive), so it cannot be trusted on its own.
-	result = {}
-	for row in rows:
-		if row.name in result:
-			continue
-		component_key = tuple(row.get(component_field) for _po_field, component_field in MATCH_FIELDS)
-		if component_key in keys:
-			result[row.name] = {
-				"pattern_set_id": row.name,
-				"supplier": row.current_supplier,
-				"current_warehouse": row.current_warehouse,
-				"completeness_status": row.completeness_status,
-			}
+def _get_supplier_warehouses(supplier):
+	"""Leaf warehouses linked to the supplier through Warehouse.custom_supplier."""
+	if not supplier:
+		return []
+	return frappe.get_all(
+		"Warehouse",
+		filters={"custom_supplier": supplier, "is_group": 0, "disabled": 0},
+		pluck="name",
+		order_by="name",
+	)
 
-	return list(result.values())
+
+def _get_actual_qty(item_codes, warehouses=None, company=None):
+	"""Item -> total Bin.actual_qty, either in the given warehouses or in all warehouses of the company."""
+	if not item_codes:
+		return {}
+	if warehouses is not None and not warehouses:
+		return {}
+
+	conditions, values = ["b.item_code in %(items)s"], {"items": tuple(item_codes)}
+	if warehouses:
+		conditions.append("b.warehouse in %(warehouses)s")
+		values["warehouses"] = tuple(warehouses)
+	if company:
+		conditions.append("w.company = %(company)s")
+		values["company"] = company
+
+	return {
+		row.item_code: flt(row.qty)
+		for row in frappe.db.sql(
+			"""
+			select b.item_code, sum(b.actual_qty) as qty
+			from `tabBin` b
+			inner join `tabWarehouse` w on w.name = b.warehouse
+			where {}
+			group by b.item_code
+			""".format(" and ".join(conditions)),
+			values,
+			as_dict=True,
+		)
+	}
+
+
+def _get_pattern_sets(item_codes, supplier, warehouses):
+	"""Pattern item -> {pattern_set: completeness_status} for sets held by the supplier
+	(current_supplier) in one of the supplier's warehouses (current_warehouse)."""
+	if not item_codes or not supplier or not warehouses:
+		return {}
+
+	out = {}
+	for row in frappe.db.sql(
+		"""
+		select distinct psc.item_code, ps.name, ps.completeness_status
+		from `tabPattern Set Component` psc
+		inner join `tabPattern Set` ps on ps.name = psc.parent
+		where psc.parenttype = 'Pattern Set'
+			and psc.parentfield = 'items'
+			and psc.item_code in %(items)s
+			and ps.docstatus = 1
+			and ifnull(ps.disabled, 0) = 0
+			and ifnull(ps.disable, 0) = 0
+			and ifnull(ps.status, '') not in ('Disabled', 'Cancelled')
+			and ps.current_supplier = %(supplier)s
+			and ps.current_warehouse in %(warehouses)s
+		""",
+		{"items": tuple(item_codes), "supplier": supplier, "warehouses": tuple(warehouses)},
+		as_dict=True,
+	):
+		out.setdefault(row.item_code, {})[row.name] = row.completeness_status
+	return out
+
+
+# ---------------------------------------------------------------- validation
 
 
 def _check_permission(purchase_order=None):
-	"""Allow only users who can read Purchase Orders (and this PO, if it is saved)."""
-	if not frappe.has_permission("Purchase Order", "read"):
-		frappe.throw(_("Not permitted to view Purchase Orders."), frappe.PermissionError)
+	for doctype in ("Purchase Order", "Item"):
+		if not frappe.has_permission(doctype, "read"):
+			frappe.throw(_("Not permitted to read {0}.").format(_(doctype)), frappe.PermissionError)
 
 	if purchase_order and frappe.db.exists("Purchase Order", purchase_order):
-		if not frappe.has_permission("Purchase Order", "read", doc=purchase_order):
-			frappe.throw(
-				_("Not permitted to view Purchase Order {0}.").format(purchase_order),
-				frappe.PermissionError,
-			)
+		frappe.has_permission("Purchase Order", "read", doc=purchase_order, throw=True)
 
 
-def _get_item_keys(items):
-	"""Build the set of complete 7-field tuples. Items with any blank field are ignored.
-
-	Values are not trimmed or case-folded, so matching stays exact.
-	"""
+def _parse_items(items):
 	if isinstance(items, str):
-		items = json.loads(items) if items else []
-
+		items = json.loads(items or "[]")
 	if not items:
-		return set()
-
+		return []
 	if not isinstance(items, list):
 		frappe.throw(_("Items must be a list."))
-
 	if len(items) > MAX_ITEMS:
 		frappe.throw(_("Too many items. Maximum allowed is {0}.").format(MAX_ITEMS))
 
-	keys = set()
+	rows = []
 	for item in items:
-		if not isinstance(item, dict):
-			continue
-
-		key = tuple(_as_text(item.get(po_field)) for po_field, _component_field in MATCH_FIELDS)
-		if all(value is not None for value in key):
-			keys.add(key)
-
-	return keys
-
-
-def _as_text(value):
-	"""Return the value as a string, or None if it is blank or not a scalar."""
-	if value is None or isinstance(value, bool | dict | list):
-		return None
-	if not isinstance(value, str):
-		value = str(value)
-	return value if value.strip() else None
+		if isinstance(item, dict) and cstr(item.get("item_code")).strip():
+			rows.append(
+				{"row": cstr(item.get("row")), "idx": cint(item.get("idx")), "item_code": cstr(item["item_code"])}
+			)
+	return rows
