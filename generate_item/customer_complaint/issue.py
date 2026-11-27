@@ -74,6 +74,9 @@ def validate_issue(doc, method=None):
 	# Append-only check for existing progress history
 	validate_progress_history_append_only(doc)
 
+	# TASK41461: Multiple Valves rules (one valve per line, manual details for Old Order)
+	validate_valve_rows(doc)
+
 
 def sync_customer_details(doc):
 	"""
@@ -379,3 +382,159 @@ def get_valve_attribute_options(template_name=None):
 		result[fieldname] = [""] + sorted(list(opts))
 
 	return result
+
+
+VALVE_MANUAL_FIELDS = ("valve_type", "size", "rating", "shell_moc", "operator")
+
+
+def validate_valve_rows(doc):
+	"""Multiple Valves (Issue Valve) rules, TASK41461.
+
+	- Qty is always 1 per line.
+	- For Order Type = Old Order, the manual valve details are mandatory, since nothing is
+	  fetched from a Sales Order. (mandatory_depends_on is only checked in the browser.)
+	"""
+	rows = doc.get("custom_valves") or []
+	seen_serials = {}
+	for row in rows:
+		row.qty = 1
+		# One serial can appear only once in a complaint
+		serial = (row.get("serial_number") or "").strip()
+		if serial:
+			if serial.upper() in seen_serials:
+				frappe.throw(
+					_("Multiple Valves row #{0}: Serial Number {1} is already on row #{2}.").format(
+						row.idx, frappe.bold(serial), seen_serials[serial.upper()]
+					),
+					title=_("Duplicate serial number"),
+				)
+			seen_serials[serial.upper()] = row.idx
+
+	# Current Order: the Sales Order must belong to the complaint's customer
+	if doc.get("custom_order_type") == "Current Order" and doc.get("custom_sales_order") and doc.get("customer"):
+		so_customer = frappe.db.get_value("Sales Order", doc.custom_sales_order, "customer")
+		if so_customer and so_customer != doc.customer:
+			frappe.throw(
+				_("Sales Order {0} belongs to customer {1}, not to {2}.").format(
+					frappe.bold(doc.custom_sales_order), frappe.bold(so_customer), frappe.bold(doc.customer)
+				),
+				title=_("Sales Order of another customer"),
+			)
+
+	if doc.get("custom_order_type") == "Current Order":
+		# TASK41460 / TASK41459: Current Order lines are filled from the item and the serial
+		from generate_item.customer_complaint.serial_lookup import get_serial_details
+
+		for row in rows:
+			# TASK41458: a serial without its order details is completed from stock data
+			if row.get("serial_number") and not (row.get("item_code") and row.get("batch_no") and row.get("sales_order")):
+				found = get_serial_details(row.serial_number)
+				for f in ("item_code", "batch_no", "sales_order"):
+					if found.get(f) and not row.get(f):
+						row.set(f, found[f])
+			if row.get("item_code"):
+				details = get_valve_details(row.item_code)
+				if details.get("found"):
+					for f in VALVE_MANUAL_FIELDS:
+						row.set(f, details.get(f) or "")
+			if row.get("serial_number"):
+				info = get_warranty_info(row.serial_number)
+				row.remaining_warranty_days = info["remaining_days"]
+				# no expiry date on record: keep the status the user selected
+				if info["expiry_date"]:
+					row.warranty_status = info["status"]
+			else:
+				row.remaining_warranty_days = None
+		return
+
+	if doc.get("custom_order_type") != "Old Order":
+		return
+
+	meta = frappe.get_meta("Issue Valve")
+	for row in rows:
+		row.remaining_warranty_days = None  # Old Order: no expiry date on record
+		missing = [meta.get_label(f) for f in VALVE_MANUAL_FIELDS if not (row.get(f) or "").strip()]
+		if missing:
+			msg = (
+				_("Multiple Valves row #{0}: {1} is required for an Old Order.")
+				if len(missing) == 1
+				else _("Multiple Valves row #{0}: {1} are required for an Old Order.")
+			)
+			frappe.throw(msg.format(row.idx, ", ".join(missing)), title=_("Missing valve details"))
+
+
+# Item Generator attribute names -> Issue Valve fields (TASK41460)
+VALVE_ATTRIBUTE_MAP = {
+	"valve_type": ("valve type", "type of valve"),
+	"size": ("size",),
+	"rating": ("rating", "class"),
+	"shell_moc": ("shell moc", "body moc", "moc"),
+	"operator": ("operator",),
+}
+
+
+@frappe.whitelist()
+def get_valve_details(item_code):
+	"""Valve Type, Size, Rating, Shell MOC and Operator of an item, read from the Item
+	Generator record that created it (TASK41460). Shared by every valve table.
+
+	Returns {"found": bool, "valve_type": ..., "size": ..., "rating": ..., "shell_moc": ..., "operator": ...}.
+	"""
+	out = {"found": False, **{f: "" for f in VALVE_ATTRIBUTE_MAP}}
+	if not item_code:
+		return out
+
+	ig = frappe.get_all(
+		"Item Generator",
+		filters={"created_item": item_code},
+		fields=["name"] + [f"attribute_{i}" for i in range(1, 29)] + [f"attribute_{i}_value" for i in range(1, 29)],
+		order_by="modified desc",
+		limit=1,
+	)
+	if not ig:
+		return out
+
+	attrs = {}
+	for i in range(1, 29):
+		name = (ig[0].get(f"attribute_{i}") or "").strip()
+		value = (ig[0].get(f"attribute_{i}_value") or "").strip()
+		if name:
+			# names can carry a template prefix such as "BFV-Shell MOC"
+			key = name.split("-", 1)[1].strip().lower() if "-" in name else name.lower()
+			attrs.setdefault(key, value)
+
+	for field, names in VALVE_ATTRIBUTE_MAP.items():
+		for n in names:
+			if attrs.get(n) not in (None, ""):
+				out[field] = attrs[n]
+				break
+	out["found"] = True
+	return out
+
+
+@frappe.whitelist()
+def get_warranty_info(serial_no, on_date=None):
+	"""Warranty of a valve serial, as the Valve Warranty Register report shows it today.
+
+	Source: warranty_expiry_date on the valve Serial Number (written when the valve is invoiced).
+	Remaining days = expiry date - today. The report's Under Warranty and Expiring statuses
+	are "Under Warranty" here, its Expired status is "Out of Warranty".
+	on_date is ignored: the Complaint Registration Date does not change the status.
+	Returns {"status", "remaining_days", "expiry_date"}; status None when there is no expiry date.
+	"""
+	serial_no = (serial_no or "").strip()
+	expiry = frappe.db.get_value("Serial Number", serial_no, "warranty_expiry_date") if serial_no else None
+	if not expiry:
+		return {"status": None, "remaining_days": None, "expiry_date": None}
+	days = (frappe.utils.getdate(expiry) - frappe.utils.getdate(frappe.utils.today())).days
+	return {
+		"status": "Out of Warranty" if days < 0 else "Under Warranty",
+		"remaining_days": days,
+		"expiry_date": str(expiry),
+	}
+
+
+@frappe.whitelist()
+def get_warranty_status(serial_no, on_date=None):
+	"""Kept for older callers: the status text only."""
+	return get_warranty_info(serial_no)["status"]

@@ -119,8 +119,14 @@ frappe.query_reports["Customer Complaint Register"] = {
 			fieldtype: "Data",
 		},
 		{
+			fieldname: "item_code",
+			label: __("Item"),
+			fieldtype: "Link",
+			options: "Item",
+		},
+		{
 			fieldname: "product",
-			label: __("Product"),
+			label: __("Product (older complaints)"),
 			fieldtype: "Link",
 			options: "Item Generator Template",
 			get_query: () => ({ filters: { disabled: 0 } }),
@@ -241,7 +247,7 @@ frappe.query_reports["Customer Complaint Register"] = {
 		report.page.add_inner_button(__("New Complaint"), () => {
 			const default_customer = report.get_filter_value("customer");
 			const default_so = report.get_filter_value("sales_order");
-			const default_product = report.get_filter_value("product");
+			const default_item = report.get_filter_value("item_code");
 			const prefill = {};
 			if (default_customer) prefill.customer = default_customer;
 			if (default_so) prefill.custom_sales_order = default_so;
@@ -251,9 +257,10 @@ frappe.query_reports["Customer Complaint Register"] = {
 				const doc = frappe.model.get_new_doc("Issue");
 				if (prefill.customer) doc.customer = prefill.customer;
 				if (prefill.custom_sales_order) doc.custom_sales_order = prefill.custom_sales_order;
-				if (default_product) {
+				if (default_item) {
 					const child = frappe.model.add_child(doc, "Issue Valve", "custom_valves");
-					child.product = default_product;
+					child.item_code = default_item;
+					child.qty = 1;
 				}
 				frappe.set_route("Form", "Issue", doc.name);
 			});

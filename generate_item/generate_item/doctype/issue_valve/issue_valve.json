@@ -5,6 +5,7 @@
  "editable_grid": 1,
  "engine": "InnoDB",
  "field_order": [
+  "item_code",
   "product",
   "valve_type",
   "size",
@@ -14,13 +15,27 @@
   "shell_moc",
   "operator",
   "qty",
-  "serial_number"
+  "serial_number",
+  "warranty_status",
+  "remaining_warranty_days",
+  "batch_no",
+  "sales_order"
  ],
  "fields": [
   {
-   "fieldname": "product",
+   "columns": 2,
+   "description": "Optional.",
+   "fieldname": "item_code",
    "fieldtype": "Link",
    "in_list_view": 1,
+   "label": "Item",
+   "options": "Item"
+  },
+  {
+   "description": "Replaced by Item (TASK41461). Kept hidden for older records.",
+   "fieldname": "product",
+   "fieldtype": "Link",
+   "hidden": 1,
    "label": "Product",
    "options": "Item Generator Template"
   },
@@ -28,44 +43,92 @@
    "fieldname": "valve_type",
    "fieldtype": "Select",
    "in_list_view": 1,
-   "label": "Valve Type"
+   "label": "Valve Type",
+   "mandatory_depends_on": "eval:parent.custom_order_type=='Old Order'",
+   "read_only_depends_on": "eval:parent.custom_order_type=='Current Order'"
   },
   {
    "fieldname": "size",
    "fieldtype": "Select",
    "in_list_view": 1,
-   "label": "Size"
+   "label": "Size",
+   "mandatory_depends_on": "eval:parent.custom_order_type=='Old Order'",
+   "read_only_depends_on": "eval:parent.custom_order_type=='Current Order'"
   },
   {
    "fieldname": "rating",
    "fieldtype": "Select",
    "in_list_view": 1,
-   "label": "Rating"
+   "label": "Rating",
+   "mandatory_depends_on": "eval:parent.custom_order_type=='Old Order'",
+   "read_only_depends_on": "eval:parent.custom_order_type=='Current Order'"
   },
   {
    "fieldname": "shell_moc",
    "fieldtype": "Select",
    "in_list_view": 1,
-   "label": "Shell MOC"
+   "label": "Shell MOC",
+   "mandatory_depends_on": "eval:parent.custom_order_type=='Old Order'",
+   "read_only_depends_on": "eval:parent.custom_order_type=='Current Order'"
   },
   {
    "fieldname": "operator",
    "fieldtype": "Select",
    "in_list_view": 1,
-   "label": "Operator"
+   "label": "Operator",
+   "mandatory_depends_on": "eval:parent.custom_order_type=='Old Order'",
+   "read_only_depends_on": "eval:parent.custom_order_type=='Current Order'"
   },
   {
+   "default": "1",
+   "description": "One valve per line.",
    "fieldname": "qty",
    "fieldtype": "Int",
-   "in_list_view": 1,
    "label": "Qty",
-   "non_negative": 1
+   "non_negative": 1,
+   "read_only": 1
   },
   {
    "fieldname": "serial_number",
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Serial Number"
+  },
+  {
+   "description": "Current Order: from the Valve Warranty Register, Out of Warranty when the warranty has expired. Old Order: select manually.",
+   "fieldname": "warranty_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Warranty Status",
+   "options": "\nUnder Warranty\nOut of Warranty"
+  },
+  {
+   "depends_on": "eval:parent.custom_order_type!='Old Order'",
+   "description": "Days left until the warranty expiry date, counted from today as in the Valve Warranty Register. Negative when expired.",
+   "fieldname": "remaining_warranty_days",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Remaining Warranty Days",
+   "no_copy": 1,
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:parent.custom_order_type!='Old Order'",
+   "description": "Current Order: filled from the serial.",
+   "fieldname": "batch_no",
+   "fieldtype": "Link",
+   "label": "Batch No",
+   "options": "Batch",
+   "read_only_depends_on": "eval:parent.custom_order_type=='Current Order'"
+  },
+  {
+   "depends_on": "eval:parent.custom_order_type!='Old Order'",
+   "description": "Current Order: the Sales Order the serial was delivered against.",
+   "fieldname": "sales_order",
+   "fieldtype": "Link",
+   "label": "Sales Order",
+   "options": "Sales Order",
+   "read_only_depends_on": "eval:parent.custom_order_type=='Current Order'"
   },
   {
    "fieldname": "column_break_1lwh",
@@ -79,7 +142,7 @@
  ],
  "istable": 1,
  "links": [],
- "modified": "2026-11-07 12:15:00.000000",
+ "modified": "2026-11-27 22:00:00.000000",
  "modified_by": "Administrator",
  "module": "Generate Item",
  "name": "Issue Valve",
