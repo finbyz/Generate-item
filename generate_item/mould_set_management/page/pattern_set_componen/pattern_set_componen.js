@@ -649,6 +649,11 @@ class PatternSetComponentAvailability {
 						drawing_badges.push(`<span class="psca-drawing-tag" title="${__('Pattern Drawing No')}">Pat: ${frappe.utils.escape_html(comp.pattern_drawing_no)}${comp.pattern_drawing_rev_no ? ' Rev: ' + frappe.utils.escape_html(comp.pattern_drawing_rev_no) : ''}</span>`);
 					}
 
+					// Serial No of the piece held in this row of the Pattern Set
+					const serial_badge = comp.serial_no
+						? `<a href="/app/serial-no/${encodeURIComponent(comp.serial_no)}" class="psca-drawing-tag" title="${__('Serial No')}${comp.serial_status ? ' (' + frappe.utils.escape_html(comp.serial_status) + ')' : ''}" onclick="event.stopPropagation();">SN: ${frappe.utils.escape_html(comp.serial_no)}</a>`
+						: `<span class="psca-drawing-tag" title="${__('No serial attached to this row')}" style="opacity: 0.7;">SN: ${__('Not attached')}</span>`;
+
 					let qty_display = '';
 					if (has_stock) {
 						qty_display = `<span class="psca-qty-positive">${qty_formatted} ${uom_str}</span>`;
@@ -673,6 +678,7 @@ class PatternSetComponentAvailability {
 									</a>
 									${comp.component_name && comp.component_name !== comp.component_item ? `<span class="psca-comp-name">${frappe.utils.escape_html(comp.component_name)}</span>` : ''}
 									<span class="psca-req-badge">${comp.required_qty} ${frappe.utils.escape_html(comp.uom || '')} / set</span>
+									${serial_badge}
 									${drawing_badges.join(' ')}
 								</div>
 							</td>

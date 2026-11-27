@@ -331,11 +331,11 @@ class TestPatternSetAcceptance(FrappeTestCase):
 		cc = frappe.new_doc("Pattern Set Component Change")
 		cc.posting_date = nowdate()
 		cc.pattern_set = ps.name
-		cc.append("items", {"action": "Attach", "serial_no": sn2})
+		cc.append("items", {"action": "Attach", "item_code": frappe.db.get_value("Serial No", sn2, "item_code"), "serial_no": sn2})
 		self.assertRaises(frappe.ValidationError, cc.insert)
 
 	def test_11_attach_serial_from_another_set(self):
-		"""Test 11: Attach a serial from another set -> Previous Set auto-filled; old set row blank, old set status recalculated; new row filled."""
+		"""Test 11 (TASK41455): attaching a serial that is in another set is blocked, naming that set."""
 		sn = self.make_serial(self.item_codes[0], self.own_wh)
 		# Set 1 with attached serial
 		ps1 = frappe.new_doc("Pattern Set")
@@ -367,17 +367,15 @@ class TestPatternSetAcceptance(FrappeTestCase):
 		cc = frappe.new_doc("Pattern Set Component Change")
 		cc.posting_date = nowdate()
 		cc.pattern_set = ps2.name
-		cc.append("items", {"action": "Attach", "serial_no": sn})
-		cc.insert(ignore_permissions=True)
-		self.assertEqual(cc.items[0].previous_set, ps1.name)
-		cc.submit()
+		cc.append("items", {"action": "Attach", "item_code": frappe.db.get_value("Serial No", sn, "item_code"), "serial_no": sn})
+		with self.assertRaises(frappe.ValidationError) as ctx:
+			cc.insert(ignore_permissions=True)
+		self.assertIn(ps1.name, str(ctx.exception))
 
 		ps1.reload()
 		ps2.reload()
-		self.assertEqual(ps1.status, "Incomplete")
-		self.assertFalse(ps1.items[0].serial_no)  # old row blanked
-		self.assertEqual(ps2.status, "Complete")
-		self.assertEqual(ps2.items[0].serial_no, sn)  # new row filled
+		self.assertEqual(ps1.status, "Complete")  # unchanged
+		self.assertEqual(ps2.status, "Incomplete")  # unchanged
 
 	def test_12_attach_serial_from_different_warehouse_rejected(self):
 		"""Test 12: Attach a serial from a different warehouse than the set -> Rejected"""
@@ -397,7 +395,7 @@ class TestPatternSetAcceptance(FrappeTestCase):
 		cc = frappe.new_doc("Pattern Set Component Change")
 		cc.posting_date = nowdate()
 		cc.pattern_set = ps.name
-		cc.append("items", {"action": "Attach", "serial_no": sn2})
+		cc.append("items", {"action": "Attach", "item_code": frappe.db.get_value("Serial No", sn2, "item_code"), "serial_no": sn2})
 		self.assertRaises(frappe.ValidationError, cc.insert)
 
 	def test_13_detach_required_serial_becomes_incomplete(self):
@@ -458,7 +456,7 @@ class TestPatternSetAcceptance(FrappeTestCase):
 		cc = frappe.new_doc("Pattern Set Component Change")
 		cc.posting_date = nowdate()
 		cc.pattern_set = ps.name
-		cc.append("items", {"action": "Attach", "serial_no": sn})
+		cc.append("items", {"action": "Attach", "item_code": frappe.db.get_value("Serial No", sn, "item_code"), "serial_no": sn})
 		cc.insert(ignore_permissions=True)
 		cc.submit()
 

@@ -6,12 +6,14 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import now_datetime
 from generate_item.mould_set_management.pattern_set_utils import (
+	get_other_pattern_sets_for_serial,
 	get_pattern_set_slots_and_serials,
 	recalculate_pattern_set,
 	render_set_info_html,
 	render_transfer_history_html,
 )
 from generate_item.mould_set_management.doctype.component_pairing_log.component_pairing_log import (
+	close_pairing,
 	log_pairing,
 )
 
@@ -141,38 +143,20 @@ class PatternSet(Document):
 						)
 					)
 
-				# Free check (Acceptance Test 2, 4)
-				if sn_data.custom_pattern_set and sn_data.custom_pattern_set != self.name:
-					ps_docstatus = frappe.db.get_value("Pattern Set", sn_data.custom_pattern_set, "docstatus")
-					if ps_docstatus == 1:
-						frappe.throw(
-							_("Serial No {0} is currently in submitted Pattern Set {1}. Use Pattern Set Component Change on this set after submitting, or detach it first.").format(
-								frappe.bold(serial_no), frappe.bold(sn_data.custom_pattern_set)
-							)
-						)
-					elif ps_docstatus == 0:
-						frappe.throw(
-							_("Serial No {0} is already used in Draft Pattern Set {1}.").format(
-								frappe.bold(serial_no), frappe.bold(sn_data.custom_pattern_set)
-							)
-						)
-
-				# Check other draft sets where serial might be listed in component rows
-				other_draft = frappe.db.sql(
-					"""
-					SELECT parent FROM `tabPattern Set Component`
-					WHERE serial_no = %s AND parent != %s AND parent IN (
-						SELECT name FROM `tabPattern Set` WHERE docstatus = 0
-					)
-					LIMIT 1
-					""",
-					(serial_no, self.name or ""),
-				)
-				if other_draft:
+				# Free check (Acceptance Test 2, 4; TASK41455): one serial, one Pattern Set.
+				# Covers the serial's own link and rows of any other Draft or Submitted set.
+				# The current document is excluded so a resave does not fail.
+				other_sets = get_other_pattern_sets_for_serial(serial_no, self.name)
+				if other_sets:
+					other_name, other_ds = other_sets[0]
 					frappe.throw(
-						_("Serial No {0} is already in another Draft Pattern Set {1}.").format(
-							frappe.bold(serial_no), frappe.bold(other_draft[0][0])
-						)
+						_("Row #{0}: Serial No {1} is already linked to {2} Pattern Set {3}. One serial can belong to only one Pattern Set. Detach it from {3} first through a Pattern Set Component Change.").format(
+							row.idx,
+							frappe.bold(serial_no),
+							_("Submitted") if other_ds == 1 else _("Draft"),
+							frappe.bold(other_name),
+						),
+						title=_("Serial already in another Pattern Set"),
 					)
 
 				# Fetch and set warehouse
@@ -380,28 +364,43 @@ class PatternSet(Document):
 			self.current_warehouse = info["current_warehouse"]
 			self.current_supplier = info["current_supplier"]
 
-	def on_cancel(self):
-		"""
-		v2.0 Section 5.5:
-		Blocked while any serial is attached. The message tells the user to detach all components first through a Component Change.
-		"""
-		attached = [r.serial_no for r in self.items if r.serial_no]
-		if not attached:
-			# Also check DB Serial No table directly
-			attached = frappe.get_all(
-				"Serial No",
-				filters={"custom_pattern_set": self.name},
-				pluck="name",
-			)
-
-		if attached:
-			frappe.throw(
-				_("Cannot cancel Pattern Set {0} because serial numbers ({1}) are currently attached. Detach all components first through a Component Change.").format(
-					self.name, ", ".join(attached)
+	def before_cancel(self):
+		"""Block cancel while a draft document still works on this set."""
+		for doctype in ("Pattern Set Component Change", "Pattern Set Transfer"):
+			drafts = frappe.get_all(doctype, filters={"pattern_set": self.name, "docstatus": 0}, pluck="name")
+			if drafts:
+				frappe.throw(
+					_("Cannot cancel Pattern Set {0} while draft {1} {2} exists. Submit or cancel it first.").format(
+						frappe.bold(self.name), doctype, ", ".join(frappe.bold(d) for d in drafts)
+					)
 				)
-			)
-		self.db_set("status", "Cancelled")
 
+	def on_cancel(self):
+		"""Free every serial attached to this set. Rows keep their serial numbers as a record."""
+		serials = {r.serial_no for r in self.items if r.serial_no}
+		serials.update(frappe.get_all("Serial No", filters={"custom_pattern_set": self.name}, pluck="name"))
+
+		freed = []
+		for serial_no in sorted(serials):
+			if frappe.db.get_value("Serial No", serial_no, "custom_pattern_set") != self.name:
+				continue  # already moved to another set, leave it alone
+			frappe.db.set_value("Serial No", serial_no, "custom_pattern_set", None)
+			close_pairing(
+				serial_no=serial_no,
+				pattern_set=self.name,
+				reason=f"Pattern Set {self.name} cancelled",
+				source_doctype="Pattern Set",
+				source_doc=self.name,
+			)
+			freed.append(serial_no)
+
+		self.db_set("status", "Cancelled")
+		if freed:
+			frappe.msgprint(
+				_("Serial numbers freed: {0}").format(", ".join(frappe.bold(s) for s in freed)),
+				alert=True,
+				indicator="blue",
+			)
 
 @frappe.whitelist()
 def get_set_info_html(pattern_set):

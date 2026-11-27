@@ -13,27 +13,42 @@ frappe.ui.form.on('Pattern Set Component Change', {
 			};
 		});
 
-		// Dynamic queries for child table rows
+		// Item Code: only component items of the selected Pattern Set
+		frm.set_query('item_code', 'items', function(doc, cdt, cdn) {
+			let row = locals[cdt][cdn];
+			if (!doc.pattern_set) {
+				frappe.msgprint(__('Please select a Pattern Set first.'));
+				return {};
+			}
+			// Attach: only items that still have an empty Serial No row in the set
+			let items = row && row.action === 'Attach' ? frm.__empty_items : frm.__set_items;
+			return { filters: { name: ['in', (items && items.length) ? items : ['']] } };
+		});
+
+		// Serial No: only serials of the row's Item (TASK41453)
 		frm.set_query('serial_no', 'items', function(doc, cdt, cdn) {
 			let row = locals[cdt][cdn];
 			if (!doc.pattern_set) {
 				frappe.msgprint(__('Please select a Pattern Set first.'));
 				return {};
 			}
+			if (!row.item_code) {
+				frappe.msgprint(__('Please select the Item Code first.'));
+				return { filters: { name: '' } };
+			}
 
 			if (row.action === 'Detach') {
 				return {
 					filters: {
+						item_code: row.item_code,
 						custom_pattern_set: doc.pattern_set
 					}
 				};
 			} else {
-				// Attach: Active serials not currently in this set
+				// Attach: only free serials of this item, not linked to any Pattern Set (TASK41454)
 				return {
-					filters: {
-						status: 'Active',
-						custom_pattern_set: ['!=', doc.pattern_set]
-					}
+					query: 'generate_item.mould_set_management.doctype.pattern_set_component_change.pattern_set_component_change.free_serial_query',
+					filters: { item_code: row.item_code }
 				};
 			}
 		});
@@ -41,10 +56,34 @@ frappe.ui.form.on('Pattern Set Component Change', {
 
 	refresh: function(frm) {
 		frm.trigger('render_set_info');
+		frm.trigger('load_set_items');
 	},
 
 	pattern_set: function(frm) {
 		frm.trigger('render_set_info');
+		frm.trigger('load_set_items');
+	},
+
+	load_set_items: function(frm) {
+		frm.__set_items = [];
+		frm.__empty_items = [];
+		if (!frm.doc.pattern_set) return;
+		const method = 'generate_item.mould_set_management.doctype.pattern_set_component_change.pattern_set_component_change.get_pattern_set_items';
+		frappe.call({
+			method: method,
+			args: { pattern_set: frm.doc.pattern_set },
+			callback: function(r) {
+				frm.__set_items = r.message || [];
+			}
+		});
+		// Attach rows: items with an empty Serial No row in the set
+		frappe.call({
+			method: method,
+			args: { pattern_set: frm.doc.pattern_set, only_empty: 1 },
+			callback: function(r) {
+				frm.__empty_items = r.message || [];
+			}
+		});
 	},
 
 	render_set_info: function(frm) {
@@ -67,6 +106,14 @@ frappe.ui.form.on('Pattern Set Component Change', {
 });
 
 frappe.ui.form.on('Pattern Set Component Change Item', {
+	item_code: function(frm, cdt, cdn) {
+		// A serial picked for another item is no longer valid (TASK41453)
+		let row = locals[cdt][cdn];
+		if (row.serial_no) frappe.model.set_value(cdt, cdn, 'serial_no', '');
+		frappe.model.set_value(cdt, cdn, 'warehouse', '');
+		frappe.model.set_value(cdt, cdn, 'previous_set', '');
+	},
+
 	serial_no: function(frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
 		if (!row.serial_no) return;
@@ -76,7 +123,7 @@ frappe.ui.form.on('Pattern Set Component Change Item', {
 			args: { serial_no: row.serial_no, pattern_set: frm.doc.pattern_set },
 			callback: function(r) {
 				if (r.message) {
-					frappe.model.set_value(cdt, cdn, 'item_code', r.message.item_code);
+					// The Item is chosen first; the serial picker only offers that item's serials
 					frappe.model.set_value(cdt, cdn, 'warehouse', r.message.warehouse);
 					frappe.model.set_value(cdt, cdn, 'previous_set', r.message.previous_set);
 				}
@@ -85,9 +132,13 @@ frappe.ui.form.on('Pattern Set Component Change Item', {
 	},
 
 	action: function(frm, cdt, cdn) {
-		// Clear serial when action switches
+		// Clear serial when action switches; keep the chosen Item
+		let row = locals[cdt][cdn];
+		// Attach: the Item must still have an empty Serial No row in the set
+		if (row.action === 'Attach' && row.item_code && !(frm.__empty_items || []).includes(row.item_code)) {
+			frappe.model.set_value(cdt, cdn, 'item_code', '');
+		}
 		frappe.model.set_value(cdt, cdn, 'serial_no', '');
-		frappe.model.set_value(cdt, cdn, 'item_code', '');
 		frappe.model.set_value(cdt, cdn, 'warehouse', '');
 		frappe.model.set_value(cdt, cdn, 'previous_set', '');
 	}

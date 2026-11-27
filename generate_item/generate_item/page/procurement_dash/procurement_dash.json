@@ -1,0 +1,19 @@
+{
+ "content": null,
+ "creation": "2026-11-25 11:37:46.583447",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2026-11-25 11:37:46.583447",
+ "modified_by": "Administrator",
+ "module": "Generate Item",
+ "name": "procurement-dash",
+ "owner": "Administrator",
+ "page_name": "procurement-dash",
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Procurement Dashboard"
+}

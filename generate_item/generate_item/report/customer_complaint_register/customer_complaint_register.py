@@ -121,11 +121,10 @@ def get_columns():
    "hidden": 1,  # Hidden in the report view, but editable in the grid view
 		},
 		{
-			"label": _("Product"),
+			"label": _("Item / Product"),
 			"fieldname": "product",
-			"fieldtype": "Link",
-			"options": "Item Generator Template",
-			"width": 120,
+			"fieldtype": "Data",
+			"width": 160,
 		},
 		{
 			"label": _("Valve"),
@@ -334,10 +333,16 @@ def get_conditions(filters):
 		)""")
 		params["product"] = filters.get("product")
 
+	if filters.get("item_code"):
+		conditions.append(
+			"EXISTS (SELECT 1 FROM `tabIssue Valve` iv WHERE iv.parent = i.name AND iv.item_code = %(item_code)s)"
+		)
+		params["item_code"] = filters.get("item_code")
+
 	if filters.get("valve"):
 		conditions.append("""(
 			i.custom_valve LIKE %(valve)s
-			OR EXISTS (SELECT 1 FROM `tabIssue Valve` iv WHERE iv.parent = i.name AND (iv.product LIKE %(valve)s OR iv.valve_type LIKE %(valve)s))
+			OR EXISTS (SELECT 1 FROM `tabIssue Valve` iv WHERE iv.parent = i.name AND (iv.product LIKE %(valve)s OR iv.item_code LIKE %(valve)s OR iv.valve_type LIKE %(valve)s))
 		)""")
 		params["valve"] = f"%{filters.get('valve')}%"
 
@@ -427,7 +432,7 @@ def get_data(conditions, query_params):
 		child_valves = frappe.get_all(
 			"Issue Valve",
 			filters={"parent": ["in", issue_names]},
-			fields=["parent", "product", "valve_type", "size", "rating", "shell_moc", "operator", "qty", "serial_number"],
+			fields=["parent", "item_code", "product", "valve_type", "size", "rating", "shell_moc", "operator", "qty", "serial_number"],
 			order_by="idx asc",
 		)
 		valves_by_issue = {}
@@ -437,7 +442,8 @@ def get_data(conditions, query_params):
 		for r in rows:
 			cv_list = valves_by_issue.get(r["name"])
 			if cv_list:
-				products = list(dict.fromkeys(filter(None, [cv.get("product") for cv in cv_list])))
+				# Item on new lines, Product (template) on older lines
+				products = list(dict.fromkeys(filter(None, [cv.get("item_code") or cv.get("product") for cv in cv_list])))
 				types = list(dict.fromkeys(filter(None, [cv.get("valve_type") for cv in cv_list])))
 				sizes = list(dict.fromkeys(filter(None, [cv.get("size") for cv in cv_list])))
 				ratings = list(dict.fromkeys(filter(None, [cv.get("rating") for cv in cv_list])))

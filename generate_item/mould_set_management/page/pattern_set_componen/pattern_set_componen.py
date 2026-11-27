@@ -268,7 +268,7 @@ def get_pattern_set_component_availability(
 	where_clause = " AND ".join(ps_conditions)
 	pattern_sets = frappe.db.sql(
 		f"""
-		SELECT name, pattern_set_name, type_of_valve, size, `class`, type_of_pattern, disable
+		SELECT name, pattern_set_name, type_of_valve, size, `class`, type_of_pattern, disable, current_warehouse
 		FROM `tabPattern Set`
 		WHERE {where_clause}
 		ORDER BY name ASC
@@ -283,14 +283,14 @@ def get_pattern_set_component_availability(
 	matched_ps_names = [ps.name for ps in pattern_sets]
 
 	# -------------------------------------------------------------
-	# 3. Batch Fetch Component Items using Child Table Parent Index
+	# 3. Component rows, with the serial attached to each row
 	# -------------------------------------------------------------
 	components = frappe.db.sql(
 		"""
-		SELECT parent, component_item, component_name, qty, uom,
+		SELECT parent, component_item, component_name, qty, uom, serial_no, is_optional,
 		       drawing_no, drawing_rev_no, pattern_drawing_no, pattern_drawing_rev_no, idx
 		FROM `tabPattern Set Component`
-		WHERE parent IN %(parents)s
+		WHERE parenttype = 'Pattern Set' AND parent IN %(parents)s
 		ORDER BY parent ASC, idx ASC
 		""",
 		{"parents": tuple(matched_ps_names)},
@@ -305,40 +305,44 @@ def get_pattern_set_component_availability(
 		return _empty_response()
 
 	# -------------------------------------------------------------
-	# 4. Batch Fetch Bin Stock Data using (item_code, warehouse) Index
+	# 4. Live position of every attached serial.
+	#    A Pattern Set's stock is its own serials. Bin stock of the item is NOT used,
+	#    because Bin also holds serials of other sets and free serials.
 	# -------------------------------------------------------------
-	if target_warehouses:
-		bins = frappe.db.sql(
+	serial_nos = list({c.serial_no for c in components if c.serial_no})
+	serial_map = {}
+	if serial_nos:
+		for s in frappe.db.sql(
 			"""
-			SELECT item_code, warehouse, actual_qty, stock_uom
-			FROM `tabBin`
-			WHERE item_code IN %(items)s AND warehouse IN %(warehouses)s
+			SELECT name, warehouse, status, location
+			FROM `tabSerial No`
+			WHERE name IN %(serials)s
 			""",
-			{"items": tuple(unique_item_codes), "warehouses": tuple(target_warehouses)},
+			{"serials": tuple(serial_nos)},
 			as_dict=True,
-		)
-	else:
-		bins = frappe.db.sql(
-			"""
-			SELECT item_code, warehouse, actual_qty, stock_uom
-			FROM `tabBin`
-			WHERE item_code IN %(items)s
-			""",
-			{"items": tuple(unique_item_codes)},
-			as_dict=True,
-		)
+		):
+			serial_map[s.name] = s
+
+	# TASK41455: a serial is counted only for the Pattern Set that owns it
+	from generate_item.mould_set_management.pattern_set_utils import get_serial_owner_map
+
+	serial_owner = get_serial_owner_map(serial_nos)
+
+	item_uom = {
+		i.name: i.stock_uom
+		for i in frappe.get_all("Item", filters={"name": ["in", unique_item_codes]}, fields=["name", "stock_uom"])
+	}
 
 	# -------------------------------------------------------------
 	# 5. Batch Fetch Warehouse Details using Primary Key Index
 	# -------------------------------------------------------------
-	warehouses_in_bins = list({b.warehouse for b in bins if b.warehouse})
+	warehouses_used = {s.warehouse for s in serial_map.values() if s.warehouse}
+	warehouses_used |= {ps.current_warehouse for ps in pattern_sets if ps.get("current_warehouse")}
 	if target_warehouses:
-		for wh_t in target_warehouses:
-			if wh_t not in warehouses_in_bins:
-				warehouses_in_bins.append(wh_t)
+		warehouses_used |= set(target_warehouses)
 
 	wh_map = {}
-	if warehouses_in_bins:
+	if warehouses_used:
 		has_branch = frappe.db.has_column("Warehouse", "branch")
 		branch_col = ", branch" if has_branch else ""
 		wh_rows = frappe.db.sql(
@@ -347,20 +351,10 @@ def get_pattern_set_component_availability(
 			FROM `tabWarehouse`
 			WHERE name IN %(warehouses)s
 			""",
-			{"warehouses": tuple(warehouses_in_bins)},
+			{"warehouses": tuple(warehouses_used)},
 			as_dict=True,
 		)
 		wh_map = {w.name: w for w in wh_rows}
-
-	# Map stock by (item_code, warehouse)
-	item_wh_qty = {}
-	item_wh_uom = {}
-	for b in bins:
-		qty = flt(b.actual_qty)
-		key = (b.item_code, b.warehouse)
-		item_wh_qty[key] = item_wh_qty.get(key, 0.0) + qty
-		if b.stock_uom:
-			item_wh_uom[key] = b.stock_uom
 
 	# Group components by parent Pattern Set
 	ps_components_map = {}
@@ -368,7 +362,7 @@ def get_pattern_set_component_availability(
 		ps_components_map.setdefault(c.parent, []).append(c)
 
 	# -------------------------------------------------------------
-	# 6. Build Grouped Structure: Pattern Set x Warehouse
+	# 6. Build Grouped Structure: Pattern Set x Warehouse (where its serials are)
 	# -------------------------------------------------------------
 	hierarchy = []
 	total_components_set = set()
@@ -383,33 +377,35 @@ def get_pattern_set_component_availability(
 		if not ps_comps:
 			continue
 
-		ps_item_codes = [c.component_item for c in ps_comps if c.component_item]
+		# Rows whose serial is not in stock are shown with the set's current warehouse
+		home_wh = ps.get("current_warehouse") or next(
+			(
+				serial_map[c.serial_no].warehouse
+				for c in ps_comps
+				if c.serial_no in serial_map and serial_map[c.serial_no].warehouse
+			),
+			"",
+		)
 
-		# Determine applicable warehouses for this Pattern Set
-		applicable_warehouses = []
+		rows_by_wh = {}
+		for c in ps_comps:
+			if not c.component_item:
+				continue
+			if component_item and c.component_item != component_item:
+				continue
+			serial = serial_map.get(c.serial_no) if c.serial_no else None
+			in_stock = bool(
+				serial
+				and serial.status == "Active"
+				and serial.warehouse
+				and serial_owner.get(c.serial_no, ps.name) == ps.name
+			)
+			wh_name = serial.warehouse if in_stock else home_wh
+			rows_by_wh.setdefault(wh_name, []).append((c, serial, in_stock))
+
+		applicable_warehouses = list(rows_by_wh)
 		if target_warehouses:
-			if show_zero:
-				wh_with_bins = {wh for (i_code, wh) in item_wh_qty if i_code in ps_item_codes and wh in target_warehouses}
-				applicable_warehouses = list(wh_with_bins) if wh_with_bins else list(target_warehouses)
-			else:
-				wh_with_stock = {wh for (i_code, wh), q in item_wh_qty.items() if i_code in ps_item_codes and wh in target_warehouses and q > 0}
-				applicable_warehouses = list(wh_with_stock)
-		else:
-			warehouses_with_stock = set()
-			warehouses_with_bin = set()
-
-			for item_code in ps_item_codes:
-				for (i_code, wh_name), qty in item_wh_qty.items():
-					if i_code == item_code:
-						warehouses_with_bin.add(wh_name)
-						if qty > 0:
-							warehouses_with_stock.add(wh_name)
-
-			if show_zero:
-				applicable_warehouses = list(warehouses_with_bin)
-			else:
-				applicable_warehouses = list(warehouses_with_stock)
-
+			applicable_warehouses = [wh for wh in applicable_warehouses if wh in target_warehouses]
 		if not applicable_warehouses:
 			continue
 
@@ -422,31 +418,23 @@ def get_pattern_set_component_availability(
 
 		applicable_warehouses.sort(key=_wh_sort_key)
 
-		# Build warehouse groups for this Pattern Set
 		wh_groups = []
 		for wh_name in applicable_warehouses:
 			wh_info = wh_map.get(wh_name, {"name": wh_name, "warehouse_name": wh_name})
-			is_common = is_common_warehouse(wh_info)
+			is_common = is_common_warehouse(wh_info) if wh_name else False
 			branch = wh_info.get("branch") or ""
-			disp_wh_name = wh_info.get("warehouse_name") or wh_name
+			disp_wh_name = (wh_info.get("warehouse_name") or wh_name) if wh_name else _("Not in any warehouse")
 
 			group_components = []
 			group_total_qty = 0.0
 
-			for c in ps_comps:
+			for c, serial, in_stock in rows_by_wh[wh_name]:
 				item_code = c.component_item
-				if not item_code:
-					continue
-
-				if component_item and item_code != component_item:
-					continue
-
-				qty = item_wh_qty.get((item_code, wh_name), 0.0)
-				uom = item_wh_uom.get((item_code, wh_name)) or c.uom or ""
-				has_stock = qty > 0
+				# one component row holds one serial piece
+				qty = 1.0 if in_stock else 0.0
 
 				total_components_set.add(item_code)
-				if has_stock:
+				if in_stock:
 					components_with_stock_count += 1
 					total_warehouses_set.add(wh_name)
 				else:
@@ -460,8 +448,13 @@ def get_pattern_set_component_availability(
 				group_components.append({
 					"component_item": item_code,
 					"component_name": c.component_name or item_code,
-					"required_qty": flt(c.qty),
-					"uom": uom,
+					# each row is one slot holding one serial, whatever qty is saved on the row
+					"required_qty": 1.0,
+					"is_optional": cint(c.is_optional),
+					"uom": item_uom.get(item_code) or c.uom or "",
+					"serial_no": c.serial_no or "",
+					"serial_status": (serial.status if serial else "") or "",
+					"location": (serial.location if serial else "") or branch,
 					"drawing_no": c.drawing_no or "",
 					"drawing_rev_no": c.drawing_rev_no or "",
 					"pattern_drawing_no": c.pattern_drawing_no or "",
@@ -469,32 +462,26 @@ def get_pattern_set_component_availability(
 					"warehouse": wh_name,
 					"warehouse_name": disp_wh_name,
 					"actual_qty": qty,
-					"has_stock": has_stock,
+					"has_stock": in_stock,
 				})
 
 			if not group_components:
 				continue
+			if not show_zero and group_total_qty <= 0:
+				continue
 
-			# Calculate Pattern Set Quantity (minimum possible sets from components)
-			possible_sets_list = []
+			# Pattern Set Quantity: complete sets possible from the required (non-optional) rows here
+			required_rows = [ci for ci in group_components if not ci["is_optional"]] or group_components
+			possible_sets_list = [
+				flt(ci["actual_qty"]) / flt(ci["required_qty"]) for ci in required_rows if flt(ci["required_qty"]) > 0
+			]
+			pattern_set_qty = max(0, int(min(possible_sets_list))) if possible_sets_list else 0
+
+			# extra_qty = max(0, available_qty - (pattern_set_qty * required_qty))
 			for c_item in group_components:
-				r_qty = flt(c_item.get("required_qty", 0))
-				a_qty = flt(c_item.get("actual_qty", 0))
-				if r_qty > 0:
-					possible_sets_list.append(a_qty / r_qty)
-
-			pattern_set_qty = 0
-			if possible_sets_list:
-				pattern_set_qty = int(min(possible_sets_list))
-				if pattern_set_qty < 0:
-					pattern_set_qty = 0
-
-			# Calculate extra_qty = max(0, available_qty - (pattern_set_qty * required_qty))
-			for c_item in group_components:
-				r_qty = flt(c_item.get("required_qty", 0))
-				a_qty = flt(c_item.get("actual_qty", 0))
-				extra_qty = max(0.0, a_qty - (pattern_set_qty * r_qty))
-				c_item["extra_qty"] = extra_qty
+				c_item["extra_qty"] = max(
+					0.0, flt(c_item["actual_qty"]) - (pattern_set_qty * flt(c_item["required_qty"]))
+				)
 
 			wh_groups.append({
 				"warehouse": wh_name,
@@ -631,10 +618,11 @@ def export_availability_excel(
 	ws.title = "Pattern Set Stock"
 	ws.views.sheetView[0].showGridLines = True
 
-	# Headers: Pattern Set, Warehouse, QTY, Extra Qty
+	# Headers: Pattern Set, Warehouse, Serial No, QTY, Extra Qty
 	headers = [
 		"Pattern Set",
 		"Warehouse",
+		"Serial No",
 		"QTY",
 		"Extra Qty",
 	]
@@ -653,7 +641,7 @@ def export_availability_excel(
 		cell = ws.cell(row=1, column=col_idx)
 		cell.fill = header_fill
 		cell.font = header_font
-		cell.alignment = Alignment(horizontal="left" if col_idx <= 2 else "right", vertical="center")
+		cell.alignment = Alignment(horizontal="left" if col_idx <= 3 else "right", vertical="center")
 		cell.border = thin_border
 	ws.row_dimensions[1].height = 24
 
@@ -676,15 +664,16 @@ def export_availability_excel(
 			ws.append([
 				ps_title,
 				wh_display,
+				"",
 				ps_qty_text,
 				"",
 			])
-			for c_i in range(1, 5):
+			for c_i in range(1, 6):
 				c = ws.cell(row=row_idx, column=c_i)
 				c.fill = group_fill
 				c.font = group_font
 				c.border = thin_border
-				c.alignment = Alignment(horizontal="left" if c_i <= 2 else "right", vertical="center")
+				c.alignment = Alignment(horizontal="left" if c_i <= 3 else "right", vertical="center")
 			ws.row_dimensions[row_idx].height = 20
 			row_idx += 1
 
@@ -700,6 +689,7 @@ def export_availability_excel(
 				ws.append([
 					comp_display,
 					wh_display,
+					comp.get("serial_no") or "",
 					qty_val,
 					extra_qty_val,
 				])
@@ -714,13 +704,18 @@ def export_availability_excel(
 				c2.border = thin_border
 				c2.alignment = Alignment(horizontal="left", vertical="center")
 
-				c3 = ws.cell(row=row_idx, column=3)
+				c_sn = ws.cell(row=row_idx, column=3)
+				c_sn.font = item_font
+				c_sn.border = thin_border
+				c_sn.alignment = Alignment(horizontal="left", vertical="center")
+
+				c3 = ws.cell(row=row_idx, column=4)
 				c3.font = qty_font if qty_val > 0 else zero_qty_font
 				c3.border = thin_border
 				c3.alignment = Alignment(horizontal="right", vertical="center")
 				c3.number_format = "#,##0.##"
 
-				c4 = ws.cell(row=row_idx, column=4)
+				c4 = ws.cell(row=row_idx, column=5)
 				c4.font = qty_font if extra_qty_val > 0 else zero_qty_font
 				c4.border = thin_border
 				c4.alignment = Alignment(horizontal="right", vertical="center")

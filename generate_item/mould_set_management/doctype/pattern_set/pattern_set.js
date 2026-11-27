@@ -7,13 +7,14 @@ frappe.ui.form.on("Pattern Set", {
 	},
 
 	setup(frm) {
-		// Filter Item Code to serial-tracked stock items
+		// Filter Item Code to serial-tracked stock items of the Patterns and Die group
 		let item_filter = function () {
 			return {
 				filters: {
 					disabled: 0,
 					is_stock_item: 1,
 					has_serial_no: 1,
+					item_group: ["descendants of (inclusive)", "Patterns and Die"],
 				},
 			};
 		};
@@ -64,7 +65,17 @@ frappe.ui.form.on("Pattern Set", {
 	},
 
 	render_panels(frm) {
-		if (!frm.is_new() && frm.doc.name) {
+		if (frm.is_new() || !frm.doc.name) {
+			// New or duplicated set: clear the panel left over from the previously opened set
+			frm.set_df_property(
+				"set_info",
+				"options",
+				`<div class="text-muted small">${__("Live status shows after the Pattern Set is saved.")}</div>`
+			);
+			frm.refresh_field("set_info");
+			return;
+		}
+		{
 			frappe.call({
 				method: "generate_item.mould_set_management.doctype.pattern_set.pattern_set.get_set_info_html",
 				args: { pattern_set: frm.doc.name },
@@ -159,6 +170,7 @@ function fetch_item_and_drawing_info(cdt, cdn, item_code) {
 		item_code,
 		[
 			"item_name",
+			"description",
 			"stock_uom",
 			"custom_drawing_no",
 			"custom_drawing_rev_no",
@@ -168,6 +180,7 @@ function fetch_item_and_drawing_info(cdt, cdn, item_code) {
 		function (r) {
 			if (r) {
 				frappe.model.set_value(cdt, cdn, "item_name", r.item_name);
+				frappe.model.set_value(cdt, cdn, "description", r.description || "");
 				frappe.model.set_value(cdt, cdn, "component_name", r.item_name);
 				frappe.model.set_value(cdt, cdn, "uom", r.stock_uom);
 				frappe.model.set_value(cdt, cdn, "drawing_no", r.custom_drawing_no || "");
