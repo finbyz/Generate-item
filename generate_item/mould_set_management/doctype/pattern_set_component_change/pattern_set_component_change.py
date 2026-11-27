@@ -524,14 +524,20 @@ def get_serial_details(serial_no, pattern_set=None):
 
 
 @frappe.whitelist()
-def get_pattern_set_items(pattern_set):
-	"""Distinct component items of a Pattern Set, for the Item Code picker on change rows."""
+def get_pattern_set_items(pattern_set, only_empty=0):
+	"""Distinct component items of a Pattern Set, for the Item Code picker on change rows.
+
+	only_empty=1 (Attach rows): only items that still have a row with no Serial No in the set.
+	"""
 	if not pattern_set:
 		return []
 	frappe.has_permission("Pattern Set", "read", pattern_set, throw=True)
+	filters = {"parent": pattern_set, "parenttype": "Pattern Set"}
+	if frappe.utils.cint(only_empty):
+		filters["serial_no"] = ["in", ["", None]]
 	return frappe.get_all(
 		"Pattern Set Component",
-		filters={"parent": pattern_set, "parenttype": "Pattern Set"},
+		filters=filters,
 		pluck="item_code",
 		distinct=True,
 	)

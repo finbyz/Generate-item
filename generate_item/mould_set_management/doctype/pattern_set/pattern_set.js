@@ -65,7 +65,17 @@ frappe.ui.form.on("Pattern Set", {
 	},
 
 	render_panels(frm) {
-		if (!frm.is_new() && frm.doc.name) {
+		if (frm.is_new() || !frm.doc.name) {
+			// New or duplicated set: clear the panel left over from the previously opened set
+			frm.set_df_property(
+				"set_info",
+				"options",
+				`<div class="text-muted small">${__("Live status shows after the Pattern Set is saved.")}</div>`
+			);
+			frm.refresh_field("set_info");
+			return;
+		}
+		{
 			frappe.call({
 				method: "generate_item.mould_set_management.doctype.pattern_set.pattern_set.get_set_info_html",
 				args: { pattern_set: frm.doc.name },

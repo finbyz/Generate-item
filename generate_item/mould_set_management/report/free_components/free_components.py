@@ -3,8 +3,8 @@
 
 """Free Components: pattern pieces that are not part of any Pattern Set.
 
-* Serial-numbered items: each Active serial with no Pattern Set (Serial No.custom_pattern_set
-  empty) is one row, qty 1.
+* Serial-numbered items: each Active serial that is not used by any Draft or Submitted
+  Pattern Set (same rule as the Change Component picker) is one row, qty 1.
 * Items without serial numbers cannot be put in a Pattern Set, so all their stock is free.
   They are shown warehouse-wise from Bin.actual_qty, without a Serial No.
 
@@ -52,6 +52,9 @@ def get_data(filters):
 
 	# 1. Free serials
 	if serial_items:
+		from generate_item.mould_set_management.pattern_set_utils import get_serials_linked_to_pattern_sets
+
+		linked = get_serials_linked_to_pattern_sets()
 		conditions = {
 			"item_code": ["in", serial_items],
 			"status": "Active",
@@ -64,6 +67,8 @@ def get_data(filters):
 			fields=["name", "item_code", "warehouse", "location", "status"],
 			order_by="item_code asc, name asc",
 		):
+			if s.name in linked:
+				continue  # on a row of a Draft Pattern Set
 			rows.append(
 				frappe._dict(
 					serial_no=s.name,
