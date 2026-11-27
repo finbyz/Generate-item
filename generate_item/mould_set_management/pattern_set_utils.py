@@ -40,6 +40,9 @@ def get_pattern_set_slots_and_serials(pattern_set_name):
 	
 	slot_summary = {}
 
+	# TASK41455: a serial counts only for the Pattern Set that owns it, never for two sets
+	owners = get_serial_owner_map([r.get("serial_no") for r in comp_rows])
+
 	for r in comp_rows:
 		item_code = r.get("item_code") or r.get("component_item")
 		item_name = r.get("item_name") or r.get("component_name") or item_code
@@ -48,8 +51,16 @@ def get_pattern_set_slots_and_serials(pattern_set_name):
 		row_warehouse = r.get("warehouse")
 		paired_on = r.get("paired_on")
 
+		owner = owners.get(serial_no) if serial_no else None
+
 		# Determine row state
-		if serial_no:
+		if serial_no and owner and owner != doc.name:
+			# The serial belongs to another Pattern Set: this row does not hold a piece
+			state = "Linked to {0}".format(owner)
+			if not is_optional:
+				all_required_met = False
+				missing_items.append(item_code)
+		elif serial_no:
 			state = "OK"
 			attached_serials.append({
 				"serial_no": serial_no,
@@ -316,9 +327,10 @@ def recalculate_pattern_set(pattern_set_name):
 	comp_rows = getattr(doc, "components", None) or getattr(doc, "items", None) or []
 
 	# Sync attached_qty for backward compatibility if field exists
+	owned_rows = {s["row_name"] for s in info["attached_serials"]}
 	for r in comp_rows:
 		if hasattr(r, "attached_qty"):
-			att = 1 if r.get("serial_no") else 0
+			att = 1 if r.name in owned_rows else 0
 			frappe.db.set_value(r.doctype, r.name, "attached_qty", att, update_modified=False)
 
 	# Update fields on parent Pattern Set
@@ -364,3 +376,148 @@ def sync_pattern_set_engineering_status(pattern_set_name, status=None):
 		update_modified=False,
 	)
 	return status
+
+
+def get_serials_linked_to_pattern_sets(exclude_set=None):
+	"""Serial Nos already used by a Pattern Set (TASK41454).
+
+	A serial counts as linked when it is on a component row of a Draft or Submitted
+	Pattern Set, or when its Serial No.custom_pattern_set is filled. Cancelled sets do
+	not count. Serials linked only to `exclude_set` are left out of the result.
+	"""
+	conditions = ["psc.parenttype = 'Pattern Set'", "IFNULL(psc.serial_no, '') != ''", "ps.docstatus < 2"]
+	values = {}
+	if exclude_set:
+		conditions.append("ps.name != %(exclude_set)s")
+		values["exclude_set"] = exclude_set
+
+	linked = set(
+		frappe.db.sql_list(
+			"""
+			SELECT DISTINCT psc.serial_no
+			FROM `tabPattern Set Component` psc
+			INNER JOIN `tabPattern Set` ps ON ps.name = psc.parent
+			WHERE {}
+			""".format(" AND ".join(conditions)),
+			values,
+		)
+	)
+
+	sn_filters = {"custom_pattern_set": ["is", "set"]}
+	if exclude_set:
+		sn_filters["custom_pattern_set"] = ["not in", ["", exclude_set]]
+	linked.update(frappe.get_all("Serial No", filters=sn_filters, pluck="name"))
+	return linked
+
+
+def _serial_links(serials):
+	"""serial -> {"link": Serial No.custom_pattern_set, "sets": {set_name: (docstatus, creation)}}.
+
+	Only Draft and Submitted Pattern Sets are considered.
+	"""
+	serials = sorted({(s or "").strip() for s in serials if s and (s or "").strip()})
+	if not serials:
+		return {}
+
+	out = {s: {"link": None, "sets": {}} for s in serials}
+	for row in frappe.db.sql(
+		"""
+		SELECT psc.serial_no, ps.name, ps.docstatus, ps.creation
+		FROM `tabPattern Set Component` psc
+		INNER JOIN `tabPattern Set` ps ON ps.name = psc.parent
+		WHERE psc.parenttype = 'Pattern Set' AND ps.docstatus < 2 AND psc.serial_no IN %(serials)s
+		""",
+		{"serials": tuple(serials)},
+		as_dict=True,
+	):
+		out[row.serial_no]["sets"][row.name] = (row.docstatus, row.creation)
+
+	links = frappe.get_all(
+		"Serial No", filters={"name": ["in", serials]}, fields=["name", "custom_pattern_set"]
+	)
+	link_sets = {l.custom_pattern_set for l in links if l.custom_pattern_set}
+	live_links = {
+		p.name: (p.docstatus, p.creation)
+		for p in frappe.get_all(
+			"Pattern Set",
+			filters={"name": ["in", list(link_sets)], "docstatus": ["<", 2]},
+			fields=["name", "docstatus", "creation"],
+		)
+	} if link_sets else {}
+	for l in links:
+		if l.custom_pattern_set in live_links:
+			out[l.name]["link"] = l.custom_pattern_set
+			out[l.name]["sets"].setdefault(l.custom_pattern_set, live_links[l.custom_pattern_set])
+	return out
+
+
+def get_serial_owner_map(serials):
+	"""serial -> the one Pattern Set that owns it (TASK41455).
+
+	Owner = the set in Serial No.custom_pattern_set when that set is not cancelled.
+	Otherwise the oldest Submitted set listing the serial, else the oldest Draft set.
+	Serials not in any live set are left out.
+	"""
+	owners = {}
+	for serial, info in _serial_links(serials).items():
+		if info["link"]:
+			owners[serial] = info["link"]
+		elif info["sets"]:
+			owners[serial] = sorted(info["sets"].items(), key=lambda kv: (kv[1][0] != 1, kv[1][1]))[0][0]
+	return owners
+
+
+def get_other_pattern_sets_for_serial(serial_no, current_set=None):
+	"""Live Pattern Sets other than `current_set` that hold this serial, as [(name, docstatus)]."""
+	info = _serial_links([serial_no]).get((serial_no or "").strip())
+	if not info:
+		return []
+	return sorted(
+		((name, ds) for name, (ds, _creation) in info["sets"].items() if name != current_set),
+		key=lambda x: (x[1] != 1, x[0]),
+	)
+
+
+def find_duplicate_serial_links(apply=False):
+	"""Find serials held by more than one live Pattern Set (TASK41455 data cleanup).
+
+	With apply=True, the serial is kept in its owner set (see get_serial_owner_map) and
+	cleared from the component rows of every other set, which are then recalculated.
+	Returns a list of {serial_no, owner, removed_from}.
+	"""
+	candidates = frappe.db.sql_list(
+		"""
+		SELECT psc.serial_no
+		FROM `tabPattern Set Component` psc
+		INNER JOIN `tabPattern Set` ps ON ps.name = psc.parent
+		LEFT JOIN `tabSerial No` sn ON sn.name = psc.serial_no
+		WHERE psc.parenttype = 'Pattern Set' AND ps.docstatus < 2 AND IFNULL(psc.serial_no, '') != ''
+		GROUP BY psc.serial_no
+		HAVING COUNT(DISTINCT ps.name) > 1
+			OR SUM(IFNULL(sn.custom_pattern_set, '') NOT IN ('', ps.name)) > 0
+		"""
+	)
+	owners = get_serial_owner_map(candidates)
+	report, touched = [], set()
+	for serial in candidates:
+		owner = owners.get(serial)
+		others = [name for name, _ds in get_other_pattern_sets_for_serial(serial, owner)]
+		if not others:
+			continue
+		report.append({"serial_no": serial, "owner": owner, "removed_from": others})
+		if apply:
+			for row in frappe.get_all(
+				"Pattern Set Component",
+				filters={"parenttype": "Pattern Set", "parent": ["in", others], "serial_no": serial},
+				fields=["name", "parent"],
+			):
+				frappe.db.set_value(
+					"Pattern Set Component",
+					row.name,
+					{"serial_no": None, "warehouse": None, "paired_on": None},
+					update_modified=False,
+				)
+				touched.add(row.parent)
+	for pattern_set in touched:
+		recalculate_pattern_set(pattern_set)
+	return report

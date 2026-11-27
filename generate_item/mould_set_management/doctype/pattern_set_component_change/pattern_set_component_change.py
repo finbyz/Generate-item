@@ -6,6 +6,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import now_datetime
 from generate_item.mould_set_management.pattern_set_utils import (
+	get_other_pattern_sets_for_serial,
 	get_pattern_set_slots_and_serials,
 	recalculate_pattern_set,
 	render_set_info_html,
@@ -71,6 +72,12 @@ class PatternSetComponentChange(Document):
 		needed_open_by_item = {}
 
 		for idx, row in enumerate(self.items, start=1):
+			# TASK41453: the Item must be chosen before the Serial No
+			if row.serial_no and not row.item_code:
+				frappe.throw(
+					_("Row #{0}: Select the Item Code before the Serial No {1}.").format(idx, frappe.bold(row.serial_no))
+				)
+
 			if not row.serial_no:
 				frappe.throw(_("Row #{0}: Serial No is required.").format(idx))
 
@@ -88,11 +95,27 @@ class PatternSetComponentChange(Document):
 			if not sn_data:
 				frappe.throw(_("Row #{0}: Serial No {1} does not exist.").format(idx, row.serial_no))
 
-			row.item_code = sn_data.item_code
+			if sn_data.item_code != row.item_code:
+				frappe.throw(
+					_("Row #{0}: Serial No {1} belongs to Item {2}, not to the selected Item {3}.").format(
+						idx, frappe.bold(row.serial_no), frappe.bold(sn_data.item_code), frappe.bold(row.item_code)
+					)
+				)
+
 			row.warehouse = sn_data.warehouse
 			row.previous_set = sn_data.custom_pattern_set or ""
 
 			if row.action == "Attach":
+				# TASK41455: a serial in another Pattern Set cannot be attached here
+				other_sets = get_other_pattern_sets_for_serial(row.serial_no, self.pattern_set)
+				if other_sets:
+					frappe.throw(
+						_("Row #{0}: Serial No {1} is already linked to Pattern Set {2}. One serial can belong to only one Pattern Set. Detach it from {2} first.").format(
+							idx, frappe.bold(row.serial_no), frappe.bold(other_sets[0][0])
+						),
+						title=_("Serial already in another Pattern Set"),
+					)
+
 				# Acceptance Test 3: Item must be in the set
 				if sn_data.item_code not in all_set_items:
 					frappe.throw(
@@ -499,3 +522,51 @@ def get_serial_details(serial_no, pattern_set=None):
 		"previous_set": data.custom_pattern_set or "",
 	}
 
+
+@frappe.whitelist()
+def get_pattern_set_items(pattern_set):
+	"""Distinct component items of a Pattern Set, for the Item Code picker on change rows."""
+	if not pattern_set:
+		return []
+	frappe.has_permission("Pattern Set", "read", pattern_set, throw=True)
+	return frappe.get_all(
+		"Pattern Set Component",
+		filters={"parent": pattern_set, "parenttype": "Pattern Set"},
+		pluck="item_code",
+		distinct=True,
+	)
+
+
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def free_serial_query(doctype, txt, searchfield, start, page_len, filters):
+	"""Serial No picker for Attach rows (TASK41454).
+
+	Only Active serials of the row's item that are not linked to any Pattern Set.
+	Returns nothing when no item is given.
+	"""
+	from generate_item.mould_set_management.pattern_set_utils import get_serials_linked_to_pattern_sets
+
+	filters = filters or {}
+	item_code = filters.get("item_code")
+	if not item_code:
+		return []
+
+	conditions = ["sn.item_code = %(item_code)s", "sn.status = 'Active'", "sn.name LIKE %(txt)s"]
+	values = {"item_code": item_code, "txt": f"%{txt or ''}%", "start": int(start or 0), "page_len": int(page_len or 20)}
+
+	linked = get_serials_linked_to_pattern_sets()
+	if linked:
+		conditions.append("sn.name NOT IN %(linked)s")
+		values["linked"] = tuple(linked)
+
+	return frappe.db.sql(
+		"""
+		SELECT sn.name, sn.warehouse
+		FROM `tabSerial No` sn
+		WHERE {}
+		ORDER BY sn.name
+		LIMIT %(start)s, %(page_len)s
+		""".format(" AND ".join(conditions)),
+		values,
+	)

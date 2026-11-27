@@ -323,6 +323,11 @@ def get_pattern_set_component_availability(
 		):
 			serial_map[s.name] = s
 
+	# TASK41455: a serial is counted only for the Pattern Set that owns it
+	from generate_item.mould_set_management.pattern_set_utils import get_serial_owner_map
+
+	serial_owner = get_serial_owner_map(serial_nos)
+
 	item_uom = {
 		i.name: i.stock_uom
 		for i in frappe.get_all("Item", filters={"name": ["in", unique_item_codes]}, fields=["name", "stock_uom"])
@@ -389,7 +394,12 @@ def get_pattern_set_component_availability(
 			if component_item and c.component_item != component_item:
 				continue
 			serial = serial_map.get(c.serial_no) if c.serial_no else None
-			in_stock = bool(serial and serial.status == "Active" and serial.warehouse)
+			in_stock = bool(
+				serial
+				and serial.status == "Active"
+				and serial.warehouse
+				and serial_owner.get(c.serial_no, ps.name) == ps.name
+			)
 			wh_name = serial.warehouse if in_stock else home_wh
 			rows_by_wh.setdefault(wh_name, []).append((c, serial, in_stock))
 

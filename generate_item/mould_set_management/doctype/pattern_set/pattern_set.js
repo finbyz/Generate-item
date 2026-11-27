@@ -160,6 +160,7 @@ function fetch_item_and_drawing_info(cdt, cdn, item_code) {
 		item_code,
 		[
 			"item_name",
+			"description",
 			"stock_uom",
 			"custom_drawing_no",
 			"custom_drawing_rev_no",
@@ -169,6 +170,7 @@ function fetch_item_and_drawing_info(cdt, cdn, item_code) {
 		function (r) {
 			if (r) {
 				frappe.model.set_value(cdt, cdn, "item_name", r.item_name);
+				frappe.model.set_value(cdt, cdn, "description", r.description || "");
 				frappe.model.set_value(cdt, cdn, "component_name", r.item_name);
 				frappe.model.set_value(cdt, cdn, "uom", r.stock_uom);
 				frappe.model.set_value(cdt, cdn, "drawing_no", r.custom_drawing_no || "");

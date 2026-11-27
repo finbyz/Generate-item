@@ -6,6 +6,7 @@ from frappe import _
 from frappe.model.document import Document
 from frappe.utils import now_datetime
 from generate_item.mould_set_management.pattern_set_utils import (
+	get_other_pattern_sets_for_serial,
 	get_pattern_set_slots_and_serials,
 	recalculate_pattern_set,
 	render_set_info_html,
@@ -141,38 +142,20 @@ class PatternSet(Document):
 						)
 					)
 
-				# Free check (Acceptance Test 2, 4)
-				if sn_data.custom_pattern_set and sn_data.custom_pattern_set != self.name:
-					ps_docstatus = frappe.db.get_value("Pattern Set", sn_data.custom_pattern_set, "docstatus")
-					if ps_docstatus == 1:
-						frappe.throw(
-							_("Serial No {0} is currently in submitted Pattern Set {1}. Use Pattern Set Component Change on this set after submitting, or detach it first.").format(
-								frappe.bold(serial_no), frappe.bold(sn_data.custom_pattern_set)
-							)
-						)
-					elif ps_docstatus == 0:
-						frappe.throw(
-							_("Serial No {0} is already used in Draft Pattern Set {1}.").format(
-								frappe.bold(serial_no), frappe.bold(sn_data.custom_pattern_set)
-							)
-						)
-
-				# Check other draft sets where serial might be listed in component rows
-				other_draft = frappe.db.sql(
-					"""
-					SELECT parent FROM `tabPattern Set Component`
-					WHERE serial_no = %s AND parent != %s AND parent IN (
-						SELECT name FROM `tabPattern Set` WHERE docstatus = 0
-					)
-					LIMIT 1
-					""",
-					(serial_no, self.name or ""),
-				)
-				if other_draft:
+				# Free check (Acceptance Test 2, 4; TASK41455): one serial, one Pattern Set.
+				# Covers the serial's own link and rows of any other Draft or Submitted set.
+				# The current document is excluded so a resave does not fail.
+				other_sets = get_other_pattern_sets_for_serial(serial_no, self.name)
+				if other_sets:
+					other_name, other_ds = other_sets[0]
 					frappe.throw(
-						_("Serial No {0} is already in another Draft Pattern Set {1}.").format(
-							frappe.bold(serial_no), frappe.bold(other_draft[0][0])
-						)
+						_("Row #{0}: Serial No {1} is already linked to {2} Pattern Set {3}. One serial can belong to only one Pattern Set. Detach it from {3} first through a Pattern Set Component Change.").format(
+							row.idx,
+							frappe.bold(serial_no),
+							_("Submitted") if other_ds == 1 else _("Draft"),
+							frappe.bold(other_name),
+						),
+						title=_("Serial already in another Pattern Set"),
 					)
 
 				# Fetch and set warehouse
